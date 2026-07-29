@@ -1,0 +1,24 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# env files
+.env
+.env.*
+
+# logs
+*.log
+
+# database dumps / backups
+*.sql
+
+# secrets
+src/db/dbCredentials.ts
+
+# editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+.DS_Store

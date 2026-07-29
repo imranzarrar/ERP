@@ -1,0 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Bind theme variables dynamically to override standard color classes */
+  --color-indigo-50: var(--primary-light);
+  --color-indigo-100: var(--primary-mid-light);
+  --color-indigo-200: var(--primary-light-border);
+  --color-indigo-400: var(--accent-light);
+  --color-indigo-500: var(--accent-base);
+  --color-indigo-600: var(--primary-color);
+  --color-indigo-700: var(--primary-hover);
+  --color-indigo-800: var(--primary-dark-mid);
+  --color-indigo-900: var(--primary-dark-text);
+  --color-indigo-950: var(--primary-dark);
+}
+
+:root {
+  /* Default fallbacks - Classic Executive Indigo */
+  --primary-color: #4f46e5;
+  --primary-hover: #4338ca;
+  --primary-light: #f5f3ff;
+  --primary-light-border: #ddd6fe;
+  --primary-dark: #0f172a;
+  --primary-dark-text: #1e1b4b;
+  --accent-light: #818cf8;
+  --accent-base: #6366f1;
+  --primary-mid-light: #e0e7ff;
+  --primary-dark-mid: #3730a3;
+}
+
+/* Custom transitions and scrollbar stylings */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Print Overrides */
+@media print {
+  body {
+    background-color: white !important;
+    color: black !important;
+    font-size: 12pt;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  
+  /* Reset margins for clean paper sizes */
+  @page {
+    margin: 0.5cm;
+  }
+}

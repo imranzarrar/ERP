@@ -1,0 +1,555 @@
+<title>Sales Documents — UX &amp; Design System Review</title>
+<style>
+  :root {
+    --ink: #14181c;
+    --ink-soft: #454c52;
+    --paper: #f1f2ed;
+    --paper-raised: #fbfbf8;
+    --line: #dcddd6;
+    --accent: #0e7c86;
+    --accent-ink: #063339;
+    --accent-soft: #dcecec;
+    --warm: #c9622a;
+    --warm-soft: #f4e3d7;
+    --good: #1f8a5f;
+    --good-soft: #dcf0e5;
+    --warn: #9a7107;
+    --warn-soft: #f3ecd2;
+    --crit: #b23a3a;
+    --crit-soft: #f6dede;
+    --info: #3b6fa0;
+    --info-soft: #dde9f3;
+    --shadow: 0 1px 2px rgba(20, 24, 28, 0.06), 0 8px 24px -12px rgba(20, 24, 28, 0.18);
+    --font-display: "Bahnschrift", "SF Compact Text", "Segoe UI Semibold", "Helvetica Neue", system-ui, sans-serif;
+    --font-body: "Charter", "Iowan Old Style", "Georgia", "Cambria", "Times New Roman", serif;
+    --font-mono: "SF Mono", "Cascadia Code", "Consolas", "Roboto Mono", ui-monospace, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #ecece6;
+      --ink-soft: #b6bab9;
+      --paper: #14171a;
+      --paper-raised: #1b1f22;
+      --line: #2c3033;
+      --accent: #45bcc7;
+      --accent-ink: #cdf0f3;
+      --accent-soft: #16333a;
+      --warm: #e08b52;
+      --warm-soft: #3a271b;
+      --good: #4fbf8f;
+      --good-soft: #16332a;
+      --warn: #d8b854;
+      --warn-soft: #362f16;
+      --crit: #e28080;
+      --crit-soft: #3a1e1e;
+      --info: #7fb1e0;
+      --info-soft: #1c2c3a;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #ecece6; --ink-soft: #b6bab9; --paper: #14171a; --paper-raised: #1b1f22; --line: #2c3033;
+    --accent: #45bcc7; --accent-ink: #cdf0f3; --accent-soft: #16333a;
+    --warm: #e08b52; --warm-soft: #3a271b;
+    --good: #4fbf8f; --good-soft: #16332a; --warn: #d8b854; --warn-soft: #362f16;
+    --crit: #e28080; --crit-soft: #3a1e1e; --info: #7fb1e0; --info-soft: #1c2c3a;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+  :root[data-theme="light"] {
+    --ink: #14181c; --ink-soft: #454c52; --paper: #f1f2ed; --paper-raised: #fbfbf8; --line: #dcddd6;
+    --accent: #0e7c86; --accent-ink: #063339; --accent-soft: #dcecec;
+    --warm: #c9622a; --warm-soft: #f4e3d7;
+    --good: #1f8a5f; --good-soft: #dcf0e5; --warn: #9a7107; --warn-soft: #f3ecd2;
+    --crit: #b23a3a; --crit-soft: #f6dede; --info: #3b6fa0; --info-soft: #dde9f3;
+    --shadow: 0 1px 2px rgba(20,24,28,.06), 0 8px 24px -12px rgba(20,24,28,.18);
+  }
+
+  * { box-sizing: border-box; }
+  html { color-scheme: light dark; }
+  body { margin: 0; }
+
+  .doc {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.6;
+    min-height: 100%;
+  }
+
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px;
+  }
+
+  h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; color: var(--ink); text-wrap: balance; letter-spacing: 0.01em; }
+
+  .layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 0; max-width: 1280px; margin: 0 auto; }
+  @media (max-width: 880px) { .layout { grid-template-columns: 1fr; } .rail { position: static !important; border-right: none !important; border-bottom: 1px solid var(--line); } }
+
+  /* ---------- Rail ---------- */
+  .rail {
+    position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto;
+    padding: 2.25rem 1.5rem 2rem; border-right: 1px solid var(--line);
+    font-family: var(--font-display);
+  }
+  .rail-mark { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.35rem; }
+  .rail-mark .sq { width: 10px; height: 10px; background: var(--accent); flex-shrink: 0; }
+  .rail-title { font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft); }
+  .rail-doc-id { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink-soft); margin: 0 0 1.5rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--line); }
+  .rail-doc-id div { display: flex; justify-content: space-between; gap: 0.75rem; margin-top: 0.3rem; }
+  .rail-doc-id span:first-child { color: var(--ink-soft); }
+  .rail-doc-id span:last-child { color: var(--ink); text-align: right; }
+
+  .rail-status { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; color: var(--warm); background: var(--warm-soft); border: 1px solid color-mix(in srgb, var(--warm) 35%, transparent); padding: 0.32rem 0.6rem; margin-bottom: 1.75rem; }
+  .rail-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--warm); }
+
+  .rail nav { display: flex; flex-direction: column; gap: 0.05rem; }
+  .rail nav a { display: block; font-size: 0.78rem; color: var(--ink-soft); text-decoration: none; padding: 0.4rem 0 0.4rem 0.7rem; border-left: 2px solid transparent; transition: border-color .15s, color .15s; }
+  .rail nav a:hover { color: var(--ink); }
+  .rail nav a.active { color: var(--accent-ink); border-left-color: var(--accent); font-weight: 600; }
+  @media (prefers-reduced-motion: reduce) { .rail nav a { transition: none; } }
+
+  /* ---------- Content ---------- */
+  .content { padding: 3rem 3.25rem 6rem; min-width: 0; }
+  @media (max-width: 880px) { .content { padding: 2rem 1.25rem 4rem; } }
+
+  .doc-header h1 { font-size: clamp(1.7rem, 3vw, 2.35rem); line-height: 1.14; margin: 0 0 0.6rem; max-width: 20ch; }
+  .doc-header .kicker { font-family: var(--font-display); font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent-soft); display: inline-block; padding: 0.3rem 0.65rem; margin-bottom: 1rem; }
+  .doc-header .dek { font-size: 1.08rem; color: var(--ink-soft); max-width: 62ch; margin: 0 0 2.5rem; }
+
+  section { max-width: 68ch; margin: 0 0 3.25rem; scroll-margin-top: 2rem; }
+  section.wide { max-width: none; }
+  section h2 { font-size: 1.5rem; margin: 0 0 0.3rem; padding-top: 0.25rem; border-top: 1px solid var(--line); padding-top: 1.75rem; }
+  section .section-eyebrow { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-soft); letter-spacing: 0.03em; margin: 0 0 0.5rem; }
+  section h3 { font-size: 1.08rem; margin: 1.6rem 0 0.6rem; }
+  section p { margin: 0 0 1.05rem; color: var(--ink); }
+  section p.lede { font-size: 1.05rem; color: var(--ink-soft); }
+  ul.plain, ol.plain { padding-left: 1.2rem; margin: 0 0 1.05rem; }
+  ul.plain li, ol.plain li { margin-bottom: 0.45rem; }
+  code, .ref { font-family: var(--font-mono); font-size: 0.85em; background: var(--paper-raised); border: 1px solid var(--line); padding: 0.05em 0.35em; border-radius: 3px; color: var(--accent-ink); }
+
+  /* ---------- Finding cards ---------- */
+  .findings { display: flex; flex-direction: column; gap: 0.9rem; margin: 1.25rem 0 1.75rem; }
+  .finding { background: var(--paper-raised); border: 1px solid var(--line); border-left: 3px solid var(--sev, var(--ink-soft)); padding: 0.95rem 1.15rem; }
+  .finding[data-sev="critical"] { --sev: var(--crit); }
+  .finding[data-sev="high"] { --sev: var(--warm); }
+  .finding[data-sev="medium"] { --sev: var(--warn); }
+  .finding-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: 0.35rem; }
+  .finding-title { font-family: var(--font-display); font-weight: 600; font-size: 0.94rem; color: var(--ink); }
+  .sev-tag { font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--sev, var(--ink-soft)); white-space: nowrap; }
+  .finding p { margin: 0; font-size: 0.92rem; color: var(--ink-soft); }
+  .finding .loc { display: block; margin-top: 0.5rem; font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-soft); opacity: 0.85; }
+
+  /* ---------- Swatch strip (before-state) ---------- */
+  .swatch-row { display: flex; flex-wrap: wrap; gap: 0.5rem 0.7rem; margin: 1rem 0 1.5rem; }
+  .swatch { display: inline-flex; align-items: center; gap: 0.45rem; font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-soft); }
+  .swatch i { width: 14px; height: 14px; border-radius: 3px; display: inline-block; border: 1px solid rgba(0,0,0,0.08); }
+
+  /* ---------- Token exhibit ---------- */
+  .exhibit { max-width: none; background: var(--paper-raised); border: 1px solid var(--line); box-shadow: var(--shadow); padding: 2rem 2.25rem; margin: 1.5rem 0 2.5rem; }
+  .exhibit-label { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-ink); margin: 0 0 1.25rem; }
+
+  .token-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1.1rem; margin-bottom: 2rem; }
+  .token { }
+  .token .chip { height: 52px; border: 1px solid var(--line); margin-bottom: 0.45rem; }
+  .token .name { font-family: var(--font-display); font-size: 0.8rem; font-weight: 600; }
+  .token .hex { font-family: var(--font-mono); font-size: 0.7rem; color: var(--ink-soft); }
+  .token .use { font-size: 0.72rem; color: var(--ink-soft); margin-top: 0.15rem; }
+
+  .type-specimen { border-top: 1px solid var(--line); padding-top: 1.5rem; margin-bottom: 2rem; }
+  .type-specimen .row { display: grid; grid-template-columns: 140px 1fr; gap: 1rem; align-items: baseline; padding: 0.7rem 0; border-bottom: 1px dashed var(--line); }
+  .type-specimen .row:last-child { border-bottom: none; }
+  .type-specimen .role { font-family: var(--font-mono); font-size: 0.7rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.04em; }
+  .type-specimen .sample.display { font-family: var(--font-display); font-size: 1.3rem; font-weight: 600; letter-spacing: 0.01em; }
+  .type-specimen .sample.body { font-family: var(--font-body); font-size: 1.05rem; }
+  .type-specimen .sample.mono { font-family: var(--font-mono); font-size: 0.95rem; }
+  .type-specimen .sample.label { font-family: var(--font-display); font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-soft); }
+
+  .pill-spec { border-top: 1px solid var(--line); padding-top: 1.5rem; }
+  .pill-legend { display: flex; flex-wrap: wrap; gap: 0.6rem 0.9rem; margin-bottom: 1rem; }
+
+  /* Shared pill component used across the exhibits below */
+  .pill { display: inline-flex; align-items: center; gap: 0.4rem; font-family: var(--font-display); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em; padding: 0.22rem 0.6rem 0.22rem 0.5rem; border-radius: 100px; line-height: 1.5; white-space: nowrap; }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .pill.good { background: var(--good-soft); color: var(--good); }
+  .pill.warn { background: var(--warn-soft); color: var(--warn); }
+  .pill.crit { background: var(--crit-soft); color: var(--crit); }
+  .pill.info { background: var(--info-soft); color: var(--info); }
+  .pill.neutral { background: var(--paper); color: var(--ink-soft); border: 1px solid var(--line); }
+
+  /* ---------- Flow exhibit ---------- */
+  .flow-exhibit { max-width: none; margin: 1.5rem 0 2.5rem; }
+  .flow-scroll { overflow-x: auto; padding-bottom: 0.5rem; }
+  .flow { display: flex; align-items: stretch; gap: 0; min-width: max-content; }
+  .flow-step { width: 240px; flex-shrink: 0; background: var(--paper-raised); border: 1px solid var(--line); box-shadow: var(--shadow); padding: 1.15rem 1.1rem; position: relative; }
+  .flow-arrow { width: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--ink-soft); font-family: var(--font-mono); }
+  .flow-step .fnum { font-family: var(--font-mono); font-size: 0.68rem; color: var(--accent-ink); background: var(--accent-soft); display: inline-block; padding: 0.1rem 0.45rem; margin-bottom: 0.65rem; }
+  .flow-step h4 { font-size: 0.94rem; margin: 0 0 0.4rem; }
+  .flow-step p { font-size: 0.8rem; color: var(--ink-soft); margin: 0 0 0.6rem; }
+  .flow-step .tag { display: block; font-family: var(--font-mono); font-size: 0.66rem; color: var(--ink-soft); border-top: 1px dashed var(--line); padding-top: 0.5rem; margin-top: 0.5rem; }
+  .flow-step.now .tag { color: var(--crit); }
+  .flow-step.next .tag { color: var(--good); }
+  .flow-step.next { border-color: var(--accent); border-width: 1.5px; }
+
+  .flow-compare-label { font-family: var(--font-display); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; margin: 0 0 0.6rem; color: var(--ink-soft); }
+  .flow-compare-label.next { color: var(--accent-ink); }
+
+  /* ---------- List mockup exhibit ---------- */
+  .list-exhibit { max-width: none; margin: 1.5rem 0 2.5rem; background: var(--paper-raised); border: 1px solid var(--line); box-shadow: var(--shadow); }
+  .mock-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--line); font-family: var(--font-display); }
+  .mock-search { flex: 1 1 220px; display: flex; align-items: center; gap: 0.5rem; background: var(--paper); border: 1px solid var(--line); padding: 0.42rem 0.7rem; font-size: 0.82rem; color: var(--ink-soft); }
+  .mock-search svg { flex-shrink: 0; opacity: 0.6; }
+  .mock-select, .mock-btn { font-family: var(--font-display); font-size: 0.76rem; border: 1px solid var(--line); background: var(--paper); color: var(--ink-soft); padding: 0.42rem 0.65rem; }
+  .mock-btn.primary { background: var(--accent); color: var(--paper-raised); border-color: var(--accent); font-weight: 600; }
+  .mock-freshness { margin-left: auto; font-family: var(--font-mono); font-size: 0.7rem; color: var(--ink-soft); display: flex; align-items: center; gap: 0.4rem; }
+  .mock-freshness .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good); }
+
+  .mock-table-wrap { overflow-x: auto; }
+  table.mock-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; min-width: 900px; }
+  table.mock-table th { text-align: left; font-family: var(--font-display); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; padding: 0.6rem 1rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  table.mock-table th.num, table.mock-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.mock-table td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  table.mock-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+  .doc-no { font-family: var(--font-mono); font-weight: 600; color: var(--ink); }
+  .doc-sub { display: block; font-size: 0.72rem; color: var(--ink-soft); font-family: var(--font-mono); margin-top: 0.1rem; }
+  .cust-name { font-weight: 600; }
+  .row-actions { display: flex; gap: 0.35rem; opacity: 0; transition: opacity .12s; }
+  tr:hover .row-actions, tr:focus-within .row-actions { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { .row-actions { transition: none; } }
+  .icon-btn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: var(--paper-raised); color: var(--ink-soft); border-radius: 3px; cursor: pointer; }
+  .icon-btn:hover { color: var(--accent-ink); border-color: var(--accent); }
+
+  .mock-footer { display: flex; align-items: center; justify-content: space-between; padding: 0.85rem 1.25rem; font-family: var(--font-mono); font-size: 0.74rem; color: var(--ink-soft); border-top: 1px solid var(--line); }
+  .mock-pager { display: flex; gap: 0.25rem; }
+  .mock-pager button { width: 26px; height: 26px; border: 1px solid var(--line); background: var(--paper); color: var(--ink-soft); font-family: var(--font-mono); font-size: 0.72rem; }
+  .mock-pager button.active { background: var(--accent); color: var(--paper-raised); border-color: var(--accent); }
+
+  .annot { font-size: 0.86rem; color: var(--ink-soft); border-left: 2px solid var(--accent); padding-left: 0.85rem; margin: 1.4rem 0; max-width: 68ch; }
+  .annot b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- Phasing table ---------- */
+  table.phasing { width: 100%; border-collapse: collapse; margin: 1.25rem 0 2rem; font-size: 0.9rem; }
+  table.phasing th { text-align: left; font-family: var(--font-display); font-size: 0.68rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); padding: 0.55rem 0.9rem 0.55rem 0; border-bottom: 1px solid var(--line); }
+  table.phasing td { padding: 0.7rem 0.9rem 0.7rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.phasing td:first-child, table.phasing th:first-child { width: 4.5rem; }
+  .phase-tag { font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700; color: var(--accent-ink); background: var(--accent-soft); padding: 0.15rem 0.5rem; display: inline-block; }
+
+  /* ---------- Sign-off ---------- */
+  .signoff { background: var(--ink); color: var(--paper); padding: 2.25rem 2.5rem; margin: 3rem 0 0; }
+  .signoff h2 { color: var(--paper); border: none; padding-top: 0; }
+  .signoff p { color: color-mix(in srgb, var(--paper) 78%, transparent); max-width: 60ch; }
+  .signoff .stamp { font-family: var(--font-mono); font-size: 0.75rem; color: var(--accent); letter-spacing: 0.04em; margin-top: 1.25rem; }
+
+  ::selection { background: var(--accent-soft); color: var(--accent-ink); }
+</style>
+
+<div class="doc">
+  <div class="layout">
+    <aside class="rail" id="rail">
+      <div class="rail-mark"><span class="sq"></span><span class="rail-title">Design Review</span></div>
+      <div class="rail-doc-id">
+        <div><span>Scope</span><span>Quotations · Invoices</span></div>
+        <div><span>Reviewer</span><span>UX &amp; Product</span></div>
+        <div><span>Prepared for</span><span>CNC Fab Portal</span></div>
+        <div><span>Precedes</span><span>All remaining modules</span></div>
+      </div>
+      <div class="rail-status">Awaiting approval</div>
+      <nav>
+        <a href="#summary">Executive summary</a>
+        <a href="#trust">01 — Trust &amp; correctness</a>
+        <a href="#fragmentation">02 — A fragmented system</a>
+        <a href="#tokens">03 — The proposed system</a>
+        <a href="#flow">04 — Exhibit A: create → print</a>
+        <a href="#list">05 — Exhibit B: the list</a>
+        <a href="#phasing">06 — Phasing</a>
+        <a href="#signoff">Sign-off</a>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="doc-header">
+        <span class="kicker">Sales Documents · UX Review</span>
+        <h1>Quotations and invoices are functionally solid and visually improvised.</h1>
+        <p class="dek">A review of the creation, printing, and listing flow for Quotations and Invoices — the two document types every other module (Expenses, POS, Purchases) will inherit patterns from. Findings are pulled directly from the current codebase, not general ERP advice.</p>
+      </div>
+
+      <section id="summary">
+        <p class="lede">The underlying business logic is careful — totals recompute correctly, permissions are enforced, the ZATCA pipeline genuinely signs and clears real invoices. But four independent status-badge systems disagree with each other, an invoice can print successfully while silently failing to save, and a printed QR code can claim <b>&ldquo;VERIFIED ORIGINAL&rdquo;</b> on an invoice ZATCA never cleared. None of this is one team's mistake — it's the accumulation of features built one at a time without a shared vocabulary to build them in.</p>
+        <p>This review is organized in the order a stakeholder should read it: what's actually broken and worth fixing first <em>(§01)</em>, why it keeps recurring <em>(§02)</em>, the shared system proposed to fix it <em>(§03)</em>, and two concrete exhibits showing that system applied to the invoice creation flow and the Sales Invoices list <em>(§04–05)</em>. §06 is a phased recommendation. Nothing here has been built yet — this is the proposal.</p>
+      </section>
+
+      <section id="trust" class="wide" style="max-width: 68ch;">
+        <p class="section-eyebrow">01 / Findings — ranked by what a customer or auditor would actually notice</p>
+        <h2>Trust &amp; correctness gaps</h2>
+        <p>These aren't polish items. Each one makes the application say something to a user, or to ZATCA, that isn't true.</p>
+
+        <div class="findings">
+          <div class="finding" data-sev="critical">
+            <div class="finding-head"><span class="finding-title">A printed QR code can claim clearance that never happened</span><span class="sev-tag">Critical</span></div>
+            <p>When an invoice has no real ZATCA-issued QR payload yet, the printed document falls back to a placeholder string that still reads <code>Status: VERIFIED ORIGINAL</code> — regardless of whether the invoice's actual <code>zatcaStatus</code> is <code>NOT_SUBMITTED</code>, <code>ERROR</code>, or <code>REJECTED</code>. A customer scanning that code gets nonsense data next to a claim of official verification.</p>
+            <span class="loc">DocumentRenderer.tsx — QR fallback, ~L393</span>
+          </div>
+          <div class="finding" data-sev="critical">
+            <div class="finding-head"><span class="finding-title">An invoice can appear to save successfully and not actually save</span><span class="sev-tag">Critical</span></div>
+            <p>Invoice creation writes to local state, opens the print preview, and shows success — <em>before</em> a fire-and-forget background sync to Postgres has even resolved. If that sync fails, the only signal is an unrelated global connection banner elsewhere in the app. Quotations don't have this problem: they await a real save request and surface the server's actual error.</p>
+            <span class="loc">InvoiceModule.tsx handleSaveInvoice ~L238–306 · App.tsx handleUpdateDb ~L214–236</span>
+          </div>
+          <div class="finding" data-sev="high">
+            <div class="finding-head"><span class="finding-title">A ZATCA rejection is invisible to the person who needs to see it</span><span class="sev-tag">High</span></div>
+            <p>Every invoice auto-submits to ZATCA in the background on save. Failure is caught and sent to <code>console.error</code> only — no toast, no badge change, nothing on screen. The status only becomes visible if someone later opens the invoice and happens to check.</p>
+            <span class="loc">InvoiceModule.tsx ~L293–302 · QuotationModule.tsx conversion path ~L429–438</span>
+          </div>
+          <div class="finding" data-sev="high">
+            <div class="finding-head"><span class="finding-title">&ldquo;Showing X of Y records&rdquo; can understate the real count</span><span class="sev-tag">High</span></div>
+            <p>Invoice and quotation lists are capped server-side at 500 rows. The pagination footer's &ldquo;of Y&rdquo; reads that capped count as if it were the whole company's history — a business with 600 invoices sees a list that looks complete and isn't, with no signal that anything is missing.</p>
+            <span class="loc">server/lib/pagination.ts · InvoiceModule.tsx ~L818–862</span>
+          </div>
+        </div>
+
+        <p>These four earn a fix before anything cosmetic. A design system can't build trust on top of a QR code that lies.</p>
+      </section>
+
+      <section id="fragmentation" class="wide" style="max-width: 68ch;">
+        <p class="section-eyebrow">02 / Root cause</p>
+        <h2>A fragmented system, not a fragmented team</h2>
+        <p>Status is the single most important thing either document communicates — cleared or rejected, paid or owed, draft or issued. It's currently drawn <b>five separate ways</b>, each hand-built in its own file, none aware the others exist:</p>
+
+        <div class="swatch-row">
+          <span class="swatch"><i style="background:#dcf0e5;border-color:#1f8a5f"></i>Invoice status (own palette)</span>
+          <span class="swatch"><i style="background:#dde4f7;border-color:#4c5fd6"></i>Payment status (reuses indigo)</span>
+          <span class="swatch"><i style="background:#e0f2fb;border-color:#2b8fc4"></i>ZATCA status (outline style, not filled)</span>
+          <span class="swatch"><i style="background:#cdf3f0;border-color:#0e9c8f"></i>Quotation status (cyan appears nowhere else)</span>
+          <span class="swatch"><i style="background:#f0f1ea;border-color:#8a8f86"></i>Print-view status (a 5th, narrower re-implementation)</span>
+        </div>
+
+        <p>Indigo means &ldquo;primary action&rdquo; on every button in the app, and separately means &ldquo;partially paid&rdquo; on the invoice list. Cyan means &ldquo;converted&rdquo; on the quotation list and means nothing anywhere else. The printed document collapses <em>Draft</em> and <em>Sent</em> into the same grey, even though the list distinguishes them. None of this is arbitrary bad taste — each badge was built correctly, in isolation, by someone solving one screen at a time. What's missing is a shared answer to &ldquo;what does this color mean,&rdquo; owned once.</p>
+
+        <p>The same pattern repeats structurally: the invoice list and quotation list each hand-roll their own table, their own sort logic, their own pagination bar — nearly identical, independently maintained, already drifting (only Invoices has filters; only Invoices shows a bank column; the two fetch their data on entirely different refresh models). Every module built after these two will either copy the drift forward or need this fixed first.</p>
+      </section>
+
+      <section id="tokens" class="wide" style="max-width: none;">
+        <p class="section-eyebrow">03 / The proposal</p>
+        <h2 style="max-width: 68ch;">One system, three roles, five meanings — used everywhere after this</h2>
+        <p style="max-width: 68ch;">This is the shared vocabulary every list, badge, and printed document should draw from. It doesn't reinvent the app's existing visual language — slate neutrals, rounded cards, a confident accent — it gives that language a single source of truth instead of five.</p>
+
+        <div class="exhibit">
+          <p class="exhibit-label">Design tokens — color</p>
+          <div class="token-grid">
+            <div class="token"><div class="chip" style="background:var(--accent)"></div><div class="name">Accent</div><div class="hex">#0E7C86</div><div class="use">Primary actions only — never a status</div></div>
+            <div class="token"><div class="chip" style="background:var(--warm)"></div><div class="name">Signal</div><div class="hex">#C9622A</div><div class="use">Needs-attention callouts, sparingly</div></div>
+            <div class="token"><div class="chip" style="background:var(--good)"></div><div class="name">Good</div><div class="hex">#1F8A5F</div><div class="use">Cleared · Paid · Accepted</div></div>
+            <div class="token"><div class="chip" style="background:var(--warn)"></div><div class="name">Warn</div><div class="hex">#9A7107</div><div class="use">Pending · Partial · Draft</div></div>
+            <div class="token"><div class="chip" style="background:var(--crit)"></div><div class="name">Critical</div><div class="hex">#B23A3A</div><div class="use">Rejected · Error · Cancelled</div></div>
+            <div class="token"><div class="chip" style="background:var(--info)"></div><div class="name">Info</div><div class="hex">#3B6FA0</div><div class="use">Reported · Sent · Converted</div></div>
+          </div>
+          <p style="max-width:60ch;margin-bottom:2rem;">Five semantic meanings, five colors, used identically whether the badge sits on a list row, a detail panel, or a printed page. Accent stays reserved for things you can click — the collision that currently makes indigo mean two different things disappears by construction.</p>
+
+          <p class="exhibit-label">Type — three roles, no ambiguity about which is which</p>
+          <div class="type-specimen">
+            <div class="row"><span class="role">Display</span><span class="sample display">Sales Invoices — INV-1004</span></div>
+            <div class="row"><span class="role">Body</span><span class="sample body">The compliance suite genuinely cleared both sample invoices against ZATCA's sandbox gateway.</span></div>
+            <div class="row"><span class="role">Label</span><span class="sample label">Zatca Status</span></div>
+            <div class="row"><span class="role">Mono / data</span><span class="sample mono">SAR 4,500.00 · CLEARED · 019fa9c1-b061</span></div>
+          </div>
+
+          <p class="exhibit-label">Status pill — one component, five states, used everywhere</p>
+          <div class="pill-spec">
+            <div class="pill-legend">
+              <span class="pill good">Cleared</span>
+              <span class="pill info">Reported</span>
+              <span class="pill warn">Partial</span>
+              <span class="pill crit">Rejected</span>
+              <span class="pill neutral">Not submitted</span>
+            </div>
+            <p style="max-width:60ch;margin:0;">Same shape, same sizing, same dot-plus-label pattern for invoice status, payment status, and ZATCA status alike. The dot alone should be legible at a glance without reading the label — the current 9px text asks too much of a quick scan.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="flow" class="wide" style="max-width: none;">
+        <p class="section-eyebrow">04 / Exhibit A</p>
+        <h2 style="max-width:68ch;">Creating and printing an invoice, redesigned</h2>
+        <p style="max-width:68ch;">The current flow already does the hard part right — live totals, catalog autocomplete, an auto-opened print preview. What it doesn't do is tell the user what's happening while it happens. The redesign adds exactly three things: a save that visibly waits for confirmation, a ZATCA status the user sees the moment it changes, and one flow that Quotations and Invoices both follow instead of two that quietly diverge.</p>
+
+        <p class="flow-compare-label">Today</p>
+        <div class="flow-exhibit">
+          <div class="flow-scroll">
+            <div class="flow">
+              <div class="flow-step"><span class="fnum">1</span><h4>Fill form</h4><p>Line items, customer, tax, bank.</p></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step now"><span class="fnum">2</span><h4>Click Save</h4><p>No loading state. Button stays clickable — double-click risk.</p><span class="tag">✕ silent save</span></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step now"><span class="fnum">3</span><h4>Print opens</h4><p>Preview appears instantly — before the background sync has resolved.</p><span class="tag">✕ sync not confirmed</span></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step now"><span class="fnum">4</span><h4>ZATCA submits</h4><p>Fires in the background. Failure goes to the console only.</p><span class="tag">✕ invisible</span></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step"><span class="fnum">5</span><h4>Back to list</h4><p>ZATCA column may or may not reflect the real outcome yet.</p></div>
+            </div>
+          </div>
+        </div>
+
+        <p class="flow-compare-label next">Proposed</p>
+        <div class="flow-exhibit">
+          <div class="flow-scroll">
+            <div class="flow">
+              <div class="flow-step"><span class="fnum">1</span><h4>Fill form</h4><p>Unchanged — this part already works.</p></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step next"><span class="fnum">2</span><h4>Save (Saving…)</h4><p>Button disables, shows a spinner, blocks a second submit.</p><span class="tag">✓ confirmed write</span></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step next"><span class="fnum">3</span><h4>Saved — Submitting to ZATCA…</h4><p>Toast confirms the save landed <em>before</em> print opens. A pill next to the invoice number shows the live ZATCA state.</p><span class="tag">✓ real feedback</span></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step next"><span class="fnum">4</span><h4>Print preview</h4><p>Same overlay as today — template switch, live preview — now opened only once the save is confirmed.</p><span class="tag">✓ same UI, right order</span></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step next"><span class="fnum">5</span><h4>Pill updates in place</h4><p><span class="pill good" style="margin-right:.3rem">Cleared</span>or<span class="pill crit" style="margin:0 .3rem">Rejected</span>appears the moment ZATCA responds — no page revisit required.</p><span class="tag">✓ visible outcome</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="annot"><b>Same underlying architecture, reordered.</b> This doesn't ask for a rewrite of the ZATCA pipeline or the print engine — both already work. It asks for three UI states (saving, submitting, resolved) to be shown instead of assumed, and for Quotation save to adopt the same await-then-confirm pattern Invoice should have had from the start.</div>
+      </section>
+
+      <section id="list" class="wide" style="max-width: none;">
+        <p class="section-eyebrow">05 / Exhibit B</p>
+        <h2 style="max-width:68ch;">The Sales Invoices list, redesigned</h2>
+        <p style="max-width:68ch;">Real data from this session's sandbox testing — nothing invented. The redesign adds a search box (there currently isn't one), an honest record count, row actions that don't wrap unpredictably, and the shared status pill from §03 in place of the four competing badge styles.</p>
+
+        <div class="list-exhibit">
+          <div class="mock-toolbar">
+            <div class="mock-search">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              Search invoice #, customer, amount…
+            </div>
+            <select class="mock-select"><option>All statuses</option></select>
+            <select class="mock-select"><option>Last 90 days</option></select>
+            <button class="mock-btn primary">+ New Invoice</button>
+            <span class="mock-freshness"><span class="dot"></span>Live · updated 4s ago</span>
+          </div>
+          <div class="mock-table-wrap">
+            <table class="mock-table">
+              <thead>
+                <tr>
+                  <th>Invoice</th><th>Customer</th><th>Type</th><th class="num">Total</th><th>Payment</th><th>ZATCA</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="doc-no">INV-1001</span><span class="doc-sub">28 Jul 2026</span></td>
+                  <td><span class="cust-name">Al Faisal Contracting LLC</span></td>
+                  <td><span class="pill neutral">B2B Standard</span></td>
+                  <td class="num">SAR 4,500.00</td>
+                  <td><span class="pill warn">Unpaid</span></td>
+                  <td><span class="pill good">Cleared</span></td>
+                  <td>
+                    <div class="row-actions">
+                      <span class="icon-btn" title="Print">🖶</span>
+                      <span class="icon-btn" title="Record payment">＄</span>
+                      <span class="icon-btn" title="ZATCA detail">◆</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><span class="doc-no">INV-1002</span><span class="doc-sub">28 Jul 2026</span></td>
+                  <td><span class="cust-name">Al Faisal Contracting LLC</span></td>
+                  <td><span class="pill neutral">B2B Standard</span></td>
+                  <td class="num">SAR 4,807.50</td>
+                  <td><span class="pill warn">Unpaid</span></td>
+                  <td><span class="pill good">Cleared</span></td>
+                  <td>
+                    <div class="row-actions">
+                      <span class="icon-btn" title="Print">🖶</span>
+                      <span class="icon-btn" title="Record payment">＄</span>
+                      <span class="icon-btn" title="ZATCA detail">◆</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><span class="doc-no">INV-1003</span><span class="doc-sub">28 Jul 2026</span></td>
+                  <td><span class="cust-name">Sara Al-Qahtani</span></td>
+                  <td><span class="pill neutral">B2C Simplified</span></td>
+                  <td class="num">SAR 575.00</td>
+                  <td><span class="pill good">Paid</span></td>
+                  <td><span class="pill info">Reported</span></td>
+                  <td>
+                    <div class="row-actions">
+                      <span class="icon-btn" title="Print">🖶</span>
+                      <span class="icon-btn" title="ZATCA detail">◆</span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td><span class="doc-no">INV-1004</span><span class="doc-sub">28 Jul 2026</span></td>
+                  <td><span class="cust-name">Sara Al-Qahtani</span></td>
+                  <td><span class="pill neutral">B2C Simplified</span></td>
+                  <td class="num">SAR 230.00</td>
+                  <td><span class="pill good">Paid</span></td>
+                  <td><span class="pill info">Reported</span></td>
+                  <td>
+                    <div class="row-actions">
+                      <span class="icon-btn" title="Print">🖶</span>
+                      <span class="icon-btn" title="ZATCA detail">◆</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="mock-footer">
+            <span>Showing 1–4 of 4 invoices for ZATCA Test Traders Co</span>
+            <div class="mock-pager"><button class="active">1</button></div>
+          </div>
+        </div>
+
+        <p><b>What changed and why:</b></p>
+        <ul class="plain">
+          <li><b>Search box</b> — today, finding one customer's invoice among hundreds means sorting by column and scanning by eye. This is table stakes for any list past a few dozen rows.</li>
+          <li><b>Type column</b> replaces guessing from the invoice number format — B2B/B2C is a real ZATCA distinction the user should see without opening the record.</li>
+          <li><b>Actions appear on hover/focus</b> instead of always rendering three to five buttons per row, which wraps unpredictably on medium screens today.</li>
+          <li><b>&ldquo;Showing 1–4 of 4&rdquo;</b> — this footer text should always reflect a true count. If the backend's 500-row cap is ever hit, the label changes to <span class="ref">Showing 1–20 of 500+ — refine your search to see more</span> instead of implying completeness it can't back up.</li>
+          <li><b>Freshness indicator</b> — makes the current Invoices-vs-Quotations data-staleness asymmetry a visible, honest state instead of a silent inconsistency between the two lists.</li>
+        </ul>
+      </section>
+
+      <section id="phasing">
+        <p class="section-eyebrow">06 / Recommendation</p>
+        <h2>Phased, not all-at-once</h2>
+        <p>This is deliberately staged so trust issues land first, the shared system lands second as a foundation, and visual polish lands last — on top of a system every future module (Expenses, POS, Purchases) can reuse instead of re-deriving.</p>
+        <table class="phasing">
+          <thead><tr><th>Phase</th><th>Ships</th><th>Why this order</th></tr></thead>
+          <tbody>
+            <tr><td><span class="phase-tag">P0</span></td><td>Fix the QR &ldquo;verified&rdquo; fallback, make invoice save await-and-confirm, surface ZATCA failure in the UI, make the record count honest.</td><td>Correctness bugs, not design debt — each one actively misleads someone today.</td></tr>
+            <tr><td><span class="phase-tag">P1</span></td><td>Ship the shared <code>StatusPill</code>, <code>DataTable</code>, and <code>Pagination</code> components; migrate both list views onto them.</td><td>Everything after this reuses these three components instead of copy-pasting a fourth table.</td></tr>
+            <tr><td><span class="phase-tag">P2</span></td><td>Unify quantity precision, payment-status options, and the save/print flow shown in §04 across both modules.</td><td>Removes the remaining Quotation-vs-Invoice asymmetries once the shared components exist to enforce consistency.</td></tr>
+            <tr><td><span class="phase-tag">P3</span></td><td>Search, saved filters, and the redesigned list from §05 as the new default.</td><td>Pure UX upside, safest to ship last since nothing downstream depends on it.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="signoff" style="max-width:none;">
+        <div class="signoff">
+          <h2>Waiting on a decision here.</h2>
+          <p>P0 can start immediately — none of it depends on approving the design system. P1 onward is the point of no return in a good way: once <code>StatusPill</code>, <code>DataTable</code>, and <code>Pagination</code> exist, every module after Quotations and Invoices — Expenses, POS, Purchases — should be built on top of them rather than repeating the pattern this review is here to fix.</p>
+          <p class="stamp">Reviewed against: QuotationModule.tsx · InvoiceModule.tsx · DocumentRenderer.tsx · dbStore.ts · App.tsx</p>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll('.rail nav a'));
+    var sections = links.map(function (a) { return document.querySelector(a.getAttribute('href')); }).filter(Boolean);
+    if (!('IntersectionObserver' in window) || !sections.length) return;
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        var id = '#' + entry.target.id;
+        links.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === id); });
+      });
+    }, { rootMargin: '-15% 0px -70% 0px', threshold: 0 });
+    sections.forEach(function (s) { io.observe(s); });
+  })();
+</script>
