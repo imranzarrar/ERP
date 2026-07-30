@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTranslation } from '../hooks';
 // from 'react';
-import { DatabaseState, saveDatabase, getActiveOpenMonth, markInvoicePaid, calculateInvoiceTotals } from '../dbStore';
+import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, markInvoicePaid, calculateInvoiceTotals } from '../dbStore';
 import { generateId } from '../id';
 import { Invoice, InvoiceItem, Customer, TaxSlab, BankAccount, User, normalizePermissions } from '../types';
 import StatusPill, { StatusPillTone } from './StatusPill';
@@ -125,7 +125,10 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  React.useEffect(() => {
  if (view === 'create') {
  const today = new Date().toISOString().split('T')[0];
- const initialDate = openMonth ? (today.startsWith(openMonth.id) ? today : `${openMonth.id}-01`) : today;
+ // Default to today only if today's own month is among the open ones (with several months
+ // open concurrently, today's month need not be the oldest); otherwise fall back to the
+ // 1st of the oldest open month.
+ const initialDate = openMonth ? (isDateInOpenMonth(db, today) ? today : `${openMonth.id}-01`) : today;
  const defaultCust = db.customers.find(c => c.isSystem && (c.companyId === db.selectedCompanyId || !c.companyId))?.id || db.customers.find(c => c.companyId === db.selectedCompanyId || !c.companyId)?.id || '';
  const defaultTax = db.taxSlabs.find(t => t.percentage === 0)?.id || db.taxSlabs[0]?.id || '';
  const defaultBank = db.banks.find(b => b.isDefault && b.companyId === db.selectedCompanyId)?.id || db.banks.find(b => b.companyId === db.selectedCompanyId)?.id || '';
@@ -410,7 +413,7 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  if (!openMonth) return triggerError('Please open a fiscal month first.');
  setPayingInvoice(inv);
  const today = new Date().toISOString().split('T')[0];
- const initialDate = today.startsWith(openMonth.id) ? today : `${openMonth.id}-01`;
+ const initialDate = isDateInOpenMonth(db, today) ? today : `${openMonth.id}-01`;
  const totalAmt = getInvoiceTotal(inv);
  const paidAmt = inv.amountPaid || 0;
  const remainingAmt = Number((totalAmt - paidAmt).toFixed(2));

@@ -581,26 +581,55 @@ export function getAndIncrementCounter(db: DatabaseState, type: 'quotation' | 'i
   }
 }
 
-export function getActiveOpenMonth(db: DatabaseState, companyId?: string): FiscalMonth | undefined {
+// Multiple fiscal months can be open concurrently for a company (cap of 3, enforced in
+// openNewMonth/closeMonth below and server-side in server/routes/transactions.ts). Returns
+// every currently-open month for the company, sorted oldest-first (ids are "YYYY-MM", so a
+// plain string sort is chronological).
+export function getOpenMonths(db: DatabaseState, companyId?: string): FiscalMonth[] {
   const compId = companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-  return db.months.find(m => m.status?.toLowerCase() === 'open' && m.companyId === compId);
+  return db.months
+    .filter(m => m.status?.toLowerCase() === 'open' && m.companyId === compId)
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+// Historically this returned "the" single open month back when only one could ever be open.
+// Now that several can be open at once, callers that just need a sensible single value (a
+// date-picker default, a "some month is open" status pill) get the OLDEST open month — the one
+// closest to needing attention and the only one currently eligible to be closed. Callers that
+// need to validate a specific date must NOT use this — use validateTransactionDate/
+// isDateInOpenMonth instead, which check the fiscal month matching that date's own YYYY-MM.
+export function getActiveOpenMonth(db: DatabaseState, companyId?: string): FiscalMonth | undefined {
+  return getOpenMonths(db, companyId)[0];
+}
+
+// Is there an OPEN fiscal month whose id equals this date's own YYYY-MM? (Not "does this date
+// fall in THE one open month" — with multiple months open concurrently, a date can be valid
+// even if it's not in the oldest/first open month.)
+export function isDateInOpenMonth(db: DatabaseState, dateStr: string, companyId?: string): boolean {
+  const compId = companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
+  const monthId = dateStr.substring(0, 7);
+  return db.months.some(m => m.id === monthId && m.companyId === compId && m.status?.toLowerCase() === 'open');
 }
 
 export function validateTransactionDate(db: DatabaseState, dateStr: string, companyId?: string): { valid: boolean; error?: string } {
   const compId = companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-  const openMonth = getActiveOpenMonth(db, compId);
-  if (!openMonth) {
+  const openMonths = getOpenMonths(db, compId);
+  if (openMonths.length === 0) {
     return { valid: false, error: 'There is no open fiscal month. Admin must open a fiscal month first.' };
   }
-  
-  // Date format is YYYY-MM-DD, open month is YYYY-MM
-  if (!dateStr.startsWith(openMonth.id)) {
+
+  // Date format is YYYY-MM-DD, fiscal month id is YYYY-MM. Valid if the SPECIFIC month this
+  // date falls in is open — not just if some other month happens to be open.
+  const monthId = dateStr.substring(0, 7);
+  const matchingOpenMonth = openMonths.find(m => m.id === monthId);
+  if (!matchingOpenMonth) {
+    const openList = openMonths.map(m => `${m.name} (${m.id})`).join(', ');
     return {
       valid: false,
-      error: `Transaction date (${dateStr}) does not fall within the currently open fiscal month: ${openMonth.name} (${openMonth.id}).`
+      error: `Transaction date (${dateStr}) does not fall within any currently open fiscal month. Open month(s): ${openList}.`
     };
   }
-  
+
   return { valid: true };
 }
 
@@ -1591,7 +1620,16 @@ export function calculateMonthPnL(db: DatabaseState, monthId: string, companyId?
   };
 }
 
-// Close current open month
+// Close current open month.
+//
+// NOTE: the cap-of-3-concurrently-open-months and oldest-first-close rules are enforced ONLY
+// server-side, in POST /api/transactions/months (server/routes/transactions.ts). They are
+// deliberately NOT re-implemented here — this codebase has already been bitten once by a
+// client-side copy of a business rule silently diverging from the real server-side check
+// (see BACKLOG.md item 35, the Cancel Invoice button). This function still applies the local
+// in-memory status change optimistically; if the server rejects the subsequent write (see
+// AdminSettings.tsx's handleConfirmClose), the caller must not treat that local mutation as
+// committed. It intentionally does not know or assert anything about open-month count/order.
 export function closeMonth(db: DatabaseState, monthId: string, option: 'paid_only' | 'including_pending'): { db: DatabaseState; error?: string } {
   const mIndex = db.months.findIndex(m => m.id === monthId);
   if (mIndex === -1) return { db, error: 'Month not found.' };
@@ -1631,19 +1669,20 @@ export function closeMonth(db: DatabaseState, monthId: string, option: 'paid_onl
   return { db };
 }
 
-// Open new fiscal month (closes any open month? "Only one month can be open at a time. New months are opened by Admin.")
+// Open new fiscal month. New months are opened by Admin.
+//
+// NOTE: the cap-of-3-concurrently-open-months rule is enforced ONLY server-side, in
+// POST /api/transactions/months (server/routes/transactions.ts) — deliberately not duplicated
+// here (see the comment on closeMonth above for why). The "does this exact YYYY-MM row already
+// exist" check below is not a business rule with cap/ordering semantics, just a plain identity
+// check — it stays as a client-side pre-check for fast feedback, but the server route also
+// rejects a duplicate defensively rather than relying on the client to have caught it.
 export function openNewMonth(db: DatabaseState, yearStr: string, monthStr: string, companyId?: string): { db: DatabaseState; error?: string } {
   const compId = companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
   const monthId = `${yearStr}-${monthStr}`;
   const exists = db.months.find(m => m.id === monthId && m.companyId === compId);
   if (exists) {
     return { db, error: `Month ${monthId} already exists (status: ${exists.status}) for this company.` };
-  }
-
-  // Find if there is any other open month. We must close it first.
-  const openMonth = getActiveOpenMonth(db, compId);
-  if (openMonth) {
-    return { db, error: `Please close the currently open month (${openMonth.name}) before opening a new one.` };
   }
 
   const monthNames = [

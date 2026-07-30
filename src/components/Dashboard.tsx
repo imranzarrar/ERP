@@ -1,7 +1,7 @@
 import { motion } from 'motion/react';
 import React from 'react';
 import { useTranslation } from '../hooks';
-import { DatabaseState, getActiveOpenMonth, calculateInvoiceTotals, getBankBalance } from '../dbStore';
+import { DatabaseState, getActiveOpenMonth, getOpenMonths, calculateInvoiceTotals, getBankBalance } from '../dbStore';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
  TrendingUp,
@@ -31,6 +31,10 @@ export default function Dashboard({ db, onNavigate, lastSyncTimes }: DashboardPr
  const currentUser = db.currentUser || { id: '', username: 'User', role: 'user', isSuperAdmin: false, permissions: {} as any };
  const isAdmin = currentUser?.role === 'admin' || currentUser?.isSuperAdmin === true;
  const openMonth = getActiveOpenMonth(db);
+ // Several fiscal months can be open concurrently now (cap of 3); openMonth is the oldest of
+ // them (the only one currently eligible to close). Show a count when more than one is open
+ // so "Active Session Month" doesn't read as if it's the only open period.
+ const openMonthsCount = getOpenMonths(db).length;
  const currencySymbol = db.companySetup?.currency || 'SAR';
  const companyInvestors = (db.investors || []).filter(i => i.companyId === db.selectedCompanyId);
 
@@ -294,6 +298,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  </h2>
  <p className="text-xs text-slate-400 mt-1">
  {t('Active Session Month:')} <strong className="text-slate-200">{openMonth ? `${openMonth.name} (${openMonth.id})` : t('None Open')}</strong>
+ {openMonthsCount > 1 && <span className="text-indigo-300"> (+{openMonthsCount - 1} more open)</span>}
  </p>
  </div>
  
