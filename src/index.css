@@ -1,10 +1,19 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Cairo:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  /* Cairo is the Arabic-script pairing for Inter — a modern geometric Arabic
+     typeface designed to sit well alongside Latin sans-serifs, actually renders
+     Arabic glyphs (unlike Inter/Space Grotesk/JetBrains Mono, which have none and
+     silently fall back to whatever Arabic font happens to be installed on the
+     viewer's OS — inconsistent across machines and print drivers). Used for every
+     bilingual (Arabic) printed document — see DocumentRenderer.tsx — regardless of
+     which Latin template font is selected, since none of this app's Latin template
+     fonts have real Arabic coverage either.  */
+  --font-arabic: "Cairo", "Inter", ui-sans-serif, system-ui, sans-serif;
 
   /* Bind theme variables dynamically to override standard color classes */
   --color-indigo-50: var(--primary-light);

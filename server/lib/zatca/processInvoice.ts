@@ -40,16 +40,17 @@ export async function processInvoiceZatca(invoiceId: string) {
     environment = (company?.zatcaEnvironment as 'sandbox' | 'simulation' | 'production') || 'sandbox';
 
     // Master on/off switch — a company that hasn't enabled ZATCA (default for every new
-    // company) must never attempt a real submission, regardless of environment.
-    if (!(company as any)?.zatcaEnabled) {
-      await db.update(schema.invoices)
-        .set({
-          zatcaStatus: 'DISABLED',
-          zatcaValidationResults: [{ code: 'ZATCA_DISABLED', message: 'ZATCA integration is not enabled for this company yet.' }] as any,
-        })
-        .where(eq(schema.invoices.id, invoiceId));
-      return { success: true, status: 'DISABLED' };
-    }
+    // company) must never attempt a real submission, regardless of environment. It must
+    // still receive a genuine Phase-1-compliant QR (tags 1-5: seller name, VAT/TIN,
+    // timestamp, grand total, VAT total — mandatory on every KSA VAT invoice regardless of
+    // e-invoicing enrollment) so printed invoices are compliant from day one instead of
+    // accumulating a backlog of QR-less invoices. See the `!zatcaEnabled` branch below,
+    // which builds that preview QR/XML WITHOUT touching the real per-company hash chain
+    // (icv/previousInvoiceHash) — that chain is genesis-linked and must only ever be
+    // reserved once, in order, for invoices that actually get submitted. Once the company
+    // later enables ZATCA, this same invoice gets resubmitted through the real path further
+    // down and the signed Phase-2 QR (tags 1-9) overwrites this preview.
+    const zatcaEnabled = Boolean((company as any)?.zatcaEnabled);
 
     // Mark as in-flight before any further processing (hash chain reservation, signing,
     // network call). Without this, an invoice sits at its stale creation-time status
@@ -58,10 +59,14 @@ export async function processInvoiceZatca(invoiceId: string) {
     // to still land as a genuine CLEARED/REPORTED at ZATCA moments later, leaving a
     // permanent ZATCA record with no Credit Note ever issued to reconcile it. Every
     // terminal branch below (DISABLED/NOT_SUBMITTED/ERROR/CLEARED/REPORTED/REJECTED)
-    // overwrites this, so it is never left stuck.
-    await db.update(schema.invoices)
-      .set({ zatcaStatus: 'SUBMITTING' })
-      .where(eq(schema.invoices.id, invoiceId));
+    // overwrites this, so it is never left stuck. Skipped for the DISABLED-path preview
+    // below — that path never reserves the hash chain or calls the network, so there is no
+    // in-flight window a concurrent Cancel could race against.
+    if (zatcaEnabled) {
+      await db.update(schema.invoices)
+        .set({ zatcaStatus: 'SUBMITTING' })
+        .where(eq(schema.invoices.id, invoiceId));
+    }
 
     const [config] = await db.select().from(schema.zatcaEnvironmentConfigs)
       .where(and(eq(schema.zatcaEnvironmentConfigs.companyId, companyId), eq(schema.zatcaEnvironmentConfigs.environment, environment)));
@@ -102,8 +107,12 @@ export async function processInvoiceZatca(invoiceId: string) {
     // Final gate: never build/send a ZATCA XML for a B2B customer missing the identity
     // ZATCA requires for a valid AccountingCustomerParty — the customer/vendor routes
     // validate this at save time too, but a record saved before that validation existed
-    // (or edited directly) must not silently produce a doomed submission here.
-    if (customer) {
+    // (or edited directly) must not silently produce a doomed submission here. Only applies
+    // to the real (zatcaEnabled) submission path — the DISABLED-path preview QR below only
+    // ever needs seller fields (tags 1-5), so an incomplete buyer never blocks a company
+    // from getting a compliant Phase-1 QR on a printed invoice before ZATCA is even turned
+    // on for them.
+    if (zatcaEnabled && customer) {
       const buyerErrors = validateBuyerFields(customer.buyerType, customer as any);
       if (buyerErrors.length > 0) {
         await db.update(schema.invoices)
@@ -164,6 +173,80 @@ export async function processInvoiceZatca(invoiceId: string) {
     // submission with "UUID provided in the invoice doesn't match UUID in the provided
     // Request" (confirmed via a real Compliance Invoice API call).
     const invoiceUuid = inv.uuid || crypto.randomUUID();
+
+    if (!zatcaEnabled) {
+      // DISABLED-path preview: build a real Phase-1-compliant QR/XML WITHOUT touching the
+      // real per-company hash chain at all. icv=0/previousInvoiceHash='' below are
+      // throwaway placeholders fed only to generateZatcaUblXml so it has something to embed
+      // in the AdditionalDocumentReference nodes — they are deliberately NOT persisted onto
+      // the invoice's own icv/previousInvoiceHash/currentInvoiceHash columns (left at their
+      // schema default of null/0). This matters concretely: further down, when this company
+      // later enables ZATCA and this same invoice is resubmitted, the check
+      // `if (invoice.icv && invoice.previousInvoiceHash)` must see nothing reserved yet and
+      // fall through to a REAL getNextHashChainState() reservation — if we persisted these
+      // placeholders here, that later resubmission would wrongly believe a chain position
+      // was already claimed and reuse a bogus one, corrupting the real genesis-linked chain
+      // for every invoice after it. Also deliberately omits privateKeyPem/certificatePem
+      // even if the company happens to have CSID config on file — this is explicitly an
+      // unsigned pre-enablement preview (tags 1-7, no crypto signature/public key), not a
+      // real Phase-2 submission.
+      const previewDoc = generateZatcaUblXml({
+        invoiceNumber: inv.invoiceNumber || inv.id,
+        uuid: invoiceUuid,
+        issueDate: inv.invoiceDate || inv.date || new Date().toISOString().split('T')[0],
+        issueTime: new Date().toISOString().split('T')[1]?.substring(0, 8) || '12:00:00',
+        invoiceTypeCode,
+        documentSubtypeCode: documentType === 'CreditNote' ? '381' : documentType === 'DebitNote' ? '383' : '388',
+        billingReference: originalInvoice ? { invoiceNumber: originalInvoice.invoiceNumber } : undefined,
+        paymentMeansNote: documentType === 'CreditNote'
+          ? ((invoice as any).creditNoteReason || 'In case of goods or services refund')
+          : documentType === 'DebitNote'
+          ? ((invoice as any).creditNoteReason || 'Amendment of the supply value which is pre-agreed upon between the supplier and consumer')
+          : undefined,
+        currency: inv.currency || company?.currency || 'SAR',
+        icv: 0,
+        previousInvoiceHash: '',
+        seller: {
+          name: company?.name || 'Company',
+          tin: config?.tinNumber || '300000000000003',
+          crNumber: config?.crNumber || '1010000000',
+          street: config?.streetName || 'King Fahd Rd',
+          buildingNumber: config?.buildingNumber || '1234',
+          district: config?.district || 'Olaya',
+          city: config?.city || 'Riyadh',
+          postalCode: config?.postalCode || '12345',
+          countryCode: config?.countryCode || 'SA',
+        },
+        buyer: customer ? {
+          name: customer.name,
+          tin: customer.vatNumber || undefined,
+          buildingNumber: customer.buildingNumber || undefined,
+          street: customer.streetName || undefined,
+          district: customer.district || undefined,
+          city: customer.city || undefined,
+          postalCode: customer.postalCode || undefined,
+        } : undefined,
+        items: formattedItems.length > 0 ? formattedItems : [
+          { name: 'Standard Line Item', quantity: 1, unitPrice: subtotal, subtotal, vatRate, vatAmount: totalVat, totalAmount: grandTotal }
+        ],
+        subtotal,
+        totalVat,
+        grandTotal,
+        // No privateKeyPem/certificatePem — forces the unsigned tags-1-7 branch.
+      });
+
+      await db.update(schema.invoices)
+        .set({
+          invoiceTypeCode,
+          uuid: invoiceUuid,
+          xmlContent: previewDoc.signedXmlContent,
+          qrCodeContent: previewDoc.qrCodeBase64,
+          zatcaStatus: 'DISABLED',
+          zatcaValidationResults: [{ code: 'ZATCA_DISABLED', message: 'ZATCA integration is not enabled for this company yet. A Phase-1-compliant QR code has been generated for printing; this invoice will be resubmitted for full Phase-2 clearance once ZATCA is enabled.' }] as any,
+        })
+        .where(eq(schema.invoices.id, invoiceId));
+      return { success: true, status: 'DISABLED', qrCodeContent: previewDoc.qrCodeBase64, xmlContent: previewDoc.signedXmlContent };
+    }
 
     // Reserving the next ICV/PIH and persisting it MUST be one atomic, locked step — this
     // whole function runs as a fire-and-forget background job per invoice (never awaited

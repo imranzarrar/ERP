@@ -29,6 +29,9 @@ const TRANSLATIONS: Record<string, string> = {
  // Document Titles
  'Quotation': 'عرض سعر',
  'Invoice': 'فاتورة مبيعات',
+ 'Credit Note': 'إشعار دائن',
+ 'Debit Note': 'إشعار مدين',
+ 'Reference Invoice': 'الفاتورة المرجعية',
  'Expense': 'سند مصروف',
  'Receipt Voucher': 'سند قبض',
  'Payment Voucher': 'سند صرف',
@@ -85,6 +88,9 @@ const TRANSLATIONS: Record<string, string> = {
 const URDU_TRANSLATIONS: Record<string, string> = {
  'Quotation': 'کوٹیشن',
  'Invoice': 'انوائس',
+ 'Credit Note': 'کریڈٹ نوٹ',
+ 'Debit Note': 'ڈیبٹ نوٹ',
+ 'Reference Invoice': 'حوالہ انوائس',
  'Expense': 'اخراجات کی رسید',
  'Receipt Voucher': 'وصولی واؤچر',
  'Payment Voucher': 'ادائیگی واؤچر',
@@ -263,87 +269,54 @@ export default function DocumentRenderer({
  const printContent = document.getElementById('printable-document-content');
  if (!printContent) return;
 
- const originalContent = document.body.innerHTML;
  const printWindow = window.open('', '', 'height=800,width=1000');
  if (!printWindow) {
  alert('Please allow popups to print/generate PDF.');
  return;
  }
 
- // Add CSS stylesheet for print including Tailwind if possible, or style inline
+ // Clone every real <style>/<link rel="stylesheet"> tag from this document's <head>
+ // into the print window, instead of the small hand-maintained subset of Tailwind
+ // rules this used to carry (previously ~30 literal class rules covering a small
+ // fraction of what the JSX actually uses — most colors, rounded corners, shadows,
+ // grid spans, and every arbitrary-value class like bg-[#0F1E36] were silently
+ // unstyled in the actual printed output even though they rendered correctly in the
+ // on-screen preview). This guarantees the print output is styled with the exact
+ // same compiled CSS as the live preview — dev serves Tailwind via runtime-injected
+ // <style> tags, production serves it via a <link>; both are covered here. The
+ // popup opened via window.open('', ...) inherits this document's location as its
+ // base URL, so relative stylesheet hrefs still resolve correctly.
+ const styleTags = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+ .map((el) => el.outerHTML)
+ .join('\n');
+
  printWindow.document.write(`
  <html>
  <head>
  <title>${documentType} - ${data.invoiceNumber || data.quotationNumber || data.expenseNumber || 'Document'}</title>
+ ${styleTags}
  <style>
- @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;600;700&display=swap');
- body {
- font-family: ${isRTL ? '"Cairo", "Inter", sans-serif' : '"Inter", sans-serif'};
+ /* Print-only concerns the cloned app stylesheet above doesn't cover: base page
+ chrome, physical paper size/margins, thermal-receipt scaling, and the Arabic
+ font import for browsers/print drivers that skip @import inside a cloned
+ <style> tag. --font-arabic itself (index.css) IS cloned above, so this import
+ is a belt-and-braces fallback, not the primary source. */
+ @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap');
+ html, body {
+ margin: 0;
  padding: 20px;
  color: #1e293b;
  direction: ${dir};
  background-color: white;
  }
- .grid { display: grid; }
- .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
- .flex { display: flex; }
- .justify-between { justify-content: space-between; }
- .items-center { align-items: center; }
- .flex-col { flex-direction: column; }
- .gap-2 { gap: 0.5rem; }
- .gap-4 { gap: 1rem; }
- .text-end { text-align: right; }
- .text-start { text-align: left; }
- .w-full { width: 100%; }
- .border-b { border-bottom: 1px solid #e2e8f0; }
- .border-t { border-top: 1px solid #e2e8f0; }
- .border { border: 1px solid #e2e8f0; }
- .p-4 { padding: 1rem; }
- .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
- .px-4 { padding-left: 1rem; padding-right: 1rem; }
- .font-semibold { font-weight: 600; }
- .font-bold { font-weight: 700; }
- .text-sm { font-size: 0.875rem; }
- .text-xs { font-size: 0.75rem; }
- .text-lg { font-size: 1.125rem; }
- .text-xl { font-size: 1.25rem; }
- .text-2xl { font-size: 1.5rem; }
- .mt-4 { margin-top: 1rem; }
- .mt-6 { margin-top: 1.5rem; }
- .mt-8 { margin-top: 2rem; }
- .mb-2 { margin-bottom: 0.5rem; }
- .mb-4 { margin-bottom: 1rem; }
- .mb-6 { margin-bottom: 1.5rem; }
- .bg-slate-50 { background-color: #f8fafc; }
- .bg-slate-100 { background-color: #f1f5f9; }
- /* Dynamic template styles to survive print translation */
- .bg-\[\#0F1E36\] { background-color: #0F1E36 !important; color: white !important; }
- .bg-\[\#0E3A2F\] { background-color: #0E3A2F !important; color: white !important; }
- .bg-\[\#242424\] { background-color: #242424 !important; color: white !important; }
- .text-\[\#0F1E36\] { color: #0F1E36 !important; }
- .text-\[\#0E3A2F\] { color: #0E3A2F !important; }
- .text-\[\#242424\] { color: #242424 !important; }
- .text-\[\#1E3A8A\] { color: #1E3A8A !important; }
- .text-\[\#0E3A2F\] { color: #0E3A2F !important; }
- .border-\[\#0F1E36\] { border-color: #0F1E36 !important; }
- .border-\[\#0E3A2F\] { border-color: #0E3A2F !important; }
- .border-\[\#242424\] { border-color: #242424 !important; }
- .border-s-4 { border-left: 4px solid !important; }
- .border-e-4 { border-right: 4px solid !important; }
- .font-mono { font-family: monospace !important; }
- table { width: 100%; border-collapse: collapse; }
- th, td { padding: 10px; border-bottom: 1px solid #e2e8f0; text-align: ${isRTL ? 'right' : 'left'}; }
- th { background-color: #f1f5f9; font-weight: 600; }
- .company-logo { max-height: 80px; max-width: 150px; }
- .footer-text { font-size: 10px; color: #64748b; margin-top: 40px; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 15px; }
  @media print {
  body { padding: 0; margin: 0; width: 100%; }
- .no-print { display: none; }
+ .no-print { display: none !important; }
  @page {
  size: ${currentTemplate?.pageSize?.includes('4in x 6in') ? '4in 6in' : 'A4 portrait'};
  margin: ${currentTemplate?.pageSize?.includes('4in x 6in') ? '0.1in' : '0.4in'};
  }
- /* Scale table for small thermal size */
+ /* Scale down for small thermal receipt paper */
  ${currentTemplate?.pageSize?.includes('4in x 6in') ? `
  body, table, td, th, p, span, div {
  font-size: 10px !important;
@@ -351,37 +324,57 @@ export default function DocumentRenderer({
  th, td {
  padding: 4px !important;
  }
- .comp
-  .company-logo {
-  max-height: 40px !important;
-  max-width: 100px !important;
-  }
-  #printable-inner {
-  padding: 4px !important;
-  }
-  ` : ''}
-  }
-  </style>
-  </head>
-  <body>
-  ${printContent.innerHTML}
-  <script>
-  window.onload = function() {
-  window.print();
-  setTimeout(function() { window.close(); }, 500);
-  };
-  </script>
-  </body>
-  </html>
-  `);
-  printWindow.document.close();
-  };
+ .company-logo {
+ max-height: 40px !important;
+ max-width: 100px !important;
+ }
+ #printable-inner {
+ padding: 4px !important;
+ }
+ ` : ''}
+ }
+ </style>
+ </head>
+ <body>
+ ${printContent.innerHTML}
+ <script>
+ window.onload = function() {
+ window.print();
+ setTimeout(function() { window.close(); }, 500);
+ };
+ </script>
+ </body>
+ </html>
+ `);
+ printWindow.document.close();
+ };
 
  const renderQuotationOrInvoice = (doc: Quotation | Invoice) => {
   const isInvoice = 'invoiceNumber' in doc;
   const docNum = isInvoice ? (doc as Invoice).invoiceNumber : (doc as Quotation).quotationNumber;
   const notes = doc.notes;
   const items = doc.items || [];
+
+  // Credit/Debit Notes are rows in the same invoices table (documentType +
+  // originalInvoiceId + creditNoteReason, see CLAUDE.md) — the printed document must
+  // say so clearly (title, an amber/blue warning accent, and a reference back to the
+  // original invoice being adjusted) rather than silently printing as if it were an
+  // ordinary Invoice, which would be actively misleading on a compliance document.
+  const noteKind = isInvoice ? ((doc as Invoice).documentType || 'Invoice') : 'Invoice';
+  const isCreditNote = noteKind === 'CreditNote';
+  const isDebitNote = noteKind === 'DebitNote';
+  const originalInvoiceId = isInvoice ? (doc as Invoice).originalInvoiceId : undefined;
+  const originalInvoice = originalInvoiceId && db ? db.invoices.find(i => i.id === originalInvoiceId) : undefined;
+  const noteReason = isInvoice ? (doc as Invoice).creditNoteReason : undefined;
+  // Amber for Credit Note (matches the amber "warn" tone InvoiceModule.tsx already
+  // uses for the same document elsewhere in the app), blue for Debit Note (matches
+  // its "info" tone there) — same semantics, now carried onto the printed page too.
+  const noteAccentText = isCreditNote ? 'text-amber-600' : isDebitNote ? 'text-blue-600' : theme.primaryText;
+  const noteBadgeClass = isCreditNote
+   ? 'bg-amber-50 text-amber-700 border border-amber-200'
+   : isDebitNote
+   ? 'bg-blue-50 text-blue-700 border border-blue-200'
+   : '';
   
   // Compute totals using our robust helper including discounts!
   const totals = calculateInvoiceTotals({ taxSlabs } as any, items, doc.taxSlabId, doc.discountPercentage);
@@ -485,6 +478,13 @@ export default function DocumentRenderer({
   };
 
   const getGlobalFontClass = () => {
+    // An Arabic/Urdu document always keeps the Cairo/Noto stack set on the outer
+    // printable-document-content container (see below) — none of serif/mono/sans
+    // here have real Arabic glyph coverage, so applying one of those classes on top
+    // would override the correct inherited font-family with an OS/browser fallback
+    // font for every Arabic character, exactly the inconsistency this fix exists to
+    // remove. Returning '' lets the outer container's font simply inherit through.
+    if (isRTL) return '';
     const font = currentTemplate?.globalFontFamily || 'sans';
     switch (font) {
       case 'serif': return 'font-serif';
@@ -581,7 +581,19 @@ export default function DocumentRenderer({
        return (
         <div key={block.id} className={`${blockColClass} flex ${alignClass} items-center ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
          {companySetup.logoUrl ? (
-          <img src={ensureCompatibleImage(companySetup.logoUrl)} alt="Logo" className="company-logo mb-2 max-h-16" referrerPolicy="no-referrer" />
+          <img
+           src={ensureCompatibleImage(companySetup.logoUrl)}
+           alt="Logo"
+           // Cap BOTH axes and let the browser preserve the logo's own aspect ratio
+           // (object-contain + w/h-auto) — a max-height-only cap (the previous rule)
+           // lets a wide landscape wordmark logo stretch arbitrarily wide inside its
+           // half-width header column, while a max-width-only cap would let a tall
+           // square/vertical logo tower over the rest of the header. Capping both
+           // means a square logo and a wide wordmark logo both settle at a sensible,
+           // consistent size regardless of which shape a given company uploads.
+           className="company-logo mb-2 max-h-16 max-w-[180px] w-auto h-auto object-contain"
+           referrerPolicy="no-referrer"
+          />
          ) : (
           <div className="w-12 h-12 bg-slate-900 text-white rounded-lg flex items-center justify-center font-bold text-lg mb-2">
            CNC
@@ -626,11 +638,16 @@ export default function DocumentRenderer({
        const showOriginQ = block.props?.showOriginQ !== false;
        return (
         <div key={block.id} className={`${blockColClass} text-${dir === 'rtl' ? 'left' : 'right'} max-w-xs md:ms-auto ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <h2 className={`text-2xl font-bold uppercase tracking-wider ${theme.primaryText} mb-1`}>
-          {isInvoice ? t('Invoice') : t('Quotation')}
+         <h2 className={`text-2xl font-bold uppercase tracking-wider ${noteAccentText} mb-1`}>
+          {isCreditNote ? t('Credit Note') : isDebitNote ? t('Debit Note') : isInvoice ? t('Invoice') : t('Quotation')}
           {isBilingual && (
            <span className="block text-sm font-semibold text-slate-400 mt-0.5">
-            {isInvoice ? 'فاتورة مبيعات' : 'عرض سعر'}
+            {isCreditNote ? 'إشعار دائن' : isDebitNote ? 'إشعار مدين' : isInvoice ? 'فاتورة مبيعات' : 'عرض سعر'}
+           </span>
+          )}
+          {(isCreditNote || isDebitNote) && (
+           <span className={`inline-block mt-1.5 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider normal-case ${noteBadgeClass}`}>
+            {isCreditNote ? 'Adjustment — reduces original invoice' : 'Adjustment — increases original invoice'}
            </span>
           )}
          </h2>
@@ -650,6 +667,17 @@ export default function DocumentRenderer({
            <span className="font-semibold text-slate-700">{t('Date')}:</span> {doc.date}
            {isBilingual && <span className="block text-[9px] text-slate-400">التاريخ</span>}
           </p>
+          {(isCreditNote || isDebitNote) && (
+           <p className={`font-semibold ${noteAccentText}`}>
+            <span>Ref: {originalInvoice ? originalInvoice.invoiceNumber : (originalInvoiceId || '—')}</span>
+            {isBilingual && (
+             <span className="block text-[9px] text-slate-400 font-normal">{t('Reference Invoice')}</span>
+            )}
+            {noteReason && (
+             <span className="block text-[10px] text-slate-500 font-normal normal-case mt-0.5">{noteReason}</span>
+            )}
+           </p>
+          )}
           {isInvoice && showOriginQ && (doc as Invoice).originQuotationId && db && (() => {
            const qId = (doc as Invoice).originQuotationId;
            const originQ = db.quotations.find(q => q.id === qId);
@@ -875,12 +903,17 @@ export default function DocumentRenderer({
 
       if (block.id === 'totals_summary') {
        const isBilingual = block.props?.isBilingual !== false;
-       const accentColor = block.props?.accentColor || 'indigo';
-       
+       // Default to the same amber/blue warning accent as the title above for a
+       // Credit/Debit Note (a template with an explicit accentColor still wins) — the
+       // grand total is the number most likely to be scanned at a glance, so it should
+       // carry the same "this adjusts another invoice" visual cue.
+       const accentColor = block.props?.accentColor || (isCreditNote ? 'amber' : isDebitNote ? 'blue' : 'indigo');
+
        let totalAccentText = "text-indigo-600";
        if (accentColor === 'emerald') totalAccentText = "text-emerald-600";
        else if (accentColor === 'slate') totalAccentText = "text-slate-700";
        else if (accentColor === 'amber') totalAccentText = "text-amber-600";
+       else if (accentColor === 'blue') totalAccentText = "text-blue-600";
 
        return (
         <div key={block.id} className={`${blockColClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
@@ -1627,8 +1660,14 @@ export default function DocumentRenderer({
  <div style={{ zoom: zoomLevel }} className="print:!zoom-100">
             <div
               id="printable-document-content"
- className={`bg-white shadow-lg border border-slate-200/60 p-8 md:p-12 text-slate-800 print:min-w-0 print:w-full print:p-0 md:mx-auto overflow-hidden ${theme.accentFont} ${getPageSizeClass()}`}
- style={{ direction: dir }}
+ className={`bg-white shadow-lg border border-slate-200/60 p-8 md:p-12 text-slate-800 print:min-w-0 print:w-full print:p-0 md:mx-auto overflow-hidden ${isRTL ? '' : theme.accentFont} ${getPageSizeClass()}`}
+ // Arabic/Urdu documents always render in the bilingual-capable Cairo/Noto stack
+ // (--font-arabic, index.css) regardless of the template's own Latin accent font
+ // (Space Grotesk, JetBrains Mono, etc.) — none of those have real Arabic glyph
+ // coverage, so honoring them here would just mean an inconsistent OS-fallback
+ // font for every Arabic character on the page. Inline style (not a Tailwind
+ // class) so it reliably wins regardless of class ordering/specificity.
+ style={{ direction: dir, fontFamily: isRTL ? 'var(--font-arabic, "Cairo", "Inter", sans-serif)' : undefined }}
  >
  {renderDocumentBody()}
             </div>
