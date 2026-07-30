@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import bcrypt from 'bcrypt';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { generateId } from '../src/id.js';
@@ -195,7 +195,9 @@ describe('Multiple concurrently-open fiscal months (cap of 3, close oldest-first
     expect(r4.status).toBe(400);
     expect(r4.body.error).toMatch(/maximum of 3/i);
 
-    const [row] = await db.select().from(schema.fiscalMonths).where(eq(schema.fiscalMonths.id, MONTH_4));
+    // fiscalMonths' primary key is composite (id, companyId) — the same literal month id
+    // can legitimately exist for other companies, so this must filter on both, not just id.
+    const [row] = await db.select().from(schema.fiscalMonths).where(and(eq(schema.fiscalMonths.id, MONTH_4), eq(schema.fiscalMonths.companyId, companyId)));
     expect(row).toBeUndefined();
   });
 
@@ -209,8 +211,8 @@ describe('Multiple concurrently-open fiscal months (cap of 3, close oldest-first
     expect(rClose3.status).toBe(400);
     expect(rClose3.body.error).toMatch(/oldest open month/i);
 
-    const [m2] = await db.select().from(schema.fiscalMonths).where(eq(schema.fiscalMonths.id, MONTH_2));
-    const [m3] = await db.select().from(schema.fiscalMonths).where(eq(schema.fiscalMonths.id, MONTH_3));
+    const [m2] = await db.select().from(schema.fiscalMonths).where(and(eq(schema.fiscalMonths.id, MONTH_2), eq(schema.fiscalMonths.companyId, companyId)));
+    const [m3] = await db.select().from(schema.fiscalMonths).where(and(eq(schema.fiscalMonths.id, MONTH_3), eq(schema.fiscalMonths.companyId, companyId)));
     expect(m2.status).toBe('Open');
     expect(m3.status).toBe('Open');
   });
@@ -234,7 +236,7 @@ describe('Multiple concurrently-open fiscal months (cap of 3, close oldest-first
     const rClose1 = await closeMonth(MONTH_1);
     expect(rClose1.status, JSON.stringify(rClose1.body)).toBe(200);
 
-    const [m1] = await db.select().from(schema.fiscalMonths).where(eq(schema.fiscalMonths.id, MONTH_1));
+    const [m1] = await db.select().from(schema.fiscalMonths).where(and(eq(schema.fiscalMonths.id, MONTH_1), eq(schema.fiscalMonths.companyId, companyId)));
     expect(m1.status).toBe('Closed');
   });
 
