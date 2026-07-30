@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import bcrypt from 'bcrypt';
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { generateId } from '../src/id.js';
+import { INITIAL_PREVIOUS_INVOICE_HASH } from '../server/lib/zatca/hashChain.js';
 
 // Real integration tests against the already-running dev server (npm run dev on
 // localhost:3000), matching how every ZATCA fix this session was actually verified —
@@ -251,5 +252,117 @@ describe('Credit Note reversal voucher', () => {
 
     const vouchers = await db.select().from(schema.vouchers).where(eq(schema.vouchers.referenceId, invId));
     expect(vouchers.length).toBe(0);
+  });
+});
+
+describe('QR code generated even when ZATCA is disabled (Phase 1 compliance preview)', () => {
+  it('a DISABLED-company invoice gets a real non-null Phase-1 QR immediately, without touching the real hash chain; enabling + resubmitting then reserves a genuine chain position', async () => {
+    // Uses a dedicated, ZATCA-complete B2B customer (not the shared `customerId`
+    // fixture, which deliberately has no VAT/address on file and would fail
+    // validateBuyerFields on the real resubmission below before ever reaching the
+    // hash-chain reservation code this test needs to exercise).
+    const completeCustomerId = generateId();
+    await db.insert(schema.customers).values({
+      id: completeCustomerId,
+      name: 'ZATCA-Complete B2B Customer',
+      phone: '0000000000',
+      email: 'complete-buyer@example.com',
+      address: 'Test Address',
+      companyId,
+      buyerType: 'B2B',
+      vatNumber: '399999999900003',
+      streetName: 'King Abdulaziz Rd',
+      buildingNumber: '7890',
+      district: 'Al Olaya',
+      city: 'Riyadh',
+      postalCode: '11564',
+    });
+
+    const { status: createStatus, body: createBody } = await api('/api/transactions/invoices', {
+      method: 'POST',
+      body: JSON.stringify({
+        invoiceData: {
+          date: new Date().toISOString().split('T')[0],
+          customerId: completeCustomerId,
+          taxSlabId,
+          bankId,
+          notes: '',
+          status: 'Active',
+          amountPaid: 0,
+          items: [{ id: generateId(), description: 'Test Item', unitCost: 100, quantity: 1, discountAmount: 0 }],
+        },
+      }),
+    });
+    if (createStatus !== 200) throw new Error(`createInvoice failed: ${createStatus} ${JSON.stringify(createBody)}`);
+    const invId = createBody.invoiceId as string;
+    createdInvoiceIds.push(invId);
+    // processInvoiceZatca runs fire-and-forget after the create response returns.
+    await new Promise((r) => setTimeout(r, 500));
+
+    const [invoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invId));
+    expect(invoice.zatcaStatus).toBe('DISABLED');
+    expect(invoice.qrCodeContent).toBeTruthy();
+    expect(typeof invoice.qrCodeContent).toBe('string');
+    expect(invoice.qrCodeContent!.length).toBeGreaterThan(0);
+    expect(invoice.xmlContent).toBeTruthy();
+
+    // Critical constraint: the DISABLED-path preview must NEVER reserve/persist a
+    // real hash-chain position — icv/previousInvoiceHash must stay unset (null/0) so
+    // a later real resubmission (once the company enables ZATCA) reserves a genuine
+    // chain position instead of wrongly believing one was already claimed and
+    // reusing a bogus placeholder, which would corrupt the real genesis-linked chain
+    // for every invoice after it.
+    expect(invoice.icv).toBeFalsy();
+    expect(invoice.previousInvoiceHash).toBeFalsy();
+
+    // Decode the base64 TLV QR and walk tags 1-5 — seller name, VAT/TIN, timestamp,
+    // grand total, VAT total — the mandatory ZATCA Phase 1 QR fields, required on
+    // every KSA VAT invoice regardless of e-invoicing/Phase 2 enrollment.
+    const decoded = Buffer.from(invoice.qrCodeContent!, 'base64');
+    const tlvTags: Record<number, string> = {};
+    let offset = 0;
+    while (offset < decoded.length) {
+      const tag = decoded[offset];
+      const len = decoded[offset + 1];
+      tlvTags[tag] = decoded.subarray(offset + 2, offset + 2 + len).toString('utf8');
+      offset += 2 + len;
+    }
+    expect(tlvTags[1]).toBe('Automated Test Co'); // seller name
+    expect(tlvTags[2]).toBeTruthy(); // seller VAT/TIN
+    expect(tlvTags[3]).toBeTruthy(); // ISO timestamp
+    expect(Number(tlvTags[4])).toBeCloseTo(115, 1); // grand total: 100 + 15% VAT
+    expect(Number(tlvTags[5])).toBeCloseTo(15, 1); // VAT total
+
+    // Snapshot the real per-company hash-chain state BEFORE enabling — mirrors
+    // getNextHashChainState's own "last invoice by icv desc" query exactly, so this
+    // assertion holds regardless of how many other invoices earlier tests in this
+    // file already pushed through the real chain.
+    const [priorLast] = await db.select({
+      icv: schema.invoices.icv,
+      currentInvoiceHash: schema.invoices.currentInvoiceHash,
+    }).from(schema.invoices)
+      .where(eq(schema.invoices.companyId, companyId))
+      .orderBy(desc(schema.invoices.icv))
+      .limit(1);
+    const expectedIcv = (priorLast?.icv || 0) + 1;
+    const expectedPih = (priorLast?.icv && priorLast.icv > 0)
+      ? priorLast.currentInvoiceHash
+      : INITIAL_PREVIOUS_INVOICE_HASH;
+
+    // Enable ZATCA and resubmit the SAME invoice — it must go through the REAL
+    // getNextHashChainState reservation path, not reuse anything from the
+    // DISABLED-path preview above.
+    await db.update(schema.companies).set({ zatcaEnabled: true }).where(eq(schema.companies.id, companyId));
+    const { status, body } = await api(`/api/zatca/submit-invoice/${invId}`, { method: 'POST' });
+    if (status !== 200) throw new Error(`submit-invoice failed: ${status} ${JSON.stringify(body)}`);
+    expect(body.status).not.toBe('DISABLED');
+
+    const [resubmitted] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invId));
+    expect(resubmitted.icv).toBe(expectedIcv);
+    expect(resubmitted.previousInvoiceHash).toBe(expectedPih);
+    expect(resubmitted.currentInvoiceHash).toBeTruthy();
+    expect(resubmitted.qrCodeContent).toBeTruthy();
+
+    await db.update(schema.companies).set({ zatcaEnabled: false }).where(eq(schema.companies.id, companyId));
   });
 });
