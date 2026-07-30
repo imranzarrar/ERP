@@ -283,7 +283,16 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
   };
 
   try {
-    await fetch('/api/customers', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(customerData) });
+    const res = await fetch('/api/customers', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(customerData) });
+    if (!res.ok) {
+      // The server re-validates ZATCA mandatory fields authoritatively (client mirror
+      // above only covers what it knows to check) — a rejection here (bad VAT format,
+      // duplicate, DB constraint) was previously swallowed silently and the form still
+      // cleared and navigated away as if the save had succeeded.
+      const errData = await res.json().catch(() => ({}));
+      triggerError(errData.error || 'Failed to save customer — the server rejected this request.');
+      return;
+    }
     clearForm();
     await fetchEntities();
     onDone();
@@ -354,7 +363,12 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
 
  try {
  if (savedVendor) {
- await fetch('/api/vendors', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(savedVendor) });
+ const res = await fetch('/api/vendors', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(savedVendor) });
+ if (!res.ok) {
+ const errData = await res.json().catch(() => ({}));
+ triggerError(errData.error || 'Failed to save vendor — the server rejected this request.');
+ return;
+ }
  }
  onUpdateDb(newDb);
  clearForm();
@@ -1065,62 +1079,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  )}
  </div>
 
- <div className="space-y-4 pt-2 border-t border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" checked={prodIsPos} onChange={(e) => setProdIsPos(e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" />
-                    <span className="font-bold text-slate-700 text-xs">Enable in POS Module</span>
-                  </div>
-                  
-                    <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200/60">
-                      <div className="col-span-2 md:col-span-1 space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Category</label>
-                        <input list="category-options" type="text" placeholder="e.g. Beverages" value={prodCategory} onChange={(e) => setProdCategory(e.target.value)} required={prodIsPos} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
-                        <datalist id="category-options">
-                          {uniqueCategories.map((cat, idx) => <option key={idx} value={cat} />)}
-                        </datalist>
-                      </div>
-                      <div className="col-span-2 md:col-span-1 space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Barcode</label>
-                        <input type="text" placeholder="Scan or type" value={prodBarcode} onChange={(e) => setProdBarcode(e.target.value)} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
-                      </div>
-                      <div className="col-span-2 md:col-span-1 space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">SKU</label>
-                        <input type="text" placeholder="Stock Keeping Unit" value={prodSku} onChange={(e) => setProdSku(e.target.value)} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
-                      </div>
-                      <div className="col-span-2 space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Product Image (Base64)</label>
-                        <input type="file" accept="image/*" onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if(!file) return;
-                          const activeComp = db.companies.find(c => c.id === db.selectedCompanyId);
-                          const maxSizeKB = activeComp.posSettings?.maxImageSizeKB || 500;
-                          const maxDim = activeComp.posSettings?.maxImageDimensions || 800;
-                          
-                          if (file.size > maxSizeKB * 1024) {
-                            alert(`File too large! Maximum allowed size is ${maxSizeKB}KB.`);
-                            e.target.value = '';
-                            return;
-                          }
-                          
-                          const reader = new FileReader();
-                          reader.onload = (event) => {
-                            const img = new Image();
-                            img.onload = () => {
-                              if (img.width > maxDim || img.height > maxDim) {
-                                alert(`Image dimensions too large! Max allowed is ${maxDim}x${maxDim}px.`);
-                                return;
-                              }
-                              setProdImage(event.target?.result as string);
-                            };
-                            img.src = event.target?.result as string;
-                          };
-                          reader.readAsDataURL(file);
-                        }} className="w-full text-xs text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
-                        {prodImage && <img src={prodImage} alt="Preview" className="w-16 h-16 object-cover rounded-lg border border-slate-200 mt-2 shadow-sm" />}
-                      </div>
-                    </div>
-                </div>
-                <div className="flex gap-2 pt-3">
+ <div className="flex gap-2 pt-3">
  {editingId && (
  <button
  type="button"
@@ -1441,7 +1400,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
                       </div>
                     </div>
                 </div>
-                <div className="flex gap-2 pt-3">
+ <div className="flex gap-2 pt-3">
  {editingId && (
  <button
  type="button"
@@ -1921,16 +1880,20 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </thead>
  <tbody className="divide-y divide-slate-100 ">
  {categories.map(c => {
- const parent = categories.find(parentCat => parentCat.id === c.parentId);
+ // Real saved/schema fields are parentCategoryId/salesGlGroup/purchaseGlGroup/cogsGlGroup
+ // — this used to read parentId/salesGlAccount/purchaseGlAccount/cogsGlAccount, which
+ // don't exist, so every category with real GL codes and a real parent still displayed
+ // "Unmapped"/"-- Top Level --" here regardless of what was actually saved.
+ const parent = categories.find(parentCat => parentCat.id === (c as any).parentCategoryId);
  return (
  <tr key={c.id} className="hover:bg-slate-50/40 text-slate-700 transition-colors duration-150">
  <td className="p-4 ps-5">
  <span className="font-bold text-slate-900 block">{c.name}</span>
  </td>
  <td className="p-4 text-slate-500 font-medium">{parent ? parent.name : <span className="text-slate-400 italic">-- Top Level --</span>}</td>
- <td className="p-4"><code className="font-mono bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{c.salesGlAccount || 'Unmapped'}</code></td>
- <td className="p-4"><code className="font-mono bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{c.purchaseGlAccount || 'Unmapped'}</code></td>
- <td className="p-4"><code className="font-mono bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{c.cogsGlAccount || 'Unmapped'}</code></td>
+ <td className="p-4"><code className="font-mono bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{(c as any).salesGlGroup || 'Unmapped'}</code></td>
+ <td className="p-4"><code className="font-mono bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{(c as any).purchaseGlGroup || 'Unmapped'}</code></td>
+ <td className="p-4"><code className="font-mono bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{(c as any).cogsGlGroup || 'Unmapped'}</code></td>
  {canEditCategories && (
  <td className="p-4 pe-5 text-end">
  <div className="inline-flex gap-1.5">

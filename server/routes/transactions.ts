@@ -5,7 +5,7 @@ import { eq, inArray, and, desc } from 'drizzle-orm';
 import { getAndIncrementCounter, validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, round2, computePaymentStatus } from '../lib/businessLogic.js';
 import { normalizePermissions } from '../../src/types.js';
 import { processInvoiceZatca } from '../lib/zatca/processInvoice.js';
-import { hasPermission } from '../lib/authz.js';
+import { hasPermission, assertOwnsRow } from '../lib/authz.js';
 import { parseLimitOffset } from '../lib/pagination.js';
 import { generateId } from '../../src/id.js';
 
@@ -43,6 +43,14 @@ router.post('/quotations', async (req: any, res) => {
     if (!permissions.quotation.create.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     const { quotationData } = req.body;
+
+    if (quotationData.id) {
+      const [existing] = await db.select().from(schema.quotations).where(eq(schema.quotations.id, quotationData.id));
+      if (!assertOwnsRow(existing, req)) {
+        return res.status(403).json({ error: 'Forbidden: this quotation belongs to another company' });
+      }
+    }
+
     quotationData.companyId = req.targetCompanyId;
     const { items, ...qData } = quotationData;
 
@@ -266,6 +274,14 @@ router.post('/invoices', async (req: any, res) => {
 
     const { invoiceData } = req.body;
     const { items, ...invData } = invoiceData;
+
+    if (invData.id) {
+      const [existing] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invData.id));
+      if (!assertOwnsRow(existing, req)) {
+        return res.status(403).json({ error: 'Forbidden: this invoice belongs to another company' });
+      }
+    }
+
     invData.companyId = req.targetCompanyId;
     // createdById is NOT NULL and, unlike the quotation-conversion/POS/voucher insert
     // paths in this same file, was never being set here — every direct invoice creation
@@ -364,6 +380,106 @@ router.post('/invoices', async (req: any, res) => {
   }
 });
 
+// Credit/Debit Note — creates a new ZATCA document referencing an existing invoice,
+// reusing the same invoices/invoiceItems tables, counter mechanism, and background
+// ZATCA processing pipeline as a regular invoice (see schema.ts's documentType/
+// originalInvoiceId/creditNoteReason columns and processInvoice.ts's handling of them).
+// MVP scope: full-document reversal only (mirrors every line from the original invoice
+// verbatim) — a partial/line-selectable credit note is a larger feature, tracked for
+// later. No automatic refund/reversal voucher is generated here either; the accounting
+// treatment of the credit is a separate, explicitly deferred piece of work.
+router.post('/invoices/:id/note', async (req: any, res) => {
+  try {
+    const user = req.user;
+    const permissions = normalizePermissions(user.permissions, user.role, user.isSuperAdmin);
+    if (!permissions.invoice.create.enabled) return res.status(403).json({ error: 'Forbidden' });
+
+    const { id: originalInvoiceId } = req.params;
+    const { type, reason } = req.body;
+    if (type !== 'CreditNote' && type !== 'DebitNote') {
+      return res.status(400).json({ error: 'type must be "CreditNote" or "DebitNote"' });
+    }
+
+    const companyId = req.targetCompanyId;
+    const [original] = await db.select().from(schema.invoices)
+      .where(and(eq(schema.invoices.id, originalInvoiceId), eq(schema.invoices.companyId, companyId)));
+    if (!original) return res.status(404).json({ error: 'Original invoice not found' });
+
+    const originalItems = await db.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, originalInvoiceId));
+    if (originalItems.length === 0) {
+      return res.status(400).json({ error: 'Original invoice has no line items to reference' });
+    }
+
+    let savedNoteId = '';
+    await db.transaction(async (tx) => {
+      await validateTransactionDate(original.date, companyId);
+
+      const counterType = type === 'CreditNote' ? 'creditNote' : 'debitNote';
+      const prefix = type === 'CreditNote' ? 'CN' : 'DN';
+      const noteCount = await getAndIncrementCounter(tx, companyId, counterType);
+      const noteId = generateId();
+
+      const [newNote] = await tx.insert(schema.invoices).values({
+        id: noteId,
+        invoiceNumber: `${prefix}-${noteCount}`,
+        date: original.date,
+        customerId: original.customerId,
+        taxSlabId: original.taxSlabId,
+        bankId: original.bankId,
+        paymentStatus: 'Unpaid',
+        notes: reason || '',
+        status: 'Active',
+        createdById: user.id,
+        createdAt: new Date(),
+        discountPercentage: original.discountPercentage,
+        amountPaid: '0',
+        companyId,
+        documentType: type,
+        originalInvoiceId,
+        creditNoteReason: reason || null,
+      }).returning();
+
+      savedNoteId = newNote.id;
+
+      for (const item of originalItems) {
+        await tx.insert(schema.invoiceItems).values({
+          id: generateId(),
+          invoiceId: newNote.id,
+          description: item.description,
+          unitCost: item.unitCost,
+          quantity: item.quantity,
+          discountAmount: item.discountAmount,
+          taxSlabId: item.taxSlabId,
+        });
+      }
+
+      // A Credit Note structurally reverses the original invoice — if any of it was
+      // actually paid, reverse that receipt too. Reuses the same synthetic
+      // `status: 'Cancelled'` override already used by the /cancel route above to route
+      // into syncVoucherForInvoice's reversal branch (month-closed-aware: deletes the
+      // open-month Receipt outright, or posts a dated Reversal voucher if the month's
+      // closed) without ever touching the original invoice's own stored paymentStatus.
+      // Debit Notes represent new unpaid charges, not a reversal, so they never reach here.
+      if (type === 'CreditNote' && Number(original.amountPaid) > 0) {
+        await syncVoucherForInvoice(tx, originalInvoiceId, companyId, {
+          ...original,
+          status: 'Cancelled',
+        }, user.id);
+      }
+    });
+
+    if (savedNoteId) {
+      processInvoiceZatca(savedNoteId).catch(err => {
+        console.error('[Auto ZATCA Error - Credit/Debit Note]:', err);
+      });
+    }
+
+    res.json({ success: true, noteId: savedNoteId });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
 router.post('/invoices/:id/paid', async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
@@ -411,6 +527,12 @@ router.post('/invoices/:id/cancel', async (req: any, res) => {
     await db.transaction(async (tx) => {
       const [invoice] = await tx.select().from(schema.invoices).where(and(eq(schema.invoices.id, id), eq(schema.invoices.companyId, req.targetCompanyId)));
       if (!invoice) throw new Error('Invoice not found');
+
+      if (['SUBMITTING', 'CLEARED', 'REPORTED'].includes(invoice.zatcaStatus as string)) {
+        const err: any = new Error('This invoice has already been submitted to ZATCA and cannot be cancelled. Issue a Credit Note instead.');
+        err.status = 400;
+        throw err;
+      }
 
       await tx.update(schema.invoices).set({ status: 'Cancelled' }).where(eq(schema.invoices.id, id));
 

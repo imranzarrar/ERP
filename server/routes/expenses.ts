@@ -6,6 +6,7 @@ import { getAndIncrementCounter, validateTransactionDate, syncVoucherForExpense,
 import { normalizePermissions } from '../../src/types.js';
 import { parseLimitOffset } from '../lib/pagination.js';
 import { generateId } from '../../src/id.js';
+import { assertOwnsRow } from '../lib/authz.js';
 
 const router = express.Router();
 
@@ -32,6 +33,14 @@ router.post('/', async (req: any, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const data = { ...req.body };
+
+    if (data.id) {
+      const [existing] = await db.select().from(schema.expenses).where(eq(schema.expenses.id, data.id));
+      if (!assertOwnsRow(existing, req)) {
+        return res.status(403).json({ error: 'Forbidden: this expense belongs to another company' });
+      }
+    }
+
     data.companyId = req.targetCompanyId;
     // paymentStatus is a derived fact of amountPaid vs. amount, not a client-asserted
     // string — recomputing it here closes the door on an arbitrary/typo'd status value.

@@ -1,0 +1,253 @@
+<title>ERP Redesign Concept — Storefront</title>
+<style>
+  :root {
+    --paper-50: #fafaf7; --paper-100: #ffffff; --paper-200: #e6e3d9;
+    --ink-600: #6b6960; --ink-800: #302e27; --ink-900: #17150f;
+    --spark: #f0491e; --spark-hover: #d63d16; --spark-tint: #fde3db; --spark-ink: #7a2409;
+    --good: #16a34a; --good-tint: #dcfce7; --good-ink: #14532d;
+    --warn: #d97706; --warn-tint: #fef3c7; --warn-ink: #78350f;
+    --crit: #dc2626; --crit-tint: #fee2e2; --crit-ink: #7f1d1d;
+    --info: #2563eb; --info-tint: #dbeafe; --info-ink: #1e3a8a;
+    --rail-bg: #141310; --rail-ink: #d9d6cc; --rail-ink-dim: #8a877c; --rail-active: #24221c;
+    --shadow: 0 1px 2px rgba(23,21,15,.05), 0 6px 16px -8px rgba(23,21,15,.16);
+    --font-display: "Bahnschrift","SF Compact Text","Segoe UI Semibold",system-ui,sans-serif;
+    --font-body: "Segoe UI","Helvetica Neue",system-ui,sans-serif;
+    --font-mono: "SF Mono","Cascadia Code","Consolas",ui-monospace,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper-50: #15140f; --paper-100: #1e1c16; --paper-200: #34322a;
+      --ink-600: #a8a498; --ink-800: #e8e5db; --ink-900: #faf9f5;
+      --spark: #ff7247; --spark-hover: #ff8a63; --spark-tint: #3d2015; --spark-ink: #ffc4ac;
+      --good: #4ade80; --good-tint: #14532d; --good-ink: #bbf7d0;
+      --warn: #fbbf24; --warn-tint: #452c04; --warn-ink: #fde68a;
+      --crit: #f87171; --crit-tint: #450a0a; --crit-ink: #fecaca;
+      --info: #60a5fa; --info-tint: #1e2f52; --info-ink: #bfdbfe;
+      --rail-bg: #0c0b09; --rail-ink: #e6e3d9; --rail-ink-dim: #6b6960; --rail-active: #1a1913;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 16px -8px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper-50: #15140f; --paper-100: #1e1c16; --paper-200: #34322a;
+    --ink-600: #a8a498; --ink-800: #e8e5db; --ink-900: #faf9f5;
+    --spark: #ff7247; --spark-hover: #ff8a63; --spark-tint: #3d2015; --spark-ink: #ffc4ac;
+    --good: #4ade80; --good-tint: #14532d; --good-ink: #bbf7d0;
+    --warn: #fbbf24; --warn-tint: #452c04; --warn-ink: #fde68a;
+    --crit: #f87171; --crit-tint: #450a0a; --crit-ink: #fecaca;
+    --info: #60a5fa; --info-tint: #1e2f52; --info-ink: #bfdbfe;
+    --rail-bg: #0c0b09; --rail-ink: #e6e3d9; --rail-ink-dim: #6b6960; --rail-active: #1a1913;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 16px -8px rgba(0,0,0,.6);
+  }
+  :root[data-theme="light"] {
+    --paper-50: #fafaf7; --paper-100: #ffffff; --paper-200: #e6e3d9;
+    --ink-600: #6b6960; --ink-800: #302e27; --ink-900: #17150f;
+    --spark: #f0491e; --spark-hover: #d63d16; --spark-tint: #fde3db; --spark-ink: #7a2409;
+    --good: #16a34a; --good-tint: #dcfce7; --good-ink: #14532d;
+    --warn: #d97706; --warn-tint: #fef3c7; --warn-ink: #78350f;
+    --crit: #dc2626; --crit-tint: #fee2e2; --crit-ink: #7f1d1d;
+    --info: #2563eb; --info-tint: #dbeafe; --info-ink: #1e3a8a;
+    --rail-bg: #141310; --rail-ink: #d9d6cc; --rail-ink-dim: #8a877c; --rail-active: #24221c;
+    --shadow: 0 1px 2px rgba(23,21,15,.05), 0 6px 16px -8px rgba(23,21,15,.16);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font-body); background: var(--paper-50); color: var(--ink-900); }
+  .intro { max-width: 74ch; margin: 0 auto 2rem; padding: 2rem 1.5rem 0; }
+  .intro .eyebrow { font-family: var(--font-display); font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--spark); margin: 0 0 0.6rem; }
+  .intro h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(1.5rem, 3vw, 2rem); line-height: 1.2; margin: 0 0 0.75rem; text-wrap: balance; }
+  .intro p { font-size: 0.98rem; line-height: 1.65; color: var(--ink-600); margin: 0 0 0.5rem; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1.25rem 0 0; }
+  .swatch { display: flex; align-items: center; gap: 0.4rem; font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-600); background: var(--paper-100); border: 1px solid var(--paper-200); border-radius: 100px; padding: 0.3rem 0.7rem 0.3rem 0.4rem; }
+  .swatch .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+
+  .shell { display: grid; grid-template-columns: 208px minmax(0,1fr); max-width: 1240px; margin: 0 auto 3rem; border: 1px solid var(--paper-200); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
+  @media (max-width: 860px) { .shell { grid-template-columns: 1fr; margin-inline: 1rem; } .rail { display: none; } }
+
+  .rail { background: var(--rail-bg); color: var(--rail-ink); padding: 1.1rem 0.85rem; display: flex; flex-direction: column; gap: 1.5rem; }
+  .rail-brand { display: flex; align-items: center; gap: 0.55rem; padding: 0 0.35rem; }
+  .rail-brand .mark { width: 26px; height: 26px; border-radius: 6px; background: var(--spark); display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 600; font-size: 0.8rem; color: #fff; flex-shrink: 0; }
+  .rail-brand .name { font-family: var(--font-display); font-weight: 600; font-size: 0.86rem; line-height: 1.15; }
+  .rail-brand .sub { font-size: 0.65rem; color: var(--rail-ink-dim); }
+  .rail-group { display: flex; flex-direction: column; gap: 0.1rem; }
+  .rail-label { font-family: var(--font-display); font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--rail-ink-dim); padding: 0 0.5rem; margin-bottom: 0.35rem; }
+  .rail-item { display: flex; align-items: center; gap: 0.55rem; padding: 0.45rem 0.5rem; border-radius: 7px; font-size: 0.82rem; }
+  .rail-item.active { background: var(--rail-active); color: #fff; font-weight: 600; }
+  .rail-item .dash { width: 5px; height: 5px; border-radius: 50%; background: var(--rail-ink-dim); flex-shrink: 0; }
+  .rail-item.active .dash { background: var(--spark); }
+
+  .canvas { background: var(--paper-50); min-width: 0; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 0.85rem 1.5rem; border-bottom: 1px solid var(--paper-200); background: var(--paper-100); }
+  .topbar .co { font-family: var(--font-display); font-weight: 600; font-size: 0.92rem; }
+  .topbar .env { font-family: var(--font-mono); font-size: 0.68rem; color: var(--good-ink); background: var(--good-tint); border-radius: 100px; padding: 0.2rem 0.6rem; }
+  .topbar .clock { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-600); }
+
+  .page { padding: 1.5rem; }
+  .page h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; margin: 0 0 1rem; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
+  .kpi { background: var(--paper-100); border: 1px solid var(--paper-200); border-radius: 10px; padding: 0.9rem 1rem; }
+  .kpi .label { font-size: 0.68rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-600); margin-bottom: 0.35rem; }
+  .kpi .value { font-family: var(--font-mono); font-size: 1.35rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .kpi .value.accent { color: var(--spark); }
+  .kpi .delta { font-size: 0.7rem; color: var(--good-ink); margin-top: 0.2rem; }
+
+  .split { display: grid; grid-template-columns: 1.5fr 1fr; gap: 1rem; }
+  @media (max-width: 700px) { .split { grid-template-columns: 1fr; } }
+  .card { background: var(--paper-100); border: 1px solid var(--paper-200); border-radius: 10px; padding: 1.1rem 1.25rem; }
+  .card h3 { font-family: var(--font-display); font-size: 0.85rem; font-weight: 600; margin: 0 0 0.85rem; }
+
+  .spark-chart { display: flex; align-items: flex-end; gap: 4px; height: 90px; }
+  .spark-chart i { flex: 1; background: var(--spark-tint); border-radius: 2px 2px 0 0; position: relative; }
+  .spark-chart i.hi { background: var(--spark); }
+
+  .feed-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0; border-top: 1px solid var(--paper-200); font-size: 0.8rem; }
+  .feed-row:first-of-type { border-top: none; }
+  .feed-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+  .toolbar { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.85rem; flex-wrap: wrap; }
+  .search { flex: 1; min-width: 180px; display: flex; align-items: center; gap: 0.4rem; background: var(--paper-100); border: 1px solid var(--paper-200); border-radius: 7px; padding: 0.45rem 0.7rem; font-size: 0.8rem; color: var(--ink-600); }
+  .btn-spark { background: var(--spark); color: #fff; border: none; border-radius: 7px; padding: 0.5rem 0.9rem; font-family: var(--font-display); font-weight: 600; font-size: 0.78rem; }
+  .freshness { display: flex; align-items: center; gap: 0.35rem; font-size: 0.72rem; color: var(--ink-600); }
+  .freshness .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  th { text-align: left; font-family: var(--font-display); font-size: 0.66rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-600); font-weight: 600; padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--paper-200); white-space: nowrap; }
+  td { padding: 0.65rem 0.7rem; border-bottom: 1px solid var(--paper-200); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  .doc-no { font-family: var(--font-mono); font-weight: 600; }
+  .doc-sub { display: block; font-size: 0.7rem; color: var(--ink-600); }
+  .num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .pill { display: inline-flex; align-items: center; gap: 0.35rem; font-family: var(--font-display); font-size: 0.66rem; font-weight: 600; padding: 0.2rem 0.55rem 0.2rem 0.45rem; border-radius: 100px; white-space: nowrap; }
+  .pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .pill.good { background: var(--good-tint); color: var(--good-ink); }
+  .pill.warn { background: var(--warn-tint); color: var(--warn-ink); }
+  .pill.info { background: var(--info-tint); color: var(--info-ink); }
+  .pill.neutral { background: var(--paper-200); color: var(--ink-600); }
+  .row-actions { display: flex; gap: 0.3rem; opacity: 0.55; }
+  tr:hover .row-actions { opacity: 1; }
+  .icon-btn { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid var(--paper-200); font-size: 0.8rem; }
+
+  .footer-note { max-width: 74ch; margin: 0 auto 2.5rem; padding: 0 1.5rem; font-size: 0.85rem; color: var(--ink-600); line-height: 1.6; }
+  .footer-note b { color: var(--ink-900); }
+</style>
+
+<div class="intro">
+  <p class="eyebrow">Design concept &middot; revision 2 &middot; not yet built</p>
+  <h1>Storefront — built for retail volume, not a machine shop</h1>
+  <p>Fair note on the first pass: warm graphite and burnt copper read as heavy industrial, dull for a product mostly serving retailers. This revision keeps the same structure but replaces the palette entirely &mdash; crisp near-white surfaces instead of muddy warm gray, and a single confident, saturated accent (a warm red-orange, the color of a sale tag or a receipt stamp) instead of a desaturated metal tone. Semantic status colors are also brightened to standard, punchy tones &mdash; the meanings (green/amber/red/blue) are unchanged from <code>StatusPill.tsx</code>, just no longer muted.</p>
+  <div class="swatches">
+    <span class="swatch"><span class="dot" style="background:#fafaf7;border:1px solid #e6e3d9"></span>paper &middot; page</span>
+    <span class="swatch"><span class="dot" style="background:#17150f"></span>ink &middot; text</span>
+    <span class="swatch"><span class="dot" style="background:#f0491e"></span>spark &middot; accent</span>
+    <span class="swatch"><span class="dot" style="background:#16a34a"></span>good</span>
+    <span class="swatch"><span class="dot" style="background:#d97706"></span>warn</span>
+    <span class="swatch"><span class="dot" style="background:#dc2626"></span>critical</span>
+    <span class="swatch"><span class="dot" style="background:#2563eb"></span>info</span>
+  </div>
+</div>
+
+<div class="shell">
+  <aside class="rail">
+    <div class="rail-brand">
+      <div class="mark">CN</div>
+      <div><div class="name">CNC Woodcraft</div><div class="sub">Retail ERP</div></div>
+    </div>
+    <div class="rail-group">
+      <div class="rail-label">Operations</div>
+      <div class="rail-item active"><span class="dash"></span>Command center</div>
+      <div class="rail-item"><span class="dash"></span>Point of sale</div>
+      <div class="rail-item"><span class="dash"></span>Quotations</div>
+      <div class="rail-item"><span class="dash"></span>Sales invoices</div>
+      <div class="rail-item"><span class="dash"></span>Procurement</div>
+      <div class="rail-item"><span class="dash"></span>Expenses</div>
+    </div>
+    <div class="rail-group">
+      <div class="rail-label">Registries</div>
+      <div class="rail-item"><span class="dash"></span>Customers</div>
+      <div class="rail-item"><span class="dash"></span>Products</div>
+      <div class="rail-item"><span class="dash"></span>Warehouses</div>
+    </div>
+    <div class="rail-group">
+      <div class="rail-label">Governance</div>
+      <div class="rail-item"><span class="dash"></span>Reports</div>
+      <div class="rail-item"><span class="dash"></span>Settings</div>
+    </div>
+  </aside>
+
+  <div class="canvas">
+    <div class="topbar">
+      <span class="co">CNC Woodcraft &amp; Design</span>
+      <span class="env">Sandbox &middot; ZATCA enabled</span>
+      <span class="clock">30 Jul 2026 &middot; 07:12</span>
+    </div>
+
+    <div class="page">
+      <h2>Command center</h2>
+      <div class="kpi-row">
+        <div class="kpi"><div class="label">Gross month sales</div><div class="value">SAR 5,185.25</div><div class="delta">Incl. VAT</div></div>
+        <div class="kpi"><div class="label">Cash received</div><div class="value">SAR 1,535.25</div></div>
+        <div class="kpi"><div class="label">Cash in bank</div><div class="value accent">SAR 19,035.25</div></div>
+        <div class="kpi"><div class="label">Pending collections</div><div class="value">SAR 3,362.50</div></div>
+      </div>
+      <div class="split">
+        <div class="card">
+          <h3>Sales vs. expenses &mdash; June</h3>
+          <div class="spark-chart">
+            <i style="height:30%"></i><i style="height:45%"></i><i style="height:38%" class="hi"></i><i style="height:60%"></i>
+            <i style="height:52%"></i><i style="height:70%" class="hi"></i><i style="height:64%"></i><i style="height:80%"></i>
+            <i style="height:58%"></i><i style="height:90%" class="hi"></i><i style="height:75%"></i><i style="height:100%" class="hi"></i>
+          </div>
+        </div>
+        <div class="card">
+          <h3>ZATCA activity</h3>
+          <div class="feed-row"><span class="feed-dot" style="background:var(--good)"></span>INV-1042 cleared &middot; 2m ago</div>
+          <div class="feed-row"><span class="feed-dot" style="background:var(--info)"></span>INV-1041 reported &middot; 14m ago</div>
+          <div class="feed-row"><span class="feed-dot" style="background:var(--crit)"></span>INV-1039 rejected &middot; 1h ago</div>
+          <div class="feed-row"><span class="feed-dot" style="background:var(--ink-600)"></span>Co. 2 &mdash; ZATCA disabled</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="page" style="border-top: 1px solid var(--paper-200);">
+      <h2>Sales invoices</h2>
+      <div class="toolbar">
+        <div class="search">&#128269; Search invoice #, customer, amount&hellip;</div>
+        <button class="btn-spark">+ New invoice</button>
+        <span class="freshness"><span class="dot"></span>Live &middot; updated 4s ago</span>
+      </div>
+      <table>
+        <thead><tr><th>Invoice</th><th>Customer</th><th>Type</th><th style="text-align:right">Total</th><th>Payment</th><th>ZATCA</th><th></th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="doc-no">INV-1001</span><span class="doc-sub">28 Jul 2026</span></td>
+            <td>Al Faisal Contracting LLC</td>
+            <td><span class="pill neutral">B2B Standard</span></td>
+            <td class="num">4,500.00</td>
+            <td><span class="pill warn">Unpaid</span></td>
+            <td><span class="pill good">Cleared</span></td>
+            <td><div class="row-actions"><span class="icon-btn">&#128424;</span><span class="icon-btn">$</span></div></td>
+          </tr>
+          <tr>
+            <td><span class="doc-no">CN-0004</span><span class="doc-sub">28 Jul 2026 &middot; Ref INV-0998</span></td>
+            <td>Sara Al-Qahtani</td>
+            <td><span class="pill warn">Credit note</span></td>
+            <td class="num">230.00</td>
+            <td><span class="pill neutral">Unpaid</span></td>
+            <td><span class="pill info">Reported</span></td>
+            <td><div class="row-actions"><span class="icon-btn">&#128424;</span></div></td>
+          </tr>
+          <tr>
+            <td><span class="doc-no">INV-1003</span><span class="doc-sub">27 Jul 2026</span></td>
+            <td>Sara Al-Qahtani</td>
+            <td><span class="pill neutral">B2C Simplified</span></td>
+            <td class="num">575.00</td>
+            <td><span class="pill good">Paid</span></td>
+            <td><span class="pill info">Reported</span></td>
+            <td><div class="row-actions"><span class="icon-btn">&#128424;</span></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<p class="footer-note"><b>What changed from revision 1:</b> the whole neutral scale moved from warm graphite to crisp near-white/near-black; the accent moved from a desaturated burnt copper to a saturated warm red-orange with real presence; every semantic status color got brighter and punchier. Structure (grouped sidebar, instrument-style KPI tiles, inline Credit Notes) is unchanged from revision 1 &mdash; that part wasn't the complaint. Tell me if the accent itself should shift (e.g. toward a retail-green or a blue) or if this vibrancy level is the right target.</p>

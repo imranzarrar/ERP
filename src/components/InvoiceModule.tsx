@@ -1,9 +1,10 @@
 import React from 'react';
 import { useTranslation } from '../hooks';
 // from 'react';
-import { DatabaseState, saveDatabase, getActiveOpenMonth, saveInvoice, markInvoicePaid, cancelInvoice, calculateInvoiceTotals } from '../dbStore';
+import { DatabaseState, saveDatabase, getActiveOpenMonth, markInvoicePaid, calculateInvoiceTotals } from '../dbStore';
 import { generateId } from '../id';
 import { Invoice, InvoiceItem, Customer, TaxSlab, BankAccount, User, normalizePermissions } from '../types';
+import StatusPill, { StatusPillTone } from './StatusPill';
 import {
   FileText,
   Plus,
@@ -69,6 +70,7 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  const [filterEndDate, setFilterEndDate] = React.useState<string>("");
  const [filterStatus, setFilterStatus] = React.useState<'All' | 'Unpaid'>('All');
  const [filterZatcaStatus, setFilterZatcaStatus] = React.useState<string>('All');
+ const [filterDocType, setFilterDocType] = React.useState<'All' | 'Invoice' | 'CreditNote' | 'DebitNote'>('All');
  const [zatcaModalInvoice, setZatcaModalInvoice] = React.useState<Invoice | null>(null);
  const [isSubmittingZatca, setIsSubmittingZatca] = React.useState<boolean>(false);
 
@@ -93,9 +95,17 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
         if (filterZatcaStatus === 'NOT_SUBMITTED' && zStatus !== 'NOT_SUBMITTED') return false;
       }
 
+      // Document Type Filter (Invoice / Credit Note / Debit Note) — these all live in
+      // the same table (see BACKLOG.md item 32), previously indistinguishable in this
+      // list except by reading the invoice number prefix.
+      if (filterDocType !== 'All') {
+        const docType = inv.documentType || 'Invoice';
+        if (docType !== filterDocType) return false;
+      }
+
       return isAdmin || userPermissions.invoice.view.enabled || (currentUser?.id ? inv.createdById === currentUser.id : false);
     });
-  }, [db.invoices, db.selectedCompanyId, filterStartDate, filterEndDate, filterStatus, filterZatcaStatus, isAdmin, currentUser]);
+  }, [db.invoices, db.selectedCompanyId, filterStartDate, filterEndDate, filterStatus, filterZatcaStatus, filterDocType, isAdmin, currentUser]);
 
  // Reset page when length changes
  React.useEffect(() => {
@@ -162,6 +172,7 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  // View state — fixed for the lifetime of this mount by which page (mode) rendered it.
  const [viewAttachment, setViewAttachment] = React.useState<string | null>(null);
  const [view] = React.useState<'list' | 'create'>(mode === 'add' ? 'create' : 'list');
+ const [isSavingInvoice, setIsSavingInvoice] = React.useState(false);
 
  // Form states
  const [formDate, setFormDate] = React.useState('');
@@ -187,6 +198,60 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  bankId: '',
  amount: ''
  });
+
+ // Credit/Debit Note modal — creates a new ZATCA document referencing an existing
+ // invoice (full-document reversal only; see server/routes/transactions.ts's
+ // POST /invoices/:id/note for the MVP scope note).
+ const [noteInvoice, setNoteInvoice] = React.useState<Invoice | null>(null);
+ const [noteForm, setNoteForm] = React.useState<{ type: 'CreditNote' | 'DebitNote'; reason: string }>({ type: 'CreditNote', reason: '' });
+ const [isSavingNote, setIsSavingNote] = React.useState(false);
+ // Local to the modal, not the page-level success/error banners — this modal is a
+ // `fixed inset-0` full-screen overlay, so a banner rendered in the page behind it is
+ // completely covered regardless of z-index (fixed-position elements establish their
+ // own stacking context above normal in-flow content). Confirmed live: a real create
+ // failure produced zero visible feedback and left the modal open with no way to tell
+ // what happened except clicking Cancel.
+ const [noteError, setNoteError] = React.useState<string | null>(null);
+
+ const handleCreateNote = async (e: React.FormEvent) => {
+ e.preventDefault();
+ if (!noteInvoice) return;
+ setIsSavingNote(true);
+ setNoteError(null);
+ try {
+ const res = await fetch(`/api/transactions/invoices/${noteInvoice.id}/note?companyId=${db.selectedCompanyId}`, {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ type: noteForm.type, reason: noteForm.reason }),
+ });
+ const result = await res.json();
+ if (!res.ok || result.error) {
+ throw new Error(result.error || 'Failed to create the note.');
+ }
+ const refreshed = await fetch('/api/state').then(r => r.json()).catch(() => null);
+ if (!refreshed) {
+ throw new Error('Note created, but the workspace could not be refreshed. Please reload the page.');
+ }
+ onUpdateDb(refreshed);
+ const newNote = refreshed.invoices?.find((i: Invoice) => i.id === result.noteId);
+ const noteLabel = noteForm.type === 'CreditNote' ? 'Credit' : 'Debit';
+ triggerSuccess(`${noteLabel} Note ${newNote?.invoiceNumber || ''} created against ${noteInvoice.invoiceNumber}.`);
+ setNoteInvoice(null);
+ setNoteForm({ type: 'CreditNote', reason: '' });
+ // Immediately open the new document's print/preview so its creation is visibly
+ // confirmed, matching the same pattern handleSaveInvoice already uses — otherwise
+ // the only way to see it succeeded is to spot the new row in the list yourself.
+ if (newNote) {
+ const cust = refreshed.customers?.find((c: Customer) => c.id === newNote.customerId);
+ const bank = refreshed.banks?.find((b: BankAccount) => b.id === newNote.bankId);
+ onPrintDoc('Invoice', { ...newNote, customerData: cust, bankData: bank });
+ }
+ } catch (err: any) {
+ setNoteError(err.message || 'Failed to create the note.');
+ } finally {
+ setIsSavingNote(false);
+ }
+ };
 
  const salesProducts = React.useMemo(() => {
    return (db.products || []).filter(p => {
@@ -235,7 +300,7 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  };
 
  // Submit Save
- const handleSaveInvoice = (e: React.FormEvent) => {
+ const handleSaveInvoice = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!isAdmin && !userPermissions.invoice.create.enabled) {
  return triggerError('You do not have permission to issue sales invoices.');
@@ -255,9 +320,12 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  taxSlabId: item.taxSlabId || formTaxSlabId
  }));
 
- const invData = {
+ const resolvedCustomerId = formCustomerId || db.customers.find(c => c.isSystem && (c.companyId === db.selectedCompanyId || !c.companyId))?.id || db.customers.find(c => c.companyId === db.selectedCompanyId || !c.companyId)?.id || db.customers[0]?.id || '';
+ const totals = calculateInvoiceTotals(db, cleanItems, formTaxSlabId, formDiscountPercentage);
+
+ const invoiceData = {
  date: formDate,
- customerId: formCustomerId || db.customers.find(c => c.isSystem && (c.companyId === db.selectedCompanyId || !c.companyId))?.id || db.customers.find(c => c.companyId === db.selectedCompanyId || !c.companyId)?.id || db.customers[0]?.id || '',
+ customerId: resolvedCustomerId,
  taxSlabId: formTaxSlabId,
  bankId: formBankId,
  paymentStatus: formPaymentStatus,
@@ -267,41 +335,73 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  originQuotationId: null,
  items: cleanItems,
  discountPercentage: formDiscountPercentage,
- attachmentUrl: formAttachmentUrl
+ attachmentUrl: formAttachmentUrl,
+ amountPaid: formPaymentStatus === 'Paid' ? totals.grandTotal : 0
  };
 
- const result = saveInvoice(db, invData);
- if (result.error) {
- triggerError(result.error);
- return;
- }
+ // Bring Invoice save up to the same standard QuotationModule's handleSaveQuotation
+ // already uses: await the real dedicated save endpoint, check the response is
+ // actually ok, and only THEN reflect success/open the print preview — instead of
+ // mutating local state and showing success before any request to the server had
+ // even been made.
+ setIsSavingInvoice(true);
+ try {
+   const response = await fetch(`/api/transactions/invoices?companyId=${db.selectedCompanyId}`, {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify({ invoiceData })
+   });
 
- onUpdateDb(result.db);
- const newInv = result.newInvoice;
+   if (!response.ok) {
+     const errData = await response.json().catch(() => ({}));
+     throw new Error(errData.error || 'Failed to save invoice.');
+   }
 
- if (newInv?.id) {
-   // Finalized creation flow: go straight to the invoice's print/preview overlay
-   // (the same DocumentRenderer every other Print button uses) instead of forcing
-   // the ZATCA details modal open. ZATCA submission runs in the background — its
-   // result lands in `db` via onUpdateDb and is checkable any time from the List
-   // page's existing "ZATCA" row button; it does not block or reopen this preview.
-   const cust = db.customers.find(c => c.id === newInv.customerId);
-   const bank = db.banks.find(b => b.id === newInv.bankId);
-   onPrintDoc('Invoice', { ...newInv, customerData: cust, bankData: bank });
+   const result = await response.json();
+
+   // The dedicated endpoint is the source of truth for the generated invoice number,
+   // computed totals, and items — refresh from it rather than trusting local echo.
+   const refreshed = await fetch('/api/state').then(r => r.json()).catch(() => null);
+   if (!refreshed) {
+     throw new Error('Invoice saved, but the workspace could not be refreshed. Please reload the page.');
+   }
+   onUpdateDb(refreshed);
+
+   const newInv = refreshed.invoices?.find((i: Invoice) => i.id === result.invoiceId);
+   triggerSuccess(`Invoice ${newInv?.invoiceNumber || ''} issued successfully.`);
+
+   if (newInv) {
+     // Finalized creation flow: go straight to the invoice's print/preview overlay
+     // (the same DocumentRenderer every other Print button uses) instead of forcing
+     // the ZATCA details modal open. The dedicated save endpoint above already
+     // auto-triggers ZATCA clearance/reporting server-side (fire-and-forget) — poll
+     // once, shortly after, so a rejection is surfaced here too instead of only
+     // being discoverable by reopening the invoice's ZATCA modal later.
+     const cust = refreshed.customers?.find((c: Customer) => c.id === newInv.customerId) || db.customers.find(c => c.id === newInv.customerId);
+     const bank = refreshed.banks?.find((b: BankAccount) => b.id === newInv.bankId) || db.banks.find(b => b.id === newInv.bankId);
+     onPrintDoc('Invoice', { ...newInv, customerData: cust, bankData: bank });
+
+     setTimeout(() => {
+       fetch('/api/state').then(r => r.json()).then(latest => {
+         if (!latest?.invoices) return;
+         onUpdateDb(latest);
+         const latestInv = latest.invoices.find((i: Invoice) => i.id === newInv.id);
+         const zStatus = latestInv?.zatcaStatus;
+         if (zStatus === 'REJECTED' || zStatus === 'ERROR') {
+           const firstIssue = Array.isArray(latestInv?.zatcaValidationResults) && latestInv.zatcaValidationResults[0]?.message;
+           triggerError(`ZATCA ${zStatus === 'REJECTED' ? 'rejected' : 'failed to process'} invoice ${latestInv.invoiceNumber}${firstIssue ? ': ' + firstIssue : '.'}`);
+         } else if (zStatus === 'CLEARED' || zStatus === 'REPORTED') {
+           triggerSuccess(`Invoice ${latestInv.invoiceNumber} ${zStatus === 'CLEARED' ? 'cleared' : 'reported'} by ZATCA.`);
+         }
+       }).catch(err => console.error('ZATCA status check error:', err));
+     }, 2500);
+   }
+
    onDone();
-
-   fetch(`/api/zatca/submit-invoice/${newInv.id}`, { method: 'POST' })
-     .then(async () => {
-       const refreshed = await fetch('/api/state').then(r => r.json()).catch(() => null);
-       if (refreshed && refreshed.invoices) {
-         onUpdateDb(refreshed);
-       }
-     })
-     .catch(err => {
-       console.error('ZATCA Auto Submit Error:', err);
-     });
- } else {
-   onDone();
+ } catch (err: any) {
+   triggerError(err.message || 'Failed to save invoice.');
+ } finally {
+   setIsSavingInvoice(false);
  }
  };
 
@@ -341,16 +441,25 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  };
 
  // Cancel invoice
- const handleCancelInvoice = (invId: string) => {
+ const handleCancelInvoice = async (invId: string) => {
  const canCancel = isAdmin || userPermissions.cancel.access.enabled;
  if (!canCancel) return triggerError('You do not have cancellation permission.');
 
- const result = cancelInvoice(db, invId);
- if (result.error) {
- triggerError(result.error);
- } else {
- triggerSuccess('Invoice cancelled successfully. Reverse receipt vouchers posted.');
- onUpdateDb(result.db);
+ try {
+   const res = await fetch(`/api/transactions/invoices/${invId}/cancel`, {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+   });
+   const data = await res.json();
+   if (!res.ok || data.error) {
+     triggerError(data.error || 'Failed to cancel invoice.');
+   } else {
+     const refreshed = await fetch('/api/state').then(r => r.json()).catch(() => null);
+     if (refreshed) onUpdateDb(refreshed);
+     triggerSuccess('Invoice cancelled successfully. Reverse receipt vouchers posted.');
+   }
+ } catch (err: any) {
+   triggerError(err.message || 'Error cancelling invoice.');
  }
  };
 
@@ -624,6 +733,19 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  <option value="NOT_SUBMITTED">⚪ Not Submitted</option>
  </select>
  </div>
+ <div className="flex items-center gap-2">
+ <label className="text-[10px] font-bold text-slate-500 uppercase">{t("Document Type:")}</label>
+ <select
+ value={filterDocType}
+ onChange={(e) => setFilterDocType(e.target.value as any)}
+ className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none font-semibold text-slate-700"
+ >
+ <option value="All">{t("All Document Types")}</option>
+ <option value="Invoice">{t("Invoices Only")}</option>
+ <option value="CreditNote">{t("Credit Notes Only")}</option>
+ <option value="DebitNote">{t("Debit Notes Only")}</option>
+ </select>
+ </div>
  <div className="flex items-center gap-2 ms-auto">
  <label className="text-[10px] font-bold text-slate-500 uppercase">{t("Status:")}</label>
  <select 
@@ -642,6 +764,7 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  <thead>
  <tr className="bg-slate-50/50 border-b border-slate-100 text-slate-500 uppercase tracking-wider text-[10px]">
  {renderSortableHeader(t('Invoice No'), 'invoiceNumber')}
+ <th className="p-3 text-center">{t('Type')}</th>
  {renderSortableHeader(t('Date'), 'date')}
  {renderSortableHeader(t('Customer'), 'customer')}
  {renderSortableHeader(t('Post Bank'), 'bank')}
@@ -664,7 +787,9 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  const cust = db.customers.find(c => c.id === inv.customerId);
  const bank = db.banks.find(b => b.id === inv.bankId);
  const isPending = (inv.paymentStatus === 'Unpaid' || inv.paymentStatus === 'Partially Paid') && inv.status === 'Active';
- const canCancel = (isAdmin || userPermissions.cancel.access.enabled) && inv.status === 'Active';
+ const zatcaBlocksCancel = !!inv.zatcaStatus && ['SUBMITTING', 'CLEARED', 'REPORTED'].includes(inv.zatcaStatus);
+ const showCancelButton = (isAdmin || userPermissions.cancel.access.enabled) && inv.status === 'Active';
+ const canCancel = showCancelButton && !zatcaBlocksCancel;
  const totalAmt = getInvoiceTotal(inv);
  const paidAmt = inv.amountPaid || 0;
  const remainingAmt = Number((totalAmt - paidAmt).toFixed(2));
@@ -706,6 +831,17 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  return null;
  })()}
  </td>
+ <td className="p-3 text-center">
+ <StatusPill tone={inv.documentType === 'CreditNote' ? 'warn' : inv.documentType === 'DebitNote' ? 'info' : 'neutral'}>
+ {inv.documentType === 'CreditNote' ? 'Credit Note' : inv.documentType === 'DebitNote' ? 'Debit Note' : 'Invoice'}
+ </StatusPill>
+ {inv.originalInvoiceId && (() => {
+ const original = db.invoices.find(o => o.id === inv.originalInvoiceId);
+ return original ? (
+ <div className="text-[9px] text-slate-400 font-mono mt-0.5 whitespace-nowrap">Ref: {original.invoiceNumber}</div>
+ ) : null;
+ })()}
+ </td>
  <td className="p-3 text-slate-600">{inv.date}</td>
  <td className="p-3 font-semibold text-slate-700">{cust?.name || 'Walk-in'}</td>
  <td className="p-3 text-slate-500 font-medium">{bank?.bankName || 'Default'}</td>
@@ -716,21 +852,13 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  )}
  </td>
  <td className="p-3 text-center">
- <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
- inv.status === 'Active' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
- }`}>
- {inv.status}
- </span>
+ <StatusPill tone={inv.status === 'Active' ? 'good' : 'critical'}>{inv.status}</StatusPill>
  </td>
  <td className="p-3 text-center">
  <div className="flex flex-col items-center gap-0.5">
- <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
- inv.paymentStatus === 'Paid' ? 'bg-emerald-100 text-emerald-800' :
- inv.paymentStatus === 'Partially Paid' ? 'bg-indigo-100 text-indigo-800 font-bold' :
- 'bg-amber-100 text-amber-800'
- }`}>
+ <StatusPill tone={inv.paymentStatus === 'Paid' ? 'good' : inv.paymentStatus === 'Partially Paid' ? 'info' : 'warn'}>
  {inv.paymentStatus}
- </span>
+ </StatusPill>
  {(inv.paymentStatus === 'Partially Paid' || inv.paymentStatus === 'Unpaid') && (
  <span className="text-[9px] font-mono text-slate-400 font-semibold">
  {t("Paid:")} {paidAmt.toFixed(2)} / {t("Due:")} {remainingAmt.toFixed(2)}
@@ -741,22 +869,23 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  <td className="p-3 text-center">
    {(() => {
      const zStatus = inv.zatcaStatus || 'NOT_SUBMITTED';
+     const zTone: StatusPillTone =
+       zStatus === 'CLEARED' ? 'good' :
+       zStatus === 'REPORTED' ? 'info' :
+       zStatus === 'PENDING' || zStatus === 'SUBMITTING' ? 'warn' :
+       zStatus === 'REJECTED' || zStatus === 'ERROR' ? 'critical' :
+       zStatus === 'DISABLED' ? 'warn' :
+       'neutral';
      return (
        <button
          onClick={() => setZatcaModalInvoice(inv)}
          className="inline-flex items-center gap-1 cursor-pointer group"
-         title="View ZATCA Phase 2 Details & QR"
+         title={zStatus === 'DISABLED' ? 'ZATCA integration is not enabled for this company yet' : 'View ZATCA Phase 2 Details & QR'}
        >
-         <span className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase inline-flex items-center gap-1 border ${
-           zStatus === 'CLEARED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-           zStatus === 'REPORTED' ? 'bg-sky-50 text-sky-700 border-sky-200' :
-           zStatus === 'PENDING' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-           zStatus === 'REJECTED' || zStatus === 'ERROR' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-           'bg-slate-100 text-slate-600 border-slate-200'
-         }`}>
+         <StatusPill tone={zTone}>
            <ShieldCheck className="w-2.5 h-2.5" />
            {zStatus}
-         </span>
+         </StatusPill>
        </button>
      );
    })()}
@@ -791,18 +920,31 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  </button>
  )}
 
- {canCancel && (
+ {showCancelButton && (
  <button
  onClick={() => {
+ if (!canCancel) return;
  if (window.confirm('⚠️ Are you sure you want to CANCEL this sales invoice? This action will void the invoice and post a reversal receipt voucher. It cannot be undone!')) {
  handleCancelInvoice(inv.id);
  }
  }}
- className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 transition cursor-pointer inline-flex items-center gap-1 text-[11px] font-bold"
- title="Cancel Invoice"
+ disabled={!canCancel}
+ className={`p-1.5 rounded-lg transition inline-flex items-center gap-1 text-[11px] font-bold ${canCancel ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+ title={canCancel ? 'Cancel Invoice' : 'This invoice has already been submitted to ZATCA and cannot be cancelled. Issue a Credit/Debit Note instead.'}
  >
  <AlertTriangle className="w-3.5 h-3.5" />
  <span>Cancel</span>
+ </button>
+ )}
+
+ {(!inv.documentType || inv.documentType === 'Invoice') && (
+ <button
+ onClick={() => { setNoteInvoice(inv); setNoteForm({ type: 'CreditNote', reason: '' }); setNoteError(null); }}
+ className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 transition cursor-pointer inline-flex items-center gap-1 text-[11px] font-bold"
+ title="Create Credit/Debit Note"
+ >
+ <FileText className="w-3.5 h-3.5" />
+ <span>Credit/Debit</span>
  </button>
  )}
  </div>
@@ -1221,15 +1363,18 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  <button
  type="button"
  onClick={onDone}
- className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-semibold text-xs"
+ disabled={isSavingInvoice}
+ className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-semibold text-xs disabled:opacity-50"
  >
  Cancel
  </button>
  <button
  type="submit"
- className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-5 py-2 font-bold text-xs shadow-sm"
+ disabled={isSavingInvoice}
+ className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-5 py-2 font-bold text-xs shadow-sm disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
  >
- Confirm & Issue Invoice
+ <RefreshCw className={`w-3.5 h-3.5 ${isSavingInvoice ? 'animate-spin' : 'hidden'}`} />
+ {isSavingInvoice ? 'Saving...' : 'Confirm & Issue Invoice'}
  </button>
  </div>
  </form>
@@ -1321,6 +1466,66 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  </div>
  )}
 
+ {/* CREDIT/DEBIT NOTE MODAL */}
+ {noteInvoice && (
+ <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex justify-center items-center p-4 overflow-y-auto">
+ <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl p-6 w-full max-w-sm my-auto animate-in fade-in zoom-in-95 duration-100 text-xs text-slate-600">
+ <h3 className="font-bold text-sm text-slate-900 mb-1 flex items-center gap-1">
+ <FileText className="w-5 h-5 text-amber-600" />
+ {t('Create Credit/Debit Note')}
+ </h3>
+ <p className="mb-4">Full-document reversal referencing invoice {noteInvoice.invoiceNumber}. This creates a new, separately-signed ZATCA document — the original invoice is not modified.</p>
+
+ {noteError && (
+ <div className="bg-rose-50 text-rose-700 p-2.5 px-3 mb-4 text-xs font-semibold rounded-xl border border-rose-100 flex items-start gap-2">
+ <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+ <span>{noteError}</span>
+ </div>
+ )}
+
+ <form onSubmit={handleCreateNote} className="space-y-4">
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase">Note Type</label>
+ {/* Debit Note temporarily disabled per product decision — only Credit Note can be
+     created right now. noteForm.type stays fixed at its 'CreditNote' default. */}
+ <div className="w-full py-1.5 rounded-xl font-bold text-xs border bg-amber-600 text-white border-amber-600 text-center">
+ Credit Note
+ </div>
+ </div>
+
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase">Reason</label>
+ <textarea
+ value={noteForm.reason}
+ onChange={(e) => setNoteForm({ ...noteForm, reason: e.target.value })}
+ placeholder={noteForm.type === 'CreditNote' ? 'e.g. Goods returned by customer' : 'e.g. Additional charges agreed after original invoice'}
+ className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800"
+ rows={2}
+ />
+ </div>
+
+ <div className="flex justify-end gap-2.5 pt-2">
+ <button
+ type="button"
+ onClick={() => setNoteInvoice(null)}
+ disabled={isSavingNote}
+ className="px-3 py-1.5 bg-slate-100 text-slate-500 rounded-lg font-semibold hover:bg-slate-200 disabled:opacity-50"
+ >
+ Cancel
+ </button>
+ <button
+ type="submit"
+ disabled={isSavingNote}
+ className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg shadow-sm disabled:opacity-60"
+ >
+ {isSavingNote ? 'Saving...' : `Create ${noteForm.type === 'CreditNote' ? 'Credit' : 'Debit'} Note`}
+ </button>
+ </div>
+ </form>
+ </div>
+ </div>
+ )}
+
  {/* ATTACHMENT MODAL */}
  {viewAttachment && (
  <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
@@ -1378,29 +1583,37 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
            <div>
              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">ZATCA Clearance Status</div>
              <div className="mt-1 flex items-center gap-2">
-               <span className={`px-2.5 py-1 rounded-full text-xs font-extrabold uppercase border ${
-                 zatcaModalInvoice.zatcaStatus === 'CLEARED' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
-                 zatcaModalInvoice.zatcaStatus === 'REPORTED' ? 'bg-sky-100 text-sky-800 border-sky-300' :
-                 zatcaModalInvoice.zatcaStatus === 'PENDING' ? 'bg-amber-100 text-amber-800 border-amber-300' :
-                 'bg-rose-100 text-rose-800 border-rose-300'
-               }`}>
+               <StatusPill tone={
+                 zatcaModalInvoice.zatcaStatus === 'CLEARED' ? 'good' :
+                 zatcaModalInvoice.zatcaStatus === 'REPORTED' ? 'info' :
+                 zatcaModalInvoice.zatcaStatus === 'PENDING' || zatcaModalInvoice.zatcaStatus === 'SUBMITTING' ? 'warn' :
+                 zatcaModalInvoice.zatcaStatus === 'REJECTED' || zatcaModalInvoice.zatcaStatus === 'ERROR' ? 'critical' :
+                 zatcaModalInvoice.zatcaStatus === 'DISABLED' ? 'warn' :
+                 'neutral'
+               } className="!text-xs !px-2.5 !py-1">
                  {zatcaModalInvoice.zatcaStatus || 'NOT_SUBMITTED'}
-               </span>
+               </StatusPill>
                {zatcaModalInvoice.clearanceTimestamp && (
                  <span className="text-[10px] text-slate-500">
                    Timestamp: {new Date(zatcaModalInvoice.clearanceTimestamp).toLocaleString()}
                  </span>
                )}
              </div>
+             {zatcaModalInvoice.zatcaStatus === 'DISABLED' && (
+               <p className="text-[10px] text-slate-500 mt-1.5 max-w-xs">
+                 ZATCA integration is not enabled for this company yet. Ask a Super Admin to enable it in Admin Settings, or complete Sandbox onboarding to enable it automatically.
+               </p>
+             )}
            </div>
 
            <button
              onClick={() => handleManualZatcaSubmit(zatcaModalInvoice.id)}
-             disabled={isSubmittingZatca}
+             disabled={isSubmittingZatca || zatcaModalInvoice.zatcaStatus === 'DISABLED'}
+             title={zatcaModalInvoice.zatcaStatus === 'DISABLED' ? 'ZATCA integration is not enabled for this company yet' : undefined}
              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
            >
              <RefreshCw className={`w-3.5 h-3.5 ${isSubmittingZatca ? 'animate-spin' : ''}`} />
-             {isSubmittingZatca ? 'Submitting to ZATCA...' : 'Submit / Re-submit to ZATCA'}
+             {isSubmittingZatca ? 'Submitting to ZATCA...' : zatcaModalInvoice.zatcaStatus === 'DISABLED' ? 'ZATCA Not Enabled' : 'Submit / Re-submit to ZATCA'}
            </button>
          </div>
 

@@ -324,6 +324,10 @@ export interface CompanySetup {
   // per-environment in zatcaEnvironmentConfigs (src/db/schema.ts) — never on this
   // company-level type, since Sandbox/Simulation/Production each need their own.
   zatcaEnvironment?: 'sandbox' | 'simulation' | 'production';
+  // Master on/off switch — when false, invoices never attempt ZATCA submission
+  // regardless of environment. Defaults false for new companies; auto-enabled when
+  // the active environment finishes onboarding, or toggled manually by a Super Admin.
+  zatcaEnabled?: boolean;
 }
 
 export interface DocumentTemplate {
@@ -500,7 +504,7 @@ export interface Invoice {
   isPosSale?: boolean;
   shiftId?: string;
   attachmentUrl?: string;
-  zatcaStatus?: 'NOT_SUBMITTED' | 'PENDING' | 'CLEARED' | 'REPORTED' | 'REJECTED' | 'ERROR';
+  zatcaStatus?: 'NOT_SUBMITTED' | 'PENDING' | 'SUBMITTING' | 'DISABLED' | 'CLEARED' | 'REPORTED' | 'REJECTED' | 'ERROR';
   uuid?: string;
   icv?: number;
   currentInvoiceHash?: string;
@@ -509,6 +513,11 @@ export interface Invoice {
   xmlContent?: string;
   clearanceTimestamp?: string;
   zatcaValidationResults?: any[];
+  // Credit/Debit Note support — same table as regular invoices (see schema.ts and
+  // server/routes/transactions.ts's POST /invoices/:id/note).
+  documentType?: 'Invoice' | 'CreditNote' | 'DebitNote';
+  originalInvoiceId?: string | null;
+  creditNoteReason?: string | null;
 }
 
 export interface ExpenseItem {

@@ -636,8 +636,24 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  };
 
  const handleForcePushToCloud = async () => {
+ // Previously a no-op: this unconditionally showed a success toast with no fetch call
+ // at all, so an admin clicking "Force Publish" to recover from a suspected sync issue
+ // was told it worked regardless of what actually happened (nothing). Now genuinely
+ // pushes the current in-memory db to the same /api/migrate endpoint every other write
+ // in the app uses, and only reports success on a real 2xx response.
  try {
-  triggerSuccess('Successfully published local database to Cloud!');
+ const res = await fetch('/api/migrate', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify(db),
+ });
+ if (!res.ok) {
+ const body = await res.json().catch(() => ({}));
+ triggerError(body.error || `Failed to publish to cloud (server returned ${res.status}).`);
+ return;
+ }
+ triggerSuccess('Successfully published local database to Cloud!');
+ if (onRefreshDb) await onRefreshDb();
  } catch (err: any) {
  triggerError('Failed to publish to cloud: ' + err.message);
  }
@@ -1010,6 +1026,24 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
    onUpdateDb(updatedDb);
    triggerSuccess(`Successfully ${enabled ? 'enabled' : 'disabled'} Inventory & Procurement Module for organization.`);
+ };
+
+ // Master on/off switch for ZATCA Phase 2 submission — Super-Admin manual override,
+ // for cases like temporarily pausing ZATCA during a data migration. Auto-enabled
+ // separately by the server once a company's Sandbox onboarding completes
+ // (server/routes/zatca.ts request-production-csid).
+ const handleToggleZatcaEnabled = (companyId: string, enabled: boolean) => {
+   const updatedCompanies = (db.companies || []).map(c =>
+     c.id === companyId ? { ...c, zatcaEnabled: enabled } : c
+   );
+
+   let updatedCompanySetup = db.companySetup;
+   if (db.selectedCompanyId === companyId) {
+     updatedCompanySetup = { ...db.companySetup, zatcaEnabled: enabled };
+   }
+
+   onUpdateDb({ ...db, companies: updatedCompanies, companySetup: updatedCompanySetup });
+   triggerSuccess(`Successfully ${enabled ? 'enabled' : 'disabled'} ZATCA integration for organization.`);
  };
 
  // ----------------------------------------
@@ -1524,7 +1558,12 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  try {
  const m = result.db.months.find((x: any) => x.id === `${monthForm.year}-${monthForm.month}`);
  if (m) {
- await fetch(`/api/transactions/months?companyId=${db.selectedCompanyId}`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(m) });
+ const res = await fetch(`/api/transactions/months?companyId=${db.selectedCompanyId}`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(m) });
+ if (!res.ok) {
+ const body = await res.json().catch(() => ({}));
+ triggerError(body.error || 'Failed to open fiscal month — the server rejected this request.');
+ return;
+ }
  }
  triggerSuccess(`Fiscal Month "${monthForm.year}-${monthForm.month}" opened successfully.`);
  onUpdateDb(result.db);
@@ -1557,14 +1596,21 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  try {
  const m = result.db.months.find((x: any) => x.id === isClosingMonth.id);
  if (m) {
- await fetch(`/api/transactions/months?companyId=${db.selectedCompanyId}`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(m) });
+ // This action tells the admin the month is "permanently closed and locked" — a
+ // rejected server write must never be reported as that permanent an outcome.
+ const res = await fetch(`/api/transactions/months?companyId=${db.selectedCompanyId}`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(m) });
+ if (!res.ok) {
+ const body = await res.json().catch(() => ({}));
+ triggerError(body.error || 'Failed to close fiscal month — the server rejected this request. The month has NOT been closed.');
+ return;
+ }
  }
  triggerSuccess(`Fiscal Month "${isClosingMonth.id}" has been permanently closed and locked.`);
  setIsClosingMonth(null);
  onUpdateDb(result.db);
  await fetchMonths();
  } catch (err) {
- triggerError('Failed to update closed month in database.');
+ triggerError('Failed to update closed month in database. The month has NOT been closed.');
  }
  }
  };
@@ -1694,7 +1740,14 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  }
  
  try {
- if (savedUser) await fetch('/api/users', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(savedUser) });
+ if (savedUser) {
+ const res = await fetch('/api/users', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(savedUser) });
+ if (!res.ok) {
+ const body = await res.json().catch(() => ({}));
+ triggerError(body.error || 'Failed to save user — the server rejected this change.');
+ return;
+ }
+ }
  onUpdateDb(updated);
  triggerSuccess('Account details updated successfully.');
  setEditingUser(null);
@@ -1716,7 +1769,12 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  };
  
  try {
- await fetch('/api/users', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(newUser) });
+ const res = await fetch('/api/users', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(newUser) });
+ if (!res.ok) {
+ const body = await res.json().catch(() => ({}));
+ triggerError(body.error || 'Failed to create user — the server rejected this request.');
+ return;
+ }
  const updated = { ...db, users: [...db.users, newUser as any] };
  onUpdateDb(updated);
  triggerSuccess('Account created successfully.');
@@ -1770,7 +1828,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  setConfirmDeleteUserId(userId);
  };
 
- const executeDeleteUser = () => {
+ const executeDeleteUser = async () => {
  if (!confirmDeleteUserId) return;
  const userToDelete = db.users.find(u => u.id === confirmDeleteUserId);
  if (!userToDelete) {
@@ -1778,10 +1836,27 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  return;
  }
 
+ // Previously fire-and-forget (`.catch(console.error)`, never awaited) — local state
+ // was updated and "deleted" success shown unconditionally, so a rejected server
+ // delete (403 cross-tenant, 500, etc.) left the user still existing server-side while
+ // the UI claimed it was gone.
+ try {
+ const res = await fetch(`/api/users/${confirmDeleteUserId}`, { method: 'DELETE' });
+ if (!res.ok) {
+ const body = await res.json().catch(() => ({}));
+ triggerError(body.error || 'Failed to delete user — the server rejected this request.');
+ setConfirmDeleteUserId(null);
+ return;
+ }
+ } catch (err) {
+ triggerError('Failed to delete user — check your connection and try again.');
+ setConfirmDeleteUserId(null);
+ return;
+ }
+
  const updatedUsers = db.users.map(u => u.id === confirmDeleteUserId ? { ...u, isDeleted: 1 } : u);
- fetch(`/api/users/${confirmDeleteUserId}`, { method: 'DELETE' }).catch(err => console.error(err));
  const updated = { ...db, users: updatedUsers };
- 
+
  onUpdateDb(updated);
  triggerSuccess(`User "${userToDelete.username}" has been deleted.`);
  setConfirmDeleteUserId(null);
@@ -2157,6 +2232,25 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
          checked={company.isInventoryModuleEnabled || false} 
          onChange={(e) => handleToggleCompanyInventory(company.id, e.target.checked)}
          className="sr-only peer" 
+       />
+       <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+     </label>
+   </div>
+ </div>
+ <div className="flex items-center justify-between border-t border-slate-100/50 pt-1.5 mt-1.5">
+   <span className="text-slate-400 flex items-center gap-1">
+     <span>🛡️</span> ZATCA Integration:
+   </span>
+   <div className="flex items-center gap-2">
+     <span className={`font-mono text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${company.zatcaEnabled ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+       {company.zatcaEnabled ? 'Enabled' : 'Disabled'}
+     </span>
+     <label className="relative inline-flex items-center cursor-pointer scale-75 origin-right">
+       <input
+         type="checkbox"
+         checked={company.zatcaEnabled || false}
+         onChange={(e) => handleToggleZatcaEnabled(company.id, e.target.checked)}
+         className="sr-only peer"
        />
        <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
      </label>

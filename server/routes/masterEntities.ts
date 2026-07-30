@@ -31,6 +31,14 @@ router.post('/customers', async (req: any, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const data = { ...req.body };
+
+    if (data.id) {
+      const [existing] = await db.select().from(schema.customers).where(eq(schema.customers.id, data.id));
+      if (!assertOwnsRow(existing, req)) {
+        return res.status(403).json({ error: 'Forbidden: this customer belongs to another company' });
+      }
+    }
+
     data.companyId = req.targetCompanyId;
 
     // Authoritative check — the client mirrors this, but a customer/vendor record
@@ -115,6 +123,14 @@ router.post('/vendors', async (req: any, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const data = { ...req.body };
+
+    if (data.id) {
+      const [existing] = await db.select().from(schema.vendors).where(eq(schema.vendors.id, data.id));
+      if (!assertOwnsRow(existing, req)) {
+        return res.status(403).json({ error: 'Forbidden: this vendor belongs to another company' });
+      }
+    }
+
     data.companyId = req.targetCompanyId;
 
     const fieldErrors = validateBuyerFields(data.buyerType, data);
@@ -187,6 +203,14 @@ router.post('/products', async (req: any, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const data = { ...req.body };
+
+    if (data.id) {
+      const [existing] = await db.select().from(schema.productsServices).where(eq(schema.productsServices.id, data.id));
+      if (!assertOwnsRow(existing, req)) {
+        return res.status(403).json({ error: 'Forbidden: this product belongs to another company' });
+      }
+    }
+
     data.companyId = req.targetCompanyId;
     await db.insert(schema.productsServices).values(data).onConflictDoUpdate({
       target: schema.productsServices.id,
@@ -382,6 +406,14 @@ router.post('/product-categories', async (req: any, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const data = { ...req.body };
+
+    if (data.id) {
+      const [existing] = await db.select().from(schema.productCategories).where(eq(schema.productCategories.id, data.id));
+      if (!assertOwnsRow(existing, req)) {
+        return res.status(403).json({ error: 'Forbidden: this category belongs to another company' });
+      }
+    }
+
     data.companyId = req.targetCompanyId;
     await db.insert(schema.productCategories).values(data).onConflictDoUpdate({
       target: schema.productCategories.id,
@@ -439,6 +471,14 @@ router.post('/units-of-measure', async (req: any, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const data = { ...req.body };
+
+    if (data.id) {
+      const [existing] = await db.select().from(schema.unitsOfMeasure).where(eq(schema.unitsOfMeasure.id, data.id));
+      if (!assertOwnsRow(existing, req)) {
+        return res.status(403).json({ error: 'Forbidden: this unit belongs to another company' });
+      }
+    }
+
     data.companyId = req.targetCompanyId;
     await db.insert(schema.unitsOfMeasure).values(data).onConflictDoUpdate({
       target: schema.unitsOfMeasure.id,
@@ -487,10 +527,17 @@ router.post('/warehouses', async (req: any, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const data = { ...req.body };
-    data.companyId = req.targetCompanyId;
-    if (!data.id) {
+
+    if (data.id) {
+      const [existing] = await db.select().from(schema.warehouses).where(eq(schema.warehouses.id, data.id));
+      if (!assertOwnsRow(existing, req)) {
+        return res.status(403).json({ error: 'Forbidden: this warehouse belongs to another company' });
+      }
+    } else {
       data.id = generateId();
     }
+
+    data.companyId = req.targetCompanyId;
     await db.insert(schema.warehouses).values(data).onConflictDoUpdate({
       target: schema.warehouses.id,
       set: data
@@ -556,13 +603,18 @@ router.post('/product-warehouses', async (req: any, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const data = { ...req.body };
-    data.companyId = req.targetCompanyId;
-    
-    // Ensure unique mapping ID or allow updates
-    if (!data.id) {
+
+    if (data.id) {
+      const [existing] = await db.select().from(schema.productWarehouses).where(eq(schema.productWarehouses.id, data.id));
+      if (!assertOwnsRow(existing, req)) {
+        return res.status(403).json({ error: 'Forbidden: this product-warehouse mapping belongs to another company' });
+      }
+    } else {
       data.id = generateId();
     }
-    
+
+    data.companyId = req.targetCompanyId;
+
     await db.insert(schema.productWarehouses).values(data).onConflictDoUpdate({
       target: schema.productWarehouses.id,
       set: data

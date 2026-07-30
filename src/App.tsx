@@ -1004,6 +1004,17 @@ type NavSection = {
  </div>
  </div>
 
+ {/* Background-sync failure banner — surfaces handleUpdateDb's cloudError, which
+ previously had no rendering anywhere: every optimistic write across the app
+ (Users, Bank Accounts, Tax Slabs, Recurring templates, POS, Inventory, etc.)
+ could silently fail to persist to Postgres with zero visible signal. */}
+ {cloudError && (
+ <div className="bg-rose-50 text-rose-700 p-3 px-6 text-xs font-semibold rounded-xl border border-rose-100 flex items-center gap-2 shrink-0">
+ <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+ <span>{cloudError}</span>
+ </div>
+ )}
+
  {/* COMPONENT ROUTER VIEWPORT */}
  <AnimatePresence mode="wait">
  <motion.div

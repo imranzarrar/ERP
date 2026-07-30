@@ -20,6 +20,7 @@ import transactionsRouter from './server/routes/transactions.js';
 import expensesRouter from './server/routes/expenses.js';
 import posRouter from './server/routes/pos.js';
 import zatcaRouter from './server/routes/zatca.js';
+import inventoryRouter from './server/routes/inventory.js';
 
 // A user's effective permissions come from every Role assigned to them (see the
 // `userRoles` junction table in src/db/schema.ts), not a per-user column — this is the
@@ -509,6 +510,7 @@ async function startServer() {
   app.use('/api/expenses', expensesRouter);
   app.use('/api/pos', posRouter);
   app.use('/api/zatca', zatcaRouter);
+  app.use('/api/inventory', inventoryRouter);
 
   // Protected Routes
   app.get("/api/companies", async (req: any, res: any) => {
@@ -735,7 +737,13 @@ async function startServer() {
         goodsReceiptNotes: isSuper ? state.goodsReceiptNotes : (state.goodsReceiptNotes || []).filter((g: any) => g.companyId === companyId),
         inventoryStocks: isSuper ? state.inventoryStocks : (state.inventoryStocks || []).filter((s: any) => s.companyId === companyId),
         roles: isSuper ? state.roles : (state.roles || []).filter((r: any) => r.companyId === companyId),
-        userRoles: state.userRoles || [],
+        // userRoles is a plain (userId, roleId) join row with no companyId of its own —
+        // scope it via which users actually belong to this company, the same way every
+        // other field above is scoped, instead of returning every tenant's assignments.
+        userRoles: isSuper ? (state.userRoles || []) : (() => {
+          const companyUserIds = new Set((state.users || []).filter((u: any) => u.companyId === companyId).map((u: any) => u.id));
+          return (state.userRoles || []).filter((ur: any) => companyUserIds.has(ur.userId));
+        })(),
         users: (() => {
           const rolePermissionsById = new Map((state.roles || []).map((r: any) => [r.id, r.permissions]));
           const roleIdsByUserId = new Map<string, string[]>();

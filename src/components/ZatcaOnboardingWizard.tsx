@@ -214,6 +214,18 @@ export default function ZatcaOnboardingWizard({ db, onUpdateDb }: ZatcaOnboardin
   };
 
   const handleRequestComplianceCsid = async () => {
+    // `generatedCsr` is transient component state, only populated by handleGenerateCsr
+    // in this mount — it does NOT survive a refresh/remount (fetchZatcaStatus only
+    // restores boolean flags like hasEcdsaKey, which can jump activeStep straight to 3
+    // without ever re-populating this). Previously, a remount after Step 2 meant this
+    // fell through to the literal string 'MOCK_CSR_DATA', which got submitted to
+    // ZATCA's REAL gateway (sandbox/simulation are never mocked) — burning a genuine,
+    // single-use, ~1-hour OTP on a submission that's guaranteed to fail. Block it
+    // outright instead of ever substituting a placeholder for real ZATCA traffic.
+    if (!generatedCsr) {
+      setMessage({ type: 'error', text: 'No CSR is loaded in this session. Go back to Step 2 and generate the keypair/CSR again before requesting a Compliance CSID — submitting without a real CSR would waste your OTP on a guaranteed failure.' });
+      return;
+    }
     setLoading(true);
     setMessage(null);
     try {
@@ -224,7 +236,7 @@ export default function ZatcaOnboardingWizard({ db, onUpdateDb }: ZatcaOnboardin
           companyId: activeCompanyId,
           environment,
           otp,
-          csrBase64: generatedCsr || 'MOCK_CSR_DATA',
+          csrBase64: generatedCsr,
         }),
       });
       const data = await res.json();

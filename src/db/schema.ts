@@ -28,6 +28,12 @@ export const companies = pgTable('companies', {
   // for identity would silently overwrite one environment's data when another was
   // onboarded — the exact bug already fixed once for credentials (ZATCA finding #2).
   zatcaEnvironment: text('zatca_environment').default('sandbox'),
+  // Master on/off switch for whether this company's invoices attempt ZATCA submission
+  // at all. Defaults false — a brand-new company must NOT silently fire real sandbox
+  // submissions before it has completed onboarding (CSID/compliance) for its active
+  // environment. Auto-flipped true when that environment's onboarding completes
+  // (see server/routes/zatca.ts); can also be toggled manually by a Super Admin.
+  zatcaEnabled: boolean('zatca_enabled').default(false),
 });
 
 // Per-(company, environment) ZATCA onboarding state — sandbox/simulation/production are
@@ -336,6 +342,14 @@ export const invoices = pgTable('invoices', {
   zatcaStatus: text('zatca_status').default('NOT_SUBMITTED'),
   zatcaValidationResults: jsonb('zatca_validation_results'),
   clearanceTimestamp: timestamp('clearance_timestamp'),
+  // Credit/Debit Note support — reuses this same table/counter/hash-chain/print pipeline
+  // rather than a parallel schema, since ZATCA's Credit/Debit Note documents are the
+  // same UBL Invoice-2 XML shape (confirmed against the ZATCA SDK's own bundled sample
+  // Credit/Debit Note XMLs) and must participate in the SAME per-company ICV/PIH chain
+  // as regular invoices, not a separate one.
+  documentType: text('document_type').notNull().default('Invoice'), // 'Invoice' | 'CreditNote' | 'DebitNote'
+  originalInvoiceId: uuid('original_invoice_id').references((): any => invoices.id),
+  creditNoteReason: text('credit_note_reason'),
 }, (table) => ({
   companyIdIdx: index('invoices_company_id_idx').on(table.companyId),
 }));

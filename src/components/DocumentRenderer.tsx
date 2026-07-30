@@ -386,12 +386,64 @@ export default function DocumentRenderer({
   // Compute totals using our robust helper including discounts!
   const totals = calculateInvoiceTotals({ taxSlabs } as any, items, doc.taxSlabId, doc.discountPercentage);
 
+  // Resolve each line's own VAT rate the exact same way calculateInvoiceTotals
+  // (dbStore.ts) and the ZATCA XML builder (xmlBuilder.ts) do: an explicit per-line
+  // taxRate override, else the line's own taxSlabId looked up against real tax slabs,
+  // else the invoice's header rate. Shared by both the items table (per-line display)
+  // and the totals summary (category breakdown) below.
+  const getItemTaxRate = (item: any): number => {
+   if (item.taxRate !== undefined && item.taxRate !== null && !isNaN(item.taxRate)) return item.taxRate;
+   if (item.taxSlabId) {
+    const slab = (taxSlabs || []).find((s: any) => s.id === item.taxSlabId);
+    if (slab) return Number(slab.percentage);
+   }
+   return totals.percentage;
+  };
+
+  // ZATCA's own XML (xmlBuilder.ts's taxGroups) reports one TaxSubtotal PER DISTINCT
+  // rate actually present on the invoice — a mixed-rate invoice (e.g. 15% + 0% Exempt
+  // lines, a real, tested scenario) previously printed only a single blended "VAT (X%)"
+  // figure using the HEADER's rate, which doesn't represent what ZATCA actually cleared.
+  // Only used for display when there's genuinely more than one rate; a single-rate
+  // invoice keeps the simpler one-line display below.
+  const vatRateGroups = new Map<number, { taxableAmount: number; taxAmount: number }>();
+  items.forEach((item: any) => {
+   const rate = getItemTaxRate(item);
+   const itemGross = (item.unitCost || 0) * item.quantity;
+   const itemLineDisc = (item.discountAmount || 0) * item.quantity;
+   const itemTaxable = Math.max(0, itemGross - itemLineDisc) * (1 - ((doc.discountPercentage || 0) / 100));
+   const existing = vatRateGroups.get(rate);
+   if (existing) {
+    existing.taxableAmount += itemTaxable;
+    existing.taxAmount += itemTaxable * (rate / 100);
+   } else {
+    vatRateGroups.set(rate, { taxableAmount: itemTaxable, taxAmount: itemTaxable * (rate / 100) });
+   }
+  });
+  const hasMultipleVatRates = vatRateGroups.size > 1;
+
   // Compute verified QR Code details (Saudi ZATCA compliant textual metadata)
   const seller = companySetup.name;
-  const currentVat = companySetup.vatNumber || "300123456700003";
+  // Previously fell back to a hardcoded, fabricated VAT number ("300123456700003")
+  // when the company had none configured — the exact same class of bug already found
+  // and fixed for buyer VAT (item 29): never invent a real-looking tax-registration
+  // number for an actual seller. Only used in the unsigned-invoice fallback QR text
+  // below (a real, signed invoice always carries its own genuine qrCodeContent).
+  const currentVat = companySetup.vatNumber || "Not Configured";
   const timestamp = doc.date;
   const zatcaQr = (doc as Invoice).qrCodeContent;
-  const qrDataStr = zatcaQr || `--- SAUDI ARABIA ELECTRONIC INVOICE (ZATCA) ---\nSeller: ${seller}\nVAT ID: ${currentVat}\nDoc ID: ${docNum}\nDate: ${timestamp}\nGross: ${totals.subtotal.toFixed(2)} SAR\nDiscount: ${totals.discountAmount.toFixed(2)} SAR\nVAT (15%): ${totals.taxAmount.toFixed(2)} SAR\nGrand Total: ${totals.grandTotal.toFixed(2)} SAR\nStatus: VERIFIED ORIGINAL`;
+  const docZatcaStatus = (doc as Invoice).zatcaStatus;
+  // A real ZATCA clearance/reporting confirmation is the ONLY thing that may claim
+  // "verified" — every other status (including simply not having a real qrCodeContent
+  // yet) must read as an honest, neutral placeholder instead of a false verification
+  // claim that used to be shown regardless of the invoice's actual zatcaStatus.
+  const isZatcaConfirmed = docZatcaStatus === 'CLEARED' || docZatcaStatus === 'REPORTED';
+  const zatcaPlaceholderStatusLabel =
+    docZatcaStatus === 'REJECTED' ? 'REJECTED BY ZATCA' :
+    docZatcaStatus === 'ERROR' ? 'SUBMISSION ERROR' :
+    docZatcaStatus === 'PENDING' ? 'SUBMISSION PENDING' :
+    'NOT YET CLEARED BY ZATCA';
+  const qrDataStr = zatcaQr || `--- SAUDI ARABIA ELECTRONIC INVOICE (ZATCA) ---\nSeller: ${seller}\nVAT ID: ${currentVat}\nDoc ID: ${docNum}\nDate: ${timestamp}\nGross: ${totals.subtotal.toFixed(2)} SAR\nDiscount: ${totals.discountAmount.toFixed(2)} SAR\nVAT (15%): ${totals.taxAmount.toFixed(2)} SAR\nGrand Total: ${totals.grandTotal.toFixed(2)} SAR\nStatus: ${zatcaPlaceholderStatusLabel}`;
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrDataStr)}`;
 
   // Parse custom template layout configurations
@@ -674,6 +726,15 @@ export default function DocumentRenderer({
             {showContact && data.customerData.phone !== '-' && <p>{t('Phone')}: {data.customerData.phone}</p>}
             {showContact && data.customerData.email !== '-' && <p>{t('Email')}: {data.customerData.email}</p>}
             {showAddress && data.customerData.address !== '-' && <p>{t('Address')}: {data.customerData.address}</p>}
+            {/* ZATCA's data dictionary marks Buyer VAT (BT-48) Mandatory for Standard
+                (B2B) invoices — it was already correctly written into the XML, but
+                never shown on the human-readable printed document itself. */}
+            {data.customerData.vatNumber && (
+             <p className="font-semibold">
+              {t('VAT Reg')}: <span className="font-mono">{data.customerData.vatNumber}</span>
+              {isBilingual && <span className="ms-1 font-normal text-slate-400 text-[10px]">(الرقم الضريبي للعميل)</span>}
+             </p>
+            )}
            </div>
           ) : (
            <p className="text-xs text-slate-500">{t('Walk-in Customer')}</p>
@@ -698,7 +759,11 @@ export default function DocumentRenderer({
        const isBilingual = block.props?.isBilingual !== false;
        const showSNo = block.props?.showSNo !== false;
        const rowStyle = block.props?.borderStyle || 'stripe';
-       
+       // getItemTaxRate is shared/hoisted above (also used by the totals_summary
+       // block's multi-rate breakdown) — previously the printed table showed no rate
+       // at all, so a mixed-rate invoice (a real, tested scenario this session) gave a
+       // customer no way to see which line was taxed at which rate.
+
        return (
         <div key={block.id} className={`${blockColClass} overflow-x-auto ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
          <table className="w-full text-xs border-collapse min-w-[500px]">
@@ -717,6 +782,10 @@ export default function DocumentRenderer({
              {t('Quantity')}
              {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">الكمية</span>}
             </th>
+            <th className="py-2.5 px-3 font-semibold text-center w-16 whitespace-nowrap">
+             {t('VAT %')}
+             {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">نسبة الضريبة</span>}
+            </th>
             <th className={`py-2.5 px-3 font-semibold w-24 whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>
              {t('Total')}
              {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">الإجمالي</span>}
@@ -727,6 +796,7 @@ export default function DocumentRenderer({
            {items.map((item: any, idx: number) => {
             const itemNetCost = Math.max(0, (item.unitCost || 0) - (item.discountAmount || 0));
             const stripeClass = rowStyle === 'stripe' && idx % 2 === 1 ? 'bg-slate-50/40' : '';
+            const itemRate = getItemTaxRate(item);
             return (
              <tr key={item.id} className={`border-b border-slate-100 ${stripeClass}`}>
               {showSNo && <td className="py-2.5 px-3 text-center text-slate-500 w-12 whitespace-nowrap">{idx + 1}</td>}
@@ -749,6 +819,7 @@ export default function DocumentRenderer({
                )}
               </td>
               <td className="py-2.5 px-3 text-center text-slate-600 w-20 whitespace-nowrap">{item.quantity}</td>
+              <td className="py-2.5 px-3 text-center text-slate-600 w-16 whitespace-nowrap">{itemRate}%</td>
               <td className={`py-2.5 px-3 text-slate-800 font-semibold w-24 whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>{fmt(itemNetCost * item.quantity)}</td>
              </tr>
             );
@@ -776,6 +847,12 @@ export default function DocumentRenderer({
       }
 
       if (block.id === 'qr_code') {
+       // Quotations are never submitted to ZATCA at all — there's no clearance
+       // concept for them. Previously this block rendered unconditionally, showing a
+       // fake "ZATCA QR Verification... Not Yet Cleared" badge on a document type
+       // ZATCA has no knowledge of whatsoever, which is actively confusing (implies a
+       // quotation is expected to be ZATCA-cleared, when it structurally never is).
+       if (!isInvoice) return null;
        if (currentTemplate?.printQrCode === false) return null;
        const alignClass = block.props?.align === 'right' ? 'justify-end' : block.props?.align === 'left' ? 'justify-start' : 'justify-center';
        const isBilingual = block.props?.isBilingual !== false;
@@ -786,8 +863,10 @@ export default function DocumentRenderer({
         <div key={block.id} className={`${blockColClass} flex ${alignClass} items-center ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
          <div className="flex flex-col items-center justify-center p-2.5 bg-white rounded-xl border border-slate-150 shadow-sm shrink-0">
           <img src={qrCodeUrl} alt="ZATCA QR Verification" className={sizeClass} referrerPolicy="no-referrer" />
-          <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider mt-1 whitespace-nowrap">
-           {isBilingual ? 'Verified / معتمد' : 'Verified'}
+          <span className={`text-[8px] font-bold uppercase tracking-wider mt-1 whitespace-nowrap ${isZatcaConfirmed ? 'text-slate-400' : 'text-amber-500'}`}>
+           {isZatcaConfirmed
+            ? (isBilingual ? `${docZatcaStatus === 'CLEARED' ? 'Cleared' : 'Reported'} / ${docZatcaStatus === 'CLEARED' ? 'تم التخليص' : 'تم الإبلاغ'}` : (docZatcaStatus === 'CLEARED' ? 'Cleared' : 'Reported'))
+            : (isBilingual ? 'Not Yet Cleared / قيد الانتظار' : 'Not Yet Cleared')}
           </span>
          </div>
         </div>
@@ -834,7 +913,20 @@ export default function DocumentRenderer({
           </div>
          )}
 
-         {totals.percentage > 0 && (
+         {hasMultipleVatRates ? (
+          // Mirrors the ZATCA XML's own one-TaxSubtotal-per-rate breakdown — a single
+          // blended "VAT (X%)" figure using just the header rate would misrepresent
+          // what a mixed-rate invoice actually cleared with ZATCA.
+          Array.from(vatRateGroups.entries()).sort((a, b) => b[0] - a[0]).map(([rate, group]) => (
+           <div key={rate} className="flex justify-between text-xs text-slate-600">
+            <span className="whitespace-nowrap">
+             {t('VAT')} ({rate}%):
+             {isBilingual && <span className="block text-[8px] text-slate-400">ضريبة القيمة المضافة</span>}
+            </span>
+            <span className="font-medium whitespace-nowrap font-mono">{fmt(Number(group.taxAmount.toFixed(2)))}</span>
+           </div>
+          ))
+         ) : totals.percentage > 0 && (
           <div className="flex justify-between text-xs text-slate-600">
            <span className="whitespace-nowrap">
             {t('VAT')} ({totals.percentage}%):

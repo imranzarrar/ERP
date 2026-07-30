@@ -50,6 +50,36 @@ export default function InventoryModule({
   const { can } = usePermissions(currentUser);
   const companyId = db.selectedCompanyId;
 
+  // Currency is derived from the active company's real configuration (matches the
+  // pattern already used in PosModule.tsx), never hardcoded — different companies in
+  // this multi-tenant app can be configured with different currencies.
+  const activeCompany = db.companies?.find((c: any) => c.id === companyId);
+  const currency = activeCompany?.currency || 'SAR';
+
+  // Default VAT rate is derived from the company's configured tax slabs (Saudi standard
+  // is 15%), never hardcoded, so PR/PO/GRN forms always agree with each other and with
+  // whatever the company has actually configured.
+  const defaultTaxRate = db.taxSlabs?.find(ts => ts.percentage === 15)?.percentage ?? (db.taxSlabs?.[0]?.percentage ?? 15);
+
+  // Inline success/error banners (matches InvoiceModule.tsx's triggerError/triggerSuccess
+  // pattern) plus per-action submitting guards so create buttons can't be double-clicked
+  // mid-request.
+  const [success, setSuccess] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const triggerSuccess = (msg: string) => {
+    setSuccess(msg);
+    setTimeout(() => setSuccess(null), 3500);
+  };
+  const triggerError = (msg: string) => {
+    setError(msg);
+    setTimeout(() => setError(null), 4500);
+  };
+  const [isSubmittingPr, setIsSubmittingPr] = React.useState(false);
+  const [isSubmittingPo, setIsSubmittingPo] = React.useState(false);
+  const [isSubmittingGrn, setIsSubmittingGrn] = React.useState(false);
+  const [isSubmittingWarehouse, setIsSubmittingWarehouse] = React.useState(false);
+  const [isSubmittingAdjustment, setIsSubmittingAdjustment] = React.useState(false);
+
   // State
   const [activeSubTab, setActiveSubTab] = React.useState<'stock' | 'pr' | 'po' | 'grn' | 'warehouses'>(defaultTab);
   
@@ -94,7 +124,7 @@ export default function InventoryModule({
     notes: '',
     items: [] as Array<{ productId: string; quantityOrdered: number; unitPrice: number; taxRate: number }>
   });
-  const [newPoItem, setNewPoItem] = React.useState({ productId: '', quantityOrdered: 1, unitPrice: 0, taxRate: 17 });
+  const [newPoItem, setNewPoItem] = React.useState({ productId: '', quantityOrdered: 1, unitPrice: 0, taxRate: defaultTaxRate });
 
   // GRN Form State
   const [grnForm, setGrnForm] = React.useState({
@@ -108,7 +138,7 @@ export default function InventoryModule({
     driverName: '',
     items: [] as Array<{ productId: string; quantityReceived: number; unitCost: number; taxRate: number; batchNumber: string; expiryDate: string }>
   });
-  const [newGrnItem, setNewGrnItem] = React.useState({ productId: '', quantityReceived: 1, unitCost: 0, taxRate: 15, batchNumber: '', expiryDate: '' });
+  const [newGrnItem, setNewGrnItem] = React.useState({ productId: '', quantityReceived: 1, unitCost: 0, taxRate: defaultTaxRate, batchNumber: '', expiryDate: '' });
 
   // Warehouse Form State
   const [warehouseForm, setWarehouseForm] = React.useState({ name: '', code: '', address: '' });
@@ -157,26 +187,32 @@ export default function InventoryModule({
   // Handle Warehouse Creation
   const handleCreateWarehouse = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!warehouseForm.name || !warehouseForm.code) return;
+    if (!warehouseForm.name || !warehouseForm.code || isSubmittingWarehouse) return;
+    setIsSubmittingWarehouse(true);
+    try {
+      const newWh: Warehouse = {
+        id: generateId(),
+        name: warehouseForm.name,
+        code: warehouseForm.code.toUpperCase(),
+        address: warehouseForm.address,
+        isActive: true,
+        companyId
+      };
 
-    const newWh: Warehouse = {
-      id: generateId(),
-      name: warehouseForm.name,
-      code: warehouseForm.code.toUpperCase(),
-      address: warehouseForm.address,
-      isActive: true,
-      companyId
-    };
+      onUpdateDb(prev => ({
+        ...prev,
+        warehouses: [...(prev.warehouses || []), newWh]
+      }));
 
-    const updatedWarehouses = [...(db.warehouses || []), newWh];
-    onUpdateDb({
-      ...db,
-      warehouses: updatedWarehouses
-    });
-    
-    // Reset form
-    setWarehouseForm({ name: '', code: '', address: '' });
-    setIsCreatingWarehouse(false);
+      triggerSuccess(t('Warehouse registered successfully.'));
+      // Reset form
+      setWarehouseForm({ name: '', code: '', address: '' });
+      setIsCreatingWarehouse(false);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to register warehouse.'));
+    } finally {
+      setIsSubmittingWarehouse(false);
+    }
   };
 
   // Handle PR Item Actions
@@ -196,51 +232,61 @@ export default function InventoryModule({
     }));
   };
 
-  // Create PR
-  const handleCreatePr = (e: React.FormEvent) => {
+  // Create PR — goes through a real backend route (POST /api/inventory/purchase-requisitions)
+  // whose PR number is generated by a per-company `SELECT ... FOR UPDATE` counter
+  // (server/lib/businessLogic.ts's getAndIncrementCounter), instead of the previous
+  // `array.length + 1001` client-side guess, which two concurrent submissions could
+  // both compute identically and thus duplicate.
+  const handleCreatePr = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (prForm.items.length === 0) return;
+    if (prForm.items.length === 0 || isSubmittingPr) return;
+    setIsSubmittingPr(true);
+    try {
+      const res = await fetch('/api/inventory/purchase-requisitions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prData: {
+            requestedBy: prForm.requestedBy,
+            notes: prForm.notes,
+            items: prForm.items
+          }
+        })
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error || t('Failed to submit purchase requisition.'));
+      }
+      const newPr: PurchaseRequisition = payload.purchaseRequisition;
 
-    const newPrId = generateId();
-    const newPr: PurchaseRequisition = {
-      id: newPrId,
-      prNumber: `PR-${String((db.purchaseRequisitions || []).length + 1001)}`,
-      requestedBy: prForm.requestedBy,
-      date: new Date().toISOString(),
-      status: 'Pending',
-      notes: prForm.notes,
-      companyId,
-      items: prForm.items.map(item => ({
-        id: generateId(),
-        requisitionId: newPrId,
-        productId: item.productId,
-        quantity: item.quantity,
-        purpose: item.purpose
-      }))
-    };
+      onUpdateDb(prev => ({
+        ...prev,
+        purchaseRequisitions: [...(prev.purchaseRequisitions || []), newPr]
+      }));
 
-    onUpdateDb({
-      ...db,
-      purchaseRequisitions: [...(db.purchaseRequisitions || []), newPr]
-    });
-
-    setPrForm({ requestedBy: currentUser?.username || '', notes: '', items: [] });
-    setIsCreatingPr(false);
+      triggerSuccess(t('Purchase requisition submitted successfully.'));
+      setPrForm({ requestedBy: currentUser?.username || '', notes: '', items: [] });
+      setIsCreatingPr(false);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to submit purchase requisition.'));
+    } finally {
+      setIsSubmittingPr(false);
+    }
   };
 
   // Approve / Reject PR (For Admins / Supervisors)
   const handlePrStatus = (prId: string, status: 'Approved' | 'Rejected') => {
-    const updatedPrs = (db.purchaseRequisitions || []).map(pr => {
-      if (pr.id === prId) {
-        return { ...pr, status };
-      }
-      return pr;
-    });
-    onUpdateDb({
-      ...db,
-      purchaseRequisitions: updatedPrs
-    });
-    setViewingPr(null);
+    try {
+      onUpdateDb(prev => ({
+        ...prev,
+        purchaseRequisitions: (prev.purchaseRequisitions || []).map(pr =>
+          pr.id === prId ? { ...pr, status } : pr
+        )
+      }));
+      setViewingPr(null);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to update requisition status.'));
+    }
   };
 
   // Handle PO Item Actions
@@ -250,7 +296,7 @@ export default function InventoryModule({
       ...prev,
       items: [...prev.items, { ...newPoItem }]
     }));
-    setNewPoItem({ productId: '', quantityOrdered: 1, unitPrice: 0, taxRate: 17 });
+    setNewPoItem({ productId: '', quantityOrdered: 1, unitPrice: 0, taxRate: defaultTaxRate });
   };
 
   const removePoItem = (index: number) => {
@@ -271,7 +317,7 @@ export default function InventoryModule({
         productId: item.productId,
         quantityOrdered: item.quantity,
         unitPrice: Number(prod?.unitPrice || 0),
-        taxRate: 17
+        taxRate: defaultTaxRate
       };
     });
 
@@ -282,72 +328,66 @@ export default function InventoryModule({
     }));
   };
 
-  // Create PO
-  const handleCreatePo = (e: React.FormEvent) => {
+  // Create PO — goes through a real backend route (POST /api/inventory/purchase-orders)
+  // whose PO number is generated by the same per-company atomic counter as PR/invoice/
+  // quotation numbering, instead of the previous `array.length + 1001` client guess.
+  const handleCreatePo = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!poForm.vendorId || poForm.items.length === 0) return;
-
-    const poId = generateId();
-    const totalAmount = poForm.items.reduce((sum, item) => {
-      const lineTotal = item.quantityOrdered * item.unitPrice;
-      const tax = lineTotal * (item.taxRate / 100);
-      return sum + lineTotal + tax;
-    }, 0);
-
-    const newPo: PurchaseOrder = {
-      id: poId,
-      poNumber: `PO-${String((db.purchaseOrders || []).length + 1001)}`,
-      vendorId: poForm.vendorId,
-      date: new Date().toISOString(),
-      status: 'Sent',
-      requisitionId: poForm.requisitionId || undefined,
-      deliveryDate: poForm.deliveryDate || undefined,
-      totalAmount,
-      companyId,
-      items: poForm.items.map(item => ({
-        id: generateId(),
-        purchaseOrderId: poId,
-        productId: item.productId,
-        quantityOrdered: item.quantityOrdered,
-        unitPrice: item.unitPrice,
-        taxRate: item.taxRate
-      }))
-    };
-
-    // Also close the PR if linked
-    let updatedPrs = db.purchaseRequisitions || [];
-    if (poForm.requisitionId) {
-      updatedPrs = updatedPrs.map(pr => {
-        if (pr.id === poForm.requisitionId) {
-          return { ...pr, status: 'Closed' as const };
-        }
-        return pr;
+    if (!poForm.vendorId || poForm.items.length === 0 || isSubmittingPo) return;
+    setIsSubmittingPo(true);
+    try {
+      const res = await fetch('/api/inventory/purchase-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          poData: {
+            vendorId: poForm.vendorId,
+            requisitionId: poForm.requisitionId || undefined,
+            deliveryDate: poForm.deliveryDate || undefined,
+            notes: poForm.notes,
+            items: poForm.items
+          }
+        })
       });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error || t('Failed to issue purchase order.'));
+      }
+      const newPo: PurchaseOrder = payload.purchaseOrder;
+
+      onUpdateDb(prev => ({
+        ...prev,
+        purchaseOrders: [...(prev.purchaseOrders || []), newPo],
+        purchaseRequisitions: poForm.requisitionId
+          ? (prev.purchaseRequisitions || []).map(pr =>
+              pr.id === poForm.requisitionId ? { ...pr, status: 'Closed' as const } : pr
+            )
+          : prev.purchaseRequisitions
+      }));
+
+      triggerSuccess(t('Purchase order issued successfully.'));
+      setPoForm({ vendorId: '', requisitionId: '', deliveryDate: '', notes: '', items: [] });
+      setIsCreatingPo(false);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to issue purchase order.'));
+    } finally {
+      setIsSubmittingPo(false);
     }
-
-    onUpdateDb({
-      ...db,
-      purchaseOrders: [...(db.purchaseOrders || []), newPo],
-      purchaseRequisitions: updatedPrs
-    });
-
-    setPoForm({ vendorId: '', requisitionId: '', deliveryDate: '', notes: '', items: [] });
-    setIsCreatingPo(false);
   };
 
   // Cancel PO
   const handleCancelPo = (poId: string) => {
-    const updatedPos = (db.purchaseOrders || []).map(po => {
-      if (po.id === poId) {
-        return { ...po, status: 'Cancelled' as const };
-      }
-      return po;
-    });
-    onUpdateDb({
-      ...db,
-      purchaseOrders: updatedPos
-    });
-    setViewingPo(null);
+    try {
+      onUpdateDb(prev => ({
+        ...prev,
+        purchaseOrders: (prev.purchaseOrders || []).map(po =>
+          po.id === poId ? { ...po, status: 'Cancelled' as const } : po
+        )
+      }));
+      setViewingPo(null);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to cancel purchase order.'));
+    }
   };
 
   // Handle GRN Item Actions
@@ -357,7 +397,7 @@ export default function InventoryModule({
       ...prev,
       items: [...prev.items, { ...newGrnItem }]
     }));
-    setNewGrnItem({ productId: '', quantityReceived: 1, unitCost: 0, taxRate: 15, batchNumber: '', expiryDate: '' });
+    setNewGrnItem({ productId: '', quantityReceived: 1, unitCost: 0, taxRate: defaultTaxRate, batchNumber: '', expiryDate: '' });
   };
 
   const removeGrnItem = (index: number) => {
@@ -367,21 +407,41 @@ export default function InventoryModule({
     }));
   };
 
-  // Handle PO Selection in GRN
+  // Handle PO Selection in GRN — a Purchase Order that is already "Partially Received"
+  // must remain selectable so the remaining balance can still be received (otherwise the
+  // partial-receipt workflow has no way to ever finish). Quantities are prefilled with
+  // only the outstanding (ordered minus already-received) balance per product, so
+  // re-selecting a partially received PO doesn't offer to re-receive what's already in.
   const handleGrnPoSelect = (poId: string) => {
     const selectedPo = purchaseOrders.find(po => po.id === poId);
     if (!selectedPo) return;
 
-    const grnItems = (selectedPo.items || []).map(item => {
-      return {
-        productId: item.productId,
-        quantityReceived: item.quantityOrdered,
-        unitCost: item.unitPrice,
-        taxRate: item.taxRate || 0,
-        batchNumber: '',
-        expiryDate: ''
-      };
-    });
+    const alreadyReceivedByProduct = new Map<string, number>();
+    goodsReceiptNotes
+      .filter(grn => grn.purchaseOrderId === poId)
+      .forEach(grn => {
+        (grn.items || []).forEach(item => {
+          alreadyReceivedByProduct.set(
+            item.productId,
+            (alreadyReceivedByProduct.get(item.productId) || 0) + Number(item.quantityReceived)
+          );
+        });
+      });
+
+    const grnItems = (selectedPo.items || [])
+      .map(item => {
+        const alreadyReceived = alreadyReceivedByProduct.get(item.productId) || 0;
+        const remaining = Number(item.quantityOrdered) - alreadyReceived;
+        return {
+          productId: item.productId,
+          quantityReceived: remaining,
+          unitCost: item.unitPrice,
+          taxRate: item.taxRate || 0,
+          batchNumber: '',
+          expiryDate: ''
+        };
+      })
+      .filter(item => item.quantityReceived > 0);
 
     setGrnForm(prev => ({
       ...prev,
@@ -392,132 +452,158 @@ export default function InventoryModule({
     }));
   };
 
-  // Create GRN & Update Stock Levels automatically
-  const handleCreateGrn = (e: React.FormEvent) => {
+  // Create GRN & Update Stock Levels — goes through a real backend route (POST
+  // /api/inventory/goods-receipt-notes) so the GRN number uses the same atomic
+  // per-company counter as PR/PO/invoice numbering, and so the linked PO's fulfillment
+  // status is derived server-side from actual received-vs-ordered quantities (summed
+  // across every GRN raised against it) instead of being unconditionally marked
+  // "Received" the instant any GRN references it.
+  const handleCreateGrn = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!grnForm.warehouseId || grnForm.items.length === 0) return;
-
-    const grnId = generateId();
-    const newGrn: GoodsReceiptNote = {
-      id: grnId,
-      grnNumber: `GRN-${String((db.goodsReceiptNotes || []).length + 1001)}`,
-      purchaseOrderId: grnForm.isDsd ? undefined : grnForm.purchaseOrderId || undefined,
-      vendorId: grnForm.vendorId,
-      warehouseId: grnForm.warehouseId,
-      date: new Date().toISOString(),
-      isDsd: grnForm.isDsd,
-      receivedBy: grnForm.receivedBy,
-      notes: grnForm.notes,
-      vehicleNumber: grnForm.vehicleNumber || undefined,
-      driverName: grnForm.driverName || undefined,
-      companyId,
-      items: grnForm.items.map(item => ({
-        id: generateId(),
-        grnId,
-        productId: item.productId,
-        quantityReceived: item.quantityReceived,
-        unitCost: item.unitCost,
-        taxRate: item.taxRate !== undefined ? item.taxRate : 0,
-        batchNumber: item.batchNumber || undefined,
-        expiryDate: item.expiryDate || undefined
-      }))
-    };
-
-    // Update Stock Levels
-    const currentStocks = [...(db.inventoryStocks || [])];
-    newGrn.items?.forEach(item => {
-      const match = currentStocks.find(s => 
-        s.productId === item.productId &&
-        s.warehouseId === newGrn.warehouseId &&
-        s.batchNumber === item.batchNumber &&
-        s.companyId === companyId
-      );
-
-      if (match) {
-        match.quantity = Number(match.quantity) + Number(item.quantityReceived);
-      } else {
-        currentStocks.push({
-          id: generateId(),
-          productId: item.productId,
-          warehouseId: newGrn.warehouseId,
-          batchNumber: item.batchNumber,
-          expiryDate: item.expiryDate,
-          quantity: item.quantityReceived,
-          companyId
-        });
-      }
-    });
-
-    // Update PO Status if linked
-    let updatedPos = db.purchaseOrders || [];
-    if (!grnForm.isDsd && grnForm.purchaseOrderId) {
-      updatedPos = updatedPos.map(po => {
-        if (po.id === grnForm.purchaseOrderId) {
-          return { ...po, status: 'Received' as const };
-        }
-        return po;
+    if (!grnForm.warehouseId || grnForm.items.length === 0 || isSubmittingGrn) return;
+    setIsSubmittingGrn(true);
+    try {
+      const res = await fetch('/api/inventory/goods-receipt-notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          grnData: {
+            purchaseOrderId: grnForm.isDsd ? undefined : (grnForm.purchaseOrderId || undefined),
+            vendorId: grnForm.vendorId,
+            warehouseId: grnForm.warehouseId,
+            isDsd: grnForm.isDsd,
+            receivedBy: grnForm.receivedBy,
+            notes: grnForm.notes,
+            items: grnForm.items
+          }
+        })
       });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error || t('Failed to record goods receipt.'));
+      }
+
+      // vehicleNumber/driverName are not columns on the goods_receipt_notes table
+      // (pre-existing schema limitation, unrelated to this fix) so they're kept
+      // client-side only, same as before this change.
+      const newGrn: GoodsReceiptNote = {
+        ...payload.goodsReceiptNote,
+        vehicleNumber: grnForm.vehicleNumber || undefined,
+        driverName: grnForm.driverName || undefined
+      };
+      const updatedPo: { id: string; status: PurchaseOrder['status'] } | null = payload.updatedPurchaseOrder;
+
+      onUpdateDb(prev => {
+        const currentStocks = [...(prev.inventoryStocks || [])];
+        (newGrn.items || []).forEach(item => {
+          const match = currentStocks.find(s =>
+            s.productId === item.productId &&
+            s.warehouseId === newGrn.warehouseId &&
+            s.batchNumber === (item.batchNumber || undefined) &&
+            s.companyId === companyId
+          );
+
+          if (match) {
+            match.quantity = Number(match.quantity) + Number(item.quantityReceived);
+          } else {
+            currentStocks.push({
+              id: generateId(),
+              productId: item.productId,
+              warehouseId: newGrn.warehouseId,
+              batchNumber: item.batchNumber || undefined,
+              expiryDate: item.expiryDate || undefined,
+              quantity: item.quantityReceived,
+              companyId
+            });
+          }
+        });
+
+        return {
+          ...prev,
+          goodsReceiptNotes: [...(prev.goodsReceiptNotes || []), newGrn],
+          inventoryStocks: currentStocks,
+          purchaseOrders: updatedPo
+            ? (prev.purchaseOrders || []).map(po => po.id === updatedPo.id ? { ...po, status: updatedPo.status } : po)
+            : prev.purchaseOrders
+        };
+      });
+
+      triggerSuccess(t('Goods receipt recorded and stock updated successfully.'));
+      setGrnForm({
+        purchaseOrderId: '',
+        warehouseId: warehouses[0]?.id || '',
+        vendorId: '',
+        isDsd: false,
+        receivedBy: currentUser?.username || '',
+        notes: '',
+        vehicleNumber: '',
+        driverName: '',
+        items: []
+      });
+      setIsCreatingGrn(false);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to record goods receipt.'));
+    } finally {
+      setIsSubmittingGrn(false);
     }
-
-    onUpdateDb({
-      ...db,
-      goodsReceiptNotes: [...(db.goodsReceiptNotes || []), newGrn],
-      inventoryStocks: currentStocks,
-      purchaseOrders: updatedPos
-    });
-
-    setGrnForm({
-      purchaseOrderId: '',
-      warehouseId: warehouses[0]?.id || '',
-      vendorId: '',
-      isDsd: false,
-      receivedBy: currentUser?.username || '',
-      notes: '',
-      vehicleNumber: '',
-      driverName: '',
-      items: []
-    });
-    setIsCreatingGrn(false);
   };
 
   // Handle Manual Stock Adjustment
   const handleStockAdjustment = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adjustmentForm.productId || !adjustmentForm.warehouseId) return;
+    if (!adjustmentForm.productId || !adjustmentForm.warehouseId || isSubmittingAdjustment) return;
+    setIsSubmittingAdjustment(true);
+    try {
+      onUpdateDb(prev => {
+        const currentStocks = [...(prev.inventoryStocks || [])];
+        const match = currentStocks.find(s =>
+          s.productId === adjustmentForm.productId &&
+          s.warehouseId === adjustmentForm.warehouseId &&
+          s.batchNumber === (adjustmentForm.batchNumber || undefined) &&
+          s.companyId === companyId
+        );
 
-    const currentStocks = [...(db.inventoryStocks || [])];
-    const match = currentStocks.find(s => 
-      s.productId === adjustmentForm.productId &&
-      s.warehouseId === adjustmentForm.warehouseId &&
-      s.batchNumber === (adjustmentForm.batchNumber || undefined) &&
-      s.companyId === companyId
-    );
+        if (match) {
+          match.quantity = Math.max(0, Number(match.quantity) + Number(adjustmentForm.quantity));
+        } else if (adjustmentForm.quantity > 0) {
+          currentStocks.push({
+            id: generateId(),
+            productId: adjustmentForm.productId,
+            warehouseId: adjustmentForm.warehouseId,
+            batchNumber: adjustmentForm.batchNumber || undefined,
+            quantity: adjustmentForm.quantity,
+            companyId
+          });
+        }
 
-    if (match) {
-      match.quantity = Math.max(0, Number(match.quantity) + Number(adjustmentForm.quantity));
-    } else {
-      if (adjustmentForm.quantity > 0) {
-        currentStocks.push({
-          id: generateId(),
-          productId: adjustmentForm.productId,
-          warehouseId: adjustmentForm.warehouseId,
-          batchNumber: adjustmentForm.batchNumber || undefined,
-          quantity: adjustmentForm.quantity,
-          companyId
-        });
-      }
+        return { ...prev, inventoryStocks: currentStocks };
+      });
+
+      triggerSuccess(t('Stock adjustment applied successfully.'));
+      setAdjustmentForm({ productId: '', warehouseId: warehouses[0]?.id || '', quantity: 0, batchNumber: '', reason: '' });
+      setIsAdjustingStock(false);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to apply stock adjustment.'));
+    } finally {
+      setIsSubmittingAdjustment(false);
     }
-
-    onUpdateDb({
-      ...db,
-      inventoryStocks: currentStocks
-    });
-    setAdjustmentForm({ productId: '', warehouseId: warehouses[0]?.id || '', quantity: 0, batchNumber: '', reason: '' });
-    setIsAdjustingStock(false);
   };
 
   return (
     <div className="space-y-6" id="inventory-module-container">
+      {/* Inline success/error banners — matches InvoiceModule.tsx's triggerError/triggerSuccess pattern */}
+      {error && (
+        <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-sm font-medium flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {error}
+        </div>
+      )}
+      {success && (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-sm font-medium flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 shrink-0" />
+          {success}
+        </div>
+      )}
       {/* MODULE HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-gray-100 pb-5">
         <div>
@@ -556,7 +642,7 @@ export default function InventoryModule({
               {activeSubTab === 'pr' && can('inventory.pr') && (
                 <button
                   onClick={() => setIsCreatingPr(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-750 text-sm shadow-sm transition"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 text-sm shadow-sm transition"
                 >
                   <Plus className="h-4 w-4" />
                   {t('New Requisition')}
@@ -565,7 +651,7 @@ export default function InventoryModule({
               {activeSubTab === 'po' && can('inventory.po') && (
                 <button
                   onClick={() => setIsCreatingPo(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-750 text-sm shadow-sm transition"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 text-sm shadow-sm transition"
                 >
                   <Plus className="h-4 w-4" />
                   {t('New Purchase Order')}
@@ -574,7 +660,7 @@ export default function InventoryModule({
               {activeSubTab === 'grn' && can('inventory.grn') && (
                 <button
                   onClick={() => setIsCreatingGrn(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-750 text-sm shadow-sm transition"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 text-sm shadow-sm transition"
                 >
                   <Plus className="h-4 w-4" />
                   {t('Receive Goods (GRN)')}
@@ -583,7 +669,7 @@ export default function InventoryModule({
               {activeSubTab === 'warehouses' && currentUser.role === 'admin' && (
                 <button
                   onClick={() => setIsCreatingWarehouse(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-750 text-sm shadow-sm transition"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 text-sm shadow-sm transition"
                 >
                   <Plus className="h-4 w-4" />
                   {t('Create Warehouse')}
@@ -606,7 +692,7 @@ export default function InventoryModule({
               placeholder={t('Search item or code...')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm bg-gray-55/30 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50/30 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             />
           </div>
 
@@ -719,7 +805,7 @@ export default function InventoryModule({
                   .filter(pr => pr.prNumber.toLowerCase().includes(searchQuery.toLowerCase()))
                   .map(pr => (
                     <tr key={pr.id} className="hover:bg-gray-50/50 transition">
-                      <td className="px-6 py-4 font-semibold text-indigo-650">{pr.prNumber}</td>
+                      <td className="px-6 py-4 font-semibold text-indigo-700">{pr.prNumber}</td>
                       <td className="px-6 py-4 text-sm text-gray-800">{pr.requestedBy}</td>
                       <td className="px-6 py-4 text-sm text-gray-500">{new Date(pr.date).toLocaleDateString()}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">{(pr.items || []).length}</td>
@@ -781,15 +867,16 @@ export default function InventoryModule({
                     const vend = vendors.find(v => v.id === po.vendorId);
                     return (
                       <tr key={po.id} className="hover:bg-gray-50/50 transition">
-                        <td className="px-6 py-4 font-semibold text-indigo-650">{po.poNumber}</td>
+                        <td className="px-6 py-4 font-semibold text-indigo-700">{po.poNumber}</td>
                         <td className="px-6 py-4 text-sm text-gray-800">{vend?.name || t('Unknown Vendor')}</td>
                         <td className="px-6 py-4 text-sm text-gray-500">{new Date(po.date).toLocaleDateString()}</td>
                         <td className="px-6 py-4 text-sm font-semibold text-gray-900">
-                          {Number(po.totalAmount).toFixed(2)} SAR
+                          {Number(po.totalAmount).toFixed(2)} {currency}
                         </td>
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
                             po.status === 'Received' ? 'bg-emerald-50 text-emerald-700' :
+                            po.status === 'Partially Received' ? 'bg-amber-50 text-amber-700' :
                             po.status === 'Sent' ? 'bg-indigo-50 text-indigo-700' :
                             'bg-gray-100 text-gray-700'
                           }`}>
@@ -847,10 +934,10 @@ export default function InventoryModule({
                     const wh = warehouses.find(w => w.id === grn.warehouseId);
                     return (
                       <tr key={grn.id} className="hover:bg-gray-50/50 transition">
-                        <td className="px-6 py-4 font-semibold text-indigo-650">{grn.grnNumber}</td>
+                        <td className="px-6 py-4 font-semibold text-indigo-700">{grn.grnNumber}</td>
                         <td className="px-6 py-4 text-sm text-gray-800">{vend?.name || t('Unknown Vendor')}</td>
                         <td className="px-6 py-4 text-sm text-gray-600">{wh?.name || t('Unknown Warehouse')}</td>
-                        <td className="px-6 py-4 text-sm text-gray-650">
+                        <td className="px-6 py-4 text-sm text-gray-600">
                           {grn.vehicleNumber || grn.driverName ? (
                             <div>
                               <div className="font-semibold text-gray-900">{grn.vehicleNumber || '-'}</div>
@@ -896,7 +983,7 @@ export default function InventoryModule({
             const whStocks = inventoryStocks.filter(s => s.warehouseId === wh.id);
             const totalItems = whStocks.reduce((sum, s) => sum + Number(s.quantity), 0);
             return (
-              <div key={wh.id} className="bg-white p-6 rounded-xl border border-gray-150 shadow-xs hover:shadow-md transition duration-200">
+              <div key={wh.id} className="bg-white p-6 rounded-xl border border-gray-200 shadow-xs hover:shadow-md transition duration-200">
                 <div className="flex justify-between items-start">
                   <div className="p-2.5 bg-indigo-50 rounded-lg text-indigo-600">
                     <Building2 className="h-6 w-6" />
@@ -913,7 +1000,7 @@ export default function InventoryModule({
                 </div>
                 <div className="mt-2 flex justify-between text-sm">
                   <span className="text-gray-500">{t('Total Units:')}</span>
-                  <span className="font-bold text-indigo-650">{totalItems}</span>
+                  <span className="font-bold text-indigo-700">{totalItems}</span>
                 </div>
               </div>
             );
@@ -931,12 +1018,12 @@ export default function InventoryModule({
 
       {/* PR VIEW DETAIL PANEL */}
       {viewingPr && (
-        <div className="bg-white rounded-xl border border-gray-150 shadow-sm w-full animate-fade-in">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
           <div className="overflow-hidden flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <div>
                 <h3 className="text-lg font-bold text-gray-900">{t('Purchase Requisition Details')}</h3>
-                <span className="text-sm font-semibold text-indigo-650 font-mono mt-0.5 inline-block">{viewingPr.prNumber}</span>
+                <span className="text-sm font-semibold text-indigo-700 font-mono mt-0.5 inline-block">{viewingPr.prNumber}</span>
               </div>
               <button 
                 onClick={() => setViewingPr(null)} 
@@ -957,7 +1044,7 @@ export default function InventoryModule({
                 </div>
                 <div className="col-span-2">
                   <span className="text-gray-500">{t('Notes:')}</span>
-                  <p className="text-gray-750 mt-0.5 bg-gray-50 p-2.5 rounded border border-gray-100">{viewingPr.notes || '-'}</p>
+                  <p className="text-gray-700 mt-0.5 bg-gray-50 p-2.5 rounded border border-gray-100">{viewingPr.notes || '-'}</p>
                 </div>
               </div>
               <div className="mt-6">
@@ -987,7 +1074,7 @@ export default function InventoryModule({
                 </div>
               </div>
             </div>
-            <div className="p-6 border-t border-gray-150 flex justify-between bg-gray-50">
+            <div className="p-6 border-t border-gray-200 flex justify-between bg-gray-50">
               <button
                 onClick={() => setViewingPr(null)}
                 className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
@@ -1017,12 +1104,12 @@ export default function InventoryModule({
 
       {/* PO VIEW DETAIL PANEL */}
       {viewingPo && (
-        <div className="bg-white rounded-xl border border-gray-150 shadow-sm w-full animate-fade-in">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
           <div className="overflow-hidden flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <div>
                 <h3 className="text-lg font-bold text-gray-900">{t('Purchase Order Details')}</h3>
-                <span className="text-sm font-semibold text-indigo-650 font-mono mt-0.5 inline-block">{viewingPo.poNumber}</span>
+                <span className="text-sm font-semibold text-indigo-700 font-mono mt-0.5 inline-block">{viewingPo.poNumber}</span>
               </div>
               <button 
                 onClick={() => setViewingPo(null)} 
@@ -1078,9 +1165,9 @@ export default function InventoryModule({
                           <tr key={idx}>
                             <td className="px-4 py-2 font-medium text-gray-900">{prod?.name || t('Unknown Product')}</td>
                             <td className="px-4 py-2 text-right font-semibold text-gray-950">{item.quantityOrdered}</td>
-                            <td className="px-4 py-2 text-right">{item.unitPrice.toFixed(2)} SAR</td>
-                            <td className="px-4 py-2 text-right">{vat.toFixed(2)} SAR</td>
-                            <td className="px-4 py-2 text-right font-bold">{(subTotal + vat).toFixed(2)} SAR</td>
+                            <td className="px-4 py-2 text-right">{item.unitPrice.toFixed(2)} {currency}</td>
+                            <td className="px-4 py-2 text-right">{vat.toFixed(2)} {currency}</td>
+                            <td className="px-4 py-2 text-right font-bold">{(subTotal + vat).toFixed(2)} {currency}</td>
                           </tr>
                         );
                       })}
@@ -1088,11 +1175,11 @@ export default function InventoryModule({
                   </table>
                 </div>
                 <div className="mt-4 flex justify-end text-lg font-bold text-gray-900">
-                  {t('Grand Total:')} &nbsp;{Number(viewingPo.totalAmount).toFixed(2)} SAR
+                  {t('Grand Total:')} &nbsp;{Number(viewingPo.totalAmount).toFixed(2)} {currency}
                 </div>
               </div>
             </div>
-            <div className="p-6 border-t border-gray-150 flex justify-between bg-gray-50">
+            <div className="p-6 border-t border-gray-200 flex justify-between bg-gray-50">
               <button
                 onClick={() => setViewingPo(null)}
                 className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
@@ -1102,7 +1189,7 @@ export default function InventoryModule({
               {viewingPo.status === 'Sent' && (
                 <button
                   onClick={() => handleCancelPo(viewingPo.id)}
-                  className="px-4 py-2 bg-rose-50 text-rose-700 rounded-lg text-sm font-medium hover:bg-rose-105 transition"
+                  className="px-4 py-2 bg-rose-50 text-rose-700 rounded-lg text-sm font-medium hover:bg-rose-100 transition"
                 >
                   {t('Cancel PO')}
                 </button>
@@ -1114,12 +1201,12 @@ export default function InventoryModule({
 
       {/* GRN VIEW DETAIL PANEL */}
       {viewingGrn && (
-        <div className="bg-white rounded-xl border border-gray-150 shadow-sm w-full animate-fade-in">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
           <div className="overflow-hidden flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <div>
                 <h3 className="text-lg font-bold text-gray-900">{t('Goods Receipt Note Details')}</h3>
-                <span className="text-sm font-semibold text-indigo-650 font-mono mt-0.5 inline-block">{viewingGrn.grnNumber}</span>
+                <span className="text-sm font-semibold text-indigo-700 font-mono mt-0.5 inline-block">{viewingGrn.grnNumber}</span>
               </div>
               <button 
                 onClick={() => setViewingGrn(null)} 
@@ -1192,12 +1279,12 @@ export default function InventoryModule({
                         return (
                           <tr key={idx}>
                             <td className="px-4 py-2 font-medium text-gray-900">{prod?.name || t('Unknown Product')}</td>
-                            <td className="px-4 py-2 text-right font-bold text-emerald-650">{item.quantityReceived}</td>
-                            <td className="px-4 py-2 text-right">{item.unitCost.toFixed(2)} SAR</td>
+                            <td className="px-4 py-2 text-right font-bold text-emerald-600">{item.quantityReceived}</td>
+                            <td className="px-4 py-2 text-right">{item.unitCost.toFixed(2)} {currency}</td>
                             <td className="px-4 py-2 text-right">{item.taxRate || 0}%</td>
-                            <td className="px-4 py-2 text-right">{vat.toFixed(2)} SAR</td>
-                            <td className="px-4 py-2 text-right font-bold">{(subTotal + vat).toFixed(2)} SAR</td>
-                            <td className="px-4 py-2 text-gray-650 text-xs">
+                            <td className="px-4 py-2 text-right">{vat.toFixed(2)} {currency}</td>
+                            <td className="px-4 py-2 text-right font-bold">{(subTotal + vat).toFixed(2)} {currency}</td>
+                            <td className="px-4 py-2 text-gray-600 text-xs">
                               <span className="font-mono">{item.batchNumber || '-'}</span>
                               {item.expiryDate ? ` / ${new Date(item.expiryDate).toLocaleDateString()}` : ''}
                             </td>
@@ -1207,29 +1294,29 @@ export default function InventoryModule({
                     </tbody>
                   </table>
                 </div>
-                <div className="mt-4 flex flex-col items-end gap-1.5 text-sm font-semibold text-gray-750">
+                <div className="mt-4 flex flex-col items-end gap-1.5 text-sm font-semibold text-gray-700">
                   <div>
                     {t('Subtotal (excl. tax):')} &nbsp;
                     <span className="font-bold text-gray-900">
-                      {(viewingGrn.items || []).reduce((sum, item) => sum + item.quantityReceived * item.unitCost, 0).toFixed(2)} SAR
+                      {(viewingGrn.items || []).reduce((sum, item) => sum + item.quantityReceived * item.unitCost, 0).toFixed(2)} {currency}
                     </span>
                   </div>
                   <div>
                     {t('VAT Total:')} &nbsp;
                     <span className="font-bold text-gray-900">
-                      {(viewingGrn.items || []).reduce((sum, item) => sum + (item.quantityReceived * item.unitCost * ((item.taxRate || 0) / 100)), 0).toFixed(2)} SAR
+                      {(viewingGrn.items || []).reduce((sum, item) => sum + (item.quantityReceived * item.unitCost * ((item.taxRate || 0) / 100)), 0).toFixed(2)} {currency}
                     </span>
                   </div>
                   <div className="text-lg font-bold text-emerald-700 mt-1 border-t border-gray-100 pt-1.5">
                     {t('Grand Total:')} &nbsp;
                     <span>
-                      {(viewingGrn.items || []).reduce((sum, item) => sum + (item.quantityReceived * item.unitCost * (1 + ((item.taxRate || 0) / 100))), 0).toFixed(2)} SAR
+                      {(viewingGrn.items || []).reduce((sum, item) => sum + (item.quantityReceived * item.unitCost * (1 + ((item.taxRate || 0) / 100))), 0).toFixed(2)} {currency}
                     </span>
                   </div>
                 </div>
               </div>
             </div>
-            <div className="p-6 border-t border-gray-150 flex justify-end bg-gray-50">
+            <div className="p-6 border-t border-gray-200 flex justify-end bg-gray-50">
               <button
                 onClick={() => setViewingGrn(null)}
                 className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
@@ -1243,7 +1330,7 @@ export default function InventoryModule({
 
       {/* CREATE PR PANEL */}
       {isCreatingPr && (
-        <div className="bg-white rounded-xl border border-gray-150 shadow-sm w-full animate-fade-in">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
           <div className="overflow-hidden flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <h3 className="text-lg font-bold text-gray-900">{t('Create Purchase Requisition (PR)')}</h3>
@@ -1316,7 +1403,7 @@ export default function InventoryModule({
                       <button
                         type="button"
                         onClick={addPrItem}
-                        className="px-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-750 transition font-bold"
+                        className="px-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-bold"
                       >
                         +
                       </button>
@@ -1369,7 +1456,7 @@ export default function InventoryModule({
                   </div>
                 </div>
               </div>
-              <div className="p-6 border-t border-gray-150 flex justify-end gap-3 bg-gray-50">
+              <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
                 <button
                   type="button"
                   onClick={() => setIsCreatingPr(false)}
@@ -1379,10 +1466,10 @@ export default function InventoryModule({
                 </button>
                 <button
                   type="submit"
-                  disabled={prForm.items.length === 0}
-                  className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-750 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  disabled={prForm.items.length === 0 || isSubmittingPr}
+                  className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
-                  {t('Submit Requisition')}
+                  {isSubmittingPr ? t('Submitting...') : t('Submit Requisition')}
                 </button>
               </div>
             </form>
@@ -1392,7 +1479,7 @@ export default function InventoryModule({
 
       {/* CREATE PO PANEL */}
       {isCreatingPo && (
-        <div className="bg-white rounded-xl border border-gray-150 shadow-sm w-full animate-fade-in">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
           <div className="overflow-hidden flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <h3 className="text-lg font-bold text-gray-900">{t('Raise Purchase Order (PO)')}</h3>
@@ -1508,11 +1595,8 @@ export default function InventoryModule({
                         onChange={(e) => setNewPoItem({ ...newPoItem, taxRate: Number(e.target.value) })}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
                       >
-                        <option value={17}>VAT (17%)</option>
                         {db.taxSlabs?.map(ts => (
-                          ts.percentage !== 17 && (
-                            <option key={ts.id} value={ts.percentage}>{ts.name} ({ts.percentage}%)</option>
-                          )
+                          <option key={ts.id} value={ts.percentage}>{ts.name} ({ts.percentage}%)</option>
                         ))}
                         {!db.taxSlabs && (
                           <>
@@ -1530,7 +1614,7 @@ export default function InventoryModule({
                       <button
                         type="button"
                         onClick={addPoItem}
-                        className="w-full h-9 bg-indigo-600 text-white rounded-lg hover:bg-indigo-750 transition font-bold text-sm flex items-center justify-center shadow-xs"
+                        className="w-full h-9 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-bold text-sm flex items-center justify-center shadow-xs"
                       >
                         {t('Add')}
                       </button>
@@ -1599,11 +1683,8 @@ export default function InventoryModule({
                                   }}
                                   className="w-28 text-right border border-gray-200 rounded px-2 py-1 text-xs bg-white inline-block"
                                 >
-                                  <option value={17}>VAT (17%)</option>
                                   {db.taxSlabs?.map(ts => (
-                                    ts.percentage !== 17 && (
-                                      <option key={ts.id} value={ts.percentage}>{ts.name} ({ts.percentage}%)</option>
-                                    )
+                                    <option key={ts.id} value={ts.percentage}>{ts.name} ({ts.percentage}%)</option>
                                   ))}
                                   {!db.taxSlabs && (
                                     <>
@@ -1617,7 +1698,7 @@ export default function InventoryModule({
                                   )}
                                 </select>
                               </td>
-                              <td className="px-4 py-2 text-right font-semibold text-gray-900">{(subTotal + vat).toFixed(2)} SAR</td>
+                              <td className="px-4 py-2 text-right font-semibold text-gray-900">{(subTotal + vat).toFixed(2)} {currency}</td>
                               <td className="px-4 py-2 text-right">
                                 <button
                                   type="button"
@@ -1642,7 +1723,7 @@ export default function InventoryModule({
                   </div>
                 </div>
               </div>
-              <div className="p-6 border-t border-gray-150 flex justify-end gap-3 bg-gray-50">
+              <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
                 <button
                   type="button"
                   onClick={() => setIsCreatingPo(false)}
@@ -1652,10 +1733,10 @@ export default function InventoryModule({
                 </button>
                 <button
                   type="submit"
-                  disabled={poForm.items.length === 0 || !poForm.vendorId}
-                  className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-750 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  disabled={poForm.items.length === 0 || !poForm.vendorId || isSubmittingPo}
+                  className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
-                  {t('Issue Purchase Order')}
+                  {isSubmittingPo ? t('Issuing...') : t('Issue Purchase Order')}
                 </button>
               </div>
             </form>
@@ -1665,7 +1746,7 @@ export default function InventoryModule({
 
       {/* CREATE GRN PANEL */}
       {isCreatingGrn && (
-        <div className="bg-white rounded-xl border border-gray-150 shadow-sm w-full animate-fade-in">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
           <div className="overflow-hidden flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <h3 className="text-lg font-bold text-gray-900">{t('Receive Goods / GRN Ledger')}</h3>
@@ -1712,10 +1793,13 @@ export default function InventoryModule({
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
                       >
                         <option value="">{t('-- Select Purchase Order --')}</option>
+                        {/* A Partially Received PO must stay selectable so the remaining
+                            balance can still be received — otherwise a partial delivery
+                            could never be completed. */}
                         {purchaseOrders
-                          .filter(po => po.status === 'Sent')
+                          .filter(po => po.status === 'Sent' || po.status === 'Partially Received')
                           .map(po => (
-                            <option key={po.id} value={po.id}>{po.poNumber} ({vendors.find(v => v.id === po.vendorId)?.name})</option>
+                            <option key={po.id} value={po.id}>{po.poNumber}{po.status === 'Partially Received' ? ` (${t('Partially Received')})` : ''} ({vendors.find(v => v.id === po.vendorId)?.name})</option>
                           ))}
                       </select>
                     </div>
@@ -1866,7 +1950,7 @@ export default function InventoryModule({
                       <button
                         type="button"
                         onClick={addGrnItem}
-                        className="px-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-750 transition font-bold text-sm"
+                        className="px-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-bold text-sm"
                       >
                         +
                       </button>
@@ -1899,11 +1983,11 @@ export default function InventoryModule({
                           return (
                             <tr key={idx}>
                               <td className="px-4 py-2">{prod?.name || t('Unknown Product')}</td>
-                              <td className="px-4 py-2 text-right font-bold text-emerald-650">{item.quantityReceived}</td>
-                              <td className="px-4 py-2 text-right">{item.unitCost.toFixed(2)} SAR</td>
+                              <td className="px-4 py-2 text-right font-bold text-emerald-600">{item.quantityReceived}</td>
+                              <td className="px-4 py-2 text-right">{item.unitCost.toFixed(2)} {currency}</td>
                               <td className="px-4 py-2 text-right">{item.taxRate || 0}%</td>
-                              <td className="px-4 py-2 text-right">{vat.toFixed(2)} SAR</td>
-                              <td className="px-4 py-2 text-right font-semibold">{(subTotal + vat).toFixed(2)} SAR</td>
+                              <td className="px-4 py-2 text-right">{vat.toFixed(2)} {currency}</td>
+                              <td className="px-4 py-2 text-right font-semibold">{(subTotal + vat).toFixed(2)} {currency}</td>
                               <td className="px-4 py-2 text-xs text-gray-500">
                                 <span className="font-mono">{item.batchNumber || '-'}</span>
                                 {item.expiryDate ? ` / ${new Date(item.expiryDate).toLocaleDateString()}` : ''}
@@ -1932,7 +2016,7 @@ export default function InventoryModule({
                   </div>
                 </div>
               </div>
-              <div className="p-6 border-t border-gray-150 flex justify-end gap-3 bg-gray-50">
+              <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
                 <button
                   type="button"
                   onClick={() => setIsCreatingGrn(false)}
@@ -1942,10 +2026,10 @@ export default function InventoryModule({
                 </button>
                 <button
                   type="submit"
-                  disabled={grnForm.items.length === 0 || (!grnForm.isDsd && !grnForm.purchaseOrderId) || (grnForm.isDsd && !grnForm.vendorId)}
+                  disabled={grnForm.items.length === 0 || (!grnForm.isDsd && !grnForm.purchaseOrderId) || (grnForm.isDsd && !grnForm.vendorId) || isSubmittingGrn}
                   className="px-5 py-2 bg-emerald-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-emerald-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
-                  {t('Confirm Receipt & Update Stock')}
+                  {isSubmittingGrn ? t('Recording...') : t('Confirm Receipt & Update Stock')}
                 </button>
               </div>
             </form>
@@ -1955,7 +2039,7 @@ export default function InventoryModule({
 
       {/* CREATE WAREHOUSE PANEL */}
       {isCreatingWarehouse && (
-        <div className="bg-white rounded-xl border border-gray-150 shadow-sm w-full animate-fade-in">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
           <div className="overflow-hidden flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <h3 className="text-lg font-bold text-gray-900">{t('Add Warehouse Location')}</h3>
@@ -2001,7 +2085,7 @@ export default function InventoryModule({
                   />
                 </div>
               </div>
-              <div className="p-6 border-t border-gray-150 flex justify-end gap-3 bg-gray-50">
+              <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
                 <button
                   type="button"
                   onClick={() => setIsCreatingWarehouse(false)}
@@ -2011,9 +2095,10 @@ export default function InventoryModule({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-750 transition"
+                  disabled={isSubmittingWarehouse}
+                  className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
-                  {t('Register Warehouse')}
+                  {isSubmittingWarehouse ? t('Registering...') : t('Register Warehouse')}
                 </button>
               </div>
             </form>
@@ -2023,7 +2108,7 @@ export default function InventoryModule({
 
       {/* ADJUST STOCK PANEL */}
       {isAdjustingStock && (
-        <div className="bg-white rounded-xl border border-gray-150 shadow-sm w-full animate-fade-in">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
           <div className="overflow-hidden flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <h3 className="text-lg font-bold text-gray-900">{t('Material Stock Adjustment')}</h3>
@@ -2100,7 +2185,7 @@ export default function InventoryModule({
                   />
                 </div>
               </div>
-              <div className="p-6 border-t border-gray-150 flex justify-end gap-3 bg-gray-50">
+              <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
                 <button
                   type="button"
                   onClick={() => setIsAdjustingStock(false)}
@@ -2110,10 +2195,10 @@ export default function InventoryModule({
                 </button>
                 <button
                   type="submit"
-                  disabled={!adjustmentForm.productId || !adjustmentForm.quantity}
-                  className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-750 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  disabled={!adjustmentForm.productId || !adjustmentForm.quantity || isSubmittingAdjustment}
+                  className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
-                  {t('Apply Adjustment')}
+                  {isSubmittingAdjustment ? t('Applying...') : t('Apply Adjustment')}
                 </button>
               </div>
             </form>

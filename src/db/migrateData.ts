@@ -95,6 +95,7 @@ export async function migrateDataToPostgres(data: any, ctx: MigrateContext = {})
         counters: c.counters,
         posSettings: c.posSettings,
         isInventoryModuleEnabled: c.isInventoryModuleEnabled ?? false,
+        zatcaEnabled: c.zatcaEnabled ?? false,
         inventorySettings: c.inventorySettings || null,
       }));
       await upsert(schema.companies, records);

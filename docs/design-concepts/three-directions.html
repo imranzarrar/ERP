@@ -1,0 +1,234 @@
+<title>Three Retail ERP Directions</title>
+<style>
+  :root {
+    --page: #f3f1ea; --ink: #17150f; --ink-soft: #6b6960; --line: #e2ded2;
+    --font-display: "Bahnschrift","SF Compact Text","Segoe UI Semibold",system-ui,sans-serif;
+    --font-body: "Segoe UI","Helvetica Neue",system-ui,sans-serif;
+    --font-mono: "SF Mono","Cascadia Code","Consolas",ui-monospace,monospace;
+    --font-serif: "Iowan Old Style","Georgia","Cambria",serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --page: #15140f; --ink: #f7f5ee; --ink-soft: #a8a498; --line: #322f26; }
+  }
+  :root[data-theme="dark"] { --page: #15140f; --ink: #f7f5ee; --ink-soft: #a8a498; --line: #322f26; }
+  :root[data-theme="light"] { --page: #f3f1ea; --ink: #17150f; --ink-soft: #6b6960; --line: #e2ded2; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font-body); background: var(--page); color: var(--ink); }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 1rem; }
+  .h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(1.4rem,3vw,1.85rem); margin: 0 0 0.5rem; text-wrap: balance; }
+  .lede { font-size: 0.95rem; line-height: 1.6; color: var(--ink-soft); max-width: 68ch; margin: 0 0 1rem; }
+  .section-label { font-family: var(--font-display); font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft); margin: 3rem 0 0.4rem; padding-top: 2rem; border-top: 1px solid var(--line); }
+  .section-title { font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; margin: 0 0 0.4rem; }
+  .section-note { font-size: 0.88rem; line-height: 1.6; color: var(--ink-soft); max-width: 66ch; margin: 0 0 1.25rem; }
+
+  /* ===== A. TICKET STOCK ===== */
+  .a-panel { background: #f7f2e2; border-radius: 4px; padding: 1.75rem; color: #1b2b1f; }
+  .a-panel * { box-sizing: border-box; }
+  .a-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 1.25rem; }
+  .a-brand { font-family: "Consolas","SF Mono",monospace; font-weight: 700; font-size: 0.95rem; letter-spacing: 0.02em; }
+  .a-date { font-family: "Consolas","SF Mono",monospace; font-size: 0.72rem; color: #5c6b60; }
+  .a-panel { --a-paper:#f7f2e2; --a-card:#fffdf7; --a-accent:#1b4332; --a-paid:#1b4332; --a-due:#b3261e; --a-muted:#5c6b60; --a-line:#cfc7ae; }
+  .a-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 0.9rem; margin-bottom: 1.25rem; }
+  .a-stub { position: relative; background: var(--a-card); border: 1px dashed var(--a-accent); border-radius: 2px; padding: 0.8rem 0.9rem 0.9rem; }
+  .a-stub::before, .a-stub::after { content: ""; position: absolute; top: 50%; width: 14px; height: 14px; border-radius: 50%; background: var(--a-paper); transform: translateY(-50%); }
+  .a-stub::before { left: -8px; } .a-stub::after { right: -8px; }
+  .a-stub .lab { font-family: "Consolas","SF Mono",monospace; font-size: 0.62rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--a-muted); margin-bottom: 0.3rem; }
+  .a-stub .val { font-family: "Consolas","SF Mono",monospace; font-weight: 700; font-size: 1.2rem; color: var(--a-accent); }
+  .a-list { background: var(--a-card); border: 1px solid var(--a-accent); border-radius: 3px; overflow: hidden; }
+  .a-row { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.9rem; border-bottom: 1px dashed var(--a-line); font-family: "Consolas","SF Mono",monospace; font-size: 0.8rem; }
+  .a-row:last-child { border-bottom: none; }
+  .a-row .no { font-weight: 700; }
+  .a-row .cust { color: var(--a-muted); font-size: 0.75rem; }
+  .a-stamp { display: inline-flex; align-items: center; gap: 0.3rem; font-family: "Consolas","SF Mono",monospace; font-weight: 700; font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.15rem 0.5rem; border: 2px solid currentColor; border-radius: 3px; transform: rotate(-3deg); }
+  .a-stamp.paid { color: var(--a-paid); }
+  .a-stamp.due { color: var(--a-due); }
+  .a-swatches span { display: inline-block; width: 14px; height: 14px; border-radius: 3px; margin-right: 4px; vertical-align: -2px; }
+
+  /* ===== B. BOUTIQUE ===== */
+  .b-panel { --b-dark:#2e1a34; --b-gold:#cba36a; --b-ivory:#f9f4ea; --b-ivory-ink:#2e1a34; --b-line:#e3d8c4; --b-paid-bg:#dde8dc; --b-paid-ink:#2f4a2c; --b-due-bg:#f3e2df; --b-due-ink:#7a3226; }
+  .b-panel { background: var(--b-dark); border-radius: 8px; padding: 2.25rem 2rem; color: #f4ece0; }
+  .b-eyebrow { font-family: var(--font-serif); font-style: italic; font-size: 0.85rem; color: var(--b-gold); margin: 0 0 0.3rem; }
+  .b-title { font-family: var(--font-serif); font-size: 1.5rem; margin: 0 0 1.5rem; letter-spacing: 0.01em; }
+  .b-rule { border: none; border-top: 1px solid var(--b-gold); opacity: 0.5; margin: 1.5rem 0; }
+  .b-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 1.75rem; }
+  .b-kpi .lab { font-family: var(--font-serif); font-style: italic; font-size: 0.78rem; color: var(--b-gold); margin-bottom: 0.4rem; }
+  .b-kpi .val { font-family: var(--font-serif); font-size: 1.6rem; color: #f4ece0; }
+  .b-card { background: var(--b-ivory); color: var(--b-ivory-ink); border-radius: 6px; padding: 1.1rem 1.3rem; margin-top: 1.75rem; }
+  .b-row { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0; border-bottom: 1px solid var(--b-line); font-size: 0.85rem; }
+  .b-row:last-child { border-bottom: none; }
+  .b-row .no { font-family: var(--font-serif); font-weight: 600; }
+  .b-tag { font-family: var(--font-display); font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.2rem 0.6rem; border-radius: 100px; }
+  .b-tag.paid { background: var(--b-paid-bg); color: var(--b-paid-ink); }
+  .b-tag.due { background: var(--b-due-bg); color: var(--b-due-ink); }
+
+  /* ===== C. MARKETPLACE ===== */
+  .c-panel { --c-1:#0891b2; --c-2:#db2777; --c-3:#d97706; --c-paid:#16a34a; --c-due-bg:#fef3c7; --c-due-ink:#78350f; --c-paid-bg:#dcfce7; --c-paid-ink:#14532d; }
+  .c-panel { background: #ffffff; border: 1px solid var(--line); border-radius: 18px; padding: 1.75rem; }
+  .c-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; }
+  .c-brand { font-family: var(--font-display); font-weight: 600; font-size: 1rem; }
+  .c-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 0.9rem; margin-bottom: 1.25rem; }
+  .c-kpi { border-radius: 16px; padding: 0; overflow: hidden; }
+  .c-kpi .band { height: 8px; }
+  .c-kpi .body { padding: 0.85rem 1rem; background: var(--page); border-radius: 0 0 16px 16px; }
+  .c-kpi .lab { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); margin-bottom: 0.3rem; }
+  .c-kpi .val { font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; }
+  .c-badge { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; font-size: 0.85rem; color: #fff; font-weight: 600; flex-shrink: 0; }
+  .c-list { display: flex; flex-direction: column; gap: 0.6rem; }
+  .c-row { display: flex; align-items: center; gap: 0.75rem; background: var(--page); border-radius: 14px; padding: 0.7rem 1rem; }
+  .c-row .no { font-family: var(--font-display); font-weight: 600; font-size: 0.85rem; }
+  .c-row .cust { font-size: 0.75rem; color: var(--ink-soft); }
+  .c-pill { margin-inline-start: auto; font-family: var(--font-display); font-size: 0.66rem; font-weight: 600; padding: 0.25rem 0.65rem; border-radius: 100px; }
+  .lang-toggle { display: inline-flex; gap: 0.4rem; margin: 0 0 1.5rem; }
+  .lang-toggle button { font-family: var(--font-display); font-size: 0.78rem; font-weight: 600; padding: 0.45rem 0.9rem; border-radius: 7px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+  .lang-toggle button.active { background: var(--ink); color: var(--page); }
+  [dir="rtl"] .a-stub::before, [dir="rtl"] .a-stub::after { left: auto; right: auto; }
+  [dir="rtl"] .a-stub::before { right: -8px; }
+  [dir="rtl"] .a-stub::after { left: -8px; }
+
+  .palette-picker { display: flex; gap: 0.5rem; margin: 0 0 1rem; flex-wrap: wrap; }
+  .palette-btn { display: flex; align-items: center; gap: 0.45rem; font-family: var(--font-display); font-size: 0.74rem; font-weight: 600; color: var(--ink-soft); background: transparent; border: 1px solid var(--line); border-radius: 100px; padding: 0.3rem 0.75rem 0.3rem 0.4rem; cursor: pointer; }
+  .palette-btn.active { border-color: var(--ink); color: var(--ink); }
+  .palette-btn .chips { display: inline-flex; }
+  .palette-btn .chips span { width: 13px; height: 13px; border-radius: 50%; border: 1px solid rgba(0,0,0,.12); margin-inline-start: -5px; }
+  .palette-btn .chips span:first-child { margin-inline-start: 0; }
+
+  .cta { max-width: 900px; margin: 2.5rem auto 3rem; padding: 0 1.5rem; font-size: 0.88rem; color: var(--ink-soft); line-height: 1.6; }
+  .cta b { color: var(--ink); }
+</style>
+
+<div class="wrap">
+  <p class="h1">Three graphic directions, side by side</p>
+  <p class="lede">Storefront (the last version) was intentionally restrained &mdash; a clean admin panel. These three lean further into visual personality, each a genuinely different bet rather than a palette swap on the same template. Same content throughout (June sales KPIs, three invoice rows) so the only variable is the design language itself. Two of the app's three planned languages (Arabic, Urdu) are RTL, so every direction below is built on logical CSS (start/end, not left/right) &mdash; toggle below to see it actually mirror, not just hear it claimed.</p>
+  <div class="lang-toggle">
+    <button type="button" data-lang="en" class="active">English (LTR)</button>
+    <button type="button" data-lang="ar">&#1575;&#1604;&#1593;&#1585;&#1576;&#1610;&#1577; (RTL)</button>
+  </div>
+</div>
+
+<div class="wrap demo-wrap">
+  <p class="section-label">Direction A</p>
+  <p class="section-title">Ticket stock</p>
+  <p class="section-note">Built from the physical object retail already runs on &mdash; the receipt. Perforated stub edges, register-tape monospace, a hand-stamped &ldquo;paid&rdquo;/&ldquo;due&rdquo; mark tilted like a real ink stamp.</p>
+  <div class="palette-picker" data-palette-group="a">
+    <button type="button" class="palette-btn active" data-palette="till"><span class="chips"><span style="background:#f7f2e2"></span><span style="background:#1b4332"></span><span style="background:#b3261e"></span></span>Till green</button>
+    <button type="button" class="palette-btn" data-palette="ink"><span class="chips"><span style="background:#eef1f5"></span><span style="background:#1c3f66"></span><span style="background:#b3261e"></span></span>Ink blue</button>
+    <button type="button" class="palette-btn" data-palette="butcher"><span class="chips"><span style="background:#f7ece2"></span><span style="background:#7a1f1f"></span><span style="background:#d6402c"></span></span>Butcher red</button>
+  </div>
+  <div class="a-panel">
+    <div class="a-top"><span class="a-brand">*** CNC WOODCRAFT &mdash; <span data-en="DAILY TAPE" data-ar="&#1587;&#1580;&#1604; &#1575;&#1604;&#1610;&#1608;&#1605;">DAILY TAPE</span> ***</span><span class="a-date">30 JUL 2026</span></div>
+    <div class="a-kpis">
+      <div class="a-stub"><div class="lab" data-en="Gross sales" data-ar="&#1573;&#1580;&#1605;&#1575;&#1604;&#1610; &#1575;&#1604;&#1605;&#1576;&#1610;&#1593;&#1575;&#1578;">Gross sales</div><div class="val">5,185.25</div></div>
+      <div class="a-stub"><div class="lab" data-en="Cash in" data-ar="&#1575;&#1604;&#1606;&#1602;&#1583; &#1575;&#1604;&#1605;&#1581;&#1589;&#1604;">Cash in</div><div class="val">1,535.25</div></div>
+      <div class="a-stub"><div class="lab" data-en="Pending" data-ar="&#1575;&#1604;&#1605;&#1587;&#1578;&#1581;&#1602;&#1575;&#1578;">Pending</div><div class="val">3,362.50</div></div>
+    </div>
+    <div class="a-list">
+      <div class="a-row"><span><span class="no">INV-1001</span> <span class="cust" data-en="Al Faisal Contracting" data-ar="&#1588;&#1585;&#1603;&#1577; &#1575;&#1604;&#1601;&#1610;&#1589;&#1604; &#1604;&#1604;&#1605;&#1602;&#1575;&#1608;&#1604;&#1575;&#1578;">Al Faisal Contracting</span></span><span class="a-stamp due" data-en="Due" data-ar="&#1605;&#1587;&#1578;&#1581;&#1602;">Due</span></div>
+      <div class="a-row"><span><span class="no">CN-0004</span> <span class="cust"><span data-en="Sara Al-Qahtani" data-ar="&#1587;&#1575;&#1585;&#1577; &#1575;&#1604;&#1602;&#1581;&#1591;&#1575;&#1606;&#1610;">Sara Al-Qahtani</span> &middot; <span data-en="ref INV-0998" data-ar="&#1605;&#1585;&#1580;&#1593; INV-0998">ref INV-0998</span></span></span><span class="a-stamp due" data-en="Due" data-ar="&#1605;&#1587;&#1578;&#1581;&#1602;">Due</span></div>
+      <div class="a-row"><span><span class="no">INV-1003</span> <span class="cust" data-en="Sara Al-Qahtani" data-ar="&#1587;&#1575;&#1585;&#1577; &#1575;&#1604;&#1602;&#1581;&#1591;&#1575;&#1606;&#1610;">Sara Al-Qahtani</span></span><span class="a-stamp paid" data-en="Paid" data-ar="&#1605;&#1583;&#1601;&#1608;&#1593;">Paid</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap demo-wrap">
+  <p class="section-label">Direction B</p>
+  <p class="section-title">Boutique</p>
+  <p class="section-note">For the higher end of retail &mdash; a jewel-tone header panel, a serif display face carrying the numbers themselves (KPIs read like a menu of figures, not a spreadsheet), a metallic rule instead of a hairline. Ivory cards break from the dark panel the way a price card sits inside a boutique window.</p>
+  <div class="palette-picker" data-palette-group="b">
+    <button type="button" class="palette-btn active" data-palette="plum"><span class="chips"><span style="background:#2e1a34"></span><span style="background:#cba36a"></span><span style="background:#f9f4ea"></span></span>Plum &amp; brass</button>
+    <button type="button" class="palette-btn" data-palette="emerald"><span class="chips"><span style="background:#0f3d2e"></span><span style="background:#d4af37"></span><span style="background:#f7f4ec"></span></span>Emerald &amp; gold</button>
+    <button type="button" class="palette-btn" data-palette="midnight"><span class="chips"><span style="background:#161c2c"></span><span style="background:#c98b7a"></span><span style="background:#f7f0ec"></span></span>Midnight &amp; rose gold</button>
+  </div>
+  <div class="b-panel">
+    <p class="b-eyebrow" data-en="Command centre &middot; June 2026" data-ar="&#1605;&#1585;&#1603;&#1586; &#1575;&#1604;&#1602;&#1610;&#1575;&#1583;&#1577; &middot; &#1610;&#1608;&#1606;&#1610;&#1608; 2026">Command centre &middot; June 2026</p>
+    <p class="b-title">CNC Woodcraft &amp; Design</p>
+    <div class="b-kpis">
+      <div class="b-kpi"><div class="lab" data-en="Gross sales" data-ar="&#1573;&#1580;&#1605;&#1575;&#1604;&#1610; &#1575;&#1604;&#1605;&#1576;&#1610;&#1593;&#1575;&#1578;">Gross sales</div><div class="val">SAR 5,185</div></div>
+      <div class="b-kpi"><div class="lab" data-en="Cash in" data-ar="&#1575;&#1604;&#1606;&#1602;&#1583; &#1575;&#1604;&#1605;&#1581;&#1589;&#1604;">Cash in</div><div class="val">SAR 1,535</div></div>
+      <div class="b-kpi"><div class="lab" data-en="Pending" data-ar="&#1575;&#1604;&#1605;&#1587;&#1578;&#1581;&#1602;&#1575;&#1578;">Pending</div><div class="val">SAR 3,363</div></div>
+    </div>
+    <hr class="b-rule" />
+    <div class="b-card">
+      <div class="b-row"><span class="no"><span data-en="INV-1001 &middot; Al Faisal Contracting" data-ar="INV-1001 &middot; &#1588;&#1585;&#1603;&#1577; &#1575;&#1604;&#1601;&#1610;&#1589;&#1604; &#1604;&#1604;&#1605;&#1602;&#1575;&#1608;&#1604;&#1575;&#1578;">INV-1001 &middot; Al Faisal Contracting</span></span><span class="b-tag due" data-en="Unpaid" data-ar="&#1594;&#1610;&#1585; &#1605;&#1583;&#1601;&#1608;&#1593;">Unpaid</span></div>
+      <div class="b-row"><span class="no"><span data-en="CN-0004 &middot; Sara Al-Qahtani" data-ar="CN-0004 &middot; &#1587;&#1575;&#1585;&#1577; &#1575;&#1604;&#1602;&#1581;&#1591;&#1575;&#1606;&#1610;">CN-0004 &middot; Sara Al-Qahtani</span></span><span class="b-tag due" data-en="Unpaid" data-ar="&#1594;&#1610;&#1585; &#1605;&#1583;&#1601;&#1608;&#1593;">Unpaid</span></div>
+      <div class="b-row"><span class="no"><span data-en="INV-1003 &middot; Sara Al-Qahtani" data-ar="INV-1003 &middot; &#1587;&#1575;&#1585;&#1577; &#1575;&#1604;&#1602;&#1581;&#1591;&#1575;&#1606;&#1610;">INV-1003 &middot; Sara Al-Qahtani</span></span><span class="b-tag paid" data-en="Paid" data-ar="&#1605;&#1583;&#1601;&#1608;&#1593;">Paid</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap demo-wrap">
+  <p class="section-label">Direction C</p>
+  <p class="section-title">Marketplace</p>
+  <p class="section-note">The most colorful of the three &mdash; each KPI gets its own hue rather than one shared accent, the way stalls at a market each carry their own signage. Rounded, friendly, initials-in-a-circle for customers instead of plain text. Best fit if the product serves many small, varied retailers rather than one large account.</p>
+  <div class="palette-picker" data-palette-group="c">
+    <button type="button" class="palette-btn active" data-palette="bazaar"><span class="chips"><span style="background:#0891b2"></span><span style="background:#db2777"></span><span style="background:#d97706"></span></span>Bazaar</button>
+    <button type="button" class="palette-btn" data-palette="citrus"><span class="chips"><span style="background:#65a30d"></span><span style="background:#ea580c"></span><span style="background:#ca8a04"></span></span>Citrus</button>
+    <button type="button" class="palette-btn" data-palette="jewel"><span class="chips"><span style="background:#7c3aed"></span><span style="background:#0d9488"></span><span style="background:#e11d48"></span></span>Jewel tones</button>
+  </div>
+  <div class="c-panel">
+    <div class="c-top"><span class="c-brand">CNC Woodcraft &amp; Design</span></div>
+    <div class="c-kpis">
+      <div class="c-kpi"><div class="band" style="background:var(--c-1)"></div><div class="body"><div class="lab" data-en="Gross sales" data-ar="&#1573;&#1580;&#1605;&#1575;&#1604;&#1610; &#1575;&#1604;&#1605;&#1576;&#1610;&#1593;&#1575;&#1578;">Gross sales</div><div class="val">SAR 5,185</div></div></div>
+      <div class="c-kpi"><div class="band" style="background:var(--c-2)"></div><div class="body"><div class="lab" data-en="Cash in" data-ar="&#1575;&#1604;&#1606;&#1602;&#1583; &#1575;&#1604;&#1605;&#1581;&#1589;&#1604;">Cash in</div><div class="val">SAR 1,535</div></div></div>
+      <div class="c-kpi"><div class="band" style="background:var(--c-3)"></div><div class="body"><div class="lab" data-en="Pending" data-ar="&#1575;&#1604;&#1605;&#1587;&#1578;&#1581;&#1602;&#1575;&#1578;">Pending</div><div class="val">SAR 3,363</div></div></div>
+    </div>
+    <div class="c-list">
+      <div class="c-row"><span class="c-badge" style="background:var(--c-1)">AF</span><span><span class="no">INV-1001</span><br /><span class="cust" data-en="Al Faisal Contracting" data-ar="&#1588;&#1585;&#1603;&#1577; &#1575;&#1604;&#1601;&#1610;&#1589;&#1604; &#1604;&#1604;&#1605;&#1602;&#1575;&#1608;&#1604;&#1575;&#1578;">Al Faisal Contracting</span></span><span class="c-pill" style="background:var(--c-due-bg);color:var(--c-due-ink)" data-en="Unpaid" data-ar="&#1594;&#1610;&#1585; &#1605;&#1583;&#1601;&#1608;&#1593;">Unpaid</span></div>
+      <div class="c-row"><span class="c-badge" style="background:var(--c-2)">SQ</span><span><span class="no">CN-0004</span><br /><span class="cust"><span data-en="Sara Al-Qahtani" data-ar="&#1587;&#1575;&#1585;&#1577; &#1575;&#1604;&#1602;&#1581;&#1591;&#1575;&#1606;&#1610;">Sara Al-Qahtani</span> &middot; <span data-en="ref INV-0998" data-ar="&#1605;&#1585;&#1580;&#1593; INV-0998">ref INV-0998</span></span></span><span class="c-pill" style="background:var(--c-due-bg);color:var(--c-due-ink)" data-en="Unpaid" data-ar="&#1594;&#1610;&#1585; &#1605;&#1583;&#1601;&#1608;&#1593;">Unpaid</span></div>
+      <div class="c-row"><span class="c-badge" style="background:var(--c-paid)">SQ</span><span><span class="no">INV-1003</span><br /><span class="cust" data-en="Sara Al-Qahtani" data-ar="&#1587;&#1575;&#1585;&#1577; &#1575;&#1604;&#1602;&#1581;&#1591;&#1575;&#1606;&#1610;">Sara Al-Qahtani</span></span><span class="c-pill" style="background:var(--c-paid-bg);color:var(--c-paid-ink)" data-en="Paid" data-ar="&#1605;&#1583;&#1601;&#1608;&#1593;">Paid</span></div>
+    </div>
+  </div>
+</div>
+
+<p class="cta"><b>How to read these:</b> A is the most tactile/nostalgic (works well if the brand voice is craft/heritage); B is the most premium/quiet (works if margins and average order value matter more than volume); C is the most energetic/varied (works best across many small, dissimilar retailers). None of these are full app shells yet &mdash; each is a fast read on personality only. Pick one (or name what to recombine from more than one) and I'll build it out into the full sidebar + list + print-document system next.</p>
+<p class="cta"><b>On RTL:</b> the Arabic strings above are illustrative placeholders for layout-proofing, not verified professional financial terminology &mdash; whatever ships would go through a real translator. What matters here is structural: every layout uses flex/grid with logical alignment, so flipping <code>dir</code> mirrors the whole panel automatically, no separate RTL stylesheet needed. The one bug this caught: Marketplace's status pill used a hardcoded <code>margin-left</code>, which would've stuck to the wrong side under Arabic/Urdu &mdash; fixed to a logical <code>margin-inline-start</code> before you even asked, now proven by the toggle rather than just promised.</p>
+
+<script>
+  (function () {
+    var buttons = document.querySelectorAll('.lang-toggle button');
+    var panels = document.querySelectorAll('.demo-wrap');
+    buttons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var lang = btn.getAttribute('data-lang');
+        var dir = lang === 'ar' ? 'rtl' : 'ltr';
+        buttons.forEach(function (b) { b.classList.toggle('active', b === btn); });
+        panels.forEach(function (p) {
+          p.setAttribute('dir', dir);
+          p.querySelectorAll('[data-en]').forEach(function (el) {
+            el.textContent = el.getAttribute(lang === 'ar' ? 'data-ar' : 'data-en');
+          });
+        });
+      });
+    });
+
+    var PALETTES = {
+      a: {
+        till: { '--a-paper':'#f7f2e2', '--a-card':'#fffdf7', '--a-accent':'#1b4332', '--a-paid':'#1b4332', '--a-due':'#b3261e', '--a-muted':'#5c6b60', '--a-line':'#cfc7ae' },
+        ink: { '--a-paper':'#eef1f5', '--a-card':'#fbfcfd', '--a-accent':'#1c3f66', '--a-paid':'#1f6b4a', '--a-due':'#b3261e', '--a-muted':'#5c6478', '--a-line':'#c7cfd6' },
+        butcher: { '--a-paper':'#f7ece2', '--a-card':'#fffaf5', '--a-accent':'#7a1f1f', '--a-paid':'#2f6b3f', '--a-due':'#d6402c', '--a-muted':'#6b5c54', '--a-line':'#dcc7ba' }
+      },
+      b: {
+        plum: { '--b-dark':'#2e1a34', '--b-gold':'#cba36a', '--b-ivory':'#f9f4ea', '--b-ivory-ink':'#2e1a34', '--b-line':'#e3d8c4', '--b-paid-bg':'#dde8dc', '--b-paid-ink':'#2f4a2c', '--b-due-bg':'#f3e2df', '--b-due-ink':'#7a3226' },
+        emerald: { '--b-dark':'#0f3d2e', '--b-gold':'#d4af37', '--b-ivory':'#f7f4ec', '--b-ivory-ink':'#1c332a', '--b-line':'#ded6c2', '--b-paid-bg':'#e3ecd8', '--b-paid-ink':'#33502a', '--b-due-bg':'#f0e2d8', '--b-due-ink':'#7a4226' },
+        midnight: { '--b-dark':'#161c2c', '--b-gold':'#c98b7a', '--b-ivory':'#f7f0ec', '--b-ivory-ink':'#241a1a', '--b-line':'#e0d2c8', '--b-paid-bg':'#e2e6d8', '--b-paid-ink':'#3a4a2a', '--b-due-bg':'#f2ded6', '--b-due-ink':'#7a3226' }
+      },
+      c: {
+        bazaar: { '--c-1':'#0891b2', '--c-2':'#db2777', '--c-3':'#d97706', '--c-paid':'#16a34a', '--c-due-bg':'#fef3c7', '--c-due-ink':'#78350f', '--c-paid-bg':'#dcfce7', '--c-paid-ink':'#14532d' },
+        citrus: { '--c-1':'#65a30d', '--c-2':'#ea580c', '--c-3':'#ca8a04', '--c-paid':'#16a34a', '--c-due-bg':'#ffedd5', '--c-due-ink':'#7c2d12', '--c-paid-bg':'#ecfccb', '--c-paid-ink':'#365314' },
+        jewel: { '--c-1':'#7c3aed', '--c-2':'#0d9488', '--c-3':'#e11d48', '--c-paid':'#0d9488', '--c-due-bg':'#fce7f3', '--c-due-ink':'#831843', '--c-paid-bg':'#ccfbf1', '--c-paid-ink':'#134e4a' }
+      }
+    };
+    var panelSelector = { a: '.a-panel', b: '.b-panel', c: '.c-panel' };
+    document.querySelectorAll('.palette-picker').forEach(function (group) {
+      var key = group.getAttribute('data-palette-group');
+      var panel = document.querySelector(panelSelector[key]);
+      var btns = group.querySelectorAll('.palette-btn');
+      btns.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var combo = PALETTES[key][btn.getAttribute('data-palette')];
+          Object.keys(combo).forEach(function (prop) { panel.style.setProperty(prop, combo[prop]); });
+          btns.forEach(function (b) { b.classList.toggle('active', b === btn); });
+        });
+      });
+    });
+  })();
+</script>

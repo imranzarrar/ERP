@@ -1011,56 +1011,6 @@ export function markInvoicePaid(
   return { db };
 }
 
-// Cancel Invoice (Requires permission check at UI level, handles Reversal Voucher)
-export function cancelInvoice(db: DatabaseState, invoiceId: string): { db: DatabaseState; error?: string } {
-  const invIndex = db.invoices.findIndex(inv => inv.id === invoiceId);
-  if (invIndex === -1) return { db, error: 'Invoice not found.' };
-
-  const invoice = db.invoices[invIndex];
-  if (invoice.status === 'Cancelled') return { db, error: 'Invoice is already cancelled.' };
-
-  const companyId = invoice.companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-
-  const openMonth = getActiveOpenMonth(db, companyId);
-  if (!openMonth) return { db, error: 'There is no open fiscal month.' };
-  
-  // Date must be in open month
-  const dateCheck = validateTransactionDate(db, invoice.date, companyId);
-  // Reversal Date
-  const reversalDate = openMonth.id + "-01"; 
-  const todayStr = new Date().toISOString().split('T')[0];
-  const finalReversalDate = todayStr.startsWith(openMonth.id) ? todayStr : (invoice.date.startsWith(openMonth.id) ? invoice.date : openMonth.id + "-01");
-
-  // Mark Invoice as Cancelled
-  db.invoices[invIndex].status = 'Cancelled';
-
-  // If there were any active receipt vouchers posted, generate Reversal Vouchers for each of them
-  const activeReceipts = db.vouchers.filter(v => v.referenceId === invoiceId && v.referenceType === 'Invoice' && v.type === 'Receipt');
-  for (const receipt of activeReceipts) {
-    const { db: updatedDb, value: vchCount } = getAndIncrementCounter(db, 'voucher', companyId);
-    db = updatedDb;
-    const voucherNumber = `VCH-${vchCount}`;
-    const reversalVoucher: Voucher = {
-      id: generateId(),
-      voucherNumber,
-      type: 'Reversal',
-      date: finalReversalDate,
-      bankId: receipt.bankId,
-      amount: receipt.amount,
-      description: `Reversal voucher for cancelled invoice ${invoice.invoiceNumber} (Original: ${receipt.voucherNumber})`,
-      referenceType: 'Invoice',
-      referenceId: invoiceId,
-      createdById: db.currentUser.id,
-      createdAt: new Date().toISOString(),
-      companyId
-    };
-    db.vouchers.push(reversalVoucher);
-  }
-
-
-  return { db };
-}
-
 // Add Expense (with Payment Voucher automatic posting if Paid)
 export function saveExpense(db: DatabaseState, expData: Omit<Expense, 'id' | 'expenseNumber' | 'createdById' | 'createdAt'>): { db: DatabaseState; error?: string } {
   const companyId = expData.companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';

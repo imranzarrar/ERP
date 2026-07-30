@@ -27,6 +27,13 @@ export default function ReportViewer({ db, onPrintDoc }: ReportViewerProps) {
  const [reportType, setReportType] = React.useState<ReportType>('TrialBalance');
  const currencySymbol = db.companySetup?.currency || 'SAR';
 
+ // The API caps invoices/expenses/vouchers/quotations at DEFAULT_LIST_LIMIT per list
+ // (see server/lib/pagination.ts, currently 500). All reports below compute directly off
+ // these arrays, so if any are sitting at the cap, totals may silently omit older records.
+ const RECORD_LIST_CAP = 500;
+ const isDataPossiblyTruncated = [db.invoices, db.expenses, db.vouchers, db.quotations]
+ .some(list => Array.isArray(list) && list.length >= RECORD_LIST_CAP);
+
  // Universal Filter States
  const [startDate, setStartDate] = React.useState('2026-06-01');
  const [endDate, setEndDate] = React.useState('2026-06-30');
@@ -573,6 +580,17 @@ const getProfitLossData = () => {
  <Printer className="w-4 h-4 text-indigo-400" /> {t('Export Statement (Print)')}
  </button>
  </div>
+
+ {/* Disclosure: reports read from a capped, most-recent-N window per record type. This is
+ a check on already-fetched in-memory data, no new query. */}
+ {isDataPossiblyTruncated && (
+ <div className="bg-slate-100 border border-slate-200 rounded-2xl p-3 flex items-center gap-2.5">
+ <span className="text-sm shrink-0">ℹ️</span>
+ <p className="text-[10.5px] text-slate-600">
+ {t('Based on the most recent 500 records per type (invoices, expenses, vouchers, quotations) - totals in these reports may be incomplete for companies with more history.')}
+ </p>
+ </div>
+ )}
 
  {/* Dynamic Filter Panel */}
  <div className="bg-white border border-slate-200/80 rounded-2xl p-5 text-xs text-slate-600 shadow-sm">
@@ -1311,7 +1329,11 @@ const getProfitLossData = () => {
  <td className="p-3">{exp.date}</td>
  <td className="p-3 font-semibold">{exp.contactName}</td>
  <td className="p-3 text-center">
- <span className="px-2 py-0.5 rounded text-[9px] uppercase font-black bg-rose-50 text-rose-700 border border-rose-200">
+ <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-black ${
+ exp.paymentStatus === 'Partially Paid'
+ ? 'bg-amber-50 text-amber-700 border border-amber-200'
+ : 'bg-rose-50 text-rose-700 border border-rose-200'
+ }`}>
  {exp.paymentStatus}
  </span>
  </td>

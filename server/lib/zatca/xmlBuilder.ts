@@ -13,6 +13,20 @@ export interface ZatcaInvoiceData {
   issueTime: string; // HH:mm:ss
   supplyDate?: string; // YYYY-MM-DD — KSA-5, defaults to issueDate when not tracked separately
   invoiceTypeCode: '388' | '0200000'; // '388' = Standard B2B, '0200000' = Simplified B2C
+  // The actual UBL document-type numeric code: 388 = Invoice, 381 = Credit Note, 383 =
+  // Debit Note (confirmed against the ZATCA SDK's own bundled sample Credit/Debit Note
+  // XMLs — same <Invoice> UBL root and schema for all three, only this code plus
+  // BillingReference/PaymentMeans differ). Defaults to '388' so every existing caller
+  // (real invoices) is unaffected.
+  documentSubtypeCode?: '388' | '381' | '383';
+  // Credit/Debit Notes reference the original invoice they adjust — the sample shows
+  // amounts stay POSITIVE (not negated) even though the document represents a refund/
+  // reduction; ZATCA distinguishes intent via documentSubtypeCode, not sign.
+  billingReference?: { invoiceNumber: string };
+  // Required alongside billingReference — ZATCA's sample Credit/Debit Notes both carry
+  // a <cac:PaymentMeans><cbc:PaymentMeansCode>10</cbc:PaymentMeansCode> block with an
+  // instruction note explaining the adjustment; regular invoices omit this entirely.
+  paymentMeansNote?: string;
   currency: string; // e.g. 'SAR'
   icv: number;
   previousInvoiceHash: string;
@@ -73,6 +87,7 @@ export function generateZatcaUblXml(data: ZatcaInvoiceData): GeneratedZatcaDocum
   // this was previously set to "clearance:1.0" for Standard invoices.
   const profileId = 'reporting:1.0';
   const subType = isSimplified ? '0200000' : '0100000';
+  const documentSubtypeCode = data.documentSubtypeCode || '388';
 
   const sellerTin = (data.seller.tin || '300000000000003').padEnd(15, '0');
   const sellerBuilding = (data.seller.buildingNumber || '1234').padEnd(4, '0');
@@ -159,10 +174,15 @@ export function generateZatcaUblXml(data: ZatcaInvoiceData): GeneratedZatcaDocum
   <cbc:UUID>${data.uuid}</cbc:UUID>
   <cbc:IssueDate>${data.issueDate}</cbc:IssueDate>
   <cbc:IssueTime>${data.issueTime}</cbc:IssueTime>
-  <cbc:InvoiceTypeCode name="${subType}">388</cbc:InvoiceTypeCode>
+  <cbc:InvoiceTypeCode name="${subType}">${documentSubtypeCode}</cbc:InvoiceTypeCode>
   <cbc:DocumentCurrencyCode>${data.currency}</cbc:DocumentCurrencyCode>
   <cbc:TaxCurrencyCode>${data.currency}</cbc:TaxCurrencyCode>
-  <cac:AdditionalDocumentReference>
+  ${data.billingReference ? `<cac:BillingReference>
+    <cac:InvoiceDocumentReference>
+      <cbc:ID>${escapeXml(data.billingReference.invoiceNumber)}</cbc:ID>
+    </cac:InvoiceDocumentReference>
+  </cac:BillingReference>
+  ` : ''}<cac:AdditionalDocumentReference>
     <cbc:ID>ICV</cbc:ID>
     <cbc:UUID>${data.icv}</cbc:UUID>
   </cac:AdditionalDocumentReference>
@@ -230,7 +250,11 @@ export function generateZatcaUblXml(data: ZatcaInvoiceData): GeneratedZatcaDocum
   <cac:Delivery>
     <cbc:ActualDeliveryDate>${data.supplyDate || data.issueDate}</cbc:ActualDeliveryDate>
   </cac:Delivery>
-  <cac:TaxTotal>
+  ${data.paymentMeansNote ? `<cac:PaymentMeans>
+    <cbc:PaymentMeansCode>10</cbc:PaymentMeansCode>
+    <cbc:InstructionNote>${escapeXml(data.paymentMeansNote)}</cbc:InstructionNote>
+  </cac:PaymentMeans>
+  ` : ''}<cac:TaxTotal>
     <cbc:TaxAmount currencyID="${data.currency}">${data.totalVat.toFixed(2)}</cbc:TaxAmount>
   </cac:TaxTotal>
   <cac:TaxTotal>

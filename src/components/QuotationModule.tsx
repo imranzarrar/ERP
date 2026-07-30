@@ -3,6 +3,7 @@ import { useTranslation } from '../hooks';
 import { DatabaseState, saveDatabase, getActiveOpenMonth, saveQuotation, updateQuotation, convertQuotationToInvoice, calculateInvoiceTotals } from '../dbStore';
 import { generateId } from '../id';
 import { Quotation, QuotationItem, Customer, TaxSlab, User, normalizePermissions } from '../types';
+import StatusPill from './StatusPill';
 import {
   FileText,
   Plus,
@@ -421,6 +422,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
 
     if (res.newInvoice?.id) {
       const invId = res.newInvoice.id;
+      const invNumber = res.newInvoice.invoiceNumber;
       // Same finalized flow as a direct invoice creation: open the print/preview
       // overlay immediately, submit to ZATCA in the background (non-blocking).
       const cust = db.customers.find(c => c.id === res.newInvoice.customerId);
@@ -428,14 +430,25 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
       onPrintDoc('Invoice', { ...res.newInvoice, customerData: cust, bankData: bank });
       fetch(`/api/zatca/submit-invoice/${invId}`, { method: 'POST' })
         .then(async (r) => {
-          if (r.ok) {
-            const refreshed = await fetch('/api/state').then(x => x.json()).catch(() => null);
-            if (refreshed && refreshed.invoices) {
-              onUpdateDb(refreshed);
-            }
+          const data = await r.json().catch(() => ({}));
+          const refreshed = await fetch('/api/state').then(x => x.json()).catch(() => null);
+          if (refreshed && refreshed.invoices) {
+            onUpdateDb(refreshed);
+          }
+          // Surface the real outcome instead of leaving a background rejection only
+          // discoverable by reopening the invoice's ZATCA modal later.
+          if (!r.ok || data.error) {
+            triggerError(`ZATCA submission for invoice ${invNumber} failed: ${data.error || 'Unknown error'}`);
+          } else if (data.status === 'REJECTED' || data.status === 'ERROR') {
+            triggerError(`ZATCA rejected invoice ${invNumber}.`);
+          } else if (data.status === 'CLEARED' || data.status === 'REPORTED') {
+            triggerSuccess(`Invoice ${invNumber} ${data.status === 'CLEARED' ? 'cleared' : 'reported'} by ZATCA.`);
           }
         })
-        .catch(err => console.error('ZATCA submit on conversion error:', err));
+        .catch(err => {
+          console.error('ZATCA submit on conversion error:', err);
+          triggerError(`ZATCA submission for invoice ${invNumber} failed: ${err.message || 'Network error'}`);
+        });
 
       // Matches the direct-invoice-creation flow: land on the Invoices List
       // where the newly issued invoice (and its live ZATCA status) now lives.
@@ -739,14 +752,14 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  <td className="p-3 font-semibold text-slate-700">{cust?.name || 'Walk-in'}</td>
  <td className="p-3 text-end font-bold text-slate-900">{getQuotationTotal(q).toFixed(2)} {currencySymbol}</td>
  <td className="p-3 text-center">
- <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
- q.status === 'Draft' ? 'bg-slate-100 text-slate-500' :
- q.status === 'Sent' ? 'bg-blue-100 text-blue-700' :
- q.status === 'Accepted' ? 'bg-emerald-100 text-emerald-800' :
- q.status === 'Converted' ? 'bg-cyan-100 text-cyan-800' : 'bg-rose-100 text-rose-800'
- }`}>
+ <StatusPill tone={
+ q.status === 'Draft' ? 'warn' :
+ q.status === 'Sent' ? 'info' :
+ q.status === 'Accepted' ? 'good' :
+ q.status === 'Converted' ? 'info' : 'critical'
+ }>
  {q.status}
- </span>
+ </StatusPill>
  </td>
  <td className="p-3 text-end space-x-1.5">
  <div className="inline-flex items-center justify-end gap-1.5 flex-wrap">

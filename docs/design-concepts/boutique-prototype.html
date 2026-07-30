@@ -1,0 +1,515 @@
+<title>Boutique — Interactive Prototype</title>
+<style>
+  :root {
+    --paper-50: #f7f0ec; --paper-100: #f9f4ea; --paper-200: #e3d8c4; --paper-300: #cfbfa0;
+    --ink-600: #6b5c54; --ink-800: #241a1a; --ink-900: #2e1a34;
+    --spark: #cba36a; --spark-hover: #b78e52; --spark-tint: #f0e5d0; --spark-ink: #6b4d1e;
+    --good: #4a6b3e; --good-tint: #dde8dc; --good-ink: #2f4a2c;
+    --warn: #a3781f; --warn-tint: #f3e2c2; --warn-ink: #6b4f12;
+    --crit: #a3492f; --crit-tint: #f3e2df; --crit-ink: #7a3226;
+    --info: #4a5f8a; --info-tint: #e2e6f0; --info-ink: #2e3d5c;
+    --rail-bg: #2e1a34; --rail-ink: #f4ece0; --rail-ink-dim: #b39ab8; --rail-active: #3d2444;
+    --shadow: 0 1px 2px rgba(46,26,52,.08), 0 6px 16px -8px rgba(46,26,52,.2);
+    --font-display: "Iowan Old Style","Georgia","Cambria",serif;
+    --font-body: "Segoe UI","Helvetica Neue",system-ui,sans-serif;
+    --font-mono: "SF Mono","Cascadia Code","Consolas",ui-monospace,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper-50: #1c1620; --paper-100: #241c29; --paper-200: #3d3242; --paper-300: #4f4254;
+      --ink-600: #b8a8c0; --ink-800: #e8dcec; --ink-900: #f7f0ec;
+      --spark: #d9b57c; --spark-hover: #e2c493; --spark-tint: #3a2f1e; --spark-ink: #e2c493;
+      --good: #7fa571; --good-tint: #24321f; --good-ink: #b8d4ac;
+      --warn: #c9a15a; --warn-tint: #3a2f14; --warn-ink: #ecd49c;
+      --crit: #c07862; --crit-tint: #3a221c; --crit-ink: #edb8a4;
+      --info: #8496c2; --info-tint: #232838; --info-ink: #c2cbe8;
+      --rail-bg: #17101c; --rail-ink: #f4ece0; --rail-ink-dim: #8a7a90; --rail-active: #241a2c;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 16px -8px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper-50: #1c1620; --paper-100: #241c29; --paper-200: #3d3242; --paper-300: #4f4254;
+    --ink-600: #b8a8c0; --ink-800: #e8dcec; --ink-900: #f7f0ec;
+    --spark: #d9b57c; --spark-hover: #e2c493; --spark-tint: #3a2f1e; --spark-ink: #e2c493;
+    --good: #7fa571; --good-tint: #24321f; --good-ink: #b8d4ac;
+    --warn: #c9a15a; --warn-tint: #3a2f14; --warn-ink: #ecd49c;
+    --crit: #c07862; --crit-tint: #3a221c; --crit-ink: #edb8a4;
+    --info: #8496c2; --info-tint: #232838; --info-ink: #c2cbe8;
+    --rail-bg: #17101c; --rail-ink: #f4ece0; --rail-ink-dim: #8a7a90; --rail-active: #241a2c;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 16px -8px rgba(0,0,0,.6);
+  }
+  :root[data-theme="light"] {
+    --paper-50: #f7f0ec; --paper-100: #f9f4ea; --paper-200: #e3d8c4; --paper-300: #cfbfa0;
+    --ink-600: #6b5c54; --ink-800: #241a1a; --ink-900: #2e1a34;
+    --spark: #cba36a; --spark-hover: #b78e52; --spark-tint: #f0e5d0; --spark-ink: #6b4d1e;
+    --good: #4a6b3e; --good-tint: #dde8dc; --good-ink: #2f4a2c;
+    --warn: #a3781f; --warn-tint: #f3e2c2; --warn-ink: #6b4f12;
+    --crit: #a3492f; --crit-tint: #f3e2df; --crit-ink: #7a3226;
+    --info: #4a5f8a; --info-tint: #e2e6f0; --info-ink: #2e3d5c;
+    --rail-bg: #2e1a34; --rail-ink: #f4ece0; --rail-ink-dim: #b39ab8; --rail-active: #3d2444;
+    --shadow: 0 1px 2px rgba(46,26,52,.08), 0 6px 16px -8px rgba(46,26,52,.2);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font-body); background: var(--paper-50); color: var(--ink-900); }
+  button, input, select, textarea { font-family: inherit; }
+
+  .app { display: grid; grid-template-columns: 220px minmax(0,1fr); max-width: 1280px; margin: 1rem auto; border: 1px solid var(--paper-200); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); min-height: 720px; }
+  @media (max-width: 880px) { .app { grid-template-columns: 1fr; margin-inline: 0.75rem; } .rail { display: none; } }
+
+  .rail { background: var(--rail-bg); color: var(--rail-ink); padding: 1.25rem 0.9rem; display: flex; flex-direction: column; gap: 1.75rem; }
+  .rail-brand { display: flex; align-items: center; gap: 0.6rem; padding: 0 0.35rem 1.1rem; border-bottom: 1px solid var(--spark); margin-bottom: 0.25rem; }
+  .rail-brand .mark { width: 28px; height: 28px; border-radius: 50%; background: var(--spark); display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 600; font-size: 0.8rem; color: var(--rail-bg); flex-shrink: 0; }
+  .rail-brand .name { font-family: var(--font-display); font-weight: 600; font-size: 0.92rem; line-height: 1.2; }
+  .rail-brand .sub { font-size: 0.68rem; color: var(--rail-ink-dim); font-style: italic; font-family: var(--font-display); }
+  .rail-group { display: flex; flex-direction: column; gap: 0.15rem; }
+  .rail-label { font-family: var(--font-display); font-style: italic; font-size: 0.72rem; color: var(--spark); padding: 0 0.5rem; margin-bottom: 0.4rem; }
+  .rail-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.55rem; border-radius: 6px; font-size: 0.83rem; cursor: pointer; border: none; background: transparent; color: var(--rail-ink); width: 100%; text-align: start; }
+  .rail-item:hover { background: rgba(255,255,255,.05); }
+  .rail-item.active { background: var(--rail-active); color: var(--spark); font-weight: 600; }
+  .rail-item .dash { width: 4px; height: 4px; border-radius: 50%; background: var(--rail-ink-dim); flex-shrink: 0; }
+  .rail-item.active .dash { background: var(--spark); }
+
+  .canvas { background: var(--paper-50); min-width: 0; display: flex; flex-direction: column; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 0.9rem 1.5rem; border-bottom: 1px solid var(--spark); background: var(--paper-100); }
+  .topbar .page-title { font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; }
+  .topbar-right { display: flex; align-items: center; gap: 0.6rem; }
+  .env { font-family: var(--font-display); font-style: italic; font-size: 0.72rem; color: var(--good-ink); background: var(--good-tint); border-radius: 100px; padding: 0.2rem 0.65rem; }
+  .clock { font-family: var(--font-display); font-style: italic; font-size: 0.74rem; color: var(--ink-600); }
+
+  .page { padding: 1.75rem; flex: 1; display: none; }
+  .page.visible { display: block; }
+  .page h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; margin: 0 0 1.1rem; }
+  .crumb { font-size: 0.8rem; font-family: var(--font-display); font-style: italic; color: var(--ink-600); margin: 0 0 0.3rem; }
+  .crumb a { color: var(--info); text-decoration: none; cursor: pointer; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1.5rem; margin-bottom: 1.75rem; }
+  .kpi { border-bottom: 1px solid var(--paper-200); padding: 0 0 0.9rem; }
+  .kpi .label { font-family: var(--font-display); font-style: italic; font-size: 0.78rem; color: var(--spark-ink); margin-bottom: 0.4rem; }
+  .kpi .value { font-family: var(--font-display); font-size: 1.45rem; font-variant-numeric: tabular-nums; }
+  .kpi .value.accent { color: var(--spark-ink); }
+  .kpi .delta { font-size: 0.7rem; color: var(--good-ink); margin-top: 0.25rem; }
+
+  .split { display: grid; grid-template-columns: 1.5fr 1fr; gap: 1.25rem; }
+  @media (max-width: 700px) { .split { grid-template-columns: 1fr; } }
+  .card { background: var(--paper-100); border: 1px solid var(--paper-200); border-radius: 8px; padding: 1.25rem 1.4rem; }
+  .card h3 { font-family: var(--font-display); font-style: italic; font-size: 0.92rem; font-weight: 400; margin: 0 0 0.9rem; }
+  .spark-chart { display: flex; align-items: flex-end; gap: 4px; height: 90px; }
+  .spark-chart i { flex: 1; background: var(--spark-tint); border-radius: 1px; }
+  .spark-chart i.hi { background: var(--spark); }
+  .feed-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 0; border-top: 1px solid var(--paper-200); font-size: 0.82rem; }
+  .feed-row:first-of-type { border-top: none; }
+  .feed-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+  .toolbar { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  .search { flex: 1; min-width: 180px; display: flex; align-items: center; gap: 0.4rem; background: var(--paper-100); border: 1px solid var(--paper-200); border-radius: 6px; padding: 0.5rem 0.7rem; font-size: 0.8rem; color: var(--ink-600); }
+  .search input { border: none; background: transparent; outline: none; width: 100%; font-size: 0.8rem; color: var(--ink-900); }
+  select.filter { background: var(--paper-100); border: 1px solid var(--paper-200); border-radius: 6px; padding: 0.5rem 0.6rem; font-size: 0.8rem; color: var(--ink-900); }
+  .btn { border: 1px solid var(--spark); background: var(--paper-100); color: var(--ink-900); border-radius: 6px; padding: 0.5rem 0.95rem; font-family: var(--font-display); font-style: italic; font-size: 0.82rem; cursor: pointer; }
+  .btn:hover { background: var(--spark-tint); }
+  .btn-spark { background: var(--spark); color: var(--rail-bg); border: none; border-radius: 6px; padding: 0.5rem 0.95rem; font-family: var(--font-display); font-weight: 600; font-size: 0.8rem; cursor: pointer; }
+  .btn-spark:hover { background: var(--spark-hover); }
+  .freshness { display: flex; align-items: center; gap: 0.35rem; font-size: 0.74rem; font-style: italic; font-family: var(--font-display); color: var(--ink-600); }
+  .freshness .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--good); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th { text-align: start; font-family: var(--font-display); font-style: italic; font-size: 0.75rem; color: var(--spark-ink); font-weight: 400; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--spark); white-space: nowrap; }
+  td { padding: 0.7rem 0.75rem; border-bottom: 1px solid var(--paper-200); vertical-align: middle; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--paper-100); }
+  tr:last-child td { border-bottom: none; }
+  .doc-no { font-family: var(--font-display); font-weight: 600; }
+  .doc-sub { display: block; font-size: 0.72rem; color: var(--ink-600); }
+  .num { text-align: end; font-variant-numeric: tabular-nums; }
+  .pill { display: inline-flex; align-items: center; gap: 0.35rem; font-family: var(--font-display); font-size: 0.7rem; font-style: italic; padding: 0.22rem 0.6rem; border-radius: 100px; white-space: nowrap; }
+  .pill::before { content: none; }
+  .pill.good { background: var(--good-tint); color: var(--good-ink); }
+  .pill.warn { background: var(--warn-tint); color: var(--warn-ink); }
+  .pill.info { background: var(--info-tint); color: var(--info-ink); }
+  .pill.crit { background: var(--crit-tint); color: var(--crit-ink); }
+  .pill.neutral { background: var(--paper-200); color: var(--ink-600); }
+  .row-actions { display: flex; gap: 0.3rem; opacity: 0; transition: opacity .1s; }
+  tr:hover .row-actions { opacity: 1; }
+  .icon-btn { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--paper-200); background: var(--paper-100); font-size: 0.8rem; }
+
+  /* Forms */
+  .field { display: flex; flex-direction: column; gap: 0.3rem; }
+  .field label { font-size: 0.74rem; font-family: var(--font-display); font-style: italic; color: var(--spark-ink); }
+  .field input, .field select, .field textarea { border: 1px solid var(--paper-200); background: var(--paper-100); border-radius: 6px; padding: 0.55rem 0.7rem; font-size: 0.85rem; color: var(--ink-900); }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1.1rem; margin-bottom: 1.4rem; }
+  .line-items { border: 1px solid var(--paper-200); border-radius: 8px; overflow: hidden; margin-bottom: 1.1rem; }
+  .line-items table th, .line-items table td { padding: 0.5rem 0.7rem; }
+  .totals { max-width: 280px; margin-inline-start: auto; }
+  .totals .row { display: flex; justify-content: space-between; font-size: 0.87rem; padding: 0.4rem 0; }
+  .totals .row.grand { font-family: var(--font-display); font-weight: 600; border-top: 1px solid var(--spark); margin-top: 0.4rem; padding-top: 0.65rem; font-size: 1.05rem; }
+  .form-actions { display: flex; gap: 0.6rem; justify-content: flex-end; margin-top: 1.4rem; }
+
+  /* Invoice detail */
+  .detail-split { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.4rem; }
+  @media (max-width: 800px) { .detail-split { grid-template-columns: 1fr; } }
+  .doc-preview { background: var(--paper-100); border: 1px solid var(--paper-200); border-radius: 8px; padding: 2rem; font-size: 0.87rem; }
+  .doc-preview .dp-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.6rem; }
+  .doc-preview h3 { font-family: var(--font-display); font-size: 1.25rem; margin: 0; }
+  .doc-preview table { margin: 1.1rem 0; }
+  .zatca-box { background: var(--paper-100); border: 1px solid var(--paper-200); border-radius: 8px; padding: 1.2rem 1.35rem; margin-bottom: 1.1rem; }
+  .zatca-box h3 { font-family: var(--font-display); font-style: italic; font-size: 0.92rem; font-weight: 400; margin: 0 0 0.8rem; }
+  .qr-mock { width: 96px; height: 96px; background: repeating-conic-gradient(var(--ink-900) 0% 25%, transparent 0% 50%) 50% / 12px 12px; border-radius: 6px; margin-bottom: 0.8rem; }
+  .action-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+  /* POS */
+  .pos-grid { display: grid; grid-template-columns: 1fr 320px; gap: 1.4rem; height: 100%; }
+  @media (max-width: 800px) { .pos-grid { grid-template-columns: 1fr; } }
+  .pos-cats { display: flex; gap: 0.5rem; margin-bottom: 1.1rem; flex-wrap: wrap; }
+  .pos-cat { border: 1px solid var(--spark); background: var(--paper-100); border-radius: 100px; padding: 0.4rem 0.95rem; font-size: 0.8rem; font-family: var(--font-display); font-style: italic; cursor: pointer; }
+  .pos-cat.active { background: var(--spark); color: var(--rail-bg); border-color: var(--spark); }
+  .pos-products { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 0.85rem; }
+  .pos-product { background: var(--paper-100); border: 1px solid var(--paper-200); border-radius: 8px; padding: 0.9rem; cursor: pointer; text-align: start; }
+  .pos-product:hover { border-color: var(--spark); }
+  .pos-product .pname { font-size: 0.84rem; margin-bottom: 0.55rem; font-family: var(--font-display); }
+  .pos-product .pprice { font-family: var(--font-display); font-style: italic; font-size: 0.85rem; color: var(--spark-ink); background: var(--spark-tint); display: inline-block; padding: 0.15rem 0.55rem; border-radius: 100px; }
+  .pos-cart { background: var(--rail-bg); border: 1px solid var(--spark); border-radius: 8px; display: flex; flex-direction: column; padding: 1.1rem; color: var(--rail-ink); }
+  .pos-cart h3 { font-family: var(--font-display); font-style: italic; font-size: 0.9rem; margin: 0 0 0.8rem; color: var(--spark); }
+  .cart-items { flex: 1; overflow-y: auto; min-height: 120px; }
+  .cart-row { display: flex; justify-content: space-between; align-items: center; padding: 0.55rem 0; border-bottom: 1px solid rgba(255,255,255,.1); font-size: 0.82rem; }
+  .cart-empty { color: var(--rail-ink-dim); font-size: 0.82rem; text-align: center; padding: 2rem 0; font-style: italic; }
+  .cart-total { display: flex; justify-content: space-between; font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; padding: 0.9rem 0; border-top: 1px solid var(--spark); margin-top: 0.5rem; color: var(--spark); }
+
+  /* Settings */
+  .settings-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.4rem; border-bottom: 1px solid var(--paper-200); }
+  .settings-tab { border: none; background: transparent; padding: 0.6rem 1.05rem; font-family: var(--font-display); font-style: italic; font-size: 0.85rem; color: var(--ink-600); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .settings-tab.active { color: var(--spark-ink); border-bottom-color: var(--spark); }
+  .settings-panel { display: none; }
+  .settings-panel.visible { display: block; }
+  .setting-row { display: flex; align-items: center; justify-content: space-between; padding: 1rem 0; border-bottom: 1px solid var(--paper-200); max-width: 560px; }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-row .st { font-size: 0.88rem; font-family: var(--font-display); }
+  .setting-row .sd { font-size: 0.76rem; color: var(--ink-600); margin-top: 0.15rem; }
+  .toggle { position: relative; width: 42px; height: 23px; border-radius: 100px; background: var(--paper-300); border: none; cursor: pointer; flex-shrink: 0; }
+  .toggle::after { content: ""; position: absolute; top: 2px; inset-inline-start: 2px; width: 19px; height: 19px; border-radius: 50%; background: #fff; transition: inset-inline-start .15s; }
+  .toggle.on { background: var(--good); }
+  .toggle.on::after { inset-inline-start: 21px; }
+  .avatar-badge { width: 34px; height: 34px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.78rem; font-family: var(--font-display); color: #fff; flex-shrink: 0; }
+</style>
+
+<div class="app">
+  <aside class="rail">
+    <div class="rail-brand">
+      <div class="mark">CN</div>
+      <div><div class="name">CNC Woodcraft</div><div class="sub">Maison &amp; Atelier</div></div>
+    </div>
+    <div class="rail-group">
+      <div class="rail-label">Operations</div>
+      <button class="rail-item" data-page="dashboard"><span class="dash"></span>Dashboard</button>
+      <button class="rail-item" data-page="pos"><span class="dash"></span>Point of sale</button>
+      <button class="rail-item" data-page="invoices"><span class="dash"></span>Sales invoices</button>
+    </div>
+    <div class="rail-group">
+      <div class="rail-label">Registries</div>
+      <button class="rail-item" data-page="customers"><span class="dash"></span>Customers</button>
+    </div>
+    <div class="rail-group">
+      <div class="rail-label">Governance</div>
+      <button class="rail-item" data-page="settings"><span class="dash"></span>Settings</button>
+    </div>
+  </aside>
+
+  <div class="canvas">
+    <div class="topbar">
+      <span class="page-title" id="page-title">Dashboard</span>
+      <div class="topbar-right">
+        <span class="env">Sandbox &middot; ZATCA enabled</span>
+        <span class="clock">30 Jul 2026 &middot; 07:12</span>
+      </div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <section class="page" id="page-dashboard" data-group="dashboard">
+      <h2>Command centre</h2>
+      <div class="kpi-row">
+        <div class="kpi"><div class="label">Gross month sales</div><div class="value">SAR 5,185</div><div class="delta">Incl. VAT</div></div>
+        <div class="kpi"><div class="label">Cash received</div><div class="value">SAR 1,535</div></div>
+        <div class="kpi"><div class="label">Cash in bank</div><div class="value accent">SAR 19,035</div></div>
+        <div class="kpi"><div class="label">Pending</div><div class="value">SAR 3,363</div></div>
+      </div>
+      <div class="split">
+        <div class="card">
+          <h3>Sales vs. expenses &mdash; June</h3>
+          <div class="spark-chart">
+            <i style="height:30%"></i><i style="height:45%"></i><i style="height:38%" class="hi"></i><i style="height:60%"></i>
+            <i style="height:52%"></i><i style="height:70%" class="hi"></i><i style="height:64%"></i><i style="height:80%"></i>
+            <i style="height:58%"></i><i style="height:90%" class="hi"></i><i style="height:75%"></i><i style="height:100%" class="hi"></i>
+          </div>
+        </div>
+        <div class="card">
+          <h3>ZATCA activity</h3>
+          <div class="feed-row"><span class="feed-dot" style="background:var(--good)"></span>INV-1042 cleared &middot; 2m ago</div>
+          <div class="feed-row"><span class="feed-dot" style="background:var(--info)"></span>INV-1041 reported &middot; 14m ago</div>
+          <div class="feed-row"><span class="feed-dot" style="background:var(--crit)"></span>INV-1039 rejected &middot; 1h ago</div>
+          <div class="feed-row"><span class="feed-dot" style="background:var(--ink-600)"></span>ZATCA Test Traders &mdash; disabled</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- POS -->
+    <section class="page" id="page-pos" data-group="pos">
+      <h2>Point of sale</h2>
+      <div class="pos-grid">
+        <div>
+          <div class="pos-cats">
+            <button class="pos-cat active" data-cat="all">All</button>
+            <button class="pos-cat" data-cat="lumber">Lumber</button>
+            <button class="pos-cat" data-cat="hardware">Hardware</button>
+            <button class="pos-cat" data-cat="finishes">Finishes</button>
+          </div>
+          <div class="pos-products" id="pos-products"></div>
+        </div>
+        <div class="pos-cart">
+          <h3>Current ticket</h3>
+          <div class="cart-items" id="cart-items"><div class="cart-empty">Tap a product to add it</div></div>
+          <div class="cart-total"><span>Total</span><span id="cart-total">SAR 0.00</span></div>
+          <button class="btn-spark" style="margin-top:0.8rem;">Charge customer</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- INVOICES LIST -->
+    <section class="page" id="page-invoices" data-group="invoices">
+      <h2>Sales invoices</h2>
+      <div class="toolbar">
+        <div class="search">&#128269; <input type="text" placeholder="Search invoice #, customer, amount&hellip;" /></div>
+        <select class="filter"><option>All document types</option><option>Invoices only</option><option>Credit notes only</option></select>
+        <button class="btn-spark" data-nav="invoice-create">+ New invoice</button>
+        <span class="freshness"><span class="dot"></span>Live &middot; updated 4s ago</span>
+      </div>
+      <table>
+        <thead><tr><th>Invoice</th><th>Customer</th><th>Type</th><th style="text-align:end">Total</th><th>Payment</th><th>ZATCA</th><th></th></tr></thead>
+        <tbody>
+          <tr data-nav="invoice-detail">
+            <td><span class="doc-no">INV-1001</span><span class="doc-sub">28 Jul 2026</span></td>
+            <td>Al Faisal Contracting LLC</td>
+            <td><span class="pill neutral">B2B Standard</span></td>
+            <td class="num">4,500.00</td>
+            <td><span class="pill warn">Unpaid</span></td>
+            <td><span class="pill good">Cleared</span></td>
+            <td><div class="row-actions"><span class="icon-btn">&#128424;</span><span class="icon-btn">$</span></div></td>
+          </tr>
+          <tr>
+            <td><span class="doc-no">CN-0004</span><span class="doc-sub">28 Jul 2026 &middot; Ref INV-0998</span></td>
+            <td>Sara Al-Qahtani</td>
+            <td><span class="pill warn">Credit note</span></td>
+            <td class="num">230.00</td>
+            <td><span class="pill neutral">Unpaid</span></td>
+            <td><span class="pill info">Reported</span></td>
+            <td><div class="row-actions"><span class="icon-btn">&#128424;</span></div></td>
+          </tr>
+          <tr>
+            <td><span class="doc-no">INV-1003</span><span class="doc-sub">27 Jul 2026</span></td>
+            <td>Sara Al-Qahtani</td>
+            <td><span class="pill neutral">B2C Simplified</span></td>
+            <td class="num">575.00</td>
+            <td><span class="pill good">Paid</span></td>
+            <td><span class="pill info">Reported</span></td>
+            <td><div class="row-actions"><span class="icon-btn">&#128424;</span></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- INVOICE CREATE -->
+    <section class="page" id="page-invoice-create" data-group="invoices">
+      <p class="crumb"><a data-nav="invoices">Sales invoices</a> / New invoice</p>
+      <h2>New invoice</h2>
+      <div class="form-grid">
+        <div class="field"><label>Customer</label><select><option>Al Faisal Contracting LLC</option><option>Sara Al-Qahtani</option></select></div>
+        <div class="field"><label>Date</label><input type="text" value="30 Jul 2026" /></div>
+        <div class="field"><label>Tax slab</label><select><option>Standard 15%</option><option>Exempt 0%</option></select></div>
+        <div class="field"><label>Bank account</label><select><option>Alinma &mdash; Main</option></select></div>
+      </div>
+      <div class="line-items">
+        <table>
+          <thead><tr><th>Description</th><th style="text-align:end">Qty</th><th style="text-align:end">Unit cost</th><th style="text-align:end">Line total</th></tr></thead>
+          <tbody>
+            <tr><td><input type="text" value="18mm MDF sheet 8x4" style="border:none;background:transparent;width:100%;font-size:0.85rem;font-family:inherit;" /></td><td class="num">6</td><td class="num">85.00</td><td class="num">510.00</td></tr>
+            <tr><td><input type="text" value="Hinge set, brass" style="border:none;background:transparent;width:100%;font-size:0.85rem;font-family:inherit;" /></td><td class="num">12</td><td class="num">14.50</td><td class="num">174.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <button class="btn" style="margin-bottom:1.4rem;">+ Add line</button>
+      <div class="totals">
+        <div class="row"><span>Subtotal</span><span>684.00</span></div>
+        <div class="row"><span>VAT (15%)</span><span>102.60</span></div>
+        <div class="row grand"><span>Grand total</span><span>SAR 786.60</span></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn" data-nav="invoices">Cancel</button>
+        <button class="btn-spark" data-nav="invoices">Save invoice</button>
+      </div>
+    </section>
+
+    <!-- INVOICE DETAIL -->
+    <section class="page" id="page-invoice-detail" data-group="invoices">
+      <p class="crumb"><a data-nav="invoices">Sales invoices</a> / INV-1001</p>
+      <h2>INV-1001</h2>
+      <div class="detail-split">
+        <div class="doc-preview">
+          <div class="dp-head">
+            <div><h3>CNC Woodcraft &amp; Design</h3><div style="color:var(--ink-600);font-size:0.8rem;">Tax invoice &middot; INV-1001 &middot; 28 Jul 2026</div></div>
+            <div style="text-align:end;font-size:0.8rem;color:var(--ink-600);">Bill to<br /><b style="color:var(--ink-900);">Al Faisal Contracting LLC</b><br />VAT 300123456700003</div>
+          </div>
+          <table>
+            <thead><tr><th>Description</th><th style="text-align:end">Qty</th><th style="text-align:end">Unit</th><th style="text-align:end">VAT%</th><th style="text-align:end">Total</th></tr></thead>
+            <tbody>
+              <tr><td>Custom cabinetry, oak veneer</td><td class="num">1</td><td class="num">3,913.04</td><td class="num">15%</td><td class="num">4,500.00</td></tr>
+            </tbody>
+          </table>
+          <div class="totals">
+            <div class="row"><span>Subtotal</span><span>3,913.04</span></div>
+            <div class="row"><span>VAT (15%)</span><span>586.96</span></div>
+            <div class="row grand"><span>Grand total</span><span>SAR 4,500.00</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="zatca-box">
+            <h3>ZATCA clearance status</h3>
+            <span class="pill good" style="margin-bottom:0.8rem;">Cleared</span>
+            <div class="qr-mock"></div>
+            <div style="font-size:0.74rem;color:var(--ink-600);">Cleared 28 Jul 2026, 09:14 &middot; ICV 1042</div>
+          </div>
+          <div class="card">
+            <h3>Actions</h3>
+            <div class="action-list">
+              <button class="btn">Record payment</button>
+              <button class="btn">Print / PDF</button>
+              <button class="btn" style="color:var(--crit-ink);">Create credit note</button>
+              <button class="btn" disabled style="opacity:0.5;cursor:not-allowed;" title="Already cleared by ZATCA &mdash; issue a credit note instead">Cancel invoice</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CUSTOMERS -->
+    <section class="page" id="page-customers" data-group="customers">
+      <h2>Customers</h2>
+      <div class="toolbar">
+        <div class="search">&#128269; <input type="text" placeholder="Search customers&hellip;" /></div>
+        <button class="btn-spark">+ New customer</button>
+      </div>
+      <table>
+        <thead><tr><th>Customer</th><th>Type</th><th>Phone</th><th>VAT number</th><th style="text-align:end">Outstanding</th></tr></thead>
+        <tbody>
+          <tr><td><span class="avatar-badge" style="background:var(--spark)">AF</span> &nbsp;Al Faisal Contracting LLC</td><td><span class="pill neutral">B2B</span></td><td>+966 5X XXX 1122</td><td>300123456700003</td><td class="num">4,500.00</td></tr>
+          <tr><td><span class="avatar-badge" style="background:var(--info)">SQ</span> &nbsp;Sara Al-Qahtani</td><td><span class="pill neutral">B2C</span></td><td>+966 5X XXX 8890</td><td>&mdash;</td><td class="num">0.00</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="page" id="page-settings" data-group="settings">
+      <h2>Settings</h2>
+      <div class="settings-tabs">
+        <button class="settings-tab active" data-tab="company">Company</button>
+        <button class="settings-tab" data-tab="zatca">ZATCA integration</button>
+        <button class="settings-tab" data-tab="users">Users &amp; roles</button>
+      </div>
+      <div class="settings-panel visible" id="tab-company">
+        <div class="setting-row"><div><div class="st">Company name</div><div class="sd">CNC Woodcraft &amp; Design</div></div><button class="btn">Edit</button></div>
+        <div class="setting-row"><div><div class="st">Default currency</div><div class="sd">SAR</div></div><button class="btn">Edit</button></div>
+        <div class="setting-row"><div><div class="st">Portal theme</div><div class="sd">Boutique</div></div><button class="btn">Change</button></div>
+      </div>
+      <div class="settings-panel" id="tab-zatca">
+        <div class="setting-row"><div><div class="st">ZATCA integration</div><div class="sd">Auto-enables when sandbox onboarding completes</div></div><button class="toggle on" id="zatca-toggle"></button></div>
+        <div class="setting-row"><div><div class="st">Active environment</div><div class="sd">Sandbox</div></div><button class="btn">Switch</button></div>
+        <div class="setting-row"><div><div class="st">Onboarding status</div><div class="sd">Production CSID issued</div></div><span class="pill good">Onboarded</span></div>
+      </div>
+      <div class="settings-panel" id="tab-users">
+        <div class="setting-row"><div><div class="st">Imran Zarrar</div><div class="sd">Super Admin</div></div><span class="pill neutral">Active</span></div>
+        <div class="setting-row"><div><div class="st">Fatima Noor</div><div class="sd">Sales Rep</div></div><span class="pill neutral">Active</span></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var PAGE_TITLES = { dashboard: 'Dashboard', pos: 'Point of sale', invoices: 'Sales invoices', 'invoice-create': 'New invoice', 'invoice-detail': 'INV-1001', customers: 'Customers', settings: 'Settings' };
+    var navButtons = document.querySelectorAll('.rail-item');
+    var pages = document.querySelectorAll('.page');
+    var titleEl = document.getElementById('page-title');
+
+    function goTo(id) {
+      pages.forEach(function (p) { p.classList.toggle('visible', p.id === 'page-' + id); });
+      var group = document.getElementById('page-' + id).getAttribute('data-group');
+      navButtons.forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-page') === group); });
+      titleEl.textContent = PAGE_TITLES[id] || id;
+      window.scrollTo(0, 0);
+    }
+
+    navButtons.forEach(function (btn) {
+      btn.addEventListener('click', function () { goTo(btn.getAttribute('data-page')); });
+    });
+    document.querySelectorAll('[data-nav]').forEach(function (el) {
+      el.addEventListener('click', function () { goTo(el.getAttribute('data-nav')); });
+    });
+
+    goTo('dashboard');
+
+    document.querySelectorAll('.settings-tab').forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        document.querySelectorAll('.settings-tab').forEach(function (t) { t.classList.toggle('active', t === tab); });
+        document.querySelectorAll('.settings-panel').forEach(function (p) { p.classList.toggle('visible', p.id === 'tab-' + tab.getAttribute('data-tab')); });
+      });
+    });
+    document.getElementById('zatca-toggle').addEventListener('click', function () { this.classList.toggle('on'); });
+
+    var PRODUCTS = [
+      { name: '18mm MDF sheet', price: 85.00, cat: 'lumber' },
+      { name: '2x4 pine stud', price: 22.50, cat: 'lumber' },
+      { name: 'Oak veneer panel', price: 145.00, cat: 'lumber' },
+      { name: 'Hinge set, brass', price: 14.50, cat: 'hardware' },
+      { name: 'Cabinet handle', price: 9.00, cat: 'hardware' },
+      { name: 'Wood screws (100)', price: 12.00, cat: 'hardware' },
+      { name: 'Matte lacquer 1L', price: 38.00, cat: 'finishes' },
+      { name: 'Wood stain, walnut', price: 29.00, cat: 'finishes' }
+    ];
+    var cart = [];
+    var productsEl = document.getElementById('pos-products');
+    var cartEl = document.getElementById('cart-items');
+    var cartTotalEl = document.getElementById('cart-total');
+
+    function renderProducts(cat) {
+      productsEl.innerHTML = '';
+      PRODUCTS.filter(function (p) { return cat === 'all' || p.cat === cat; }).forEach(function (p) {
+        var el = document.createElement('button');
+        el.className = 'pos-product';
+        el.innerHTML = '<div class="pname">' + p.name + '</div><span class="pprice">SAR ' + p.price.toFixed(2) + '</span>';
+        el.addEventListener('click', function () { addToCart(p); });
+        productsEl.appendChild(el);
+      });
+    }
+    function addToCart(p) {
+      var existing = cart.find(function (c) { return c.name === p.name; });
+      if (existing) { existing.qty += 1; } else { cart.push({ name: p.name, price: p.price, qty: 1 }); }
+      renderCart();
+    }
+    function renderCart() {
+      if (cart.length === 0) { cartEl.innerHTML = '<div class="cart-empty">Tap a product to add it</div>'; cartTotalEl.textContent = 'SAR 0.00'; return; }
+      cartEl.innerHTML = '';
+      var total = 0;
+      cart.forEach(function (c) {
+        total += c.price * c.qty;
+        var row = document.createElement('div');
+        row.className = 'cart-row';
+        row.innerHTML = '<span class="cn">' + c.name + ' &times; ' + c.qty + '</span><span>SAR ' + (c.price * c.qty).toFixed(2) + '</span>';
+        cartEl.appendChild(row);
+      });
+      cartTotalEl.textContent = 'SAR ' + total.toFixed(2);
+    }
+    document.querySelectorAll('.pos-cat').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        document.querySelectorAll('.pos-cat').forEach(function (b) { b.classList.toggle('active', b === btn); });
+        renderProducts(btn.getAttribute('data-cat'));
+      });
+    });
+    renderProducts('all');
+  })();
+</script>

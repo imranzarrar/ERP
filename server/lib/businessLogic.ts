@@ -31,11 +31,11 @@ export function computePaymentStatus(amountPaid: number, total: number): 'Paid' 
 // statement completes, since there's no surrounding transaction to hold it open, and two
 // concurrent requests for the same company can both read the same counter value and both
 // commit N+1, producing duplicate invoice/quotation/expense/voucher numbers.
-export async function getAndIncrementCounter(tx: any, companyId: string, type: 'quotation' | 'invoice' | 'expense' | 'voucher') {
+export async function getAndIncrementCounter(tx: any, companyId: string, type: 'quotation' | 'invoice' | 'expense' | 'voucher' | 'pr' | 'po' | 'grn' | 'creditNote' | 'debitNote') {
   const [company] = await tx.select().from(schema.companies).where(eq(schema.companies.id, companyId)).for('update');
   if (!company) throw new Error('Company not found');
 
-  const counters = (company.counters as any) || { quotation: 1001, invoice: 1001, expense: 1001, voucher: 1001 };
+  const counters = (company.counters as any) || { quotation: 1001, invoice: 1001, expense: 1001, voucher: 1001, pr: 1001, po: 1001, grn: 1001, creditNote: 1001, debitNote: 1001 };
   const currentCount = counters[type] || 1001;
 
   counters[type] = currentCount + 1;

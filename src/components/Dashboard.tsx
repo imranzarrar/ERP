@@ -34,6 +34,14 @@ export default function Dashboard({ db, onNavigate, lastSyncTimes }: DashboardPr
  const currencySymbol = db.companySetup?.currency || 'SAR';
  const companyInvestors = (db.investors || []).filter(i => i.companyId === db.selectedCompanyId);
 
+ // The API caps invoices/expenses/vouchers/quotations at DEFAULT_LIST_LIMIT per list
+ // (see server/lib/pagination.ts, currently 500). If any of these arrays are sitting at
+ // that cap, KPIs below may be silently missing older records - surface it instead of
+ // implying completeness. This is a read of already-fetched in-memory data, no new query.
+ const RECORD_LIST_CAP = 500;
+ const isDataPossiblyTruncated = [db.invoices, db.expenses, db.vouchers, db.quotations]
+ .some(list => Array.isArray(list) && list.length >= RECORD_LIST_CAP);
+
  // Available fiscal fiscalMonths list
 const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
   const availableMonths = Array.isArray(fiscalMonths) ? fiscalMonths : [];
@@ -214,11 +222,61 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
 
  const chartData = Object.values(dailyDataMap).sort((a, b) => a.date.localeCompare(b.date));
 
- // User Targets
- const quotaTarget = 5;
- const salesTarget = 2500;
+ // Real ZATCA compliance signal: count invoices in the current filtered period whose
+ // e-invoicing submission actually failed, so this can never silently claim "all good".
+ const zatcaEligibleInvoices = monthInvoices.filter(inv => inv.status === 'Active');
+ const zatcaFailedInvoices = zatcaEligibleInvoices.filter(inv => inv.zatcaStatus === 'ERROR' || inv.zatcaStatus === 'REJECTED');
+ const zatcaFailureCount = zatcaFailedInvoices.length;
+ const zatcaOk = zatcaFailureCount === 0;
+
+ // Real investor capital-reconciliation signal (same math as the Partners' Equity panel
+ // above): flags a genuine mismatch rather than a hardcoded "active" claim.
+ const investorTotalContributed = companyInvestors.reduce((sum, inv) => {
+ const actual = db.vouchers
+ .filter(v => v.referenceType === 'Equity' && v.referenceId === inv.id)
+ .reduce((vSum, v) => vSum + v.amount, 0);
+ return sum + actual;
+ }, 0);
+ const investorHasImbalance = companyInvestors.length > 0 && (
+ investorTotalContributed === 0 ||
+ companyInvestors.some(inv => {
+ const actual = db.vouchers
+ .filter(v => v.referenceType === 'Equity' && v.referenceId === inv.id)
+ .reduce((vSum, v) => vSum + v.amount, 0);
+ const targetShare = (investorTotalContributed * inv.equityPercentage) / 100;
+ return Math.abs(targetShare - actual) > 0.01;
+ })
+ );
+
+ // User Targets - derived from the trailing average of actual monthly closed sales so
+ // every company sees a target grounded in its own history rather than an identical
+ // hardcoded number. Falls back to a modest placeholder only when there's no history yet.
+ const closedMonthIds = availableMonths
+ .filter(m => m.status === 'Closed' && m.id !== openMonth?.id)
+ .map(m => m.id)
+ .sort()
+ .slice(-3);
+ const trailingMonthlySales = closedMonthIds.map(monthId =>
+ db.invoices
+ .filter(inv => inv.companyId === db.selectedCompanyId && inv.status === 'Active' && inv.date.startsWith(monthId))
+ .reduce((sum, inv) => {
+ const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId);
+ return sum + totals.grandTotal;
+ }, 0)
+ );
+ const hasHistoricalTarget = trailingMonthlySales.length > 0;
+ const salesTarget = hasHistoricalTarget
+ ? trailingMonthlySales.reduce((sum, v) => sum + v, 0) / trailingMonthlySales.length
+ : 2500;
+ const trailingMonthlyQuotations = closedMonthIds.map(monthId =>
+ db.quotations.filter(q => q.companyId === db.selectedCompanyId && q.date.startsWith(monthId)).length
+ );
+ const hasHistoricalQuotaTarget = trailingMonthlyQuotations.length > 0;
+ const quotaTarget = hasHistoricalQuotaTarget
+ ? Math.max(1, Math.round(trailingMonthlyQuotations.reduce((sum, v) => sum + v, 0) / trailingMonthlyQuotations.length))
+ : 5;
  const quotaProgress = Math.min((monthQuotations.length / quotaTarget) * 100, 100);
- const salesProgress = Math.min((totalSales / salesTarget) * 100, 100);
+ const salesProgress = salesTarget > 0 ? Math.min((totalSales / salesTarget) * 100, 100) : 0;
 
  return (
  <div className="space-y-6">
@@ -284,6 +342,16 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  </button>
  )}
  </div>
+ </div>
+ )}
+
+ {/* Disclosure: KPIs below read from a capped, most-recent-N window per record type */}
+ {isDataPossiblyTruncated && (
+ <div id="truncated-data-warning" className="bg-slate-100 border border-slate-200 rounded-2xl p-3 flex items-center gap-2.5">
+ <span className="text-sm shrink-0">ℹ️</span>
+ <p className="text-[10.5px] text-slate-600">
+ {t('Based on the most recent 500 records per type (invoices, expenses, vouchers, quotations) - totals and KPIs may be incomplete for companies with more history.')}
+ </p>
  </div>
  )}
 
@@ -611,20 +679,22 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  <span className="text-[10px] text-slate-400 uppercase font-bold block mb-2">{t("Audit Compliance Logs")}</span>
  <div className="space-y-2">
  <div className="flex items-center gap-2 text-[10px] text-slate-500">
- <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
- <span>{t("VAT records fully synchronised on sales")}</span>
+ <span className={`w-2 h-2 rounded-full shrink-0 ${zatcaOk ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+ <span>
+ {zatcaOk
+ ? t("VAT records fully synchronised on sales")
+ : `${zatcaFailureCount} of ${zatcaEligibleInvoices.length} ${t("invoice(s) failed ZATCA e-invoicing submission (ERROR/REJECTED)")}`}
+ </span>
  </div>
- <div className="flex items-center gap-2 text-[10px] text-slate-500">
- <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0"></span>
- <span>{t("Interbank ledger transfer routes active")}</span>
- </div>
+ {companyInvestors.length > 0 && (
  <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1.5 border-t border-slate-50 ">
  <div className="flex items-center gap-2">
- <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>
- <span>{t("Capital Investor Registry active")}</span>
+ <span className={`w-2 h-2 rounded-full shrink-0 ${investorHasImbalance ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
+ <span>{investorHasImbalance ? t("Capital Investor Registry has unreconciled balances") : t("Capital Investor Registry fully reconciled")}</span>
  </div>
  <button onClick={() => onNavigate('settings-equity')} className="text-indigo-600 hover:underline font-extrabold cursor-pointer">{t("Open Registry")}</button>
  </div>
+ )}
  </div>
  </div>
 
@@ -672,8 +742,13 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  
  {/* Progress Circular Targets */}
  <div className="md:col-span-8 bg-white border border-slate-200/60 rounded-[28px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl">
- <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-6">{t("Your Month Targets & Performance Progress")}</h4>
- 
+ <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-1">{t("Your Month Targets & Performance Progress")}</h4>
+ <p className="text-[9px] text-slate-400 mb-5">
+ {hasHistoricalTarget || hasHistoricalQuotaTarget
+ ? t("Targets are derived from your own trailing 3-month average — not a fixed goal.")
+ : t("Illustrative example targets — not enough closed-month history yet to derive real ones.")}
+ </p>
+
  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
  
  {/* Quotation progress */}
@@ -735,7 +810,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  </div>
  <div>
  <span className="text-[11px] font-bold text-slate-800 block">{t("Open Month Sales Volume")}</span>
- <span className="text-[10px] text-slate-400 block mt-0.5">{t("Target:")} {currencySymbol} {salesTarget}. {t("Your Gross:")} {currencySymbol} {totalSales.toFixed(2)}</span>
+ <span className="text-[10px] text-slate-400 block mt-0.5">{t("Target:")} {currencySymbol} {salesTarget.toFixed(2)}. {t("Your Gross:")} {currencySymbol} {totalSales.toFixed(2)}</span>
  </div>
  </div>
 

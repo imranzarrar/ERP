@@ -582,6 +582,26 @@ router.post('/request-production-csid', async (req, res) => {
       isOnboarded: true,
     });
 
+    // This route is the genuine "onboarding just finished" point for whichever
+    // environment was passed in (despite its "Production CSID" name, it's called for
+    // sandbox/simulation/production alike). Auto-flip the company-wide zatcaEnabled
+    // switch only for sandbox, and only if sandbox is still this company's active
+    // environment — companies are deliberately pushed through sandbox -> simulation ->
+    // production one at a time, at their own pace, so this must never fire off a
+    // simulation/production completion, nor off a sandbox re-onboard after the company
+    // has already moved its active environment on.
+    // TODO(simulation/production auto-enable): not implemented — per product decision,
+    // enabling those environments stays a deliberate manual/Super-Admin step (the
+    // AdminSettings toggle) until each environment gets its own "live" flag instead of
+    // one shared company-wide switch.
+    if (environment === 'sandbox' && (company.zatcaEnvironment || 'sandbox') === 'sandbox' && !company.zatcaEnabled) {
+      await db.update(schema.companies).set({ zatcaEnabled: true }).where(eq(schema.companies.id, companyId));
+      await recordAuditLog(req, 'zatca_auto_enabled_after_sandbox_onboarding', 'company', companyId, {
+        companyId,
+        message: 'Sandbox onboarding completed (Production CSID issued) — zatcaEnabled automatically switched on for this company.',
+      });
+    }
+
     res.json({
       message: usedSandboxSampleKey
         ? 'Production CSID activated for sandbox. ZATCA returned its known static test certificate, so this environment\'s signing key was switched to ZATCA\'s own matching sample private key — invoices will now sign correctly and validate cleanly. Sandbox only; Simulation/Production are unaffected.'

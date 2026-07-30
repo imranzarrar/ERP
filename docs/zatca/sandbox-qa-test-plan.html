@@ -181,7 +181,8 @@
           <li><b>≥3 test companies</b>, created fresh through the real company-creation flow (not reused from prior sessions) — see §07 for why one company is never enough evidence.</li>
           <li>Each company needs: one bank account, at least one tax slab per rate under test (15% standard, 5% reduced, 0% exempt — all three already exist as shared slabs), an open fiscal month covering the test date, ≥2 customers per company (one <span class="pill neutral">B2B</span> with full ZATCA identity, one <span class="pill neutral">B2C</span> with name only).</li>
           <li>JDK 11 + the ZATCA SDK jar, already installed and kept specifically for this recurring verification need — <code>fatoora -validate</code> and <code>fatoora -generateHash</code> are the independent oracle for every test case, not optional tooling.</li>
-          <li>Dev server restarted before each test pass (no hot-reload on server-side changes in this project).</li>
+          <li>Dev server restarted before each test pass (no hot-reload on server-side changes in this project) — re-confirmed the hard way in item 35 (BACKLOG.md), where a full session of server-side edits sat inert against an already-running process until this was caught by a test result contradicting the source.</li>
+          <li><b>New precondition since item 35 (BACKLOG.md):</b> every test company now needs <code>companies.zatcaEnabled = true</code> before Gate 1 (§03) can fire at all — a company defaults to <code>zatcaEnabled = false</code> on creation, and every invoice on it lands at a <code>DISABLED</code> status with zero ZATCA calls attempted until either Sandbox onboarding completes (auto-enables it) or a Super Admin flips it manually in Admin Settings. A pre-existing test company from before item 35 needs this checked explicitly, not assumed.</li>
         </ul>
       </section>
 
@@ -449,6 +450,11 @@
 
         <h3>Tolerated, non-blocking warnings observed throughout</h3>
         <p>Per §09's triage rules, these appeared across multiple cases and were correctly treated as non-blocking: <code>BR-KSA-F-08</code> (seller CR-number scheme format — tied to CR formatting, confirmed absent when a well-formed CR was used for Company 3), <code>BR-KSA-98</code> (simplified invoice submitted &gt;24h after issue — an artifact of backdating test invoices into an already-closed month, not a real timing defect), and <code>BR-KSA-23</code> (VAT exemption reason code, newly surfaced by the mixed-tax-rate fix — tracked in <code>BACKLOG.md</code>, not fixed this pass).</p>
+
+        <div class="callout">
+          <div class="label">Addendum — related work since this plan was executed (BACKLOG.md item 35)</div>
+          <p style="margin:0;">Outside this plan's own scope (onboarding + invoice-matrix), a later session added a company-level <code>zatcaEnabled</code> switch (see §01's updated precondition above), tightened Cancel Invoice to refuse once ZATCA has recognized an invoice (<code>SUBMITTING</code>/<code>CLEARED</code>/<code>REPORTED</code>), and made Credit Note post a reversal voucher for any amount already paid on the original invoice. That work also introduced this project's first automated test suite — <code>tests/zatcaWorkflow.test.ts</code>, run via <code>npm test</code> — using the same real-HTTP-request-against-the-real-dev-server methodology this plan already relies on, rather than mocks. It does not replace this plan's dual-gate invoice-matrix verification (§03/§04), which remains the standard for anything touching XML/signing/clearance; it covers the adjacent policy layer of when an invoice is allowed to reach that pipeline at all, and what happens after it's cancelled or credited.</p>
+        </div>
       </section>
     </main>
   </div>

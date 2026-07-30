@@ -1,0 +1,40 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Commands
+
+- `npm run dev` — start the dev server (`tsx server.ts`, serves both the API and the Vite-bundled React client on port 3000).
+  **The backend does not auto-restart on file changes.** Only the Vite middleware hot-reloads the React client — anything edited under `server/`, `src/db/`, or any file the backend imports requires manually stopping and restarting this process, or you will silently run/test against stale code. This has already caused a real incident (see BACKLOG.md item 35).
+- `npm run build` — production build (`vite build` for the client, `esbuild` bundling `server.ts` to `dist/server.cjs`).
+- `npm start` — run the production build.
+- `npm run lint` — `tsc --noEmit`. Run after any non-trivial change.
+- `npm test` (or `npx vitest run`) — run the test suite. Tests make real HTTP requests against an already-running dev server plus direct Postgres assertions (no mocks) — start `npm run dev` first, restarted, before running tests.
+- `npx vitest run tests/<file>.test.ts` — run a single test file.
+- `npm run db:push` — apply `src/db/schema.ts` changes to the database via `drizzle-kit push`. There are no checked-in migration files; schema changes are pushed directly. This diffs the *live* database against the schema file, so it can surface and offer to apply unrelated drift accumulated from earlier hand-applied SQL — read its printed plan before it applies.
+
+**Secrets:** `src/db/drizzle.config.ts` and `src/db/index.ts` both import `./dbCredentials`, a gitignored local file (not in this checkout by default) holding DB connection info — required for `db:push` and for anything touching the database to work at all.
+
+## Architecture
+
+- **Multi-tenant.** Every business table carries a `companyId`. The active company for a request (`req.targetCompanyId`) is resolved per-request in `server.ts`'s auth middleware (`isAuthenticated`) from the session user's own `companyId`, or an explicit override for super-admins only.
+- **Two parallel data-access patterns coexist — check which one you're actually touching:**
+  - *Real routes* (`server/routes/*.ts`, mounted in `server.ts`): REST-style endpoints, drizzle ORM directly against Postgres, wrapped in `db.transaction`. This is the pattern for anything new.
+  - *Legacy blob path* (`src/dbStore.ts`, ~1700 lines): a full parallel reimplementation of invoice/quotation/expense/voucher business logic operating on an in-memory `DatabaseState` object, synced back via a generic `POST /api/migrate` that overwrites rows from whatever the client currently holds in memory. Several frontend modules still call into this instead of a real route — it is not a dead file, and more than one "fix" has landed here while the equivalent real server route sat untouched (the Cancel Invoice button did exactly this until it was caught — see BACKLOG.md item 35). Before changing behavior for an existing feature, confirm whether the UI action you're editing calls a real `/api/...` route or a `dbStore.ts` function.
+- **Auth**: session-cookie (`express-session` + `connect-pg-simple`), or an `x-session-id` header / `sessionId`/`session_id` query param looked up against the `user_sessions` table as a documented non-cookie path (used by automated tests, since a plain `fetch` client has no cookie jar). See `isAuthenticated` in `server.ts`.
+- **Permissions**: a user's effective permissions are the union (OR, per leaf) of every Role assigned to them (`userRoles` junction table), resolved by `resolveUserPermissions()` and merged by `mergeRolePermissions()`. There is no per-user override on top of role assignment — that's a deliberate design decision, not a gap. `normalizePermissions(permissions, role, isSuperAdmin)` (`src/types.ts`) is the one function every permission check (client and server) goes through; `isSuperAdmin === true` or `role` of `'admin'`/`'super-admin'` bypasses granular checks.
+- **Schema**: `src/db/schema.ts` is the single source of truth, applied via `npm run db:push` (see Commands).
+
+### ZATCA (Saudi e-invoicing) — the most architecturally sensitive part of this codebase
+
+- Everything lives under `server/lib/zatca/`: `hashChain.ts`, `processInvoice.ts`, `xades.ts`, `x509.ts`, `crypto.ts`, `asn1.ts`, `apiClient.ts`, `sandboxSampleIdentity.ts`. This is a proven, repeatedly dual-gate-verified cryptographic/compliance core — changes here have caught subtle real defects (a corrupted hash constant, a signature mismatch) that type-checking alone did not catch. Treat edits here with more care than the rest of the codebase; see BACKLOG.md items 27-31 for the specific incidents and how they were found.
+- Every invoice, Credit Note, and Debit Note flows through `processInvoiceZatca()` (`processInvoice.ts`), fired **fire-and-forget** after its own creation transaction commits — it is never awaited by the create request. In order, it: (1) checks `companies.zatcaEnabled` (a per-company master switch, default `false`, auto-enabled when that company's Sandbox onboarding completes) and stops at a `DISABLED` status if off, before any network call; (2) writes a `SUBMITTING` status synchronously, before hash-chain reservation or signing, so a concurrent action (e.g. Cancel) can never observe a stale pre-submission status while a real ZATCA call is actually in flight; (3) reserves the next ICV/hash-chain position under a row lock scoped to the company (`getNextHashChainState`), held only across the fast XML-build/signing step and released before the slow network call — this lock only ever serializes within one company, never across tenants; (4) calls ZATCA's real clearance/reporting API and persists the final status (`CLEARED`/`REPORTED`/`REJECTED`/`ERROR`).
+- Credit Notes and Debit Notes are **not** a separate document type or table — they're rows in the same `invoices` table (`documentType: 'CreditNote'|'DebitNote'`, `originalInvoiceId`, `creditNoteReason`), reusing the same UBL-2 XML builder and the same per-company hash chain as regular invoices, because ZATCA's chain-integrity model spans every document type for a company, not invoices alone. Amounts stay positive; intent is carried via the type code plus a `BillingReference` to the original invoice. Debit Note creation is currently disabled in the UI (Credit Note only) by product decision.
+- Once an invoice reaches `CLEARED`/`REPORTED`, it can no longer be locally cancelled — ZATCA has no void/delete API. `POST /invoices/:id/cancel` enforces this server-side (`SUBMITTING`/`CLEARED`/`REPORTED` are refused); a Credit Note is the only compliant way to reverse a ZATCA-recognized invoice, and posts a reversal voucher for whatever was actually paid on the original.
+- Sandbox, Simulation, and Production are fully independent per-company identities and credential sets (`zatcaEnvironmentConfigs`, one row per `(companyId, environment)`) — never assume a shared identity across environments for the same company.
+- Verification standard for anything touching this pipeline is the **dual-gate protocol**: real ZATCA sandbox API clearance/reporting *and* the ZATCA SDK's own `fatoora -validate` CLI (kept installed under `tools/zatca-sdk/` specifically for this). Full protocol, environment setup, and known CLI quirks (e.g. no `[SIGNATURE]`/`[QR]` verdict for Standard/B2B invoices; `[PIH] FAILED` is expected and ignorable for any non-genesis invoice validated in isolation) are documented in `docs/zatca/sandbox-qa-test-plan.html`.
+
+### Testing
+
+- `tests/zatcaWorkflow.test.ts` is the first automated test file in this project — real HTTP requests against the running dev server plus direct Postgres assertions, deliberately no mocks. It provisions a dedicated throwaway company/user/customer/bank fixture and tears it down in `afterAll`; it never touches the seeded demo companies (e.g. "CNC Woodcraft & Design") used for manual QA sessions.
+- Restart the dev server before trusting any test run or manual check against a server-side edit — see the Commands section above.

@@ -38,10 +38,43 @@ export async function processInvoiceZatca(invoiceId: string) {
     companyId = invoice.companyId;
     const [company] = await db.select().from(schema.companies).where(eq(schema.companies.id, companyId));
     environment = (company?.zatcaEnvironment as 'sandbox' | 'simulation' | 'production') || 'sandbox';
+
+    // Master on/off switch — a company that hasn't enabled ZATCA (default for every new
+    // company) must never attempt a real submission, regardless of environment.
+    if (!(company as any)?.zatcaEnabled) {
+      await db.update(schema.invoices)
+        .set({
+          zatcaStatus: 'DISABLED',
+          zatcaValidationResults: [{ code: 'ZATCA_DISABLED', message: 'ZATCA integration is not enabled for this company yet.' }] as any,
+        })
+        .where(eq(schema.invoices.id, invoiceId));
+      return { success: true, status: 'DISABLED' };
+    }
+
+    // Mark as in-flight before any further processing (hash chain reservation, signing,
+    // network call). Without this, an invoice sits at its stale creation-time status
+    // ('NOT_SUBMITTED') for the entire duration of this async job — a window in which a
+    // user could cancel the invoice locally, only for this already-in-flight submission
+    // to still land as a genuine CLEARED/REPORTED at ZATCA moments later, leaving a
+    // permanent ZATCA record with no Credit Note ever issued to reconcile it. Every
+    // terminal branch below (DISABLED/NOT_SUBMITTED/ERROR/CLEARED/REPORTED/REJECTED)
+    // overwrites this, so it is never left stuck.
+    await db.update(schema.invoices)
+      .set({ zatcaStatus: 'SUBMITTING' })
+      .where(eq(schema.invoices.id, invoiceId));
+
     const [config] = await db.select().from(schema.zatcaEnvironmentConfigs)
       .where(and(eq(schema.zatcaEnvironmentConfigs.companyId, companyId), eq(schema.zatcaEnvironmentConfigs.environment, environment)));
     const [customer] = invoice.customerId ? await db.select().from(schema.customers).where(eq(schema.customers.id, invoice.customerId)) : [undefined];
     const [taxSlab] = invoice.taxSlabId ? await db.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, invoice.taxSlabId)) : [undefined];
+    // Credit/Debit Note support — this row's own documentType decides which UBL
+    // sub-document to build; both still flow through the exact same locked ICV/PIH
+    // reservation below, since ZATCA's chain integrity spans every document type for a
+    // company, not invoices alone.
+    const documentType = (invoice as any).documentType || 'Invoice';
+    const [originalInvoice] = (invoice as any).originalInvoiceId
+      ? await db.select().from(schema.invoices).where(eq(schema.invoices.id, (invoice as any).originalInvoiceId))
+      : [undefined];
     // invoices has no stored subtotal/total — line items live in the separate
     // invoice_items table and totals are always derived, matching how
     // POST /api/transactions/invoices computes them at creation time.
@@ -166,6 +199,13 @@ export async function processInvoiceZatca(invoiceId: string) {
         issueDate: inv.invoiceDate || inv.date || new Date().toISOString().split('T')[0],
         issueTime: new Date().toISOString().split('T')[1]?.substring(0, 8) || '12:00:00',
         invoiceTypeCode,
+        documentSubtypeCode: documentType === 'CreditNote' ? '381' : documentType === 'DebitNote' ? '383' : '388',
+        billingReference: originalInvoice ? { invoiceNumber: originalInvoice.invoiceNumber } : undefined,
+        paymentMeansNote: documentType === 'CreditNote'
+          ? ((invoice as any).creditNoteReason || 'In case of goods or services refund')
+          : documentType === 'DebitNote'
+          ? ((invoice as any).creditNoteReason || 'Amendment of the supply value which is pre-agreed upon between the supplier and consumer')
+          : undefined,
         currency: inv.currency || company?.currency || 'SAR',
         icv,
         previousInvoiceHash: pih,

@@ -105,6 +105,7 @@ export default function ExpenseModule({ db, onUpdateDb, onPrintDoc, mode, onDone
 
  // View state — fixed for the lifetime of this mount by which page (mode) rendered it.
  const [viewAttachment, setViewAttachment] = React.useState<string | null>(null);
+ const [isSavingExpense, setIsSavingExpense] = React.useState(false);
   const [view] = React.useState<"list" | "create">(mode === 'add' ? 'create' : 'list');
   // Expenses from server
   const [expenses, setExpenses] = React.useState<Expense[]>([]);
@@ -238,6 +239,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  // Submit Save
  const handleSaveExpense = async (e: React.FormEvent) => {
  e.preventDefault();
+ if (isSavingExpense) return;
  if (formClassification === 'Asset' && !formAttachmentUrl) {
  return triggerError('Bill/Receipt attachment is mandatory when purchasing an Asset.');
  }
@@ -280,15 +282,28 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  assetType: formClassification === 'Asset' ? formAssetType : undefined
  };
 
+ setIsSavingExpense(true);
+ try {
   const response = await fetch("/api/expenses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(expData) });
   const result = await response.json();
-  if (response.ok) fetchExpenses();
- if (result.error) {
- triggerError(result.error);
- } else {
+  // POST /api/expenses only ever returns { success: true } or { error }, never a `db`
+  // field — a prior version called onUpdateDb(result.db) here, which resolved to
+  // onUpdateDb(undefined) on every real save, nulling the entire app's `db` state on
+  // the very next render (every downstream read of db.selectedCompanyId/db.vendors/etc.
+  // would throw). fetchExpenses() below already refreshes this module's own list; the
+  // global db is refreshed by the normal navigation/reload path instead of guessing at
+  // a delta this endpoint doesn't return.
+  if (!response.ok || result.error) {
+ triggerError(result.error || 'Failed to save expense.');
+ return;
+ }
+  await fetchExpenses();
  triggerSuccess('Expense saved successfully. Cash flows registered in ledger.');
- onUpdateDb(result.db);
  onDone();
+ } catch (err: any) {
+ triggerError(err?.message || 'Failed to save expense — check your connection and try again.');
+ } finally {
+ setIsSavingExpense(false);
  }
  };
 
@@ -489,7 +504,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  <table className="w-full text-xs text-start">
  <thead>
  <tr className="bg-slate-50/50 border-b border-slate-100 text-slate-500 uppercase tracking-wider text-[10px]">
- {renderSortableHeader('{t("Expense No")}', 'expenseNumber')}
+ {renderSortableHeader('Expense No', 'expenseNumber')}
  {renderSortableHeader('Date', 'date')}
  {renderSortableHeader('Vendor', 'vendor')}
  {renderSortableHeader('Description', 'description')}
@@ -1006,9 +1021,10 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  </button>
  <button
  type="submit"
- className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-5 py-2 font-bold text-xs shadow-sm"
+ disabled={isSavingExpense}
+ className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl px-5 py-2 font-bold text-xs shadow-sm"
  >
- {t('Save Expense Entry')}
+ {isSavingExpense ? t('Saving...') : t('Save Expense Entry')}
  </button>
  </div>
  </form>

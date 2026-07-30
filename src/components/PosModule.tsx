@@ -3,6 +3,8 @@ import { DatabaseState, saveInvoice, getAndIncrementCounter, calculateInvoiceTot
 import { ProductService, Customer, PosShift, PosHeldInvoice, PosCartItem, TaxSlab, Invoice, BankAccount } from '../types';
 import { Search, ShoppingCart, ShoppingBag, Trash2, Printer, Check, X, Pause, Play, Users, CreditCard, Banknote, UserPlus, LogOut, PackageSearch, Tag, Receipt, Maximize, Minimize } from 'lucide-react';
 import { useTranslation, usePermissions } from '../hooks';
+import StatusPill from './StatusPill';
+import { generateId } from '../id';
 
 interface PosModuleProps {
   db: DatabaseState;
@@ -64,7 +66,11 @@ export default function PosModule({ db, onUpdateDb, currentUser, defaultTab = 't
       return;
     }
     const newShift: PosShift = {
-      id: `shift-${Date.now()}`,
+      // pos_shifts.id is a real Postgres `uuid` column (BACKLOG.md item 25's schema
+      // migration) — this legacy `shift-${Date.now()}` string isn't a valid UUID, so
+      // every new shift silently failed to persist ("invalid input syntax for type
+      // uuid") until the cloudError banner fix made that failure visible at all.
+      id: generateId(),
       companyId: activeCompanyId,
       userId: currentUser.id,
       startTime: new Date().toISOString(),
@@ -72,14 +78,6 @@ export default function PosModule({ db, onUpdateDb, currentUser, defaultTab = 't
       status: 'open'
     };
     onUpdateDb(prev => ({ ...prev, posShifts: [...(prev.posShifts || []), newShift] }));
-  };
-
-  const handleCloseShift = (actualCash: number) => {
-    if (!activeShift) return;
-    onUpdateDb(prev => ({
-      ...prev,
-      posShifts: prev.posShifts.map(s => s.id === activeShift.id ? { ...s, status: 'closed', endTime: new Date().toISOString(), endCash: actualCash, expectedCash: parseFloat(startingCash) || 0 } : s)
-    }));
   };
 
   // Basic layout if no shift - only block terminal access
@@ -259,12 +257,39 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
     return () => document.removeEventListener('fullscreenchange', onFsChange);
   }, []);
   const totalDiscount = cart.reduce((sum, item) => sum + (item.discount || 0), 0);
-  const total = subtotal - totalDiscount;
+  // The cart/pay-modal total shown to (and collected from) the cashier must be the
+  // SAME tax-inclusive grand total the invoice actually gets saved with (computed via
+  // calculateInvoiceTotals, exactly like dbStore.ts's saveInvoice does internally) —
+  // previously this was pre-tax (subtotal - discount only), so the cashier quoted a
+  // lower figure than the VAT-inclusive amount the system recorded for the same sale.
+  //
+  // Which slab to actually apply was ALSO wrong (found live, while verifying the fix
+  // above): `db.taxSlabs?.[0]?.id` grabs whatever slab happens to be first in the
+  // array — for this company that's "Exempt (0%)", so every POS sale was silently
+  // recording zero VAT regardless of the item, not just displaying the wrong total.
+  // POS has no per-line tax picker (unlike Invoice), so it needs a real default: prefer
+  // this company's own standard-rate slab, else the shared 15% standard slab, else
+  // fall back to the old (wrong but previously-existing) first-slab behavior only if
+  // no standard rate can be found at all.
+  const posTaxSlabId =
+    db.taxSlabs?.find(t => t.companyId === activeCompanyId && Number(t.percentage) === 15)?.id ||
+    db.taxSlabs?.find(t => !t.companyId && Number(t.percentage) === 15)?.id ||
+    db.taxSlabs?.[0]?.id || '';
+  const cartTotals = calculateInvoiceTotals(
+    db,
+    cart.map((item: PosCartItem) => ({ unitCost: item.unitPrice, quantity: item.quantity, discountAmount: item.discount || 0 })),
+    posTaxSlabId,
+    0
+  );
+  const taxAmount = cartTotals.taxAmount;
+  const taxPercentage = cartTotals.percentage;
+  const total = cartTotals.grandTotal;
 
   const handleHoldInvoice = () => {
     if (!holdCustomerId) return alert(t('Customer selection is mandatory for pending (held) payments.'));
     const newHold: PosHeldInvoice = {
-      id: `hold-${Date.now()}`,
+      // Same real-uuid-column issue as handleStartShift above — fixed identically.
+      id: generateId(),
       shiftId: activeShift.id,
       companyId: activeCompanyId,
       customerId: holdCustomerId,
@@ -279,6 +304,15 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
 
   const handlePayInvoice = () => {
     if (!payBankId) return alert(t('Please select a payment method (Bank/Cash).'));
+
+    // Guard against confirming a sale for less cash than the (tax-inclusive) total
+    // actually due — previously any received amount (including a blank/0 field) was
+    // accepted and the full grandTotal was still recorded as amountPaid regardless of
+    // what was actually collected from the customer.
+    const receivedNum = parseFloat(receivedAmount) || 0;
+    if (receivedNum < total - 0.01) {
+      return alert(t('Received amount is less than the total due. Please collect the full amount before confirming payment.'));
+    }
 
     let finalBankId = payBankId;
     if (finalBankId === 'cash') {
@@ -302,7 +336,7 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
       isPosSale: true,
       shiftId: activeShift.id,
       customerId: payCustomerId || (db.customers || []).find((c: any) => c.companyId === activeCompanyId && c.name.toLowerCase().includes('walk-in'))?.id || (db.customers || []).find((c: any) => c.companyId === activeCompanyId)?.id || '',
-      taxSlabId: db.taxSlabs?.[0]?.id || '',
+      taxSlabId: posTaxSlabId,
       bankId: finalBankId,
       date: (fiscalMonths).find((m: any) => m.status === 'Open' && m.companyId === activeCompanyId) ? (new Date().toISOString().startsWith((fiscalMonths).find((m: any) => m.status === 'Open' && m.companyId === activeCompanyId)?.id as string) ? new Date().toISOString().split('T')[0] : `${(fiscalMonths).find((m: any) => m.status === 'Open' && m.companyId === activeCompanyId)?.id}-01`) : new Date().toISOString().split('T')[0],
       paymentStatus: 'Paid',
@@ -332,14 +366,21 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
 
   const handleCloseShiftConfirm = () => {
     const actual = parseFloat(actualCash) || 0;
-    
-    // Calculate expected cash (Very rough estimation for now: startCash + all paid invoices in this shift timeframe for Cash banks)
-    // To be perfectly accurate, we'd sum payments made during the shift to the Cash accounts. 
-    // We will just pass actual cash back to the main component's closer.
-    
+
+    // Expected cash = starting float + this shift's sales (same "Total Sales" figure
+    // PosShiftsHistory's calculateShiftSales computes: sum of amountPaid across this
+    // shift's non-cancelled invoices) — NOT the counted `actual` figure itself. Setting
+    // expectedCash to the same value as endCash (the old behavior) made
+    // variance = endCash - expectedCash mathematically always zero, defeating the
+    // entire point of a cash-drawer variance/shortage report.
+    const shiftSales = (db.invoices || [])
+      .filter((i: Invoice) => i.companyId === activeCompanyId && i.shiftId === activeShift.id && i.status !== 'Cancelled')
+      .reduce((sum: number, inv: Invoice) => sum + (inv.amountPaid || 0), 0);
+    const expected = (activeShift.startCash || 0) + shiftSales;
+
     onUpdateDb((prev: any) => ({
       ...prev,
-      posShifts: prev.posShifts.map((s: PosShift) => s.id === activeShift.id ? { ...s, status: 'closed', endTime: new Date().toISOString(), endCash: actual, expectedCash: actual } : s)
+      posShifts: prev.posShifts.map((s: PosShift) => s.id === activeShift.id ? { ...s, status: 'closed', endTime: new Date().toISOString(), endCash: actual, expectedCash: expected } : s)
     }));
     setShowCloseShiftModal(false);
   };
@@ -458,6 +499,18 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
             <span>{t("Subtotal")}</span>
             <span>{currency} {subtotal.toFixed(2)}</span>
           </div>
+          {totalDiscount > 0 && (
+            <div className="flex justify-between text-sm text-rose-500 font-semibold">
+              <span>{t("Discount")}</span>
+              <span>-{currency} {totalDiscount.toFixed(2)}</span>
+            </div>
+          )}
+          {taxAmount > 0 && (
+            <div className="flex justify-between text-sm text-slate-500 font-medium">
+              <span>{t("VAT")} ({taxPercentage}%)</span>
+              <span>{currency} {taxAmount.toFixed(2)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-2xl font-black text-slate-900 mt-2">
             <span>{t("Total")}</span>
             <span>{currency} {total.toFixed(2)}</span>
@@ -541,7 +594,12 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
             
             <div className="space-y-5">
               <div className="bg-slate-50 p-4 rounded-2xl flex justify-between items-center border border-slate-100">
-                <span className="font-bold text-slate-600 text-sm">{t("Amount Due")}</span>
+                <div>
+                  <span className="font-bold text-slate-600 text-sm block">{t("Amount Due")}</span>
+                  {taxAmount > 0 && (
+                    <span className="text-[10px] text-slate-400 font-medium">{t("Incl. VAT")} ({taxPercentage}%): {currency} {taxAmount.toFixed(2)}</span>
+                  )}
+                </div>
                 <span className="text-3xl font-black text-slate-900">{currency} {total.toFixed(2)}</span>
               </div>
 
@@ -738,7 +796,7 @@ function PosSalesHistory({ db, activeCompanyId, currentUser, restricted }: any) 
                   <td className="p-4 text-slate-600">{new Date(inv.date).toLocaleDateString()}</td>
                   <td className="p-4 text-slate-800">{cust?.name || t("Walk-in")}</td>
                   <td className="p-4 font-bold text-slate-900">{currency} {calculateInvoiceTotals(db, inv.items, inv.taxSlabId, inv.discountPercentage).grandTotal.toFixed(2)}</td>
-                  <td className="p-4 text-emerald-600 font-bold">{t(inv.status)}</td>
+                  <td className="p-4"><StatusPill tone={inv.status === 'Active' ? 'good' : 'critical'}>{t(inv.status)}</StatusPill></td>
                 </tr>
               );
             })}
