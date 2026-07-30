@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from 'motion/react';
 import React from 'react';
 import { useTranslation, usePermissions } from './hooks';
-import { getDatabase, saveDatabase, getActiveOpenMonth, DatabaseState } from './dbStore';
+import { getDatabase, saveDatabase, getActiveOpenMonth, getOpenMonths, DatabaseState } from './dbStore';
 import { THEME_PROFILES, applyTheme } from './theme';
 import { ensureCompatibleImage } from './imageUtils';
 
@@ -345,6 +345,9 @@ export default function App() {
   const isSuperAdmin = currentUser?.isSuperAdmin === true;
   const { can } = usePermissions(currentUser);
  const openMonth = getActiveOpenMonth(activeDb);
+ // Up to 3 fiscal months may be open concurrently now; openMonth is just the oldest
+ // (the only one currently closable). Surface the total count alongside it.
+ const openMonthsCount = getOpenMonths(activeDb).length;
 
  // Sidebar navigation options (Admin vs User restrictions) grouped into standard ERP sections
  type NavItem = {
@@ -651,7 +654,7 @@ type NavSection = {
  {openMonth ? (
  <span className="text-emerald-400 font-extrabold flex items-center gap-1.5">
  <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping"></span>
- <span className="truncate">{t("Month Open:")} {t(openMonth.name)}</span>
+ <span className="truncate">{t("Month Open:")} {t(openMonth.name)}{openMonthsCount > 1 ? ` (+${openMonthsCount - 1})` : ''}</span>
  </span>
  ) : (
  <span className="text-rose-400 font-bold flex items-center gap-1.5">
@@ -660,7 +663,7 @@ type NavSection = {
  )}
  </div>
  ) : (
- <div className="my-1.5 flex justify-center" title={openMonth ? `Month Open: ${openMonth.name}` : "No Month Open"}>
+ <div className="my-1.5 flex justify-center" title={openMonth ? `Month Open: ${openMonth.name}${openMonthsCount > 1 ? ` (+${openMonthsCount - 1} more)` : ''}` : "No Month Open"}>
  <span className={`w-3 h-3 rounded-full ${openMonth ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
  </div>
  )}

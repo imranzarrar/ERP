@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from '../hooks';
-import { DatabaseState, saveDatabase, getActiveOpenMonth, saveQuotation, updateQuotation, convertQuotationToInvoice, calculateInvoiceTotals } from '../dbStore';
+import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, saveQuotation, updateQuotation, convertQuotationToInvoice, calculateInvoiceTotals } from '../dbStore';
 import { generateId } from '../id';
 import { Quotation, QuotationItem, Customer, TaxSlab, User, normalizePermissions } from '../types';
 import StatusPill from './StatusPill';
@@ -111,7 +111,10 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  React.useEffect(() => {
  if (mode !== 'add' || editId) return;
  const today = new Date().toISOString().split('T')[0];
- const initialDate = openMonth ? (today.startsWith(openMonth.id) ? today : `${openMonth.id}-01`) : today;
+ // Default to today only if today's own month is among the open ones (with several months
+ // open concurrently, today's month need not be the oldest); otherwise fall back to the
+ // 1st of the oldest open month.
+ const initialDate = openMonth ? (isDateInOpenMonth(db, today) ? today : `${openMonth.id}-01`) : today;
  const defaultCust = db.customers.find(c => c.isSystem && (c.companyId === db.selectedCompanyId || !c.companyId))?.id || db.customers.find(c => c.companyId === db.selectedCompanyId || !c.companyId)?.id || '';
  const defaultTax = db.taxSlabs.find(t => t.percentage === 0)?.id || db.taxSlabs[0]?.id || '';
  setFormDate(initialDate);
@@ -336,7 +339,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  setConvertingQ(q);
  
  const today = new Date().toISOString().split('T')[0];
- const initialDate = today.startsWith(openMonth.id) ? today : `${openMonth.id}-01`;
+ const initialDate = isDateInOpenMonth(db, today) ? today : `${openMonth.id}-01`;
  const defaultBank = db.banks.find(b => b.isDefault)?.id || db.banks[0]?.id || '';
 
  setConvForm({

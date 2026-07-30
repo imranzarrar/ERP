@@ -606,6 +606,13 @@ router.get('/months', async (req: any, res) => {
   }
 });
 
+// Multiple fiscal months may be open concurrently per company, but:
+//   1. At most MAX_OPEN_FISCAL_MONTHS may be open at once.
+//   2. Only the chronologically oldest currently-open month may be closed at any time.
+// This is the real enforcement boundary — client-side checks in src/dbStore.ts exist only for
+// fast UX feedback and are bypassable by any direct API call (see BACKLOG.md items 21 and 35).
+const MAX_OPEN_FISCAL_MONTHS = 3;
+
 router.post('/months', async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'fiscalMonths.access')) {
@@ -625,7 +632,47 @@ router.post('/months', async (req: any, res) => {
 
     if (mData.closedAt) mData.closedAt = new Date(mData.closedAt);
 
+    // Fetch all fiscal months for this company to evaluate the cap / close-ordering rules
+    // against the actual persisted state, not whatever the client's in-memory copy claims.
+    const existingMonthsForCompany = await db.select()
+      .from(schema.fiscalMonths)
+      .where(eq(schema.fiscalMonths.companyId, mData.companyId));
+    const existingRow = existingMonthsForCompany.find(m => m.id === mData.id);
+    const currentlyOpen = existingMonthsForCompany
+      .filter(m => m.status?.toLowerCase() === 'open')
+      .sort((a, b) => a.id.localeCompare(b.id));
+
+    if (mData.status === 'Open') {
+      // Opening a month that isn't already open (a fresh insert, or re-opening — the app
+      // doesn't normally do the latter, but guard the cap regardless of how we got here).
+      const alreadyOpen = existingRow?.status?.toLowerCase() === 'open';
+      if (!alreadyOpen) {
+        const openExcludingThis = currentlyOpen.filter(m => m.id !== mData.id);
+        if (openExcludingThis.length >= MAX_OPEN_FISCAL_MONTHS) {
+          const openList = openExcludingThis.map(m => `${m.name} (${m.id})`).join(', ');
+          return res.status(400).json({
+            error: `Cannot open a new fiscal month — the maximum of ${MAX_OPEN_FISCAL_MONTHS} concurrently open months has been reached (${openList}). Close the oldest open month first.`
+          });
+        }
+      }
+    }
+
     if (mData.status === 'Closed') {
+      // Can only close a month that is actually currently open.
+      if (!existingRow || existingRow.status?.toLowerCase() !== 'open') {
+        return res.status(400).json({
+          error: `Cannot close fiscal month ${mData.id} — it is not currently open.`
+        });
+      }
+
+      // Oldest-first: this must be the chronologically oldest currently-open month.
+      const oldestOpen = currentlyOpen[0];
+      if (oldestOpen && oldestOpen.id !== mData.id) {
+        return res.status(400).json({
+          error: `Cannot close ${existingRow.name} (${existingRow.id}) yet — the oldest open month, ${oldestOpen.name} (${oldestOpen.id}), must be closed first.`
+        });
+      }
+
       // 1. Fetch active templates for the company
       const activeTemplates = await db.select()
         .from(schema.recurringExpenseTemplates)

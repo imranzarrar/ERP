@@ -2172,7 +2172,12 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  {(db.companies || []).map((company) => {
  const theme = THEME_PROFILES.find(p => p.id === company.themeId) || THEME_PROFILES[0];
  const companyBanks = db.banks.filter(b => b.companyId === company.id);
- const activeMonth = fiscalMonths.find(m => m.companyId === company.id && m.status === 'Open');
+ // Several fiscal months can be open concurrently per company now (cap of 3); show the
+ // oldest (the only one currently closable) plus a count of the rest, if any.
+ const companyOpenMonths = fiscalMonths
+ .filter(m => m.companyId === company.id && m.status === 'Open')
+ .sort((a, b) => a.id.localeCompare(b.id));
+ const activeMonth = companyOpenMonths[0];
  
  return (
  <div key={company.id} className="p-4 bg-white border border-slate-200/60 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
@@ -2211,7 +2216,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <div className="flex justify-between">
  <span className="text-slate-400">Active Month:</span>
  <span className="text-emerald-600 font-extrabold uppercase text-[10px]">
- {activeMonth ? `🔓 ${activeMonth.name}` : '🔒 All Closed'}
+ {activeMonth ? `🔓 ${activeMonth.name}${companyOpenMonths.length > 1 ? ` (+${companyOpenMonths.length - 1})` : ''}` : '🔒 All Closed'}
  </span>
  </div>
  <div className="flex justify-between">
@@ -4347,11 +4352,28 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  )}
 
  {/* TAB: FISCAL MONTHS */}
- {activeTab === 'months' && (
+ {activeTab === 'months' && (() => {
+ // Purely informational — sorted oldest-first so the list/badge below can point at which
+ // open month is next in line to close. This does NOT gate or block any action: the cap-of-3
+ // and oldest-first-close rules are enforced ONLY server-side, in POST /api/transactions/months
+ // (server/routes/transactions.ts). Every Open month's Close button stays clickable and the
+ // Create button stays enabled regardless of count — attempting an action that the server
+ // rejects (cap reached, not the oldest open month, etc.) surfaces that rejection via
+ // triggerError exactly as returned by the server. Deliberately not re-implementing the rule
+ // here — see BACKLOG.md item 35 for the precedent of a client-side copy of a business rule
+ // silently diverging from the real server-side check.
+ const companyOpenMonthsSorted = fiscalMonths
+ .filter(m => m.status === 'Open' && m.companyId === db.selectedCompanyId)
+ .sort((a, b) => a.id.localeCompare(b.id));
+ const oldestOpenId = companyOpenMonthsSorted[0]?.id;
+
+ return (
  <div className="space-y-6">
  <div>
  <h3 className="text-sm font-bold text-slate-900">{t('Fiscal Calendar Management')}</h3>
- <p className="text-[11px] text-slate-400">Maintain open/closed fiscal periods. Only one month can be open. Transactions are restricted to the open month.</p>
+ <p className="text-[11px] text-slate-400">
+ Multiple fiscal periods may be open concurrently ({companyOpenMonthsSorted.length} open now). Transactions dated within any open month are accepted. Months close oldest-first — the server enforces both the concurrency cap and the close order and will reject an action here with a clear message if it doesn't qualify.
+ </p>
  </div>
 
  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -4366,10 +4388,15 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </tr>
  </thead>
  <tbody>
- {fiscalMonths.filter(m => m.companyId === db.selectedCompanyId).map(m => (
+ {fiscalMonths.filter(m => m.companyId === db.selectedCompanyId).map(m => {
+ const isOldestOpen = m.status === 'Open' && m.id === oldestOpenId;
+ return (
  <tr key={m.id} className="border-b border-slate-100">
  <td className="p-3 font-semibold text-slate-800">
  {m.name} <span className="text-[10px] text-slate-400 font-mono ms-1">({m.id})</span>
+ {isOldestOpen && (
+ <span className="ms-1.5 px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase bg-amber-100 text-amber-700" title="Oldest open month — the server currently allows closing this one.">Oldest open</span>
+ )}
  </td>
  <td className="p-3 text-center">
  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
@@ -4391,7 +4418,8 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  )}
  </td>
  </tr>
- ))}
+ );
+ })}
  </tbody>
  </table>
  </div>
@@ -4400,7 +4428,9 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3">Open New Month</h4>
  <form onSubmit={handleOpenMonth} className="space-y-4">
- <p className="text-[11px] text-slate-400">Ensure the currently open month is closed first. Only one month can be open.</p>
+ <p className="text-[11px] text-slate-400">
+ {companyOpenMonthsSorted.length} month(s) currently open. The server allows up to 3 concurrently open and will reject this if the cap is already reached.
+ </p>
  <div className="space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase">Year</label>
  <input
@@ -4434,7 +4464,6 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
  <button
  type="submit"
- disabled={fiscalMonths.some(m => m.status === 'Open' && m.companyId === db.selectedCompanyId)}
  className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-2xl py-2 font-bold text-xs transition shadow-sm"
  >
  Create Fiscal Period
@@ -4443,7 +4472,8 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
  </div>
  </div>
- )}
+ );
+ })()}
 
  {/* TAB: STAFF USERS */}
  {activeTab === 'users' && (
