@@ -306,6 +306,17 @@ export default function DocumentRenderer({
  .map((el) => el.outerHTML)
  .join('\n');
 
+ // printContent.outerHTML, not .innerHTML: printContent IS the "paper" wrapper div
+ // itself (bg-white, shadow-lg, p-8/md:p-12, max-w-4xl, print:min-h-[11in],
+ // print:p-0, etc. all live on this element's own class attribute, not on a
+ // child). .innerHTML only ever serializes an element's children, never its own
+ // tag/attributes — using it here silently dropped every one of those classes
+ // from the actual print/PDF output, including both classes from this session's
+ // print-spacing fix, even though the on-screen preview (where this element is
+ // part of the live DOM, attributes and all) looked correct. Confirmed by
+ // intercepting window.open and inspecting the exact HTML this call was about to
+ // write: with .innerHTML the popup body started directly at the inner
+ // #printable-inner child, missing the outer wrapper and all of its classes.
  printWindow.document.write(`
  <html>
  <head>
@@ -352,7 +363,7 @@ export default function DocumentRenderer({
  </style>
  </head>
  <body>
- ${printContent.innerHTML}
+ ${printContent.outerHTML}
  <script>
  window.onload = function() {
  window.print();
