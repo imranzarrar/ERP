@@ -4009,9 +4009,24 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
         <div className="lg:col-span-3 space-y-4">
          <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block text-center">Interactive 12-Column Grid Stage</span>
          
-         {/* The actual live-manipulated paper template */}
-         <div className="bg-white border border-slate-200 shadow-xl rounded-2xl p-6 md:p-8 min-h-[600px] max-w-[850px] mx-auto space-y-6">
-          <div className="grid grid-cols-12 gap-x-4 gap-y-6">
+         {/* The actual live-manipulated paper template.
+             - Font: mirrors DocumentRenderer.tsx's getGlobalFontClass mapping exactly, so
+               this canvas actually shows the font the template will print with (sans/
+               serif/display/mono) instead of always showing the Admin Settings page's own
+               UI font regardless of what's selected.
+             - items-start: CSS Grid's default align-items is `stretch` — every block's
+               card would stretch to match the tallest sibling sharing its row, which is
+               exactly what made the real renderer's logo visually float mid-row (see the
+               items-start fix in DocumentRenderer.tsx). Setting it here too means every
+               block card here sizes to its own natural content height, matching how rows
+               actually behave when printed. */}
+         <div className={`bg-white border border-slate-200 shadow-xl rounded-2xl p-6 md:p-8 min-h-[600px] max-w-[850px] mx-auto space-y-6 ${
+           tmpl.globalFontFamily === 'serif' ? 'font-serif' :
+           tmpl.globalFontFamily === 'display' ? 'font-display' :
+           tmpl.globalFontFamily === 'mono' ? 'font-mono' :
+           'font-sans'
+         }`}>
+          <div className="grid grid-cols-12 gap-x-4 gap-y-6 items-start">
            {activeBlocks.map((block) => {
             const isSelected = block.id === selectedBlockId;
             const blockColClass = `col-span-12 md:col-span-${block.w}`;
