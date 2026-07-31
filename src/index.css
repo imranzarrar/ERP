@@ -1,10 +1,16 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Cairo:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Cairo:wght@400;500;600;700;800&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  /* Lora — a genuine, print-legible serif (not the browser's Times/Georgia default
+     Tailwind's `font-serif` utility falls back to without this) for the Document
+     Template Designer's "Traditional Serif" global font option (AdminSettings.tsx).
+     Chosen for exactly this use case: a warm, well-hinted text serif designed for
+     long-form/document reading, not a display/headline face. */
+  --font-serif: "Lora", ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
   /* Cairo is the Arabic-script pairing for Inter — a modern geometric Arabic
      typeface designed to sit well alongside Latin sans-serifs, actually renders
      Arabic glyphs (unlike Inter/Space Grotesk/JetBrains Mono, which have none and

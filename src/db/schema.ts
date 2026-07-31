@@ -134,6 +134,12 @@ export const documentTemplates = pgTable('document_templates', {
   printQrCode: boolean('print_qr_code').default(true),
   companyId: uuid('company_id').notNull().references(() => companies.id),
   layoutJson: text('layout_json'),
+  // Previously editable in the Canvas Designer (AdminSettings.tsx) but never actually
+  // had a column here — the UI showed the change optimistically, but src/db/migrateData.ts's
+  // upsert only ever wrote a fixed whitelist of fields that didn't include these two, so
+  // every "Global Row Gap"/"Global Font Family" choice silently reverted on the next reload.
+  gridGapY: text('grid_gap_y'),
+  globalFontFamily: text('global_font_family'),
 }, (table) => ({
   unique_active_template: uniqueIndex('unique_active_template').on(table.companyId, table.language).where(sql`is_active = true`),
 }));

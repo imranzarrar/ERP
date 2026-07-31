@@ -188,8 +188,11 @@ export async function migrateDataToPostgres(data: any, ctx: MigrateContext = {})
         printQrCode: t.printQrCode,
         companyId: t.companyId,
         layoutJson: t.layoutJson,
-        attachmentUrl: t.attachmentUrl,
-        amountPaid: t.amountPaid != null ? String(t.amountPaid) : undefined,
+        // Previously missing — the Canvas Designer's Global Row Gap / Global Font Family
+        // selects updated local state and appeared to save, but with no column here to
+        // land in, the choice was silently lost on the very next reload.
+        gridGapY: t.gridGapY,
+        globalFontFamily: t.globalFontFamily,
       }));
       await upsert(schema.documentTemplates, records);
     }

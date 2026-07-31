@@ -39,6 +39,7 @@ import {
  ShieldCheck,
  Shield} from 'lucide-react';
 import { ensureCompatibleImage } from '../imageUtils';
+import { DEFAULT_DOCUMENT_LAYOUT } from '../documentTemplateDefaults';
 import { XMLParser } from 'fast-xml-parser';
 import DocumentRenderer from './DocumentRenderer';
 import ZatcaOnboardingWizard from './ZatcaOnboardingWizard';
@@ -1325,7 +1326,13 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  printFooter: true,
  printLogo: true,
  printQrCode: true,
- companyId: db.selectedCompanyId || undefined
+ companyId: db.selectedCompanyId || undefined,
+ // Previously omitted — a template with no layoutJson doesn't render blank, it
+ // silently falls back to DocumentRenderer.tsx's OWN no-layout default, which a
+ // newly created template's designer would show as ITS OWN starting point anyway.
+ // Seeding it here means what an admin sees before ever opening the Canvas
+ // Designer already matches what they'd see after opening it and hitting Save.
+ layoutJson: JSON.stringify(DEFAULT_DOCUMENT_LAYOUT),
  };
 
  const updated = { ...db, templates: [...db.templates, newTmpl] };
@@ -1395,18 +1402,10 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
   // ----------------------------------------
   // CUSTOM VISUAL 'CANVAS' TEMPLATE DESIGNER
   // ----------------------------------------
-  const DEFAULT_LAYOUT = [
-    { id: 'logo', title: 'Company Logo', w: 4, visible: true, props: { align: 'left' } },
-    { id: 'company_details', title: 'Company Details', w: 8, visible: true, props: { showVat: true, showAddress: true, showContact: true, showBank: true, isBilingual: true } },
-    { id: 'doc_details', title: 'Document Metadata', w: 12, visible: true, props: { isBilingual: true, showDocNumber: true, showDate: true, showDueDate: true, showPaymentStatus: true, showOriginQ: true, showTRN: true, showCreatedBy: true } },
-    { id: 'customer_info', title: 'Customer Info', w: 12, visible: true, props: { isBilingual: true, showName: true, showContact: true, showAddress: true, showVatNumber: true, borderStyle: 'solid' } },
-    { id: 'custom_header', title: 'Custom Header text', w: 12, visible: true, props: { isBilingual: true } },
-    { id: 'items_table', title: 'Items Table', w: 12, visible: true, props: { isBilingual: true, showSNo: true, showItemCode: true, showDescription: true, showQty: true, showUnitCost: true, showDiscount: true, showTotal: true, borderStyle: 'stripe' } },
-    { id: 'notes', title: 'Notes block', w: 6, visible: true, props: { isBilingual: true } },
-    { id: 'qr_code', title: 'ZATCA QR Code', w: 2, visible: true, props: { align: 'center', size: 'medium', isBilingual: true } },
-    { id: 'totals_summary', title: 'Total Summary', w: 4, visible: true, props: { isBilingual: true, showSubtotal: true, showDiscount: true, showNetSubtotal: true, showVat: true, showGrandTotal: true, showGrandTotalWords: true, accentColor: 'indigo' } },
-    { id: 'custom_footer', title: 'Custom Footer text', w: 12, visible: true, props: { isBilingual: true } }
-  ];
+  // DEFAULT_LAYOUT used to be a local copy that had drifted from DocumentRenderer.tsx's
+  // own separate fallback array (different widths/row-pairings) — now both import the
+  // same shared constant. See src/documentTemplateDefaults.ts for the full reasoning.
+  const DEFAULT_LAYOUT = DEFAULT_DOCUMENT_LAYOUT;
 
   const [designingTemplateId, setDesigningTemplateId] = React.useState<string | null>(null);
   const [canvasBlocks, setCanvasBlocks] = React.useState<any[]>([]);
@@ -3829,8 +3828,9 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
               >
                <option value="sans">Modern Sans-Serif (Inter)</option>
-               <option value="serif">Traditional Serif</option>
-               <option value="mono">Technical Mono (Fira/JetBrains)</option>
+               <option value="serif">Traditional Serif (Lora)</option>
+               <option value="display">Bold Display (Space Grotesk)</option>
+               <option value="mono">Technical Mono (JetBrains Mono)</option>
               </select>
              </div>
 
@@ -3904,10 +3904,14 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                onChange={(e) => handleUpdateTemplateProperty(tmpl.id, 'globalFontFamily', e.target.value)}
                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
               >
-               <option value="sans">Modern Sans-Serif (Inter)</option>
-               <option value="serif">Traditional Serif</option>
-               <option value="mono">Technical Mono (Fira/JetBrains)</option>
+               <option value="sans">Modern Sans-Serif (Inter) — recommended for invoices</option>
+               <option value="serif">Traditional Serif (Lora)</option>
+               <option value="display">Bold Display (Space Grotesk)</option>
+               <option value="mono">Technical Mono (JetBrains Mono)</option>
               </select>
+              <p className="text-[9px] text-slate-400">
+               Arabic/Urdu documents always render in Cairo (the app's Arabic-script pairing) for legible glyph rendering, regardless of this choice — none of the options above have real Arabic coverage.
+              </p>
              </div>
             </div>
 

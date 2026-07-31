@@ -12,6 +12,7 @@ import {
 import { Printer, Download, Eye, X, Globe, FileText, Check, AlertCircle } from 'lucide-react';
 import { calculateInvoiceTotals, DatabaseState } from '../dbStore';
 import { ensureCompatibleImage } from '../imageUtils';
+import { DEFAULT_DOCUMENT_LAYOUT } from '../documentTemplateDefaults';
 
 interface DocumentRendererProps {
  documentType: 'Quotation' | 'Invoice' | 'Expense' | 'Voucher' | 'Ledger' | 'Report';
@@ -252,16 +253,21 @@ export default function DocumentRenderer({
 
   const theme = getTemplateTheme();
 
- // Handle page sizing styling
+ // Handle page sizing styling. min-height is print-only (`print:min-h-*`) — a real
+ // printed page should be full paper height even when content is short, but forcing
+ // that same ~11in minimum on the on-screen PREVIEW card made a short, few-line
+ // invoice render inside a mostly-empty full-page-height box, reading as a large
+ // block of wasted white space below the actual content on screen. The preview now
+ // sizes to its actual content; only the physical print output keeps the full page.
  const getPageSizeClass = () => {
  if (documentType === 'Expense' || documentType === 'Ledger' || documentType === 'Report') {
- return 'w-full min-w-[760px] max-w-4xl min-h-[11in]'; // Standard report size
+ return 'w-full min-w-[760px] max-w-4xl print:min-h-[11in]'; // Standard report size
  }
  const size = currentTemplate?.pageSize || '8.27in x 11.69in';
  if (size.includes('4in x 6in')) {
- return 'w-[4in] min-h-[6in] text-xs';
+ return 'w-[4in] print:min-h-[6in] text-xs';
  }
- return 'w-full min-w-[760px] max-w-4xl min-h-[11in]'; // A4/Letter size
+ return 'w-full min-w-[760px] max-w-4xl print:min-h-[11in]'; // A4/Letter size
  };
 
  // Trigger browser print of the document container
@@ -450,19 +456,12 @@ export default function DocumentRenderer({
   }
 
   if (!Array.isArray(parsedLayout) || parsedLayout.length === 0) {
-   // ZATCA compliant default sequence
-   parsedLayout = [
-    { id: 'logo', title: 'Company Logo', w: 6, visible: true },
-    { id: 'doc_details', title: 'Document Header Details', w: 6, visible: true },
-    { id: 'company_details', title: 'Company Metadata (ZATCA)', w: 6, visible: true },
-    { id: 'customer_info', title: 'Customer Profile Info', w: 6, visible: true },
-    { id: 'custom_header', title: 'Custom Sub-Header Notes', w: 12, visible: true },
-    { id: 'items_table', title: 'Bilingual Items Table', w: 12, visible: true },
-    { id: 'notes', title: 'Terms & Conditions Notes', w: 6, visible: true },
-    { id: 'qr_code', title: 'ZATCA Compliance QR Code', w: 2, visible: true },
-    { id: 'totals_summary', title: 'Totals & Calculations Summary', w: 4, visible: true },
-    { id: 'custom_footer', title: 'Custom Sub-Footer Text', w: 12, visible: true }
-   ];
+   // Shared with AdminSettings.tsx's Canvas Designer (src/documentTemplateDefaults.ts) —
+   // this used to be a second, independently-hardcoded "default ZATCA layout" that had
+   // drifted from the designer's own default (different widths, different row pairings),
+   // so a company with no template configured saw a DIFFERENT layout than what the
+   // designer's own "Reset to Default" button would produce.
+   parsedLayout = DEFAULT_DOCUMENT_LAYOUT;
   }
 
   const getGridGapClass = () => {
@@ -489,6 +488,7 @@ export default function DocumentRenderer({
     switch (font) {
       case 'serif': return 'font-serif';
       case 'mono': return 'font-mono';
+      case 'display': return 'font-display';
       case 'sans':
       default:
         return 'font-sans';
@@ -562,6 +562,7 @@ export default function DocumentRenderer({
       const fFamily = block.props.fontFamily;
       if (fFamily === 'sans') classes.push('font-sans');
       else if (fFamily === 'serif') classes.push('font-serif');
+      else if (fFamily === 'display') classes.push('font-display');
       else if (fFamily === 'mono') classes.push('font-mono');
     }
     return classes.join(' ');
@@ -1586,7 +1587,7 @@ export default function DocumentRenderer({
  <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col w-full max-w-5xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
  
  {/* Controls Bar */}
- <div className="bg-slate-50 border-b border-slate-100 px-6 py-4 flex flex-wrap justify-between items-center gap-4 no-print">
+ <div className="bg-slate-50 border-b border-slate-100 px-5 py-3 flex flex-wrap justify-between items-center gap-4 no-print">
  <div className="flex items-center gap-2.5">
  <div className="w-9 h-9 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center">
  <FileText className="w-5 h-5" />
@@ -1656,7 +1657,7 @@ export default function DocumentRenderer({
  </div>
 
  {/* Printable Paper Frame */}
- <div className="p-4 md:p-8 bg-slate-100/50 overflow-x-auto print:p-0 w-full flex justify-center">
+ <div className="p-3 md:p-5 bg-slate-100/50 overflow-x-auto print:p-0 w-full flex justify-center">
  <div style={{ zoom: zoomLevel }} className="print:!zoom-100">
             <div
               id="printable-document-content"
