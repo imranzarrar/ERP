@@ -143,6 +143,25 @@ export default function PosModule({ db, onUpdateDb, currentUser, defaultTab = 't
 
 function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId, posSettings, cart, setCart, holdCustomerId, setHoldCustomerId, onClose, fiscalMonths }: any) {
   const { t, isRTL } = useTranslation(db);
+
+  // Up to 3 fiscal months can be open concurrently now (see server/routes/transactions.ts,
+  // MAX_OPEN_FISCAL_MONTHS). The old `fiscalMonths.find(m => m.status === 'Open')` pattern
+  // resolved to a single arbitrary open month rather than specifically today's own month, which
+  // was harmless when at most one month could ever be open, but silently misdated real POS sale
+  // invoices (backdating to the 1st of a DIFFERENT still-open month) once several can be open at
+  // once and today's month isn't necessarily the one that `.find()` happens to return. Mirrors
+  // isDateInOpenMonth/getOpenMonths in src/dbStore.ts, applied to this component's own
+  // independently-fetched `fiscalMonths` state.
+  const getPosSaleDate = (): string => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayMonthId = todayStr.substring(0, 7);
+    const openMonthsSorted = (fiscalMonths || [])
+      .filter((m: any) => m.status === 'Open' && m.companyId === activeCompanyId)
+      .sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)));
+    if (openMonthsSorted.length === 0) return todayStr;
+    const todayIsOpen = openMonthsSorted.some((m: any) => m.id === todayMonthId);
+    return todayIsOpen ? todayStr : `${openMonthsSorted[0].id}-01`;
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   
@@ -338,9 +357,9 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
       customerId: payCustomerId || (db.customers || []).find((c: any) => c.companyId === activeCompanyId && c.name.toLowerCase().includes('walk-in'))?.id || (db.customers || []).find((c: any) => c.companyId === activeCompanyId)?.id || '',
       taxSlabId: posTaxSlabId,
       bankId: finalBankId,
-      date: (fiscalMonths).find((m: any) => m.status === 'Open' && m.companyId === activeCompanyId) ? (new Date().toISOString().startsWith((fiscalMonths).find((m: any) => m.status === 'Open' && m.companyId === activeCompanyId)?.id as string) ? new Date().toISOString().split('T')[0] : `${(fiscalMonths).find((m: any) => m.status === 'Open' && m.companyId === activeCompanyId)?.id}-01`) : new Date().toISOString().split('T')[0],
+      date: getPosSaleDate(),
       paymentStatus: 'Paid',
-      paymentDate: (fiscalMonths).find((m: any) => m.status === 'Open' && m.companyId === activeCompanyId) ? (new Date().toISOString().startsWith((fiscalMonths).find((m: any) => m.status === 'Open' && m.companyId === activeCompanyId)?.id as string) ? new Date().toISOString().split('T')[0] : `${(fiscalMonths).find((m: any) => m.status === 'Open' && m.companyId === activeCompanyId)?.id}-01`) : new Date().toISOString().split('T')[0],
+      paymentDate: getPosSaleDate(),
       notes: t('POS Sale'),
       status: 'Active',
       originQuotationId: null,
