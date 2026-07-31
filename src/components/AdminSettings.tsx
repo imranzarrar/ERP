@@ -44,6 +44,46 @@ import { XMLParser } from 'fast-xml-parser';
 import DocumentRenderer from './DocumentRenderer';
 import ZatcaOnboardingWizard from './ZatcaOnboardingWizard';
 
+// Shared sample invoice data for template preview — used both by the Canvas Designer's
+// embedded live preview (updates as you edit) and the standalone "Live Print Preview"
+// modal, so both show the exact same realistic content.
+const TEMPLATE_PREVIEW_SAMPLE_INVOICE = {
+  invoiceNumber: 'INV-2026-MOCK',
+  date: new Date().toISOString().split('T')[0],
+  dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+  customerData: {
+    name: 'Walk-in Client (Al-Hazmi Corp.)',
+    phone: '+966 50 123 4567',
+    email: 'info@alhazmi-corp.com',
+    address: 'Olaya Street, Riyadh, Saudi Arabia',
+    vatNumber: '310987654300003'
+  },
+  items: [
+    {
+      id: 'item-1',
+      description: 'Enterprise ERP Implementation / تطبيق نظام إدارة الموارد للمؤسسات',
+      quantity: 1,
+      unitCost: 15000,
+      vatPercentage: 15,
+      total: 15000
+    },
+    {
+      id: 'item-2',
+      description: 'ZATCA Phase 2 E-Invoicing Compliance Consulting / استشارات امتثال الفوترة الإلكترونية المرحلة الثانية',
+      quantity: 2,
+      unitCost: 2500,
+      vatPercentage: 15,
+      total: 5000
+    }
+  ],
+  taxSlabId: 'vat-15',
+  discountPercentage: 5,
+  notes: 'This is a high-fidelity sample document preview showing how your custom layout template will render during actual printing.',
+  bankData: {
+    bankName: 'Saudi National Bank (SNB)',
+    accountNumber: 'SA8000000000012345678901'
+  }
+};
 
 interface PermissionNode {
   id: string;
@@ -4203,6 +4243,33 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
          </div>
         </div>
        </div>
+
+       {/* Live Preview — uses the EXACT same rendering code path as the real print
+           output (DocumentRenderer's embedded mode), fed the in-progress canvasBlocks
+           directly. This can never drift from what actually prints the way the block
+           mockups above (a separate, simplified visual approximation — e.g. logo shows
+           as a plain placeholder, not the real image with the real alignment behavior)
+           always risked. Updates automatically as blocks/widths/props change — no
+           "Preview" button to click, no separate modal to open and close repeatedly
+           while iterating on a design. */}
+       <div className="space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+         <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Live Preview — Exactly What Will Print</span>
+         <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full uppercase">Real renderer, not a mockup</span>
+        </div>
+        <div className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-100/50" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
+         <DocumentRenderer
+          embedded
+          documentType="Invoice"
+          data={TEMPLATE_PREVIEW_SAMPLE_INVOICE}
+          companySetup={(db.companySetup || { id: db.selectedCompanyId || 'company-1', name: 'Current Organization', currency: 'SAR', vatNumber: '300123456700003' }) as any}
+          templates={[{ ...tmpl, layoutJson: JSON.stringify(canvasBlocks) }]}
+          taxSlabs={db.taxSlabs}
+          db={db}
+          onClose={() => {}}
+         />
+        </div>
+       </div>
       </div>
      );
     })()
@@ -5955,43 +6022,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  {previewTemplate && (
   <DocumentRenderer
    documentType="Invoice"
-   data={{
-    invoiceNumber: 'INV-2026-MOCK',
-    date: new Date().toISOString().split('T')[0],
-    dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    customerData: {
-     name: 'Walk-in Client (Al-Hazmi Corp.)',
-     phone: '+966 50 123 4567',
-     email: 'info@alhazmi-corp.com',
-     address: 'Olaya Street, Riyadh, Saudi Arabia',
-     vatNumber: '310987654300003'
-    },
-    items: [
-     {
-      id: 'item-1',
-      description: 'Enterprise ERP Implementation / تطبيق نظام إدارة الموارد للمؤسسات',
-      quantity: 1,
-      unitCost: 15000,
-      vatPercentage: 15,
-      total: 15000
-     },
-     {
-      id: 'item-2',
-      description: 'ZATCA Phase 2 E-Invoicing Compliance Consulting / استشارات امتثال الفوترة الإلكترونية المرحلة الثانية',
-      quantity: 2,
-      unitCost: 2500,
-      vatPercentage: 15,
-      total: 5000
-     }
-    ],
-    taxSlabId: 'vat-15',
-    discountPercentage: 5,
-    notes: 'This is a high-fidelity sample document preview showing how your custom layout template will render during actual printing.',
-    bankData: {
-     bankName: 'Saudi National Bank (SNB)',
-     accountNumber: 'SA8000000000012345678901'
-    }
-   }}
+   data={TEMPLATE_PREVIEW_SAMPLE_INVOICE}
    companySetup={(db.companySetup || { id: db.selectedCompanyId || 'company-1', name: 'Current Organization', currency: 'SAR', vatNumber: '300123456700003' }) as any}
    templates={[previewTemplate]}
    taxSlabs={db.taxSlabs}

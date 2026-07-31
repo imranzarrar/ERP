@@ -23,6 +23,15 @@ interface DocumentRendererProps {
  db?: DatabaseState;
  onViewAnotherDoc?: (type: 'Quotation' | 'Invoice' | 'Expense' | 'Voucher', id: string) => void;
  onClose: () => void;
+ // When true, renders just the paper content (no fixed-overlay modal, no toolbar/print
+ // button, no Close button) so it can be embedded inline inside another page — used by
+ // AdminSettings.tsx's Canvas Designer to show a genuine, always-live preview of the
+ // template actually being edited, using the exact same rendering code path as the real
+ // print output. Previously the Designer's canvas showed its own separate, simplified
+ // mockup (e.g. a literal "[Visual Logo Asset Loaded]" placeholder instead of the real
+ // logo image, with different alignment behavior than the real renderer) — which is
+ // exactly why what an admin saw while editing didn't match what actually printed.
+ embedded?: boolean;
 }
 
 // Simple English-to-Arabic dictionary for high-fidelity bilingual output
@@ -147,7 +156,8 @@ export default function DocumentRenderer({
  taxSlabs,
  db,
  onViewAnotherDoc,
- onClose
+ onClose,
+ embedded = false
 }: DocumentRendererProps) {
  // Find active template or default
  const companyTemplates = React.useMemo(() => {
@@ -580,7 +590,13 @@ export default function DocumentRenderer({
        if (currentTemplate?.printLogo === false) return null;
        const alignClass = block.props?.align === 'right' ? 'justify-end' : block.props?.align === 'center' ? 'justify-center' : 'justify-start';
        return (
-        <div key={block.id} className={`${blockColClass} flex ${alignClass} items-center ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
+        // items-start (not items-center) — this block shares a grid row with doc_details,
+        // whose content (title/subtitle/badge/invoice number/date/ref/status/payment
+        // status — especially tall on a Credit/Debit Note) is often much taller than the
+        // logo itself. Vertically centering made the logo visually float mid-row instead
+        // of sitting flush at the top alongside the invoice title, which read as
+        // misaligned/unprofessional on an actual printed Credit Note.
+        <div key={block.id} className={`${blockColClass} flex ${alignClass} items-start ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
          {companySetup.logoUrl ? (
           <img
            src={ensureCompatibleImage(companySetup.logoUrl)}
@@ -1582,10 +1598,39 @@ export default function DocumentRenderer({
  }
  };
 
+ // The actual paper/page content — identical whether rendered standalone in the full
+ // modal or embedded inline in the Canvas Designer's live preview. Extracting this means
+ // there is only ever ONE rendering code path for what an invoice/quotation looks like;
+ // the Designer's preview can never drift from the real thing the way the old separate
+ // mockup canvas did.
+ const paperContent = (
+ <div className="p-3 md:p-5 bg-slate-100/50 overflow-x-auto print:p-0 w-full flex justify-center">
+ <div style={{ zoom: zoomLevel }} className="print:!zoom-100">
+            <div
+              id="printable-document-content"
+ className={`bg-white shadow-lg border border-slate-200/60 p-8 md:p-12 text-slate-800 print:min-w-0 print:w-full print:p-0 md:mx-auto overflow-hidden ${isRTL ? '' : theme.accentFont} ${getPageSizeClass()}`}
+ // Arabic/Urdu documents always render in the bilingual-capable Cairo/Noto stack
+ // (--font-arabic, index.css) regardless of the template's own Latin accent font
+ // (Space Grotesk, JetBrains Mono, etc.) — none of those have real Arabic glyph
+ // coverage, so honoring them here would just mean an inconsistent OS-fallback
+ // font for every Arabic character on the page. Inline style (not a Tailwind
+ // class) so it reliably wins regardless of class ordering/specificity.
+ style={{ direction: dir, fontFamily: isRTL ? 'var(--font-arabic, "Cairo", "Inter", sans-serif)' : undefined }}
+ >
+ {renderDocumentBody()}
+            </div>
+          </div>
+        </div>
+ );
+
+ if (embedded) {
+ return paperContent;
+ }
+
  return (
  <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex justify-center items-start overflow-y-auto p-4 md:p-8">
  <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col w-full max-w-5xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
- 
+
  {/* Controls Bar */}
  <div className="bg-slate-50 border-b border-slate-100 px-5 py-3 flex flex-wrap justify-between items-center gap-4 no-print">
  <div className="flex items-center gap-2.5">
@@ -1656,24 +1701,7 @@ export default function DocumentRenderer({
  </div>
  </div>
 
- {/* Printable Paper Frame */}
- <div className="p-3 md:p-5 bg-slate-100/50 overflow-x-auto print:p-0 w-full flex justify-center">
- <div style={{ zoom: zoomLevel }} className="print:!zoom-100">
-            <div
-              id="printable-document-content"
- className={`bg-white shadow-lg border border-slate-200/60 p-8 md:p-12 text-slate-800 print:min-w-0 print:w-full print:p-0 md:mx-auto overflow-hidden ${isRTL ? '' : theme.accentFont} ${getPageSizeClass()}`}
- // Arabic/Urdu documents always render in the bilingual-capable Cairo/Noto stack
- // (--font-arabic, index.css) regardless of the template's own Latin accent font
- // (Space Grotesk, JetBrains Mono, etc.) — none of those have real Arabic glyph
- // coverage, so honoring them here would just mean an inconsistent OS-fallback
- // font for every Arabic character on the page. Inline style (not a Tailwind
- // class) so it reliably wins regardless of class ordering/specificity.
- style={{ direction: dir, fontFamily: isRTL ? 'var(--font-arabic, "Cairo", "Inter", sans-serif)' : undefined }}
- >
- {renderDocumentBody()}
-            </div>
-          </div>
-        </div>
+ {paperContent}
  </div>
  </div>
  );
