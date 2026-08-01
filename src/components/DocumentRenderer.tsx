@@ -605,7 +605,11 @@ export default function DocumentRenderer({
       const blockColClass = `col-span-12 md:col-span-${block.w}`;
 
       if (block.id === 'logo') {
-       if (currentTemplate?.printLogo === false) return null;
+       // Spacer, not `return null` — this block shares its grid row with doc_details.
+       // Removing it from the DOM entirely (rather than reserving its column) shifts
+       // doc_details left to fill the gap, same class of bug as the notes/qr_code/
+       // totals_summary row below — see that comment for the confirmed failure case.
+       if (currentTemplate?.printLogo === false) return <div key={block.id} className={blockColClass} />;
        const alignClass = block.props?.align === 'right' ? 'justify-end' : block.props?.align === 'center' ? 'justify-center' : 'justify-start';
        return (
         // items-start (not items-center) — this block shares a grid row with doc_details,
@@ -639,7 +643,9 @@ export default function DocumentRenderer({
       }
 
       if (block.id === 'company_details') {
-       if (currentTemplate?.printHeader === false) return null;
+       // Spacer, not `return null` — shares its grid row with customer_info. See the
+       // logo/notes blocks' comments for the confirmed sibling-shift failure mode.
+       if (currentTemplate?.printHeader === false) return <div key={block.id} className={blockColClass} />;
        const showAddress = block.props?.showAddress !== false;
        const showVat = block.props?.showVat !== false;
        const isBilingual = block.props?.isBilingual !== false;
@@ -894,7 +900,16 @@ export default function DocumentRenderer({
       }
 
       if (block.id === 'notes') {
-       if (!notes) return null;
+       // An invisible spacer (not `return null`) when there's no note text — this
+       // block shares its grid row with qr_code/totals_summary. Returning null
+       // removes it from the DOM entirely, and CSS Grid auto-placement then shifts
+       // the remaining siblings left to fill the gap instead of holding their
+       // intended column position — confirmed live: an invoice with no notes text
+       // printed with its QR code and totals summary both stranded mid-page instead
+       // of the totals summary sitting flush at the right margin. Reserving the
+       // column (even empty) keeps every sibling's position independent of whether
+       // this one has content, matching how the row looks whenever notes IS set.
+       if (!notes) return <div key={block.id} className={blockColClass} />;
        const isBilingual = block.props?.isBilingual === true;
        return (
         <div key={block.id} className={`${blockColClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
@@ -915,8 +930,15 @@ export default function DocumentRenderer({
        // fake "ZATCA QR Verification... Not Yet Cleared" badge on a document type
        // ZATCA has no knowledge of whatsoever, which is actively confusing (implies a
        // quotation is expected to be ZATCA-cleared, when it structurally never is).
-       if (!isInvoice) return null;
-       if (currentTemplate?.printQrCode === false) return null;
+       // Spacer, not `return null` — shares its grid row with notes/totals_summary.
+       // Removing it from the DOM entirely shifted totals_summary left to fill the
+       // gap instead of holding its intended column (confirmed live on a real
+       // printed invoice with no notes text: QR and totals both ended up stranded
+       // mid-page instead of totals sitting flush at the right margin). This means
+       // EVERY Quotation had this same misalignment unconditionally, since
+       // isInvoice is always false there — not just the empty-notes edge case.
+       if (!isInvoice) return <div key={block.id} className={blockColClass} />;
+       if (currentTemplate?.printQrCode === false) return <div key={block.id} className={blockColClass} />;
        const alignClass = block.props?.align === 'right' ? 'justify-end' : block.props?.align === 'left' ? 'justify-start' : 'justify-center';
        const isBilingual = block.props?.isBilingual !== false;
        const size = block.props?.size || 'medium';
