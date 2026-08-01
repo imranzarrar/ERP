@@ -649,8 +649,9 @@ export default function DocumentRenderer({
        const showAddress = block.props?.showAddress !== false;
        const showVat = block.props?.showVat !== false;
        const isBilingual = block.props?.isBilingual !== false;
+       const textAlignClass = block.props?.align === 'right' ? 'text-right' : block.props?.align === 'center' ? 'text-center' : '';
        return (
-        <div key={block.id} className={`${blockColClass} text-slate-800 ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
+        <div key={block.id} className={`${blockColClass} text-slate-800 ${textAlignClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
          <h1 className={`text-xl font-bold ${theme.primaryText}`}>
           {companySetup.name}
           {isBilingual && (
@@ -677,8 +678,17 @@ export default function DocumentRenderer({
        const isBilingual = block.props?.isBilingual !== false;
        const showPaymentStatus = block.props?.showPaymentStatus !== false;
        const showOriginQ = block.props?.showOriginQ !== false;
+       // Default (no explicit align) is the RTL-aware "far side" convention: pushed to
+       // the end of the reading direction, which reads as right-aligned in LTR and
+       // left-aligned in RTL. An explicit align overrides that with a fixed physical
+       // side regardless of document direction.
+       const docDetailsPosClass = !block.props?.align
+        ? `text-${dir === 'rtl' ? 'left' : 'right'} md:ms-auto`
+        : block.props.align === 'left' ? 'text-left'
+        : block.props.align === 'center' ? 'text-center md:mx-auto'
+        : 'text-right md:ms-auto';
        return (
-        <div key={block.id} className={`${blockColClass} text-${dir === 'rtl' ? 'left' : 'right'} max-w-xs md:ms-auto ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
+        <div key={block.id} className={`${blockColClass} ${docDetailsPosClass} max-w-xs ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
          <h2 className={`text-2xl font-bold uppercase tracking-wider ${noteAccentText} mb-1`}>
           {isCreditNote ? t('Credit Note') : isDebitNote ? t('Debit Note') : isInvoice ? t('Invoice') : t('Quotation')}
           {isBilingual && (
@@ -774,11 +784,18 @@ export default function DocumentRenderer({
        const showAddress = block.props?.showAddress !== false;
        const showContact = block.props?.showContact !== false;
        const borderStyle = block.props?.borderStyle || 'solid';
-       
+       // A bordered card (like totals_summary), not a paragraph — align positions the
+       // card itself within its column (default: full width, unaffected; center/right
+       // narrow it to max-w-sm so there's actually room to visibly shift, then position
+       // it there) rather than text-align, which would just look odd against the
+       // card's own flex header row.
+       const cardPosClass = block.props?.align === 'right' ? 'max-w-sm ms-auto' : block.props?.align === 'center' ? 'max-w-sm mx-auto' : '';
+
        let cardClass = "p-4 rounded-2xl bg-white text-xs ";
        if (borderStyle === 'solid') cardClass += "border border-slate-150 shadow-sm";
        else if (borderStyle === 'dashed') cardClass += "border border-dashed border-slate-350";
        else cardClass += "p-0";
+       cardClass += ` ${cardPosClass}`;
 
        return (
         <div key={block.id} className={`${blockColClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
@@ -815,9 +832,10 @@ export default function DocumentRenderer({
 
       if (block.id === 'custom_header') {
        if (currentTemplate?.printHeader === false || !companySetup.customHeader) return null;
+       const textAlignClass = block.props?.align === 'right' ? 'text-right' : block.props?.align === 'center' ? 'text-center' : 'text-left';
        return (
         <div key={block.id} className={`${blockColClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <div className="p-3.5 bg-slate-50/50 rounded-xl text-xs text-slate-600 border border-slate-100 whitespace-pre-line">
+         <div className={`p-3.5 bg-slate-50/50 rounded-xl text-xs text-slate-600 border border-slate-100 whitespace-pre-line ${textAlignClass}`}>
           {companySetup.customHeader}
          </div>
         </div>
@@ -911,9 +929,10 @@ export default function DocumentRenderer({
        // this one has content, matching how the row looks whenever notes IS set.
        if (!notes) return <div key={block.id} className={blockColClass} />;
        const isBilingual = block.props?.isBilingual === true;
+       const textAlignClass = block.props?.align === 'right' ? 'text-right' : block.props?.align === 'center' ? 'text-center' : 'text-left';
        return (
         <div key={block.id} className={`${blockColClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <div className="border border-slate-150 rounded-xl p-3.5 bg-slate-50/40">
+         <div className={`border border-slate-150 rounded-xl p-3.5 bg-slate-50/40 ${textAlignClass}`}>
           <h4 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
            {t('Notes')}
            {isBilingual && <span className="ms-1.5 text-[9px] text-slate-400">الشروط والأحكام</span>}
@@ -972,9 +991,12 @@ export default function DocumentRenderer({
        else if (accentColor === 'amber') totalAccentText = "text-amber-600";
        else if (accentColor === 'blue') totalAccentText = "text-blue-600";
 
+       // Financial convention (and the pre-existing default) is right-aligned — align
+       // lets a template explicitly choose left (no auto margin) or center instead.
+       const totalsPosClass = block.props?.align === 'left' ? '' : block.props?.align === 'center' ? 'md:mx-auto' : 'md:ms-auto';
        return (
         <div key={block.id} className={`${blockColClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <div className="space-y-1.5 border border-slate-100 p-4 rounded-xl bg-slate-50 md:ms-auto w-full max-w-sm">
+         <div className={`space-y-1.5 border border-slate-100 p-4 rounded-xl bg-slate-50 w-full max-w-sm ${totalsPosClass}`}>
          <div className="flex justify-between text-xs text-slate-600">
           <span className="whitespace-nowrap">
            {t('Subtotal')}:
@@ -1040,8 +1062,11 @@ export default function DocumentRenderer({
 
        if (block.id === 'custom_footer') {
         if (currentTemplate?.printFooter === false || !companySetup.customFooter) return null;
+        // Center is the pre-existing default footer convention — align lets a
+        // template explicitly choose left/right instead.
+        const footerAlignClass = block.props?.align === 'right' ? 'text-right' : block.props?.align === 'left' ? 'text-left' : 'text-center';
         return (
-         <div key={block.id} className={`col-span-12 footer-text mt-6 pt-4 border-t border-slate-200 text-center text-[10px] text-slate-400 whitespace-pre-line ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
+         <div key={block.id} className={`col-span-12 footer-text mt-6 pt-4 border-t border-slate-200 ${footerAlignClass} text-[10px] text-slate-400 whitespace-pre-line ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
           {companySetup.customFooter}
          </div>
         );

@@ -3360,30 +3360,35 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
              </div>
             </div>
 
-            {/* Alignment Control */}
-            <div className="space-y-1">
-             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Horizontal Alignment</label>
-             <div className="grid grid-cols-3 gap-1">
-              {[
-               { id: 'left', label: 'Left ⬅️' },
-               { id: 'center', label: 'Center ↔️' },
-               { id: 'right', label: 'Right ➡️' }
-              ].map(item => (
-               <button
-                key={item.id}
-                type="button"
-                onClick={() => handleUpdateBlockProp(selectedBlock.id, 'align', item.id)}
-                className={`py-1 text-[10px] font-bold rounded border transition ${
-                 (selectedBlock.props?.align || 'left') === item.id
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                }`}
-               >
-                {item.label}
-               </button>
-              ))}
+            {/* Alignment Control — every block type now genuinely respects this in the
+                real renderer except items_table (a full-width table; "alignment" has no
+                meaningful effect there), so it's hidden specifically for that one block
+                rather than shown as a control that visibly does nothing. */}
+            {selectedBlock.id !== 'items_table' && (
+             <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Horizontal Alignment</label>
+              <div className="grid grid-cols-3 gap-1">
+               {[
+                { id: 'left', label: 'Left ⬅️' },
+                { id: 'center', label: 'Center ↔️' },
+                { id: 'right', label: 'Right ➡️' }
+               ].map(item => (
+                <button
+                 key={item.id}
+                 type="button"
+                 onClick={() => handleUpdateBlockProp(selectedBlock.id, 'align', item.id)}
+                 className={`py-1 text-[10px] font-bold rounded border transition ${
+                  (selectedBlock.props?.align || 'left') === item.id
+                   ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                   : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                 }`}
+                >
+                 {item.label}
+                </button>
+               ))}
+              </div>
              </div>
-            </div>
+            )}
 
             {/* Block specific properties */}
             {selectedBlock.id === 'company_details' && (
