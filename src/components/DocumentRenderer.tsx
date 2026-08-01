@@ -786,10 +786,15 @@ export default function DocumentRenderer({
        const borderStyle = block.props?.borderStyle || 'solid';
        // A bordered card (like totals_summary), not a paragraph — align positions the
        // card itself within its column (default: full width, unaffected; center/right
-       // narrow it to max-w-sm so there's actually room to visibly shift, then position
-       // it there) rather than text-align, which would just look odd against the
-       // card's own flex header row.
-       const cardPosClass = block.props?.align === 'right' ? 'max-w-sm ms-auto' : block.props?.align === 'center' ? 'max-w-sm mx-auto' : '';
+       // narrow it to make room to visibly shift, then position it there) rather than
+       // text-align, which would just look odd against the card's own flex header row.
+       // Width is relative (w-4/5 of the COLUMN), not a fixed max-w-sm — a fixed pixel
+       // width does nothing when the block's own grid column (user-configurable, e.g.
+       // w:5 of 12 ≈ 300px) is already narrower than that fixed value, which is
+       // exactly what happened here: confirmed live, align:"right" was saved
+       // correctly but produced zero visible change because max-w-sm (384px)
+       // never actually constrained a column already narrower than that.
+       const cardPosClass = block.props?.align === 'right' ? 'w-4/5 ms-auto' : block.props?.align === 'center' ? 'w-4/5 mx-auto' : '';
 
        let cardClass = "p-4 rounded-2xl bg-white text-xs ";
        if (borderStyle === 'solid') cardClass += "border border-slate-150 shadow-sm";
@@ -991,12 +996,21 @@ export default function DocumentRenderer({
        else if (accentColor === 'amber') totalAccentText = "text-amber-600";
        else if (accentColor === 'blue') totalAccentText = "text-blue-600";
 
-       // Financial convention (and the pre-existing default) is right-aligned — align
-       // lets a template explicitly choose left (no auto margin) or center instead.
+       // Financial convention (and the pre-existing default) is right-aligned via
+       // w-full max-w-sm md:ms-auto — proven working (this is what real generated
+       // invoices already show correctly). An explicit 'left' override needs the box
+       // to actually shrink narrower than its own column for "no auto margin" to read
+       // as left-aligned rather than just filling the column edge-to-edge either way —
+       // same fixed-vs-relative-width flaw already found and fixed on customer_info:
+       // max-w-sm (384px) does nothing when the column itself (e.g. w:4 ≈ 230px,
+       // typical for this block sharing a row with notes+qr_code) is already
+       // narrower, so w-4/5 (relative to the column) is used for the two non-default
+       // explicit choices instead.
+       const totalsWidthClass = block.props?.align === 'left' || block.props?.align === 'center' ? 'w-4/5' : 'w-full max-w-sm';
        const totalsPosClass = block.props?.align === 'left' ? '' : block.props?.align === 'center' ? 'md:mx-auto' : 'md:ms-auto';
        return (
         <div key={block.id} className={`${blockColClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <div className={`space-y-1.5 border border-slate-100 p-4 rounded-xl bg-slate-50 w-full max-w-sm ${totalsPosClass}`}>
+         <div className={`space-y-1.5 border border-slate-100 p-4 rounded-xl bg-slate-50 ${totalsWidthClass} ${totalsPosClass}`}>
          <div className="flex justify-between text-xs text-slate-600">
           <span className="whitespace-nowrap">
            {t('Subtotal')}:
