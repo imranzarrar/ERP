@@ -263,21 +263,28 @@ export default function DocumentRenderer({
 
   const theme = getTemplateTheme();
 
- // Handle page sizing styling. min-height is print-only (`print:min-h-*`) — a real
- // printed page should be full paper height even when content is short, but forcing
- // that same ~11in minimum on the on-screen PREVIEW card made a short, few-line
- // invoice render inside a mostly-empty full-page-height box, reading as a large
- // block of wasted white space below the actual content on screen. The preview now
- // sizes to its actual content; only the physical print output keeps the full page.
+ // Handle page sizing styling. No forced min-height at all, screen or print.
+ // A prior fix scoped the ~11in/6in minimum to print-only (print:min-h-*), reasoning
+ // a physical page should be full paper height even for a short document — but that
+ // "11in"/"6in" is the RAW paper height, not the actually-printable area once the
+ // page's own @page margin is subtracted (A4 here is 11.69in tall with 0.4in top+
+ // bottom margins = 10.89in usable; the 4in x 6in thermal size uses 0.1in margins =
+ // 5.8in usable). Forcing content to be AT LEAST the raw paper height guaranteed it
+ // was always slightly taller than the printable area, spilling a sliver of empty
+ // content onto a near-blank second page on every single print/PDF — confirmed live
+ // against a real generated PDF. Letting the page size to its actual content (like
+ // real invoicing software does) fits a short document on one page correctly, and a
+ // genuinely long one (many line items) still paginates correctly via the browser's
+ // own print engine — @page below still controls the physical paper size/margins.
  const getPageSizeClass = () => {
  if (documentType === 'Expense' || documentType === 'Ledger' || documentType === 'Report') {
- return 'w-full min-w-[760px] max-w-4xl print:min-h-[11in]'; // Standard report size
+ return 'w-full min-w-[760px] max-w-4xl'; // Standard report size
  }
  const size = currentTemplate?.pageSize || '8.27in x 11.69in';
  if (size.includes('4in x 6in')) {
- return 'w-[4in] print:min-h-[6in] text-xs';
+ return 'w-[4in] text-xs';
  }
- return 'w-full min-w-[760px] max-w-4xl print:min-h-[11in]'; // A4/Letter size
+ return 'w-full min-w-[760px] max-w-4xl'; // A4/Letter size
  };
 
  // Trigger browser print of the document container
