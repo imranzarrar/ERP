@@ -681,12 +681,20 @@ export default function DocumentRenderer({
        // Default (no explicit align) is the RTL-aware "far side" convention: pushed to
        // the end of the reading direction, which reads as right-aligned in LTR and
        // left-aligned in RTL. An explicit align overrides that with a fixed physical
-       // side regardless of document direction.
+       // side regardless of document direction — that was already the stated intent
+       // here, but the explicit-"right" branch still used ms-auto (a logical/direction-
+       // aware property) instead of a physical one, so the intent and implementation
+       // disagreed: under an RTL (Arabic/Urdu) template, ms-auto flips to push the box
+       // toward the LEFT while its own text-right stayed physically right — confirmed
+       // live, an explicit align:"right" on an Arabic template produced a metadata box
+       // flush against the column's LEFT edge with right-aligned text inside it. The
+       // default and "center" branches were already correct (default's text-align is
+       // itself direction-aware to match ms-auto; mx-auto is symmetric either way).
        const docDetailsPosClass = !block.props?.align
         ? `text-${dir === 'rtl' ? 'left' : 'right'} md:ms-auto`
         : block.props.align === 'left' ? 'text-left'
         : block.props.align === 'center' ? 'text-center md:mx-auto'
-        : 'text-right md:ms-auto';
+        : 'text-right md:ml-auto';
        return (
         <div key={block.id} className={`${blockColClass} ${docDetailsPosClass} max-w-xs ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
          <h2 className={`text-2xl font-bold uppercase tracking-wider ${noteAccentText} mb-1`}>
@@ -794,7 +802,16 @@ export default function DocumentRenderer({
        // exactly what happened here: confirmed live, align:"right" was saved
        // correctly but produced zero visible change because max-w-sm (384px)
        // never actually constrained a column already narrower than that.
-       const cardPosClass = block.props?.align === 'right' ? 'w-4/5 ms-auto' : block.props?.align === 'center' ? 'w-4/5 mx-auto' : '';
+       // ms-auto (margin-inline-start, a logical/writing-mode-aware property) is correct
+       // for the doc_details block's DEFAULT (no explicit align) case, which is
+       // deliberately RTL-aware — but here "right" is an EXPLICIT, PHYSICAL override
+       // (paired with a physical text-right on the card's own content), so the box
+       // position must also be physical. ms-auto flips meaning under RTL (inline-start
+       // is the RIGHT side in RTL), which pushed the card to the LEFT of its column
+       // while its text still read right-aligned — confirmed live on the Arabic
+       // template: align:"right" produced a card flush against the column's LEFT edge.
+       // ml-auto (margin-left, physical) always pushes right regardless of direction.
+       const cardPosClass = block.props?.align === 'right' ? 'w-4/5 ml-auto' : block.props?.align === 'center' ? 'w-4/5 mx-auto' : '';
 
        let cardClass = "p-4 rounded-2xl bg-white text-xs ";
        if (borderStyle === 'solid') cardClass += "border border-slate-150 shadow-sm";
@@ -857,8 +874,17 @@ export default function DocumentRenderer({
        // customer no way to see which line was taxed at which rate.
 
        return (
+        // The <table> itself used to hardcode text-xs unconditionally — since font-size
+        // (unlike font-weight/font-family) doesn't fall through to a descendant that has
+        // its own explicit size class, that hardcoded text-xs on <table> silently beat
+        // this block's own fontSize override for every header/cell inside it (confirmed:
+        // a saved fontSize:"sm" override still measured 12px via getComputedStyle on a
+        // real <th>, not the requested 14px), even though fontWeight/fontFamily worked
+        // correctly since <table> never set those. Only fall back to the default text-xs
+        // when no explicit fontSize is configured, so the override actually takes effect
+        // while the existing default (no override) appearance is unchanged.
         <div key={block.id} className={`${blockColClass} overflow-x-auto ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <table className="w-full text-xs border-collapse min-w-[500px]">
+         <table className={`w-full ${block.props?.fontSize ? '' : 'text-xs'} border-collapse min-w-[500px]`}>
           <thead>
            <tr className={theme.tableHeaderClass}>
             {showSNo && <th className="py-2.5 px-3 font-semibold text-center w-12 whitespace-nowrap">{t('S.No')}</th>}
@@ -1007,7 +1033,13 @@ export default function DocumentRenderer({
        // narrower, so w-4/5 (relative to the column) is used for the two non-default
        // explicit choices instead.
        const totalsWidthClass = block.props?.align === 'left' || block.props?.align === 'center' ? 'w-4/5' : 'w-full max-w-sm';
-       const totalsPosClass = block.props?.align === 'left' ? '' : block.props?.align === 'center' ? 'md:mx-auto' : 'md:ms-auto';
+       // The UNSET/default case keeps the logical md:ms-auto ("proven working" per the
+       // comment above, left untouched here). An EXPLICIT align:"right" is a literal,
+       // physical choice though — same reasoning as customer_info's cardPosClass fix
+       // just above: ms-auto is direction-aware and flips to push the box LEFT under an
+       // RTL (Arabic/Urdu) template, silently contradicting an admin's explicit "right"
+       // pick. md:ml-auto is physical and always pushes right regardless of direction.
+       const totalsPosClass = block.props?.align === 'left' ? '' : block.props?.align === 'center' ? 'md:mx-auto' : block.props?.align === 'right' ? 'md:ml-auto' : 'md:ms-auto';
        return (
         <div key={block.id} className={`${blockColClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
          <div className={`space-y-1.5 border border-slate-100 p-4 rounded-xl bg-slate-50 ${totalsWidthClass} ${totalsPosClass}`}>
