@@ -1321,8 +1321,14 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  // ----------------------------------------
  const [taxForm, setTaxForm] = React.useState({
  name: '',
- percentage: ''
+ percentage: '',
+ isDefault: false
  });
+
+ // Only this company's own tax slabs are eligible to be "the" default — the
+ // company-shared/legacy rows (companyId null) aren't company-specific by
+ // definition, so they're excluded from the unset-other-defaults sweep below.
+ const companyTaxSlabs = db.taxSlabs.filter(t => t.companyId === db.selectedCompanyId);
 
  const handleAddTax = (e: React.FormEvent) => {
  e.preventDefault();
@@ -1333,14 +1339,35 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  const newSlab: TaxSlab = {
  id: generateId(),
  name: taxForm.name,
- percentage: pct
+ percentage: pct,
+ companyId: db.selectedCompanyId,
+ // The very first tax slab a company ever creates becomes its default
+ // automatically (mirrors the same "first active bank becomes default bank"
+ // convention just above) — otherwise a brand-new company would have no
+ // default at all until an admin remembers to set one explicitly.
+ isDefault: taxForm.isDefault || companyTaxSlabs.length === 0
  };
 
- const updated = { ...db, taxSlabs: [...db.taxSlabs, newSlab] };
- 
+ let updatedSlabs = db.taxSlabs;
+ if (newSlab.isDefault) {
+ updatedSlabs = updatedSlabs.map(t => t.companyId === db.selectedCompanyId ? { ...t, isDefault: false } : t);
+ }
+ updatedSlabs = [...updatedSlabs, newSlab];
+
+ const updated = { ...db, taxSlabs: updatedSlabs };
+
  onUpdateDb(updated);
- triggerSuccess(`Tax slab "${newSlab.name}" added successfully.`);
- setTaxForm({ name: '', percentage: '' });
+ triggerSuccess(`Tax slab "${newSlab.name}" added successfully.${newSlab.isDefault ? ' Set as default.' : ''}`);
+ setTaxForm({ name: '', percentage: '', isDefault: false });
+ };
+
+ const handleSetDefaultTaxSlab = (taxSlabId: string) => {
+ const updatedSlabs = db.taxSlabs.map(t => ({
+ ...t,
+ isDefault: t.companyId === db.selectedCompanyId ? t.id === taxSlabId : t.isDefault
+ }));
+ onUpdateDb({ ...db, taxSlabs: updatedSlabs });
+ triggerSuccess('Default tax slab updated. New documents will pre-fill this rate.');
  };
 
  // ----------------------------------------
@@ -3189,6 +3216,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <tr className="bg-slate-50 text-slate-500">
  <th className="p-3 text-start">Tax Description</th>
  <th className="p-3 text-end">Percentage Value</th>
+ <th className="p-3 text-center">Default</th>
  </tr>
  </thead>
  <tbody>
@@ -3196,6 +3224,23 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <tr key={ts.id} className="border-b border-slate-100">
  <td className="p-3 font-semibold text-slate-800">{ts.name}</td>
  <td className="p-3 text-end font-mono font-bold text-indigo-600">{ts.percentage}%</td>
+ <td className="p-3 text-center">
+ {ts.isDefault ? (
+ <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+ ⭐ Default
+ </span>
+ ) : ts.companyId === db.selectedCompanyId ? (
+ <button
+ type="button"
+ onClick={() => handleSetDefaultTaxSlab(ts.id)}
+ className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline"
+ >
+ Set Default
+ </button>
+ ) : (
+ <span className="text-[9px] text-slate-300">—</span>
+ )}
+ </td>
  </tr>
  ))}
  </tbody>
@@ -3230,6 +3275,15 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  className="w-full bg-white border border-slate-200 rounded-2xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
  />
  </div>
+ <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+ <input
+ type="checkbox"
+ checked={taxForm.isDefault}
+ onChange={(e) => setTaxForm({ ...taxForm, isDefault: e.target.checked })}
+ className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
+ />
+ <span>Set as default for this company{companyTaxSlabs.length === 0 ? ' (automatic — first slab)' : ''}</span>
+ </label>
  <div className="flex justify-end pt-1">
  <button
  type="submit"

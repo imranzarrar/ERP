@@ -354,6 +354,11 @@ export interface TaxSlab {
   id: string;
   name: string;
   percentage: number;
+  companyId?: string | null;
+  // Per-company default — pre-fills the header and every new line item's tax slab on
+  // every document (Quotation/Invoice/Expense/POS), but never restricts changing it.
+  // At most one per company (server-enforced), see src/db/schema.ts.
+  isDefault?: boolean;
 }
 
 export interface ProductService {

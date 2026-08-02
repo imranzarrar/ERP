@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from '../hooks';
-import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, saveExpense, markExpensePaid, cancelExpense, calculateInvoiceTotals } from '../dbStore';
+import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, getDefaultTaxSlabId, saveExpense, markExpensePaid, cancelExpense, calculateInvoiceTotals } from '../dbStore';
 import { generateId } from '../id';
 import { Expense, ExpenseItem, Vendor, TaxSlab, BankAccount, User, normalizePermissions } from '../types';
 import {
@@ -90,7 +90,7 @@ export default function ExpenseModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  // 1st of the oldest open month.
  const initialDate = openMonth ? (isDateInOpenMonth(db, today) ? today : `${openMonth.id}-01`) : today;
  const defaultVendor = db.vendors.find(v => v.isSystem && (v.companyId === db.selectedCompanyId || !v.companyId))?.id || db.vendors.find(v => v.companyId === db.selectedCompanyId || !v.companyId)?.id || '';
- const defaultTax = db.taxSlabs.find(t => t.percentage === 0)?.id || db.taxSlabs[0]?.id || '';
+ const defaultTax = getDefaultTaxSlabId(db);
  const defaultBank = db.banks.find(b => b.isDefault && b.companyId === db.selectedCompanyId)?.id || db.banks.find(b => b.companyId === db.selectedCompanyId)?.id || '';
  setFormDate(initialDate);
  setFormVendorId(defaultVendor);

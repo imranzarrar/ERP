@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from '../hooks';
-import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, saveQuotation, updateQuotation, convertQuotationToInvoice, calculateInvoiceTotals } from '../dbStore';
+import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, getDefaultTaxSlabId, saveQuotation, updateQuotation, convertQuotationToInvoice, calculateInvoiceTotals } from '../dbStore';
 import { generateId } from '../id';
 import { Quotation, QuotationItem, Customer, TaxSlab, User, normalizePermissions } from '../types';
 import StatusPill from './StatusPill';
@@ -116,7 +116,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  // 1st of the oldest open month.
  const initialDate = openMonth ? (isDateInOpenMonth(db, today) ? today : `${openMonth.id}-01`) : today;
  const defaultCust = db.customers.find(c => c.isSystem && (c.companyId === db.selectedCompanyId || !c.companyId))?.id || db.customers.find(c => c.companyId === db.selectedCompanyId || !c.companyId)?.id || '';
- const defaultTax = db.taxSlabs.find(t => t.percentage === 0)?.id || db.taxSlabs[0]?.id || '';
+ const defaultTax = getDefaultTaxSlabId(db);
  setFormDate(initialDate);
  setFormCustomerId(defaultCust);
  setFormTaxSlabId(defaultTax);

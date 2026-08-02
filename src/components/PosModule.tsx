@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { DatabaseState, saveInvoice, getAndIncrementCounter, calculateInvoiceTotals } from '../dbStore';
+import { DatabaseState, saveInvoice, getAndIncrementCounter, calculateInvoiceTotals, getDefaultTaxSlabId } from '../dbStore';
 import { ProductService, Customer, PosShift, PosHeldInvoice, PosCartItem, TaxSlab, Invoice, BankAccount } from '../types';
 import { Search, ShoppingCart, ShoppingBag, Trash2, Printer, Check, X, Pause, Play, Users, CreditCard, Banknote, UserPlus, LogOut, PackageSearch, Tag, Receipt, Maximize, Minimize } from 'lucide-react';
 import { useTranslation, usePermissions } from '../hooks';
@@ -286,14 +286,12 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
   // above): `db.taxSlabs?.[0]?.id` grabs whatever slab happens to be first in the
   // array — for this company that's "Exempt (0%)", so every POS sale was silently
   // recording zero VAT regardless of the item, not just displaying the wrong total.
-  // POS has no per-line tax picker (unlike Invoice), so it needs a real default: prefer
-  // this company's own standard-rate slab, else the shared 15% standard slab, else
-  // fall back to the old (wrong but previously-existing) first-slab behavior only if
-  // no standard rate can be found at all.
-  const posTaxSlabId =
-    db.taxSlabs?.find(t => t.companyId === activeCompanyId && Number(t.percentage) === 15)?.id ||
-    db.taxSlabs?.find(t => !t.companyId && Number(t.percentage) === 15)?.id ||
-    db.taxSlabs?.[0]?.id || '';
+  // POS has no per-line tax picker (unlike Invoice), so it needs a real default.
+  // Now uses the company's actual configured default tax slab (Admin Settings > Tax
+  // Slabs > Set Default) instead of a hardcoded "guess the 15% one" heuristic — that
+  // guess was itself a stop-gap and silently wrong for any company whose real default
+  // rate wasn't 15%.
+  const posTaxSlabId = getDefaultTaxSlabId(db, activeCompanyId);
   const cartTotals = calculateInvoiceTotals(
     db,
     cart.map((item: PosCartItem) => ({ unitCost: item.unitPrice, quantity: item.quantity, discountAmount: item.discount || 0 })),

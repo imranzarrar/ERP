@@ -205,6 +205,7 @@ export async function migrateDataToPostgres(data: any, ctx: MigrateContext = {})
         name: t.name || '',
         percentage: String(t.percentage || 0),
         companyId: t.companyId ?? null,
+        isDefault: !!t.isDefault,
       }));
       await upsert(schema.taxSlabs, records);
     }

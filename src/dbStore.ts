@@ -602,6 +602,23 @@ export function getActiveOpenMonth(db: DatabaseState, companyId?: string): Fisca
   return getOpenMonths(db, companyId)[0];
 }
 
+// The one company-scoped default tax slab (server-enforced: at most one per company,
+// see src/db/schema.ts's unique_default_tax_slab). Every document form (Quotation/
+// Invoice/Expense/POS/Inventory PR-PO-GRN) previously guessed a default independently
+// via its own ad-hoc heuristic — "find a 0% slab", "find a 15% slab", or just
+// db.taxSlabs[0] — which silently produced the wrong default for any company whose
+// actual default didn't match that specific guess, and drifted out of sync across
+// forms since each one guessed differently. This is a pre-fill default only — every
+// caller of this must remain fully editable per-document/per-line, never a locked value.
+export function getDefaultTaxSlabId(db: DatabaseState, companyId?: string): string {
+  const compId = companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
+  return db.taxSlabs.find(t => t.companyId === compId && t.isDefault)?.id
+    || db.taxSlabs.find(t => !t.companyId && t.isDefault)?.id
+    || db.taxSlabs.find(t => t.companyId === compId)?.id
+    || db.taxSlabs[0]?.id
+    || '';
+}
+
 // Is there an OPEN fiscal month whose id equals this date's own YYYY-MM? (Not "does this date
 // fall in THE one open month" — with multiple months open concurrently, a date can be valid
 // even if it's not in the oldest/first open month.)

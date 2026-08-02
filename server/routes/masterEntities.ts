@@ -374,10 +374,29 @@ router.post('/tax-slabs', async (req: any, res) => {
     }
 
     data.companyId = req.targetCompanyId;
-    await db.insert(schema.taxSlabs).values(data).onConflictDoUpdate({
-      target: schema.taxSlabs.id,
-      set: data
-    });
+
+    // At most one default tax slab per company (enforced by a partial unique index —
+    // see schema.ts) — clear any existing default for this company first so setting a
+    // new one doesn't hit a raw constraint-violation error. Scoped inside a
+    // transaction with the upsert so the two writes are atomic (never a window where
+    // two rows are momentarily both true, or where an old default silently disappears
+    // if the new insert then fails).
+    if (data.isDefault === true) {
+      await db.transaction(async (tx) => {
+        await tx.update(schema.taxSlabs)
+          .set({ isDefault: false })
+          .where(and(eq(schema.taxSlabs.companyId, req.targetCompanyId), eq(schema.taxSlabs.isDefault, true)));
+        await tx.insert(schema.taxSlabs).values(data).onConflictDoUpdate({
+          target: schema.taxSlabs.id,
+          set: data
+        });
+      });
+    } else {
+      await db.insert(schema.taxSlabs).values(data).onConflictDoUpdate({
+        target: schema.taxSlabs.id,
+        set: data
+      });
+    }
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

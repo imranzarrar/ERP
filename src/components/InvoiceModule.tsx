@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTranslation } from '../hooks';
 // from 'react';
-import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, markInvoicePaid, calculateInvoiceTotals } from '../dbStore';
+import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, getDefaultTaxSlabId, markInvoicePaid, calculateInvoiceTotals } from '../dbStore';
 import { generateId } from '../id';
 import { Invoice, InvoiceItem, Customer, TaxSlab, BankAccount, User, normalizePermissions } from '../types';
 import StatusPill, { StatusPillTone } from './StatusPill';
@@ -130,7 +130,7 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  // 1st of the oldest open month.
  const initialDate = openMonth ? (isDateInOpenMonth(db, today) ? today : `${openMonth.id}-01`) : today;
  const defaultCust = db.customers.find(c => c.isSystem && (c.companyId === db.selectedCompanyId || !c.companyId))?.id || db.customers.find(c => c.companyId === db.selectedCompanyId || !c.companyId)?.id || '';
- const defaultTax = db.taxSlabs.find(t => t.percentage === 0)?.id || db.taxSlabs[0]?.id || '';
+ const defaultTax = getDefaultTaxSlabId(db);
  const defaultBank = db.banks.find(b => b.isDefault && b.companyId === db.selectedCompanyId)?.id || db.banks.find(b => b.companyId === db.selectedCompanyId)?.id || '';
  setFormDate(initialDate);
  setFormCustomerId(defaultCust);

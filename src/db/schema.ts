@@ -152,8 +152,17 @@ export const taxSlabs = pgTable('tax_slabs', {
   // defaults visible to every company; new tax slabs created going forward are
   // scoped to the creating company.
   companyId: uuid('company_id').references(() => companies.id),
+  // Per-company default — different companies genuinely need different defaults
+  // (e.g. a company dealing mostly in zero-rated exports vs. one on standard 15%
+  // domestic VAT). Previously every document form (Quotation/Invoice/Expense/POS)
+  // each guessed a default independently via its own ad-hoc heuristic (find a 0%
+  // slab, or hardcode-search for "the 15% one"), which silently produced the wrong
+  // default per company and drifted out of sync across forms. Same partial-unique-
+  // index pattern as bankAccounts.isDefault: at most one default per company.
+  isDefault: boolean('is_default').default(false),
 }, (table) => ({
   companyIdIdx: index('tax_slabs_company_id_idx').on(table.companyId),
+  unique_default_tax_slab: uniqueIndex('unique_default_tax_slab').on(table.companyId).where(sql`is_default = true`),
 }));
 
 export const productCategories = pgTable('product_categories', {

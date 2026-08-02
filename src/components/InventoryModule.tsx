@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation, usePermissions } from '../hooks';
-import { DatabaseState, generateId } from '../dbStore';
+import { DatabaseState, generateId, getDefaultTaxSlabId } from '../dbStore';
 import { 
   Warehouse, 
   PurchaseRequisition, 
@@ -56,10 +56,12 @@ export default function InventoryModule({
   const activeCompany = db.companies?.find((c: any) => c.id === companyId);
   const currency = activeCompany?.currency || 'SAR';
 
-  // Default VAT rate is derived from the company's configured tax slabs (Saudi standard
-  // is 15%), never hardcoded, so PR/PO/GRN forms always agree with each other and with
-  // whatever the company has actually configured.
-  const defaultTaxRate = db.taxSlabs?.find(ts => ts.percentage === 15)?.percentage ?? (db.taxSlabs?.[0]?.percentage ?? 15);
+  // Default VAT rate comes from the company's actual configured default tax slab
+  // (Admin Settings > Tax Slabs > Set Default), not a hardcoded "assume 15%" guess —
+  // that guess was silently wrong for any company whose real default rate wasn't 15%,
+  // and disagreed with what Invoice/Quotation/POS forms use for the same company.
+  const defaultTaxSlab = db.taxSlabs?.find(ts => ts.id === getDefaultTaxSlabId(db));
+  const defaultTaxRate = defaultTaxSlab?.percentage ?? 15;
 
   // Inline success/error banners (matches InvoiceModule.tsx's triggerError/triggerSuccess
   // pattern) plus per-action submitting guards so create buttons can't be double-clicked

@@ -1,5 +1,5 @@
 import React from 'react';
-import { DatabaseState, getActiveOpenMonth, postRecurringExpense, settleAccrualExpense, generateId } from '../dbStore';
+import { DatabaseState, getActiveOpenMonth, getDefaultTaxSlabId, postRecurringExpense, settleAccrualExpense, generateId } from '../dbStore';
 import { RecurringExpenseTemplate, Expense, BankAccount } from '../types';
 import {
  FileText,
@@ -121,7 +121,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  defaultAmount: '',
  bankId: db.banks.find(b => b.isDefault)?.id || db.banks[0]?.id || '',
  vendorId: db.vendors.find(v => v.isSystem)?.id || db.vendors[0]?.id || '',
- taxSlabId: db.taxSlabs[0]?.id || 'tax-0',
+ taxSlabId: getDefaultTaxSlabId(db),
  isActive: true
  });
  setIsAddingTemplate(true);
