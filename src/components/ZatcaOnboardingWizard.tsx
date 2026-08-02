@@ -298,12 +298,17 @@ export default function ZatcaOnboardingWizard({ db, onUpdateDb }: ZatcaOnboardin
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto p-1">
-      {/* Environment-aware status banner — Sandbox's CSR construction, XML
-          canonicalization, and XAdES-BES digital signature have been independently
-          verified against ZATCA's real sandbox gateway and ZATCA's own official SDK
-          validator. Simulation/Production run the identical code path but haven't been
-          exercised against ZATCA's real gateways yet, since that requires the company's
-          actual registered credentials and a live Fatoora OTP. */}
+      {/* Environment-aware status banner. IMPORTANT: this describes the PLATFORM'S
+          underlying signing code (dual-gate verified once during development against
+          ZATCA's real sandbox gateway and ZATCA's own official SDK validator) — it is
+          NOT a per-company onboarding status. A brand-new company with zero CSR/CSID
+          activity of its own will still see this banner, since it's about whether the
+          code THIS company is about to use has been proven correct, not about what
+          this company has done yet. Confirmed live: this was genuinely mistaken for
+          "this company has passed Sandbox" by a real user — reworded to make the
+          distinction explicit rather than assume it reads as intended. Each company's
+          OWN actual progress is the step-by-step wizard below (CSR generation, OTP,
+          Compliance CSID, compliance tests, Production CSID), not this banner. */}
       <div className={`p-4 rounded-2xl border-2 flex items-start gap-3 shadow-sm ${
         environment === 'sandbox' ? 'border-emerald-400 bg-emerald-50 text-emerald-900' : 'border-blue-400 bg-blue-50 text-blue-900'
       }`}>
@@ -312,8 +317,8 @@ export default function ZatcaOnboardingWizard({ db, onUpdateDb }: ZatcaOnboardin
           : <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-blue-500" />}
         <div className="text-sm font-medium leading-relaxed">
           {environment === 'sandbox' ? (
-            <><span className="font-black uppercase tracking-wide">Sandbox — Verified.</span>{' '}
-            CSR construction, XML canonicalization, and XAdES-BES digital signing have been independently verified against ZATCA's real sandbox gateway and ZATCA's own official SDK validator.</>
+            <><span className="font-black uppercase tracking-wide">About this app's Sandbox code — not {activeCompany?.name || 'your company'}'s onboarding progress.</span>{' '}
+            The CSR construction, XML canonicalization, and XAdES-BES digital signing logic this app uses have been independently verified against ZATCA's real sandbox gateway and ZATCA's own official SDK validator — so when {activeCompany?.name || 'your company'} completes the steps below, they're backed by proven-correct code. {activeCompany?.name || 'This company'} itself hasn't onboarded yet — that's tracked by the steps below, not this message.</>
           ) : (
             <><span className="font-black uppercase tracking-wide">{environment.toUpperCase()} — Awaiting Real Credentials.</span>{' '}
             This uses the same verified signing code as Sandbox, but hasn't been exercised against ZATCA's real {environment} gateway yet — that requires {activeCompany?.name || 'your company'}'s actual registered VAT/CR/address and a live Fatoora OTP for this environment.</>
