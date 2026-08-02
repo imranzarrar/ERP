@@ -922,7 +922,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  reader.readAsDataURL(file);
  };
 
- const handleAddCompany = (e: React.FormEvent) => {
+ const handleAddCompany = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!newCompany.name.trim()) return triggerError('Company name is required.');
  
@@ -991,10 +991,48 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  companyId: finalizedCompany.id
  };
 
+ // The company's starting open month is the REAL current month at creation time, not
+ // a hardcoded date — a brand-new organization created any time after this line was
+ // originally written would otherwise start with "June 2026" open regardless of
+ // today's actual date (found live: still hardcoded months after this session's
+ // multi-open-month work). No fabricated pre-closed prior month either — that
+ // invented a "May 2026" with meaningless zero P&L that served no real purpose; a
+ // new company just starts with its actual current month open.
+ const now = new Date();
+ const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+ const currentMonthId = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+ const currentMonthName = `${monthNames[now.getMonth()]} ${now.getFullYear()}`;
  const newMonths: FiscalMonth[] = [
- { id: '2026-05', name: 'May 2026', status: 'Closed', closedAt: '2026-05-31T18:00:00Z', closedOption: 'paid_only', closedPnL: { totalRevenue: 0, totalExpenses: 0, netProfit: 0 }, companyId: finalizedCompany.id },
- { id: '2026-06', name: 'June 2026', status: 'Open', companyId: finalizedCompany.id }
+ { id: currentMonthId, name: currentMonthName, status: 'Open', companyId: finalizedCompany.id }
  ];
+
+ // Create the company row itself via the real, dedicated, super-admin-gated route —
+ // not the generic blob-sync path below. That path always echoes back the caller's
+ // ENTIRE current in-memory state (every table, not just what changed) on every save
+ // anywhere in the app, which is exactly what let an already-open stale browser tab
+ // silently RESURRECT companies that had been deliberately deleted, just by saving
+ // something unrelated (confirmed live, twice). migrateData.ts's companies handling is
+ // now update-only specifically to close that hole — it will no longer create a new
+ // company row at all, so this explicit call is the only way a company actually gets
+ // created going forward. The rest of this organization's starter setup (bank/
+ // customer/vendor/template/fiscal months) still goes through the existing onUpdateDb
+ // blob sync below — narrowing every one of those to its own dedicated route too is a
+ // larger effort, tracked separately, not part of closing this specific hole.
+ try {
+ const res = await fetch('/api/companies', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify(finalizedCompany),
+ });
+ if (!res.ok) {
+ const body = await res.json().catch(() => ({}));
+ triggerError(body.error || 'Failed to create company — the server rejected this request.');
+ return;
+ }
+ } catch (err: any) {
+ triggerError('Failed to create company — check your connection and try again.');
+ return;
+ }
 
  // Merge into the global database
  const updatedDb: DatabaseState = {
@@ -1008,7 +1046,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  };
 
  // Save and update
- 
+
  onUpdateDb(updatedDb);
  triggerSuccess(`Organization "${finalizedCompany.name}" registered successfully with standard operational defaults!`);
 

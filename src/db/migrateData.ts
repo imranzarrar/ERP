@@ -78,6 +78,28 @@ export async function migrateDataToPostgres(data: any, ctx: MigrateContext = {})
         companiesInput = companiesInput.filter((c: any) => c.id === ctx.targetCompanyId);
         if (companiesInput.length < data.companies.length) skipped.companies = 'non-owned company rows dropped';
       }
+
+      // UPDATE-ONLY via this generic path — never INSERT a new company here. This whole
+      // sync call always carries the caller's ENTIRE in-memory client state (every table,
+      // not just what they meant to change), because that's how this legacy blob-sync
+      // endpoint works everywhere in the app, including from a genuinely explicit "Save"
+      // button click, not just some background trigger. If a browser tab has been open
+      // since before a company was deleted, its next save of literally anything still
+      // carries that company in its stale `data.companies` array — upserting it back
+      // silently RECREATES a company that was deliberately deleted (confirmed live: this
+      // happened twice from an ordinary settings save in an already-open tab). Real
+      // company creation belongs exclusively to the dedicated, super-admin-gated
+      // POST /api/masterEntities/companies route; this path may only ever update a
+      // company that still genuinely exists.
+      const existingIds = new Set(
+        (await db.select({ id: schema.companies.id }).from(schema.companies)).map(r => r.id)
+      );
+      const preFilterCount = companiesInput.length;
+      companiesInput = companiesInput.filter((c: any) => c.id && existingIds.has(c.id));
+      if (companiesInput.length < preFilterCount) {
+        skipped.companies = (skipped.companies ? skipped.companies + '; ' : '') + 'rows with no existing match dropped (this path never creates new companies)';
+      }
+
       const records = companiesInput.map((c: any) => ({
         id: c.id,
         name: c.name || '',
