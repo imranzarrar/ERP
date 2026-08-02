@@ -946,9 +946,17 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  }
  };
 
- // Auto-create standard resources for the new organization so that it's instantly operational
+ // Auto-create standard resources for the new organization so that it's instantly
+ // operational. IDs here must be plain generateId() output — bankAccounts.id,
+ // customers.id, vendors.id, and documentTemplates.id are all real Postgres `uuid`
+ // columns (BACKLOG.md item 25's schema migration); a string prefix glued onto a
+ // UUID like 'tmpl-<uuid>' isn't valid UUID syntax and Postgres rejects it outright.
+ // Found live: this silently broke the entire rest of new-company onboarding
+ // (bank/customer/vendor/template never got created) every time, with only a generic
+ // "sync failed" surfaced to the user — the company row itself still saves fine since
+ // that's now a separate, successful API call.
  const newBank: BankAccount = {
- id: 'bank-' + generateId(),
+ id: generateId(),
  bankName: 'Main Operating Bank',
  accountNumber: 'SA' + Math.floor(1000000000000000000000 + Math.random() * 9000000000000000000000).toString(),
  accountTitle: `${finalizedCompany.name} Operating Account`,
@@ -959,7 +967,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  };
 
  const newCustomer: Customer = {
- id: 'cust-walkin-' + generateId(),
+ id: generateId(),
  name: 'Walk-in Customer',
  phone: '-',
  email: '-',
@@ -969,7 +977,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  };
 
  const newVendor: Vendor = {
- id: 'vend-cash-' + generateId(),
+ id: generateId(),
  name: 'Cash Vendor',
  phone: '-',
  email: '-',
@@ -979,7 +987,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  };
 
  const newTemplate: DocumentTemplate = {
- id: 'tmpl-' + generateId(),
+ id: generateId(),
  name: 'Standard English (A4)',
  language: 'English',
  pageSize: '8.27in x 11.69in (A4)',
