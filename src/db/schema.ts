@@ -148,10 +148,14 @@ export const taxSlabs = pgTable('tax_slabs', {
   id: uuid('id').primaryKey(),
   name: text('name').notNull(),
   percentage: decimal('percentage', { precision: 5, scale: 2 }).notNull(),
-  // Nullable: existing/legacy rows with companyId = NULL are treated as shared
-  // defaults visible to every company; new tax slabs created going forward are
-  // scoped to the creating company.
-  companyId: uuid('company_id').references(() => companies.id),
+  // Every tax slab belongs to exactly one company — there is no shared/global concept
+  // (deliberately removed: a nullable companyId here previously meant "shared defaults
+  // visible to every company," but the generic bulk-sync path couldn't distinguish a
+  // client merely holding a read-only cached copy of those shared rows from a genuine
+  // intent to modify them, and silently reassigned shared rows' ownership to whichever
+  // company happened to sync next — confirmed live, corrupting the shared VAT/Exempt
+  // slabs at least twice). Every company now owns its own complete set.
+  companyId: uuid('company_id').notNull().references(() => companies.id),
   // Per-company default — different companies genuinely need different defaults
   // (e.g. a company dealing mostly in zero-rated exports vs. one on standard 15%
   // domestic VAT). Previously every document form (Quotation/Invoice/Expense/POS)

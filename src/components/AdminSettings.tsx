@@ -3290,7 +3290,10 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </tr>
  </thead>
  <tbody>
- {db.taxSlabs.map((ts, idx) => (
+ {/* Every tax slab now belongs to exactly one company (no more shared/global
+     rows) — this must filter to the active company, or every company sees and
+     can toggle the default on every OTHER company's tax slabs too. */}
+ {companyTaxSlabs.map((ts, idx) => (
  <tr key={ts.id} className="border-b border-slate-100">
  <td className="p-3 font-semibold text-slate-800">{ts.name}</td>
  <td className="p-3 text-end font-mono font-bold text-indigo-600">{ts.percentage}%</td>

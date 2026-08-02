@@ -42,6 +42,20 @@ async function scopeAndAuthorizeRecords(
       if (existing && existing.companyId && existing.companyId !== targetCompanyId) {
         continue; // belongs to another company — not ours to touch via this bulk path
       }
+      // A row that already exists with companyId === null (e.g. tax_slabs' documented
+      // shared/legacy defaults, "visible to every company") must never be silently
+      // claimed by whichever company's client happens to sync it — every company's
+      // local state legitimately holds a cached copy of these for display, and this
+      // generic bulk path can't tell "I'm just carrying a read-only copy of shared
+      // data" apart from "I actually want to modify this." Confirmed live: an ordinary
+      // admin save on an unrelated screen silently rewrote 3 shared tax slabs'
+      // companyId to whatever company they had selected, corrupting them for every
+      // other company that relied on the same shared defaults. Skip existing shared
+      // rows entirely via this path — only a genuinely NEW record (no existing row)
+      // gets scoped to the caller's own company below.
+      if (existing && existing.companyId === null) {
+        continue;
+      }
     }
     out.push({ ...rec, companyId: targetCompanyId });
   }
