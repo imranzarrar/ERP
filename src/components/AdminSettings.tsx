@@ -1362,10 +1362,34 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  };
 
  const handleSetDefaultTaxSlab = (taxSlabId: string) => {
- const updatedSlabs = db.taxSlabs.map(t => ({
+ const target = db.taxSlabs.find(t => t.id === taxSlabId);
+ if (!target) return;
+
+ let updatedSlabs: TaxSlab[];
+ if (target.companyId === db.selectedCompanyId) {
+ // Already this company's own row — just flip which one is default.
+ updatedSlabs = db.taxSlabs.map(t => ({
  ...t,
  isDefault: t.companyId === db.selectedCompanyId ? t.id === taxSlabId : t.isDefault
  }));
+ } else {
+ // A shared/legacy row (companyId null) — flipping isDefault directly on it would
+ // make it "the default" for every OTHER company that also falls back to the same
+ // shared row, not just this one, defeating the whole point of a per-company
+ // default. Clone it into a real company-owned row instead (same name/rate),
+ // marked default, leaving the shared row itself untouched for everyone else.
+ const clone: TaxSlab = {
+ id: generateId(),
+ name: target.name,
+ percentage: target.percentage,
+ companyId: db.selectedCompanyId,
+ isDefault: true
+ };
+ updatedSlabs = [
+ ...db.taxSlabs.map(t => t.companyId === db.selectedCompanyId ? { ...t, isDefault: false } : t),
+ clone
+ ];
+ }
  onUpdateDb({ ...db, taxSlabs: updatedSlabs });
  triggerSuccess('Default tax slab updated. New documents will pre-fill this rate.');
  };
@@ -3229,7 +3253,11 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
  ⭐ Default
  </span>
- ) : ts.companyId === db.selectedCompanyId ? (
+ ) : (
+ // Shown for both this company's own slabs AND shared/legacy ones (companyId
+ // null) — picking a shared one clones it into a company-owned default rather
+ // than mutating the shared row (see handleSetDefaultTaxSlab), so every
+ // company can independently pick its own default from the same starting list.
  <button
  type="button"
  onClick={() => handleSetDefaultTaxSlab(ts.id)}
@@ -3237,8 +3265,6 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  >
  Set Default
  </button>
- ) : (
- <span className="text-[9px] text-slate-300">—</span>
  )}
  </td>
  </tr>
