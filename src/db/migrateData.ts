@@ -1,7 +1,7 @@
 import { db } from './index.js';
 import * as schema from './schema.js';
 import bcrypt from 'bcrypt';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, ne } from 'drizzle-orm';
 import { isSuperAdminUser, hasPermission } from '../../server/lib/authz.js';
 
 export interface MigrateContext {
@@ -243,6 +243,22 @@ export async function migrateDataToPostgres(data: any, ctx: MigrateContext = {})
         companyId: t.companyId ?? null,
         isDefault: !!t.isDefault,
       }));
+      // Authoritatively clear any OTHER existing default for a company before setting a
+      // new one — relying on the client to have included every sibling row (with
+      // isDefault reset to false) in the same payload is fragile: if the client's local
+      // state is even slightly stale (doesn't have the row the DB currently has marked
+      // default — e.g. from an action taken in a different tab/session), the "reset
+      // others" step silently misses it, and this insert then collides with
+      // unique_default_tax_slab (one default per company) instead of correctly
+      // replacing it. Confirmed live. The server doesn't need the client's cooperation
+      // to enforce "at most one default per company" — it can just do it directly.
+      for (const rec of records) {
+        if (rec.isDefault && rec.companyId) {
+          await db.update(schema.taxSlabs)
+            .set({ isDefault: false })
+            .where(and(eq(schema.taxSlabs.companyId, rec.companyId), ne(schema.taxSlabs.id, rec.id)));
+        }
+      }
       await upsert(schema.taxSlabs, records);
     }
 

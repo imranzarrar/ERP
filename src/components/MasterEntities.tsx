@@ -293,6 +293,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
       triggerError(errData.error || 'Failed to save customer — the server rejected this request.');
       return;
     }
+    triggerSuccess(editingId ? 'Customer updated successfully.' : 'Customer added successfully.');
     clearForm();
     await fetchEntities();
     onDone();
@@ -371,6 +372,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  }
  }
  onUpdateDb(newDb);
+ triggerSuccess(editingId ? 'Vendor updated successfully.' : 'Vendor added successfully.');
  clearForm();
  onDone();
  } catch(err) {
@@ -459,9 +461,15 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
 
  try {
  if (savedProd) {
- await fetch('/api/products', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(savedProd) });
+ const res = await fetch('/api/products', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(savedProd) });
+ if (!res.ok) {
+ const errData = await res.json().catch(() => ({}));
+ triggerError(errData.error || 'Failed to save product — the server rejected this request.');
+ return;
+ }
  }
  onUpdateDb(newDb);
+ triggerSuccess(editingId ? 'Product updated successfully.' : 'Product added successfully.');
  clearForm();
  await fetchEntities();
  onDone();
@@ -561,6 +569,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
         const errData = await res.json().catch(() => ({}));
         return triggerError(errData.error || 'Failed to save category.');
       }
+      triggerSuccess(editingId ? 'Category updated successfully.' : 'Category added successfully.');
       clearForm();
       await fetchEntities();
       onDone();
@@ -610,6 +619,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
         const errData = await res.json().catch(() => ({}));
         return triggerError(errData.error || 'Failed to save unit.');
       }
+      triggerSuccess(editingId ? 'Unit updated successfully.' : 'Unit added successfully.');
       clearForm();
       await fetchEntities();
       onDone();
@@ -661,6 +671,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
         const errData = await res.json().catch(() => ({}));
         return triggerError(errData.error || 'Failed to save warehouse.');
       }
+      triggerSuccess(editingId ? 'Warehouse updated successfully.' : 'Warehouse added successfully.');
       clearForm();
       await fetchEntities();
       onDone();
