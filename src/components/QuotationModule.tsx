@@ -1,9 +1,10 @@
 import React from 'react';
 import { useTranslation } from '../hooks';
-import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, getDefaultTaxSlabId, saveQuotation, updateQuotation, convertQuotationToInvoice, calculateInvoiceTotals } from '../dbStore';
+import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, getDefaultTaxSlabId, calculateInvoiceTotals } from '../dbStore';
 import { generateId } from '../id';
 import { Quotation, QuotationItem, Customer, TaxSlab, User, normalizePermissions } from '../types';
 import StatusPill from './StatusPill';
+import ItemCatalogSearch from './ItemCatalogSearch';
 import {
   FileText,
   Plus,
@@ -30,7 +31,18 @@ import {
 
 interface QuotationModuleProps {
  db: DatabaseState;
- onUpdateDb: (db: DatabaseState) => void;
+ // Local-only React state update — no /api/migrate POST. Use this after a change was
+ // already persisted via its own dedicated /api/transactions/... route, for a patch that
+ // only needs to touch specific known fields (never a raw GET /api/state response — see
+ // onRefreshDb below for why). Deliberately a function-updater only, not a raw
+ // DatabaseState — see App.tsx's handleUpdateDbLocal comment for the incident this
+ // prevents at compile time.
+ onUpdateDbLocal: (updater: (prev: DatabaseState) => DatabaseState) => void;
+ // Real GET /api/state refetch (App.tsx's triggerDbRefresh), merged the same way the
+ // initial page load is — see InvoiceModule.tsx's identical prop for the full incident
+ // this fixes (handing a raw /api/state response straight to onUpdateDbLocal silently
+ // dropped selectedCompanyId/companySetup/currentUser and reset the active company).
+ onRefreshDb?: () => Promise<void>;
  onPrintDoc: (type: 'Quotation' | 'Invoice' | 'Expense', data: any) => void;
  // 'list' renders the Quotation Book table; 'add' renders the create/edit form —
  // each is mounted under its own nav tab/permission (quotations vs quotations-add).
@@ -44,7 +56,7 @@ interface QuotationModuleProps {
  onConverted: () => void;
 }
 
-export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, editId, onDone, onEdit, onCreateNew, onConverted }: QuotationModuleProps) {
+export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPrintDoc, mode, editId, onDone, onEdit, onCreateNew, onConverted }: QuotationModuleProps) {
  const { t, isRTL, lang } = useTranslation(db);
  const currentUser = db.currentUser;
  const isAdmin = currentUser?.role === 'admin' || currentUser?.isSuperAdmin === true;
@@ -56,39 +68,21 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  const [sortField, setSortField] = React.useState<string>('createdAt');
  const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('desc');
 
- // Quotations from server
- const [quotations, setQuotations] = React.useState<Quotation[]>([]);
- const fetchQuotations = async () => {
-   try {
-     const resp = await fetch(`/api/transactions/quotations?companyId=${db.selectedCompanyId}`);
-     const data = await resp.json();
-     if (Array.isArray(data)) {
-       setQuotations(data);
-     } else {
-       setQuotations([]);
-       if (data && data.error) {
-         setError(data.error);
-       }
-     }
-   } catch (e) {
-     console.error('Failed to fetch quotations:', e);
-     setQuotations([]);
-   }
- };
-
- React.useEffect(() => {
-   fetchQuotations();
- }, [db.selectedCompanyId]);
+ // Quotations render straight from the shared `db.quotations` (populated by
+ // `/api/state`, refreshed via `onRefreshDb`) — this module used to keep its own
+ // separately-fetched copy here, which meant a quotation created/updated elsewhere
+ // (another session, or this app's own "Reload View") never appeared in this list
+ // without a hard page reload, since nothing ever re-ran that separate fetch.
 
  // Pagination state
  const [currentPage, setCurrentPage] = React.useState(1);
  const itemsPerPage = 20;
 
  // List quotations - filter for admin/staff with module permission to see all records for the company
- const filteredQuotations = quotations.filter(q => {
+ const filteredQuotations = db.quotations.filter(q => {
  const qCompanyId = q.companyId;
  if (qCompanyId !== db.selectedCompanyId) return false;
- if (isAdmin || userPermissions.quotation.view.enabled) return true;
+ if (userPermissions.quotation.read.enabled) return true;
  return q.createdById === currentUser.id;
  });
 
@@ -125,7 +119,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  // Prefill the form once the record to edit has loaded from the server.
  React.useEffect(() => {
  if (mode !== 'add' || !editId) return;
- const q = quotations.find(q => q.id === editId);
+ const q = db.quotations.find(q => q.id === editId);
  if (!q) return;
  setEditingQuotationId(q.id);
  setFormDate(q.date);
@@ -139,7 +133,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  quantity: item.quantity,
  discountAmount: item.discountAmount || 0
  })));
- }, [mode, editId, quotations]);
+ }, [mode, editId, db.quotations]);
 
  React.useEffect(() => {
  setConvertingQ(null);
@@ -209,7 +203,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
 
  // Add line item to form
  const handleAddLineItem = () => {
- setFormItems([...formItems, { description: '', unitCost: 0, quantity: 1, discountAmount: 0 }]);
+ setFormItems([...formItems, { description: '', unitCost: 0, quantity: 1, discountAmount: 0, unit: 'PCE' }]);
  };
 
  // Remove line item
@@ -246,7 +240,8 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
   // Save Quotation
   const handleSaveQuotation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAdmin && !userPermissions.quotation.create.enabled) {
+    const canSave = editingQuotationId ? userPermissions.quotation.update.enabled : userPermissions.quotation.create.enabled;
+    if (!canSave) {
       return triggerError("You do not have permission to manage quotations.");
     }
 
@@ -290,7 +285,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
       }
       
       triggerSuccess("Quotation saved successfully.");
-      await fetchQuotations();
+      if (onRefreshDb) await onRefreshDb();
       onDone();
     } catch (err: any) {
       triggerError(err.message);
@@ -300,7 +295,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  const handleStatusChange = async (qId: string, newStatus: Quotation['status']) => {
   try {
     const targetComp = db.selectedCompanyId;
-    const q = quotations.find(x => x.id === qId) || db.quotations.find(x => x.id === qId);
+    const q = db.quotations.find(x => x.id === qId);
     if (!q) return;
 
     const response = await fetch(`/api/transactions/quotations/${qId}?companyId=${targetComp}`, {
@@ -319,17 +314,43 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
       throw new Error(errData.error || "Failed to update quotation status on server");
     }
 
-    const result = updateQuotation(db, qId, { status: newStatus });
-    if (result.error) {
-      triggerError(result.error);
-    } else {
-      triggerSuccess(`Quotation status updated to: ${newStatus}`);
-      setQuotations(prev => prev.map(item => item.id === qId ? { ...item, status: newStatus } : item));
-      onUpdateDb(result.db);
-      await fetchQuotations();
-    }
+    // The PUT above already persisted the status change — patch local state to match
+    // instead of re-deriving it via dbStore's updateQuotation() and re-syncing the
+    // whole blob.
+    triggerSuccess(`Quotation status updated to: ${newStatus}`);
+    onUpdateDbLocal(prev => ({
+      ...prev,
+      quotations: prev.quotations.map(item => item.id === qId ? { ...item, status: newStatus } : item)
+    }));
+    if (onRefreshDb) await onRefreshDb();
   } catch (err: any) {
     triggerError(err.message || 'Failed to update quotation status');
+  }
+ };
+
+ // Cancel quotation — dedicated route that sets the isCancelled flag (server-side
+ // blocked for Converted or already-cancelled quotations), replacing the old
+ // handleStatusChange(qId, 'Cancelled') generic-PUT approach.
+ const handleCancelQuotation = async (qId: string) => {
+  try {
+    const targetComp = db.selectedCompanyId;
+    const response = await fetch(`/api/transactions/quotations/${qId}/cancel?companyId=${targetComp}`, {
+      method: 'POST',
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || 'Failed to cancel quotation');
+    }
+
+    triggerSuccess('Quotation cancelled successfully.');
+    onUpdateDbLocal(prev => ({
+      ...prev,
+      quotations: prev.quotations.map(item => item.id === qId ? { ...item, isCancelled: true } : item)
+    }));
+    if (onRefreshDb) await onRefreshDb();
+  } catch (err: any) {
+    triggerError(err.message || 'Failed to cancel quotation');
   }
  };
 
@@ -363,7 +384,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  const handleConvert = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!convertingQ) return;
- if (!isAdmin && !userPermissions.invoice.create.enabled) {
+ if (!userPermissions.invoice.create.enabled) {
  return triggerError('You do not have permission to issue sales invoices.');
  }
 
@@ -403,41 +424,33 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
       throw new Error(errData.error || 'Failed to convert quotation on server');
     }
 
-    const res = convertQuotationToInvoice(
-      db,
-      convertingQ.id,
-      convForm.date,
-      convForm.bankId,
-      convForm.paymentStatus,
-      convForm.items,
-      convForm.discountPercentage,
-      convForm.taxSlabId,
-      convForm.customerId,
-      convForm.notes
-    );
-
-    if (res.error) {
-      return triggerError(res.error);
+    // The convert route above already persisted the new invoice + quotation status
+    // server-side but only echoes { success: true } — it doesn't hand back the created
+    // invoice's id, so a scoped refetch (not a redundant dbStore recompute+sync) is the
+    // only way to learn it. Applied via the local-only setter — this is a read, not a
+    // write, so there's nothing to re-POST to /api/migrate.
+    const refreshed = await fetch('/api/state').then(x => x.json()).catch(() => null);
+    if (!refreshed) {
+      throw new Error('Quotation converted, but the workspace could not be refreshed. Please reload the page.');
     }
+    if (onRefreshDb) await onRefreshDb();
 
-    onUpdateDb(res.db);
+    const newInvoice = refreshed.invoices?.find((i: any) => i.originQuotationId === convertingQ.id);
+
     triggerSuccess(`Successfully converted ${convertingQ.quotationNumber} into a sales invoice.`);
 
-    if (res.newInvoice?.id) {
-      const invId = res.newInvoice.id;
-      const invNumber = res.newInvoice.invoiceNumber;
+    if (newInvoice?.id) {
+      const invId = newInvoice.id;
+      const invNumber = newInvoice.invoiceNumber;
       // Same finalized flow as a direct invoice creation: open the print/preview
       // overlay immediately, submit to ZATCA in the background (non-blocking).
-      const cust = db.customers.find(c => c.id === res.newInvoice.customerId);
-      const bank = db.banks.find(b => b.id === res.newInvoice.bankId);
-      onPrintDoc('Invoice', { ...res.newInvoice, customerData: cust, bankData: bank });
+      const cust = refreshed.customers?.find((c: any) => c.id === newInvoice.customerId) || db.customers.find(c => c.id === newInvoice.customerId);
+      const bank = refreshed.banks?.find((b: any) => b.id === newInvoice.bankId) || db.banks.find(b => b.id === newInvoice.bankId);
+      onPrintDoc('Invoice', { ...newInvoice, customerData: cust, bankData: bank });
       fetch(`/api/zatca/submit-invoice/${invId}`, { method: 'POST' })
         .then(async (r) => {
           const data = await r.json().catch(() => ({}));
-          const refreshed = await fetch('/api/state').then(x => x.json()).catch(() => null);
-          if (refreshed && refreshed.invoices) {
-            onUpdateDb(refreshed);
-          }
+          if (onRefreshDb) await onRefreshDb();
           // Surface the real outcome instead of leaving a background rejection only
           // discoverable by reopening the invoice's ZATCA modal later.
           if (!r.ok || data.error) {
@@ -459,7 +472,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
       return;
     }
 
-    await fetchQuotations();
+    if (onRefreshDb) await onRefreshDb();
     setConvertingQ(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (err: any) {
@@ -577,7 +590,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
    return kpiConvertedQuotes.reduce((sum, q) => sum + getQuotationTotal(q), 0);
  }, [kpiConvertedQuotes]);
 
- const kpiActiveQuotesCount = filteredQuotations.filter(q => q.status === 'Active' || q.status === 'Draft' || !q.status).length;
+ const kpiActiveQuotesCount = filteredQuotations.filter(q => q.status === 'Draft' || !q.status).length;
 
  const renderSortableHeader = (label: string, field: string, align: 'left' | 'center' | 'right' = 'left') => {
  const isCurrent = sortField === field;
@@ -712,7 +725,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  </span>
  </div>
  </div>
- {openMonth && (isAdmin || userPermissions.quotation.create.enabled) && (
+ {openMonth && userPermissions.quotation.create.enabled && (
  <button
  onClick={handleInitiateCreate}
  className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-2 text-xs font-extrabold flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
@@ -746,22 +759,23 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  const cust = db.customers.find(c => c.id === q.customerId);
  const isAccepted = q.status === 'Accepted';
  const isDraft = q.status === 'Draft' || q.status === 'Sent';
- const canCancel = isAdmin || userPermissions.cancel.access.enabled;
+ const canCancel = userPermissions.quotation.delete.enabled;
 
  return (
  <tr key={q.id} className="border-b border-slate-100 hover:bg-slate-50/20">
  <td className="p-3 font-bold text-slate-900">{q.quotationNumber}</td>
  <td className="p-3 text-slate-600">{q.date}</td>
- <td className="p-3 font-semibold text-slate-700">{cust?.name || 'Walk-in'}</td>
+ <td className="p-3 font-semibold text-slate-700">{cust?.name || t('Walk-in')}</td>
  <td className="p-3 text-end font-bold text-slate-900">{getQuotationTotal(q).toFixed(2)} {currencySymbol}</td>
  <td className="p-3 text-center">
  <StatusPill tone={
+ q.isCancelled ? 'critical' :
  q.status === 'Draft' ? 'warn' :
  q.status === 'Sent' ? 'info' :
  q.status === 'Accepted' ? 'good' :
  q.status === 'Converted' ? 'info' : 'critical'
  }>
- {q.status}
+ {q.isCancelled ? t('Cancelled') : t(q.status)}
  </StatusPill>
  </td>
  <td className="p-3 text-end space-x-1.5">
@@ -769,20 +783,20 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  <button
  onClick={() => onPrintDoc('Quotation', { ...q, customerData: cust })}
  className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition cursor-pointer inline-flex items-center gap-1 text-[11px] font-semibold"
- title="Print / Generate PDF"
+ title={t('Print / Generate PDF')}
  >
  <Printer className="w-3.5 h-3.5" />
- <span>Print</span>
+ <span>{t('Print')}</span>
  </button>
  
- {q.status !== 'Converted' && q.status !== 'Cancelled' && (
+ {q.status !== 'Converted' && !q.isCancelled && userPermissions.quotation.update.enabled && (
  <button
  onClick={() => handleInitiateEdit(q)}
  className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition cursor-pointer inline-flex items-center gap-1 text-[11px] font-bold"
- title="Edit Quotation"
+ title={t('Edit Quotation')}
  >
  <Edit3 className="w-3.5 h-3.5" />
- <span>Edit</span>
+ <span>{t('Edit')}</span>
  </button>
  )}
 
@@ -790,36 +804,36 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  <button
  onClick={() => handleStatusChange(q.id, 'Accepted')}
  className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition cursor-pointer inline-flex items-center gap-1 text-[11px] font-bold"
- title="Accept Quotation"
+ title={t('Accept Quotation')}
  >
  <CheckCircle2 className="w-3.5 h-3.5" />
- <span>Accept</span>
+ <span>{t('Accept')}</span>
  </button>
  )}
 
- {isAccepted && openMonth && (isAdmin || userPermissions.invoice.create.enabled) && (
+ {isAccepted && openMonth && userPermissions.invoice.create.enabled && (
  <button
  onClick={() => handleInitiateConversion(q)}
  className="p-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white transition cursor-pointer inline-flex items-center gap-1 text-[10px] font-bold shadow-sm"
- title="Convert to Sales Invoice"
+ title={t('Convert to Sales Invoice')}
  >
  <ArrowRight className="w-3.5 h-3.5" />
- <span>Convert to Invoice</span>
+ <span>{t('Convert to Invoice')}</span>
  </button>
  )}
 
- {q.status !== 'Cancelled' && q.status !== 'Converted' && canCancel && (
+ {!q.isCancelled && q.status !== 'Converted' && canCancel && (
  <button
  onClick={() => {
- if (window.confirm('⚠️ Are you sure you want to CANCEL this quotation? This cannot be undone.')) {
- handleStatusChange(q.id, 'Cancelled');
+ if (window.confirm(t('⚠️ Are you sure you want to CANCEL this quotation? This cannot be undone.'))) {
+ handleCancelQuotation(q.id);
  }
  }}
  className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 transition cursor-pointer inline-flex items-center gap-1 text-[11px] font-bold"
- title="Cancel Quotation"
+ title={t('Cancel Quotation')}
  >
  <AlertTriangle className="w-3.5 h-3.5" />
- <span>Cancel</span>
+ <span>{t('Cancel')}</span>
  </button>
  )}
  </div>
@@ -921,7 +935,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  className="w-full bg-slate-50/70 hover:bg-white border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-medium focus:outline-none transition-all"
  >
  {db.customers.filter(c => c.companyId === db.selectedCompanyId || !c.companyId).map(c => (
- <option key={c.id} value={c.id}>{c.name} {c.isSystem ? '(Default)' : ''}</option>
+ <option key={c.id} value={c.id}>{c.name} {c.isSystem ? t('(Default)') : ''}</option>
  ))}
  </select>
  </div>
@@ -957,7 +971,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Notes / Memo")}</label>
  <input
  type="text"
- placeholder="Job specifications, deadlines"
+ placeholder={t("Job specifications, deadlines")}
  value={formNotes}
  onChange={(e) => setFormNotes(e.target.value)}
  className="w-full bg-slate-50/70 hover:bg-white border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-medium focus:outline-none transition-all"
@@ -995,29 +1009,31 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
  <td className="py-2 px-3 text-slate-400 font-bold text-[11px] align-top pt-3">{idx + 1}</td>
  <td className="py-2 px-2 align-top">
- <input
- type="text"
+ <ItemCatalogSearch
  required
- list={`quote-catalog-${idx}`}
  placeholder={t("Type or search item from catalog...")}
  value={item.description}
- onChange={(e) => {
- const val = e.target.value;
+ items={salesProducts}
+ currencySymbol={currencySymbol}
+ noMatchesLabel={t('No matching items found.')}
+ onChangeText={(val) => {
  handleUpdateLineItem(idx, 'description', val);
- const matched = salesProducts.find(p => p.name.toLowerCase() === val.trim().toLowerCase());
- if (matched) {
+ // Editing free-text after a catalog selection means the line may no longer match
+ // that product — clear the link (onSelectItem below re-sets it if this change was
+ // itself the result of picking a match from the dropdown).
+ handleUpdateLineItem(idx, 'productId', undefined);
+ }}
+ onSelectItem={(matched) => {
  handleUpdateLineItem(idx, 'unitCost', matched.unitPrice || 0);
- }
+ // 'No'/'Lumpsum' are the product Unit-of-Measure picker's non-ZATCA-code
+ // placeholder values (MasterEntities.tsx) — fall back to 'PCE', matching
+ // normalizeZatcaUnitCode's server-side default for the same cases.
+ const zatcaCode = matched.unit && matched.unit !== 'No' && matched.unit !== 'Lumpsum' ? matched.unit : 'PCE';
+ handleUpdateLineItem(idx, 'unit', zatcaCode);
+ handleUpdateLineItem(idx, 'productId', matched.id);
  }}
  className="w-full bg-slate-50/50 hover:bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
  />
- <datalist id={`quote-catalog-${idx}`}>
- {salesProducts.map(p => (
- <option key={p.id} value={p.name}>
- {`${Number(p.unitPrice || 0).toFixed(2)} ${currencySymbol} ${p.description ? '— ' + p.description : ''}`}
- </option>
- ))}
- </datalist>
  </td>
 
  <td className="py-2 px-2 align-top">
@@ -1095,40 +1111,40 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  <div className="flex justify-end pt-4 border-t border-slate-100">
  <div className="w-80 bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1.5 text-xs">
  <div className="flex justify-between text-slate-500">
- <span>Items Gross Subtotal:</span>
+ <span>{t('Items Gross Subtotal:')}</span>
  <span className="font-semibold text-slate-800">
  {calculateInvoiceTotals(db, formItems, formTaxSlabId, formDiscountPercentage).grossSubtotal.toFixed(2)} {currencySymbol}
  </span>
  </div>
- 
+
  {(() => {
    const calc = calculateInvoiceTotals(db, formItems, formTaxSlabId, formDiscountPercentage);
    return (
      <>
        {calc.totalLineDiscount > 0 && (
          <div className="flex justify-between text-rose-600 font-semibold">
-           <span>Line Item Discounts:</span>
+           <span>{t('Line Item Discounts:')}</span>
            <span>-{calc.totalLineDiscount.toFixed(2)} {currencySymbol}</span>
          </div>
        )}
 
        {calc.totalLineDiscount > 0 && (
          <div className="flex justify-between text-slate-600 font-medium border-t border-slate-100/80 pt-1">
-           <span>Net Subtotal:</span>
+           <span>{t('Net Subtotal:')}</span>
            <span className="font-semibold text-slate-800">{calc.subtotal.toFixed(2)} {currencySymbol}</span>
          </div>
        )}
 
        {formDiscountPercentage > 0 && (
          <div className="flex justify-between text-rose-600 font-semibold">
-           <span>Header Discount ({formDiscountPercentage}%):</span>
+           <span>{t('Header Discount')} ({formDiscountPercentage}%):</span>
            <span>-{calc.discountAmount.toFixed(2)} {currencySymbol}</span>
          </div>
        )}
 
        {calc.totalDiscount > 0 && (
          <div className="flex justify-between text-slate-700 font-bold border-t border-slate-100 pt-1">
-           <span>Total Discount Applied:</span>
+           <span>{t('Total Discount Applied:')}</span>
            <span className="text-rose-600">-{calc.totalDiscount.toFixed(2)} {currencySymbol}</span>
          </div>
        )}
@@ -1137,14 +1153,14 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  })()}
 
  <div className="flex justify-between text-slate-500">
- <span>VAT Slab ({calculateInvoiceTotals(db, formItems, formTaxSlabId, formDiscountPercentage).percentage}%):</span>
+ <span>{t('VAT Slab')} ({calculateInvoiceTotals(db, formItems, formTaxSlabId, formDiscountPercentage).percentage}%):</span>
  <span>
  {calculateInvoiceTotals(db, formItems, formTaxSlabId, formDiscountPercentage).taxAmount.toFixed(2)} {currencySymbol}
  </span>
  </div>
 
  <div className="flex justify-between font-bold text-sm text-slate-900 border-t border-slate-200 pt-2 mt-1">
- <span>Grand Estimate:</span>
+ <span>{t('Grand Estimate:')}</span>
  <span className="text-indigo-600 text-base">
  {calculateInvoiceTotals(db, formItems, formTaxSlabId, formDiscountPercentage).grandTotal.toFixed(2)} {currencySymbol}
  </span>
@@ -1158,7 +1174,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  onClick={onDone}
  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-semibold text-xs"
  >
- Cancel
+ {t('Cancel')}
  </button>
  <button
  type="submit"
@@ -1178,7 +1194,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  <CheckSquare className="w-5 h-5 text-indigo-600" />
  <div>
  <span className="text-base text-slate-900 block font-bold">{t('Customize & Convert Accepted Quotation')}</span>
- <span className="text-slate-400 text-xs block font-normal">Review and adjust items, pricing, discounts, and payment details before issuing the permanent sales invoice from {convertingQ.quotationNumber}.</span>
+ <span className="text-slate-400 text-xs block font-normal">{t('Review and adjust items, pricing, discounts, and payment details before issuing the permanent sales invoice from')} {convertingQ.quotationNumber}.</span>
  </div>
  </h3>
 
@@ -1186,7 +1202,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  {/* Top Configuration Grid */}
  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Customer Relationship</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Customer Relationship')}</label>
  <select
  required
  value={convForm.customerId}
@@ -1194,13 +1210,13 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-indigo-600 font-medium"
  >
  {db.customers.map(c => (
- <option key={c.id} value={c.id}>{c.name} {c.isSystem ? '(System Default)' : ''}</option>
+ <option key={c.id} value={c.id}>{c.name} {c.isSystem ? t('(System Default)') : ''}</option>
  ))}
  </select>
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Invoice Issue Date</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Invoice Issue Date')}</label>
  <input
  type="date"
  required
@@ -1211,7 +1227,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Post Inflows Bank</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Post Inflows Bank')}</label>
  <select
  required
  value={convForm.bankId}
@@ -1225,7 +1241,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">VAT Slab Configuration</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('VAT Slab Configuration')}</label>
  <select
  required
  value={convForm.taxSlabId}
@@ -1239,7 +1255,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Header Discount (%)</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Header Discount (%)')}</label>
  <input
  type="number"
  min="0"
@@ -1252,42 +1268,42 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Payment Status</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Payment Status')}</label>
  <select
  required
  value={convForm.paymentStatus}
  onChange={(e) => setConvForm({ ...convForm, paymentStatus: e.target.value as any })}
  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-indigo-600 font-medium"
  >
- <option value="Paid">Fully Paid (posts Receipt instantly)</option>
- <option value="Partially Paid">Partially Paid (requires first partial payment subsequent entry)</option>
- <option value="Unpaid">Pending / Unpaid Outstanding</option>
+ <option value="Paid">{t('Fully Paid (posts Receipt instantly)')}</option>
+ <option value="Partially Paid">{t('Partially Paid (requires first partial payment subsequent entry)')}</option>
+ <option value="Unpaid">{t('Pending / Unpaid Outstanding')}</option>
  </select>
  </div>
  </div>
 
  {/* Notes Field */}
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Internal / Client Notes</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Internal / Client Notes')}</label>
  <textarea
  value={convForm.notes}
  onChange={(e) => setConvForm({ ...convForm, notes: e.target.value })}
  rows={2}
  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-indigo-600"
- placeholder="Notes to appear on invoice..."
+ placeholder={t('Notes to appear on invoice...')}
  />
  </div>
 
  {/* Items Table */}
  <div className="border border-slate-100 rounded-xl p-4 bg-slate-50/20">
  <div className="flex justify-between items-center mb-2.5">
- <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Line Items (Adjustable)</span>
+ <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Line Items (Adjustable)')}</span>
  <button
  type="button"
  onClick={handleConvAddLine}
  className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
  >
- <Plus className="w-3.5 h-3.5" /> Add New Item Line
+ <Plus className="w-3.5 h-3.5" /> {t('Add New Item Line')}
  </button>
  </div>
 
@@ -1297,11 +1313,11 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  return (
  <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-2.5 bg-slate-50 border border-slate-100 p-2.5 rounded-xl items-center">
  <div className="md:col-span-5 col-span-12 space-y-1">
- <label className="text-[9px] text-slate-400 font-semibold uppercase">Description</label>
+ <label className="text-[9px] text-slate-400 font-semibold uppercase">{t('Description')}</label>
  <input
  type="text"
  required
- placeholder="CNC Services / Materials"
+ placeholder={t('CNC Services / Materials')}
  value={item.description}
  onChange={(e) => handleConvUpdateLine(idx, 'description', e.target.value)}
  className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-800 focus:outline-none font-medium"
@@ -1309,7 +1325,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  </div>
 
  <div className="md:col-span-2 col-span-4 space-y-1">
- <label className="text-[9px] text-slate-400 font-semibold uppercase">Unit Cost ({currencySymbol})</label>
+ <label className="text-[9px] text-slate-400 font-semibold uppercase">{t('Unit Cost')} ({currencySymbol})</label>
  <input
  type="number"
  required
@@ -1322,7 +1338,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  </div>
 
  <div className="md:col-span-1.5 col-span-4 space-y-1">
- <label className="text-[9px] text-slate-400 font-semibold uppercase">Qty</label>
+ <label className="text-[9px] text-slate-400 font-semibold uppercase">{t('Qty')}</label>
  <input
  type="number"
  required
@@ -1335,7 +1351,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  </div>
 
  <div className="md:col-span-1.5 col-span-4 space-y-1">
- <label className="text-[9px] text-slate-400 font-semibold uppercase">Line Disc ({currencySymbol})</label>
+ <label className="text-[9px] text-slate-400 font-semibold uppercase">{t('Line Disc')} ({currencySymbol})</label>
  <input
  type="number"
  min="0"
@@ -1348,7 +1364,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  </div>
 
  <div className="md:col-span-1.5 col-span-10 text-end space-y-1 self-center">
- <p className="text-[9px] text-slate-400 font-semibold uppercase">Line Net</p>
+ <p className="text-[9px] text-slate-400 font-semibold uppercase">{t('Line Net')}</p>
  <p className="text-xs font-bold text-slate-800">{lineTotal.toFixed(2)} {currencySymbol}</p>
  </div>
 
@@ -1358,7 +1374,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  disabled={convForm.items.length === 1}
  onClick={() => handleConvRemoveLine(idx)}
  className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 disabled:opacity-30 rounded-lg mt-3"
- title="Remove Line"
+ title={t('Remove Line')}
  >
  <Trash className="w-4 h-4" />
  </button>
@@ -1373,40 +1389,40 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  <div className="flex justify-end pt-3 border-t border-slate-100">
  <div className="w-80 bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1.5 text-xs">
  <div className="flex justify-between text-slate-500">
- <span>Items Gross Subtotal:</span>
+ <span>{t('Items Gross Subtotal:')}</span>
  <span className="font-semibold text-slate-800">
  {calculateInvoiceTotals(db, convForm.items, convForm.taxSlabId, convForm.discountPercentage).grossSubtotal.toFixed(2)} {currencySymbol}
  </span>
  </div>
- 
+
  {(() => {
    const calc = calculateInvoiceTotals(db, convForm.items, convForm.taxSlabId, convForm.discountPercentage);
    return (
      <>
        {calc.totalLineDiscount > 0 && (
          <div className="flex justify-between text-rose-600 font-semibold">
-           <span>Line Item Discounts:</span>
+           <span>{t('Line Item Discounts:')}</span>
            <span>-{calc.totalLineDiscount.toFixed(2)} {currencySymbol}</span>
          </div>
        )}
 
        {calc.totalLineDiscount > 0 && (
          <div className="flex justify-between text-slate-600 font-medium border-t border-slate-100/80 pt-1">
-           <span>Net Subtotal:</span>
+           <span>{t('Net Subtotal:')}</span>
            <span className="font-semibold text-slate-800">{calc.subtotal.toFixed(2)} {currencySymbol}</span>
          </div>
        )}
 
        {convForm.discountPercentage > 0 && (
          <div className="flex justify-between text-rose-600 font-semibold">
-           <span>Header Discount ({convForm.discountPercentage}%):</span>
+           <span>{t('Header Discount')} ({convForm.discountPercentage}%):</span>
            <span>-{calc.discountAmount.toFixed(2)} {currencySymbol}</span>
          </div>
        )}
 
        {calc.totalDiscount > 0 && (
          <div className="flex justify-between text-slate-700 font-bold border-t border-slate-100 pt-1">
-           <span>Total Discount Applied:</span>
+           <span>{t('Total Discount Applied:')}</span>
            <span className="text-rose-600">-{calc.totalDiscount.toFixed(2)} {currencySymbol}</span>
          </div>
        )}
@@ -1415,7 +1431,7 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  })()}
 
  <div className="flex justify-between text-slate-500">
- <span>VAT Slab ({calculateInvoiceTotals(db, convForm.items, convForm.taxSlabId, convForm.discountPercentage).percentage}%):</span>
+ <span>{t('VAT Slab')} ({calculateInvoiceTotals(db, convForm.items, convForm.taxSlabId, convForm.discountPercentage).percentage}%):</span>
  <span>
  {calculateInvoiceTotals(db, convForm.items, convForm.taxSlabId, convForm.discountPercentage).taxAmount.toFixed(2)} {currencySymbol}
  </span>
@@ -1437,13 +1453,13 @@ export default function QuotationModule({ db, onUpdateDb, onPrintDoc, mode, edit
  onClick={() => setConvertingQ(null)}
  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-semibold text-xs transition"
  >
- Discard Conversion
+ {t('Discard Conversion')}
  </button>
  <button
  type="submit"
  className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-5 py-2 font-bold text-xs shadow-sm transition"
  >
- Approve & Issue Invoice
+ {t('Approve & Issue Invoice')}
  </button>
  </div>
  </form>

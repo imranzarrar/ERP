@@ -1,11 +1,13 @@
 import { db } from '../../../src/db/index.js';
 import * as schema from '../../../src/db/schema.js';
-import { eq, and, inArray } from 'drizzle-orm';
-import { getNextHashChainState } from './hashChain.js';
+import { eq, and, ne, inArray } from 'drizzle-orm';
+import { getNextHashChainState, isStillChainTip, setHashChainState, ZatcaEnvironment } from './hashChain.js';
 import { generateZatcaUblXml } from './xmlBuilder.js';
 import { ZatcaApiClient } from './apiClient.js';
 import { recordAuditLog } from '../audit.js';
 import { validateBuyerFields } from './validators.js';
+import { normalizeZatcaUnitCode } from '../../../src/zatcaUnitCodes.js';
+import { decryptPrivateKey } from './keyEncryption.js';
 import crypto from 'crypto';
 
 function round2(n: number): number {
@@ -30,14 +32,14 @@ export async function processInvoiceZatca(invoiceId: string) {
   // still attribute a thrown API error to the right company/environment for audit
   // logging, even if the failure happens partway through.
   let companyId: string | null = null;
-  let environment: 'sandbox' | 'simulation' | 'production' = 'sandbox';
+  let environment: ZatcaEnvironment = 'sandbox';
   try {
     const [invoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invoiceId));
     if (!invoice) return { error: 'Invoice not found' };
 
     companyId = invoice.companyId;
     const [company] = await db.select().from(schema.companies).where(eq(schema.companies.id, companyId));
-    environment = (company?.zatcaEnvironment as 'sandbox' | 'simulation' | 'production') || 'sandbox';
+    environment = (company?.zatcaEnvironment as ZatcaEnvironment) || 'sandbox';
 
     // Master on/off switch — a company that hasn't enabled ZATCA (default for every new
     // company) must never attempt a real submission, regardless of environment. It must
@@ -62,10 +64,36 @@ export async function processInvoiceZatca(invoiceId: string) {
     // overwrites this, so it is never left stuck. Skipped for the DISABLED-path preview
     // below — that path never reserves the hash chain or calls the network, so there is no
     // in-flight window a concurrent Cancel could race against.
+    //
+    // The `status != 'Cancelled'` guard is load-bearing, not defensive decoration: the
+    // `invoice` row was fetched above with a plain (unlocked) SELECT, so by the time this
+    // UPDATE actually runs, POST /invoices/:id/cancel could have already committed a
+    // cancellation on the same row. Postgres evaluates an UPDATE's WHERE clause and its
+    // SET atomically against the row's *current* state, not the stale copy this function
+    // is holding in memory — so making the transition itself conditional (instead of
+    // trusting the in-memory `invoice.status` read a moment earlier) is what actually
+    // closes the race, regardless of which of the two requests happens to run first.
+    // `.returning()` is how we find out whether the guard actually matched: zero rows back
+    // means a concurrent cancel won, and this invoice must never reserve a hash-chain
+    // position or reach ZATCA at all.
     if (zatcaEnabled) {
-      await db.update(schema.invoices)
+      // Also refuses a second concurrent call already in flight for this same invoice
+      // (SUBMITTING) — without this, two near-simultaneous calls (e.g. a double-click on
+      // "resubmit", or a race between the original fire-and-forget call and a fast manual
+      // resubmit) could both pass this guard and both proceed to reserve a chain position,
+      // wastefully burning an extra ICV for nothing once the fresh-mint resubmission logic
+      // below no longer treats a stalled reservation as automatically safe to reuse.
+      const [claimed] = await db.update(schema.invoices)
         .set({ zatcaStatus: 'SUBMITTING' })
-        .where(eq(schema.invoices.id, invoiceId));
+        .where(and(
+          eq(schema.invoices.id, invoiceId),
+          ne(schema.invoices.status, 'Cancelled'),
+          ne(schema.invoices.zatcaStatus, 'SUBMITTING'),
+        ))
+        .returning({ id: schema.invoices.id });
+      if (!claimed) {
+        return { error: 'Invoice was cancelled, or already has a submission in flight.' };
+      }
     }
 
     const [config] = await db.select().from(schema.zatcaEnvironmentConfigs)
@@ -144,12 +172,18 @@ export async function processInvoiceZatca(invoiceId: string) {
       const netUnitCost = round2(Math.max(0, unitCost - discount));
       const lineSubtotalRaw = round2(netUnitCost * Number(it.quantity));
       const lineSubtotal = round2(lineSubtotalRaw * shrinkFactor);
+      // PriceAmount in the XML stays the raw, undiscounted unitCost (see below) — the gap
+      // between quantity*unitCost and the final discounted lineSubtotal must be declared
+      // as its own line-level AllowanceCharge or ZATCA's BR-KSA-EN16931-11 reconciliation
+      // check fails on any discounted line (per-item discount and/or header discount %).
+      const lineDiscountAmount = round2(Math.max(0, round2(unitCost * Number(it.quantity)) - lineSubtotal));
 
       const resolvedSlab = it.taxSlabId ? slabById.get(it.taxSlabId) : undefined;
       const lineVatRate = resolvedSlab ? Number(resolvedSlab.percentage) : vatRate;
       const lineTaxCategoryCode = resolvedSlab
         ? resolveTaxCategoryCode(resolvedSlab.name, lineVatRate)
         : resolveTaxCategoryCode(taxSlab?.name, lineVatRate);
+      const exemptionSlab = resolvedSlab || taxSlab;
 
       return {
         name: it.description,
@@ -160,6 +194,14 @@ export async function processInvoiceZatca(invoiceId: string) {
         vatAmount: round2(lineSubtotal * (lineVatRate / 100)),
         totalAmount: round2(lineSubtotal * (1 + lineVatRate / 100)),
         taxCategoryCode: lineTaxCategoryCode,
+        // Only meaningful for 'E'/'Z' categories, and only emitted at all once an admin
+        // has actually configured a real reason for this slab (src/db/schema.ts's
+        // taxSlabs comment) — undefined otherwise, reproducing today's existing warning
+        // rather than a fabricated code.
+        exemptionReasonCode: exemptionSlab?.exemptionReasonCode || undefined,
+        exemptionReason: exemptionSlab?.exemptionReason || undefined,
+        lineDiscountAmount: lineDiscountAmount > 0 ? lineDiscountAmount : undefined,
+        unitCode: normalizeZatcaUnitCode(it.unit),
       };
     });
 
@@ -172,7 +214,24 @@ export async function processInvoiceZatca(invoiceId: string) {
     // call never received a uuid at all, causing ZATCA's real validator to reject the
     // submission with "UUID provided in the invoice doesn't match UUID in the provided
     // Request" (confirmed via a real Compliance Invoice API call).
-    const invoiceUuid = inv.uuid || crypto.randomUUID();
+    // `let`, not `const` — the reservation transaction below may replace this with a fresh
+    // UUID if a prior reservation on this invoice is being superseded rather than reused
+    // (ZATCA's own guidance: a UUID must never be reused once its original reservation is
+    // no longer safely reusable — see the resubmission-identity logic further down).
+    let invoiceUuid = inv.uuid || crypto.randomUUID();
+
+    // IssueDate/IssueTime must reflect when this invoice was actually generated/issued to
+    // the customer, once, and never drift on a later retry or resubmit — otherwise the
+    // document ZATCA eventually clears could carry a different timestamp than whatever was
+    // already printed/shown to the customer at creation time. `invoice.createdAt` is set
+    // once at row insert and never written to again anywhere in this codebase, so deriving
+    // IssueTime from it (the same way IssueDate already correctly derives from
+    // `invoice.date`) keeps it stable across every processing attempt for free, with no new
+    // state to track. ZATCA's own guidance (Detailed Technical Guidelines FAQ) explicitly
+    // permits — but does not require — updating the time on a genuine resubmission; this
+    // app deliberately chooses not to, for document-integrity reasons (see prior
+    // discussion): what's cleared must match what the customer already has.
+    const issueTime = new Date(invoice.createdAt as any).toISOString().split('T')[1]?.substring(0, 8) || '12:00:00';
 
     if (!zatcaEnabled) {
       // DISABLED-path preview: build a real Phase-1-compliant QR/XML WITHOUT touching the
@@ -194,7 +253,7 @@ export async function processInvoiceZatca(invoiceId: string) {
         invoiceNumber: inv.invoiceNumber || inv.id,
         uuid: invoiceUuid,
         issueDate: inv.invoiceDate || inv.date || new Date().toISOString().split('T')[0],
-        issueTime: new Date().toISOString().split('T')[1]?.substring(0, 8) || '12:00:00',
+        issueTime,
         invoiceTypeCode,
         documentSubtypeCode: documentType === 'CreditNote' ? '381' : documentType === 'DebitNote' ? '383' : '388',
         billingReference: originalInvoice ? { invoiceNumber: originalInvoice.invoiceNumber } : undefined,
@@ -262,16 +321,55 @@ export async function processInvoiceZatca(invoiceId: string) {
     let icv = 0;
     let pih = '';
     let zatcaDoc!: ReturnType<typeof generateZatcaUblXml>;
+    // Set inside the transaction, logged after it commits — recordAuditLog uses the plain
+    // (untransacted) `db` connection, and auditLogs.companyId is a foreign key into
+    // companies; calling it from inside a transaction that's already holding a FOR UPDATE
+    // lock on that exact companies row self-deadlocks (a real bug caught here: the
+    // separate connection's insert blocks waiting for a row lock the still-open outer
+    // transaction holds, until Postgres's statement_timeout cancels it).
+    let supersededAudit: Record<string, any> | null = null;
     await db.transaction(async (tx) => {
       await tx.select().from(schema.companies).where(eq(schema.companies.id, companyId!)).for('update');
 
-      if (invoice.icv && invoice.previousInvoiceHash) {
-        // Already reserved by an earlier attempt (e.g. a manual resubmit) — reuse it
-        // rather than reserving a second position for the same invoice.
-        icv = invoice.icv;
-        pih = invoice.previousInvoiceHash;
+      // Resubmission identity: per ZATCA's own guidance (Detailed Technical Guidelines
+      // FAQ), a document's ICV/UUID are only safe to reuse on a later attempt when BOTH
+      // (a) the original attempt definitively never reached ZATCA's network at all — the
+      // only status/code combination that guarantees this is NOT_SUBMITTED with the
+      // ONBOARDING_INCOMPLETE code (set below, before any fetch call ever happens; a
+      // network exception or an actual REJECTED response are both treated conservatively
+      // as "might have reached ZATCA," never safe to assume otherwise), and (b) nothing
+      // else has been generated at a later chain position since (isStillChainTip) — if
+      // another invoice already chained off this one's original hash, that position is
+      // permanently structural regardless of what ZATCA itself ever saw. Failing either
+      // condition, this is treated as a brand-new document: fresh ICV/PIH (chaining off
+      // whatever the real current tip is now) and a fresh UUID, exactly as ZATCA's FAQ
+      // describes a fix-and-resubmit ("similar to submitting a new invoice").
+      const neverReachedZatca = invoice.zatcaStatus === 'NOT_SUBMITTED'
+        && Array.isArray(invoice.zatcaValidationResults)
+        && (invoice.zatcaValidationResults as any[]).some((r: any) => r?.code === 'ONBOARDING_INCOMPLETE');
+
+      const reuseExisting = Boolean(
+        invoice.icv && invoice.previousInvoiceHash && neverReachedZatca
+        && await isStillChainTip(companyId!, environment, invoice.icv, tx)
+      );
+
+      if (reuseExisting) {
+        icv = invoice.icv!;
+        pih = invoice.previousInvoiceHash!;
       } else {
-        const hashState = await getNextHashChainState(companyId!, tx);
+        if (invoice.icv) {
+          // A prior reservation exists but can no longer be safely reused — captured here
+          // for the audit trail (written after the transaction commits, see above),
+          // mirroring how ZATCA's own platform permanently records a rejected document's
+          // hash even though it was never accepted.
+          supersededAudit = {
+            companyId, environment,
+            oldIcv: invoice.icv, oldUuid: invoice.uuid, oldHash: invoice.currentInvoiceHash,
+            reason: neverReachedZatca ? 'superseded_by_later_invoice' : 'zatca_contact_confirmed_or_ambiguous',
+          };
+          invoiceUuid = crypto.randomUUID();
+        }
+        const hashState = await getNextHashChainState(companyId!, environment, tx);
         icv = hashState.icv;
         pih = hashState.previousInvoiceHash;
       }
@@ -280,7 +378,7 @@ export async function processInvoiceZatca(invoiceId: string) {
         invoiceNumber: inv.invoiceNumber || inv.id,
         uuid: invoiceUuid,
         issueDate: inv.invoiceDate || inv.date || new Date().toISOString().split('T')[0],
-        issueTime: new Date().toISOString().split('T')[1]?.substring(0, 8) || '12:00:00',
+        issueTime,
         invoiceTypeCode,
         documentSubtypeCode: documentType === 'CreditNote' ? '381' : documentType === 'DebitNote' ? '383' : '388',
         billingReference: originalInvoice ? { invoiceNumber: originalInvoice.invoiceNumber } : undefined,
@@ -318,7 +416,7 @@ export async function processInvoiceZatca(invoiceId: string) {
         subtotal,
         totalVat,
         grandTotal,
-        privateKeyPem: config?.ecdsaPrivateKey || undefined,
+        privateKeyPem: config?.ecdsaPrivateKey ? decryptPrivateKey(config.ecdsaPrivateKey) : undefined,
         certificatePem: config?.productionCsidCert || config?.complianceCsidCert || undefined,
       });
 
@@ -326,7 +424,11 @@ export async function processInvoiceZatca(invoiceId: string) {
       // makes the reservation actually visible to the next concurrent caller, instead of
       // only being written after a slow network call (the original bug: the claim wasn't
       // persisted until after ZATCA's response, so nothing stopped a second invoice from
-      // reading the same "last invoice" in the meantime).
+      // reading the same "last invoice" in the meantime). Advances zatcaChainState's tip
+      // for this (companyId, environment) in the same locked step, so the very next
+      // concurrent caller's isStillChainTip/getNextHashChainState call sees it too.
+      await setHashChainState(companyId!, environment, icv, zatcaDoc.invoiceHashBase64, tx);
+
       await tx.update(schema.invoices)
         .set({
           invoiceTypeCode,
@@ -339,6 +441,10 @@ export async function processInvoiceZatca(invoiceId: string) {
         })
         .where(eq(schema.invoices.id, invoiceId));
     });
+
+    if (supersededAudit) {
+      await recordAuditLog({ targetCompanyId: companyId }, 'zatca_chain_identity_superseded', 'invoices', invoiceId, supersededAudit);
+    }
 
     // Call ZATCA API — deliberately outside the lock above: the network call doesn't
     // affect chain integrity (that was already settled and persisted), and holding a

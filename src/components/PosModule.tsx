@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { DatabaseState, saveInvoice, getAndIncrementCounter, calculateInvoiceTotals, getDefaultTaxSlabId } from '../dbStore';
+import { DatabaseState, calculateInvoiceTotals, getDefaultTaxSlabId } from '../dbStore';
 import { ProductService, Customer, PosShift, PosHeldInvoice, PosCartItem, TaxSlab, Invoice, BankAccount } from '../types';
 import { Search, ShoppingCart, ShoppingBag, Trash2, Printer, Check, X, Pause, Play, Users, CreditCard, Banknote, UserPlus, LogOut, PackageSearch, Tag, Receipt, Maximize, Minimize } from 'lucide-react';
 import { useTranslation, usePermissions } from '../hooks';
@@ -8,11 +8,29 @@ import { generateId } from '../id';
 
 interface PosModuleProps {
   db: DatabaseState;
-  onUpdateDb: (newDb: DatabaseState | ((prev: DatabaseState) => DatabaseState)) => void;
+  // setDb-only local state update (App.tsx's handleUpdateDbLocal) — no /api/migrate POST.
+  // Used for shift open/close and hold/resume, which already persist for real via their
+  // own dedicated routes (POST/PUT /api/pos/shifts, POST/DELETE /api/pos/held-invoices)
+  // before this is called. This module used to also have a full-blob onUpdateDb path that
+  // re-uploaded this browser tab's ENTIRE stale db snapshot on every one of those actions
+  // — confirmed live as the cause of a real POS failure (a stale cached db.users entry
+  // referencing an already-deleted company hit a foreign-key violation and blocked the
+  // shift action entirely), and removed. handlePayInvoice (the actual sale) persists via
+  // the real POST /api/transactions/invoices route (same one
+  // InvoiceModule.handleSaveInvoice uses) and refreshes local state from GET /api/state,
+  // same pattern as this file's other handlers. Deliberately a function-updater only, not
+  // a raw DatabaseState — see App.tsx's handleUpdateDbLocal comment for the incident this
+  // prevents at compile time.
+  onUpdateDbLocal: (updater: (prev: DatabaseState) => DatabaseState) => void;
+  // Real GET /api/state refetch (App.tsx's triggerDbRefresh), merged the same way the
+  // initial page load is — see InvoiceModule.tsx's identical prop for the full incident
+  // this fixes (handing a raw /api/state response straight to onUpdateDbLocal silently
+  // dropped selectedCompanyId/companySetup/currentUser and reset the active company).
+  onRefreshDb?: () => Promise<void>;
   currentUser: any;
 }
 
-export default function PosModule({ db, onUpdateDb, currentUser, defaultTab = 'terminal', onClose }: PosModuleProps & { defaultTab?: 'terminal' | 'held' | 'history' | 'shifts', onClose?: () => void }) {
+export default function PosModule({ db, onUpdateDbLocal, onRefreshDb, currentUser, defaultTab = 'terminal', onClose }: PosModuleProps & { defaultTab?: 'terminal' | 'held' | 'history' | 'shifts', onClose?: () => void }) {
   const activeCompany = db.companies?.find((c:any) => c.id === (db.selectedCompanyId));
   const currency = activeCompany?.currency || 'SAR';
   const { t, isRTL } = useTranslation(db);
@@ -58,7 +76,7 @@ export default function PosModule({ db, onUpdateDb, currentUser, defaultTab = 't
 
   React.useEffect(() => { setActiveTab(defaultTab); }, [defaultTab]);
 
-  const handleStartShift = () => {
+  const handleStartShift = async () => {
     // Check for open fiscal month
     const openMonth = fiscalMonths?.find(m => m.companyId === activeCompanyId && m.status === 'Open');
     if (!openMonth) {
@@ -77,7 +95,21 @@ export default function PosModule({ db, onUpdateDb, currentUser, defaultTab = 't
       startCash: parseFloat(startingCash) || 0,
       status: 'open'
     };
-    onUpdateDb(prev => ({ ...prev, posShifts: [...(prev.posShifts || []), newShift] }));
+    // Persist via the real per-record route first (POST /api/pos/shifts) — only reflect
+    // the shift in local state once the server has actually accepted it, so the terminal
+    // never unlocks for a shift that didn't really persist.
+    try {
+      const res = await fetch('/api/pos/shifts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newShift) });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || t('Failed to start shift.'));
+        return;
+      }
+    } catch {
+      alert(t('Failed to start shift.'));
+      return;
+    }
+    onUpdateDbLocal(prev => ({ ...prev, posShifts: [...(prev.posShifts || []), newShift] }));
   };
 
   // Basic layout if no shift - only block terminal access
@@ -127,8 +159,8 @@ export default function PosModule({ db, onUpdateDb, currentUser, defaultTab = 't
         )}
       </div>
       <div className="flex-1 overflow-hidden relative bg-white">
-        {activeTab === 'terminal' && <PosMainApp db={db} onUpdateDb={onUpdateDb} currentUser={currentUser} activeShift={activeShift} activeCompanyId={activeCompanyId} posSettings={posSettings} cart={cart} setCart={setCart} holdCustomerId={holdCustomerId} setHoldCustomerId={setHoldCustomerId} onClose={onClose} fiscalMonths={fiscalMonths} />}
-        {activeTab === 'held' && <PosHeldInvoices db={db} onUpdateDb={onUpdateDb} currentUser={currentUser} activeCompanyId={activeCompanyId} onResume={(heldInvoice: any) => { setCart(heldInvoice.items); setHoldCustomerId(heldInvoice.customerId); setActiveTab('terminal'); }} restricted={true} />}
+        {activeTab === 'terminal' && <PosMainApp db={db} onUpdateDbLocal={onUpdateDbLocal} onRefreshDb={onRefreshDb} currentUser={currentUser} activeShift={activeShift} activeCompanyId={activeCompanyId} posSettings={posSettings} cart={cart} setCart={setCart} holdCustomerId={holdCustomerId} setHoldCustomerId={setHoldCustomerId} onClose={onClose} fiscalMonths={fiscalMonths} />}
+        {activeTab === 'held' && <PosHeldInvoices db={db} onUpdateDbLocal={onUpdateDbLocal} currentUser={currentUser} activeCompanyId={activeCompanyId} onResume={(heldInvoice: any) => { setCart(heldInvoice.items); setHoldCustomerId(heldInvoice.customerId); setActiveTab('terminal'); }} restricted={true} />}
 
         {activeTab === 'history' && <PosSalesHistory db={db} activeCompanyId={activeCompanyId} currentUser={currentUser} restricted={true} />}
 
@@ -141,7 +173,7 @@ export default function PosModule({ db, onUpdateDb, currentUser, defaultTab = 't
 
 // Will write PosMainApp in next step to avoid payload too large
 
-function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId, posSettings, cart, setCart, holdCustomerId, setHoldCustomerId, onClose, fiscalMonths }: any) {
+function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift, activeCompanyId, posSettings, cart, setCart, holdCustomerId, setHoldCustomerId, onClose, fiscalMonths }: any) {
   const { t, isRTL } = useTranslation(db);
 
   // Up to 3 fiscal months can be open concurrently now (see server/routes/transactions.ts,
@@ -175,6 +207,7 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
   const [payBankId, setPayBankId] = useState<string>('cash');
   const [payCustomerId, setPayCustomerId] = useState<string>('');
   const [receivedAmount, setReceivedAmount] = useState<string>('');
+  const [isSavingPos, setIsSavingPos] = useState(false);
   const receivedAmountRef = React.useRef<HTMLInputElement>(null);
   
   React.useEffect(() => {
@@ -302,7 +335,7 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
   const taxPercentage = cartTotals.percentage;
   const total = cartTotals.grandTotal;
 
-  const handleHoldInvoice = () => {
+  const handleHoldInvoice = async () => {
     if (!holdCustomerId) return alert(t('Customer selection is mandatory for pending (held) payments.'));
     const newHold: PosHeldInvoice = {
       // Same real-uuid-column issue as handleStartShift above — fixed identically.
@@ -314,13 +347,27 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
       createdAt: new Date().toISOString(),
       reference: `POS-HOLD-${Math.floor(Math.random() * 10000)}`
     };
-    onUpdateDb((prev: any) => ({ ...prev, posHeldInvoices: [...(prev.posHeldInvoices || []), newHold] }));
+    // Persist via the real per-record route (POST /api/pos/held-invoices) — held
+    // invoices previously lived only in local React state and were wiped on refresh.
+    try {
+      const res = await fetch('/api/pos/held-invoices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newHold) });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || t('Failed to hold invoice.'));
+        return;
+      }
+    } catch {
+      alert(t('Failed to hold invoice.'));
+      return;
+    }
+    onUpdateDbLocal((prev: any) => ({ ...prev, posHeldInvoices: [...(prev.posHeldInvoices || []), newHold] }));
     setCart([]);
     setShowHoldModal(false);
   };
 
-  const handlePayInvoice = () => {
+  const handlePayInvoice = async () => {
     if (!payBankId) return alert(t('Please select a payment method (Bank/Cash).'));
+    if (isSavingPos) return;
 
     // Guard against confirming a sale for less cash than the (tax-inclusive) total
     // actually due — previously any received amount (including a blank/0 field) was
@@ -348,7 +395,26 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
        }
     }
 
-    const invData = {
+    // Same catalog-match unit inheritance QuotationModule/InvoiceModule use ('No'/
+    // 'Lumpsum' are the Unit-of-Measure picker's non-ZATCA-code placeholders, falls
+    // back to 'PCE' matching normalizeZatcaUnitCode's server-side default) — POS sales
+    // previously carried no unit at all onto the ZATCA XML.
+    const items = cart.map(item => {
+      const product = (db.products || []).find((p: any) => p.id === item.productId);
+      const zatcaUnit = product?.unit && product.unit !== 'No' && product.unit !== 'Lumpsum' ? product.unit : 'PCE';
+      return {
+        id: generateId(),
+        description: item.productName || item.productId,
+        unitCost: item.unitPrice,
+        quantity: item.quantity,
+        discountAmount: item.discount,
+        taxSlabId: posTaxSlabId,
+        unit: zatcaUnit,
+        productId: item.productId,
+      };
+    });
+
+    const invoiceData = {
       companyId: activeCompanyId,
       isPosSale: true,
       shiftId: activeShift.id,
@@ -357,22 +423,46 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
       bankId: finalBankId,
       date: getPosSaleDate(),
       paymentStatus: 'Paid',
+      amountPaid: total,
       paymentDate: getPosSaleDate(),
       notes: t('POS Sale'),
       status: 'Active',
       originQuotationId: null,
-      items: cart.map(item => ({
-        id: `inv-item-${Math.random()}`,
-        description: item.productName || item.productId,
-        unitCost: item.unitPrice,
-        quantity: item.quantity,
-        discountAmount: item.discount
-      }))
+      items,
     };
-    console.log('Attempting to save invoice with data:', JSON.stringify(invData, null, 2));
-    const { db: updatedDb, error } = saveInvoice(db, invData as any);
-    if (error) return alert(error);
-    onUpdateDb(updatedDb);
+
+    // Persist via the same real, dedicated route every other invoice-creation path uses
+    // (POST /api/transactions/invoices) instead of the legacy dbStore.saveInvoice +
+    // full-blob onUpdateDb path — that path never reached processInvoiceZatca at all, so
+    // every completed POS sale silently stayed zatcaStatus: 'NOT_SUBMITTED' forever
+    // (BACKLOG.md item 32/40). This route computes totals server-side, generates the
+    // real invoice number, posts the Receipt voucher, and fires ZATCA clearance/
+    // reporting fire-and-forget after its own transaction commits — same as
+    // InvoiceModule.handleSaveInvoice.
+    setIsSavingPos(true);
+    try {
+      const res = await fetch('/api/transactions/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceData }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(body.error || t('Failed to complete sale.'));
+        return;
+      }
+
+      // The dedicated endpoint is the source of truth for the generated invoice number,
+      // computed totals, and items — refresh from it rather than trusting local echo
+      // (same pattern as InvoiceModule.handleSaveInvoice).
+      if (onRefreshDb) await onRefreshDb();
+    } catch {
+      alert(t('Failed to complete sale — check your connection and try again.'));
+      return;
+    } finally {
+      setIsSavingPos(false);
+    }
+
     setCart([]);
     setShowPayModal(false);
     setReceivedAmount('');
@@ -381,7 +471,7 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
     }
   };
 
-  const handleCloseShiftConfirm = () => {
+  const handleCloseShiftConfirm = async () => {
     const actual = parseFloat(actualCash) || 0;
 
     // Expected cash = starting float + this shift's sales (same "Total Sales" figure
@@ -394,10 +484,25 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
       .filter((i: Invoice) => i.companyId === activeCompanyId && i.shiftId === activeShift.id && i.status !== 'Cancelled')
       .reduce((sum: number, inv: Invoice) => sum + (inv.amountPaid || 0), 0);
     const expected = (activeShift.startCash || 0) + shiftSales;
+    const closeUpdates = { status: 'closed', endTime: new Date().toISOString(), endCash: actual, expectedCash: expected };
 
-    onUpdateDb((prev: any) => ({
+    // Persist via the real per-record route (PUT /api/pos/shifts/:id) — only send the
+    // fields actually changing, not the whole shift row.
+    try {
+      const res = await fetch(`/api/pos/shifts/${activeShift.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(closeUpdates) });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || t('Failed to close shift.'));
+        return;
+      }
+    } catch {
+      alert(t('Failed to close shift.'));
+      return;
+    }
+
+    onUpdateDbLocal((prev: any) => ({
       ...prev,
-      posShifts: prev.posShifts.map((s: PosShift) => s.id === activeShift.id ? { ...s, status: 'closed', endTime: new Date().toISOString(), endCash: actual, expectedCash: expected } : s)
+      posShifts: prev.posShifts.map((s: PosShift) => s.id === activeShift.id ? { ...s, ...closeUpdates } : s)
     }));
     setShowCloseShiftModal(false);
   };
@@ -428,7 +533,7 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
               onClick={() => setSelectedCategory(c)}
               className={`px-4 py-2 rounded-xl font-bold whitespace-nowrap transition-all ${selectedCategory === c ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
             >
-              {t(c)}
+              {c === 'All' ? t('All') : c}
             </button>
           ))}
         </div>
@@ -449,7 +554,12 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
                 ) : (
                   <PackageSearch className="w-10 h-10 text-slate-300" />
                 )}
-                {p.category && <span className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm text-[10px] font-bold px-2 py-0.5 rounded-full text-slate-600 shadow-sm">{t(p.category)}</span>}
+                {/* p.category is arbitrary per-company user data (a category name the company itself
+ typed in, e.g. "Plywood Sheets") — not fixed app UI vocabulary, so it must not go
+ through t() (same class of bug as the fiscal-month-name issue: would register a
+ brand-new, never-translatable "missing key" per company per category). Rendered as-is,
+ same as product names/customer names elsewhere in the app. */}
+ {p.category && <span className="absolute top-2 left-2 bg-white/90 backdrop-blur-sm text-[10px] font-bold px-2 py-0.5 rounded-full text-slate-600 shadow-sm">{p.category}</span>}
               </div>
               <div className="p-3 flex-1 flex flex-col justify-between">
                 <div className="font-bold text-slate-800 leading-tight line-clamp-2">{p.name}</div>
@@ -672,9 +782,9 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
             </div>
 
             <div className="flex gap-3 mt-8">
-              <button onClick={() => setShowPayModal(false)} className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition">{t("Cancel")}</button>
-              <button onClick={handlePayInvoice} className="flex-[2] py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2">
-                <Check className="w-5 h-5" /> {t("Confirm Payment")}
+              <button onClick={() => setShowPayModal(false)} disabled={isSavingPos} className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition disabled:opacity-50">{t("Cancel")}</button>
+              <button onClick={handlePayInvoice} disabled={isSavingPos} className="flex-[2] py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 disabled:opacity-50">
+                <Check className="w-5 h-5" /> {isSavingPos ? t('Processing...') : t('Confirm Payment')}
               </button>
             </div>
           </div>
@@ -716,7 +826,7 @@ function PosMainApp({ db, onUpdateDb, currentUser, activeShift, activeCompanyId,
   );
 }
 
-function PosHeldInvoices({ db, onUpdateDb, currentUser, activeCompanyId, onResume, restricted }: any) {
+function PosHeldInvoices({ db, onUpdateDbLocal, currentUser, activeCompanyId, onResume, restricted }: any) {
   const { t } = useTranslation(db);
   const isAdmin = currentUser?.role === 'admin' || currentUser?.isSuperAdmin === true;
   const heldInvoices = (db.posHeldInvoices || []).filter((h: any) => {
@@ -728,6 +838,26 @@ function PosHeldInvoices({ db, onUpdateDb, currentUser, activeCompanyId, onResum
     }
     return true;
   });
+
+  // Persist the resume via the real per-record route (DELETE /api/pos/held-invoices/:id)
+  // before dropping it from local state, so a failed delete doesn't desync the cart from
+  // a held invoice the server still has on record.
+  const handleResume = async (h: any) => {
+    try {
+      const res = await fetch(`/api/pos/held-invoices/${h.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        alert(errData.error || t('Failed to resume held invoice.'));
+        return;
+      }
+    } catch {
+      alert(t('Failed to resume held invoice.'));
+      return;
+    }
+    onResume(h);
+    onUpdateDbLocal((prev: any) => ({ ...prev, posHeldInvoices: prev.posHeldInvoices.filter((inv: any) => inv.id !== h.id) }));
+  };
+
   return (
     <div className="p-6">
       <h2 className="text-xl font-bold mb-4">{t("Pending (Held) Invoices")}</h2>
@@ -752,7 +882,7 @@ function PosHeldInvoices({ db, onUpdateDb, currentUser, activeCompanyId, onResum
                   <td className="p-4 text-slate-800">{cust?.name || t("Unknown")}</td>
                   <td className="p-4 text-slate-600">{h.items.length} {t("items")}</td>
                   <td className="p-4 text-right">
-                    <button onClick={() => { onResume(h); onUpdateDb(prev => ({...prev, posHeldInvoices: prev.posHeldInvoices.filter((inv:any) => inv.id !== h.id)})) }} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 font-bold text-xs rounded-lg hover:bg-indigo-100">{t("Resume")}</button>
+                    <button onClick={() => handleResume(h)} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 font-bold text-xs rounded-lg hover:bg-indigo-100">{t("Resume")}</button>
                   </td>
                 </tr>
               );

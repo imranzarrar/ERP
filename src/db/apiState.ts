@@ -52,7 +52,15 @@ export async function getFullState() {
     const goodsReceiptNotes = await db.select().from(schema.goodsReceiptNotes);
     const goodsReceiptNoteItems = await db.select().from(schema.goodsReceiptNoteItems);
     const inventoryStocks = await db.select().from(schema.inventoryStocks);
-    
+    const purchaseBills = await db.select().from(schema.purchaseBills);
+    const purchaseReturns = await db.select().from(schema.purchaseReturns);
+    const purchaseReturnItems = await db.select().from(schema.purchaseReturnItems);
+    const physicalStockTakes = await db.select().from(schema.physicalStockTakes);
+    const physicalStockTakeItems = await db.select().from(schema.physicalStockTakeItems);
+    // Grows with every stock-mutating transaction (GRN/Return/Sale/Adjustment/StockTake) —
+    // bounded the same way invoices/vouchers are above, most-recent-first.
+    const stockLedgerTransactions = await db.select().from(schema.stockLedgerTransactions).orderBy(desc(schema.stockLedgerTransactions.date)).limit(DEFAULT_LIST_LIMIT);
+
     // Advanced Catalog Master Tables
     const productCategories = await db.select().from(schema.productCategories);
     const unitsOfMeasure = await db.select().from(schema.unitsOfMeasure);
@@ -141,6 +149,43 @@ export async function getFullState() {
       quantity: Number(s.quantity)
     }));
 
+    const billsMapped = purchaseBills.map(b => ({
+      ...b,
+      date: b.date.toISOString(),
+      dueDate: b.dueDate ? b.dueDate.toISOString() : null,
+      subTotal: Number(b.subTotal),
+      taxTotal: Number(b.taxTotal),
+      grandTotal: Number(b.grandTotal),
+      amountPaid: Number(b.amountPaid),
+    }));
+
+    const returnsWithItems = purchaseReturns.map(r => ({
+      ...r,
+      date: r.date.toISOString(),
+      items: purchaseReturnItems.filter(item => item.returnId === r.id).map(item => ({
+        ...item,
+        quantityReturned: Number(item.quantityReturned),
+      })),
+    }));
+
+    const stockTakesWithItems = physicalStockTakes.map(st => ({
+      ...st,
+      date: st.date.toISOString(),
+      items: physicalStockTakeItems.filter(item => item.stockTakeId === st.id).map(item => ({
+        ...item,
+        systemQuantity: Number(item.systemQuantity),
+        physicalQuantity: Number(item.physicalQuantity),
+        variance: Number(item.variance),
+      })),
+    }));
+
+    const stockLedgerTransactionsMapped = stockLedgerTransactions.map(slt => ({
+      ...slt,
+      date: slt.date.toISOString(),
+      quantityChange: Number(slt.quantityChange),
+      endingQuantity: Number(slt.endingQuantity),
+    }));
+
     return {
       companies,
       users,
@@ -184,6 +229,10 @@ export async function getFullState() {
       purchaseOrders: posWithItems,
       goodsReceiptNotes: grnsWithItems,
       inventoryStocks: stocksMapped,
+      purchaseBills: billsMapped,
+      purchaseReturns: returnsWithItems,
+      physicalStockTakes: stockTakesWithItems,
+      stockLedgerTransactions: stockLedgerTransactionsMapped,
       productCategories,
       unitsOfMeasure,
       productWarehouses,

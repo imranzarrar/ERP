@@ -30,7 +30,11 @@ import {
   UnitOfMeasure,
   ProductWarehouse,
   Role,
-  UserRoleAssignment
+  UserRoleAssignment,
+  PurchaseBill,
+  PurchaseReturn,
+  PhysicalStockTake,
+  StockLedgerTransaction
 } from './types';
 import { generateId } from './id';
 export { generateId };
@@ -65,6 +69,10 @@ export interface DatabaseState {
   purchaseOrders?: PurchaseOrder[];
   goodsReceiptNotes?: GoodsReceiptNote[];
   inventoryStocks?: InventoryStock[];
+  purchaseBills?: PurchaseBill[];
+  purchaseReturns?: PurchaseReturn[];
+  physicalStockTakes?: PhysicalStockTake[];
+  stockLedgerTransactions?: StockLedgerTransaction[];
   productCategories?: ProductCategory[];
   unitsOfMeasure?: UnitOfMeasure[];
   productWarehouses?: ProductWarehouse[];
@@ -505,7 +513,58 @@ export const SEED_TRANSLATIONS: TranslationItem[] = [
   { id: '019fa55c-622c-7124-8bb4-d46700df3669', key: 'Physical Warehouses', en: 'Physical Warehouses', ar: 'المستودعات الفعلية', ur: 'طبیعی گودام' },
   { id: '019fa55c-622c-7fe4-a56e-f58bdde76684', key: 'Define product hierarchy and Map material types to specific GL accounting groups.', en: 'Define product hierarchy and Map material types to specific GL accounting groups.', ar: 'تحديد الهيكل الهرمي للمنتج ورسم خرائط لأنواع المواد لمجموعات محاسبية معينة.', ur: 'مصنوعات کے درجہ بندی کی وضاحت کریں اور مادی اقسام کو مخصوص GL اکاؤنٹنگ گروپس کے ساتھ منسلک کریں۔' },
   { id: '019fa55c-622c-70ef-aaf3-2e523988eeaf', key: 'Configure standardized weights, dimensions, volumes, and UoM conversion units.', en: 'Configure standardized weights, dimensions, volumes, and UoM conversion units.', ar: 'تكوين الأوزان والأبعاد والأحجام الموحدة ووحدات التحويل.', ur: 'معیاری وزن، طول و عرض، حجم، اور پیمائش کی تبدیلی کے یونٹس کو ترتیب دیں۔' },
-  { id: '019fa55c-622c-7867-9d94-e613b2e4dad6', key: 'Setup and govern multiple physical storage locations, distribution centers, and shop floors.', en: 'Setup and govern multiple physical storage locations, distribution centers, and shop floors.', ar: 'إعداد وإدارة مواقع التخزين المادية المتعددة ومراكز التوزيع وورش العمل.', ur: 'متعدد طبیعی اسٹوریج مقامات، تقسیمی مراکز، اور دکان کے فرش قائم اور کنٹرول کریں۔' }
+  { id: '019fa55c-622c-7867-9d94-e613b2e4dad6', key: 'Setup and govern multiple physical storage locations, distribution centers, and shop floors.', en: 'Setup and govern multiple physical storage locations, distribution centers, and shop floors.', ar: 'إعداد وإدارة مواقع التخزين المادية المتعددة ومراكز التوزيع وورش العمل.', ur: 'متعدد طبیعی اسٹوریج مقامات، تقسیمی مراکز، اور دکان کے فرش قائم اور کنٹرول کریں۔' },
+  // Detailed Tax Invoice template — itemized buyer address + per-line tax columns.
+  { id: '7b3f1a2c-4d6e-4a1b-9c8d-1e2f3a4b5c6d', key: 'Item Code', en: 'Item Code', ar: 'رمز الصنف', ur: 'آئٹم کوڈ' },
+  { id: '7b3f1a2c-4d6e-4a1b-9c8d-1e2f3a4b5c6e', key: 'Tax Amount', en: 'Tax Amount', ar: 'مبلغ الضريبة', ur: 'ٹیکس کی رقم' },
+  { id: '7b3f1a2c-4d6e-4a1b-9c8d-1e2f3a4b5c6f', key: 'Taxable', en: 'Taxable', ar: 'الخاضع للضريبة', ur: 'قابل ٹیکس' },
+  { id: '7b3f1a2c-4d6e-4a1b-9c8d-1e2f3a4b5c70', key: 'District', en: 'District', ar: 'الحي', ur: 'ضلع' },
+  { id: '7b3f1a2c-4d6e-4a1b-9c8d-1e2f3a4b5c71', key: 'City', en: 'City', ar: 'المدينة', ur: 'شہر' },
+  { id: '7b3f1a2c-4d6e-4a1b-9c8d-1e2f3a4b5c72', key: 'Country', en: 'Country', ar: 'الدولة', ur: 'ملک' },
+  { id: '7b3f1a2c-4d6e-4a1b-9c8d-1e2f3a4b5c73', key: 'Building Number', en: 'Building Number', ar: 'رقم المبنى', ur: 'عمارت نمبر' },
+  { id: '7b3f1a2c-4d6e-4a1b-9c8d-1e2f3a4b5c74', key: 'Street Name', en: 'Street Name', ar: 'اسم الشارع', ur: 'گلی کا نام' },
+  { id: '7b3f1a2c-4d6e-4a1b-9c8d-1e2f3a4b5c75', key: 'Postal Code', en: 'Postal Code', ar: 'الرمز البريدي', ur: 'پوسٹل کوڈ' },
+  { id: '7b3f1a2c-4d6e-4a1b-9c8d-1e2f3a4b5c76', key: 'Amount in Words', en: 'Amount in Words', ar: 'المبلغ كتابة', ur: 'رقم الفاظ میں' },
+  { id: '7b3f1a2c-4d6e-4a1b-9c8d-1e2f3a4b5c77', key: 'Detailed Tax Invoice', en: 'Detailed Tax Invoice', ar: 'فاتورة ضريبية مفصلة', ur: 'تفصیلی ٹیکس انوائس' },
+  { id: '7b3f1a2c-4d6e-4a1b-9c8d-1e2f3a4b5c78', key: 'Standard Layout', en: 'Standard Layout', ar: 'تخطيط قياسي', ur: 'معیاری لے آؤٹ' },
+
+  // Login / Reset-password screens — rendered before any db.currentUser exists (see
+  // App.tsx's preLoginLang), so /api/state is never fetched at that point and the
+  // DB-backed translations table (Admin Settings → Translations) is unreachable. These
+  // keys MUST live here in the static seed, not only in the DB table, or the pre-login
+  // language toggle silently has nothing to translate against.
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d00', key: 'AUTHENTICATE SESSION', en: 'AUTHENTICATE SESSION', ar: 'تسجيل الدخول للجلسة', ur: 'سیشن کی توثیق کریں' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d01', key: 'Authorized personnel login. Dynamic corporate boundaries and RBAC validation enforced.', en: 'Authorized personnel login. Dynamic corporate boundaries and RBAC validation enforced.', ar: 'تسجيل دخول للموظفين المصرح لهم فقط. يتم فرض حدود الشركة الديناميكية والتحقق من صلاحيات الأدوار.', ur: 'صرف مجاز عملے کے لیے لاگ ان۔ متحرک کارپوریٹ حدود اور RBAC توثیق نافذ ہے۔' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d02', key: 'Back to Login', en: 'Back to Login', ar: 'العودة لتسجيل الدخول', ur: 'لاگ ان پر واپس جائیں' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d03', key: 'Choose a new password for your account. This link can only be used once.', en: 'Choose a new password for your account. This link can only be used once.', ar: 'اختر كلمة مرور جديدة لحسابك. يمكن استخدام هذا الرابط مرة واحدة فقط.', ur: 'اپنے اکاؤنٹ کے لیے نیا پاس ورڈ منتخب کریں۔ یہ لنک صرف ایک بار استعمال ہو سکتا ہے۔' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d04', key: 'Confirm New Password', en: 'Confirm New Password', ar: 'تأكيد كلمة المرور الجديدة', ur: 'نئے پاس ورڈ کی تصدیق کریں' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d05', key: 'Enter your username first.', en: 'Enter your username first.', ar: 'الرجاء إدخال اسم المستخدم أولاً.', ur: 'پہلے اپنا یوزر نیم درج کریں۔' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d1f', key: 'Enter your username and, if your account has an email on file, we\'ll send a reset link to it.', en: 'Enter your username and, if your account has an email on file, we\'ll send a reset link to it.', ar: 'أدخل اسم المستخدم الخاص بك، وإذا كان لدى حسابك بريد إلكتروني مسجل، فسنرسل رابط إعادة التعيين إليه.', ur: 'اپنا یوزر نیم درج کریں، اور اگر آپ کے اکاؤنٹ پر ای میل درج ہے، تو ہم آپ کو ری سیٹ لنک بھیج دیں گے۔' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d06', key: 'Failed to request a password reset.', en: 'Failed to request a password reset.', ar: 'فشل طلب إعادة تعيين كلمة المرور.', ur: 'پاس ورڈ ری سیٹ کی درخواست ناکام ہوگئی۔' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d07', key: 'Failed to request a password reset. Please try again.', en: 'Failed to request a password reset. Please try again.', ar: 'فشل طلب إعادة تعيين كلمة المرور. الرجاء المحاولة مرة أخرى.', ur: 'پاس ورڈ ری سیٹ کی درخواست ناکام ہوگئی۔ براہ کرم دوبارہ کوشش کریں۔' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d08', key: 'Failed to reset password.', en: 'Failed to reset password.', ar: 'فشل إعادة تعيين كلمة المرور.', ur: 'پاس ورڈ ری سیٹ کرنے میں ناکامی۔' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d09', key: 'Failed to reset password. Please try again.', en: 'Failed to reset password. Please try again.', ar: 'فشل إعادة تعيين كلمة المرور. الرجاء المحاولة مرة أخرى.', ur: 'پاس ورڈ ری سیٹ کرنے میں ناکامی۔ براہ کرم دوبارہ کوشش کریں۔' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d0a', key: 'Forgot password?', en: 'Forgot password?', ar: 'هل نسيت كلمة المرور؟', ur: 'پاس ورڈ بھول گئے؟' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d0b', key: 'INDUSTRIAL ERP PORTAL', en: 'INDUSTRIAL ERP PORTAL', ar: 'بوابة نظام تخطيط الموارد الصناعي', ur: 'انڈسٹریل ای آر پی پورٹل' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d0c', key: 'If that account exists and has an email on file, a password reset link has been sent to it.', en: 'If that account exists and has an email on file, a password reset link has been sent to it.', ar: 'إذا كان هذا الحساب موجودًا ولديه بريد إلكتروني مسجل، فقد تم إرسال رابط إعادة تعيين كلمة المرور إليه.', ur: 'اگر یہ اکاؤنٹ موجود ہے اور اس پر ای میل درج ہے، تو پاس ورڈ ری سیٹ لنک بھیج دیا گیا ہے۔' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d0d', key: 'Invalid credentials', en: 'Invalid credentials', ar: 'بيانات الدخول غير صحيحة', ur: 'غلط لاگ ان معلومات' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d0e', key: 'Login failed. Please try again.', en: 'Login failed. Please try again.', ar: 'فشل تسجيل الدخول. الرجاء المحاولة مرة أخرى.', ur: 'لاگ ان ناکام ہوگیا۔ براہ کرم دوبارہ کوشش کریں۔' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d0f', key: 'New Password', en: 'New Password', ar: 'كلمة المرور الجديدة', ur: 'نیا پاس ورڈ' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d10', key: 'Password must be at least 6 characters.', en: 'Password must be at least 6 characters.', ar: 'يجب أن تتكون كلمة المرور من 6 أحرف على الأقل.', ur: 'پاس ورڈ کم از کم 6 حروف کا ہونا چاہیے۔' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d11', key: 'Password updated. You can now log in with your new password.', en: 'Password updated. You can now log in with your new password.', ar: 'تم تحديث كلمة المرور. يمكنك الآن تسجيل الدخول بكلمة المرور الجديدة.', ur: 'پاس ورڈ اپ ڈیٹ ہوگیا۔ اب آپ اپنے نئے پاس ورڈ سے لاگ ان کر سکتے ہیں۔' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d12', key: 'Passwords do not match.', en: 'Passwords do not match.', ar: 'كلمتا المرور غير متطابقتين.', ur: 'پاس ورڈز مماثل نہیں ہیں۔' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d13', key: 'Reset Password', en: 'Reset Password', ar: 'إعادة تعيين كلمة المرور', ur: 'پاس ورڈ ری سیٹ کریں' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d14', key: 'Reset Your Password', en: 'Reset Your Password', ar: 'إعادة تعيين كلمة المرور الخاصة بك', ur: 'اپنا پاس ورڈ ری سیٹ کریں' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d15', key: 'SEND RESET LINK', en: 'SEND RESET LINK', ar: 'إرسال رابط إعادة التعيين', ur: 'ری سیٹ لنک بھیجیں' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d16', key: 'SENDING...', en: 'SENDING...', ar: 'جارٍ الإرسال...', ur: 'بھیجا جا رہا ہے...' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d17', key: 'SET NEW PASSWORD', en: 'SET NEW PASSWORD', ar: 'تعيين كلمة مرور جديدة', ur: 'نیا پاس ورڈ سیٹ کریں' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d18', key: 'Security Key', en: 'Security Key', ar: 'مفتاح الأمان', ur: 'سیکیورٹی کی' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d19', key: 'UPDATING...', en: 'UPDATING...', ar: 'جارٍ التحديث...', ur: 'اپ ڈیٹ ہو رہا ہے...' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d1a', key: 'User Identity', en: 'User Identity', ar: 'هوية المستخدم', ur: 'صارف کی شناخت' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d1b', key: 'Username', en: 'Username', ar: 'اسم المستخدم', ur: 'یوزر نیم' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d1c', key: 'Username and Password are required.', en: 'Username and Password are required.', ar: 'اسم المستخدم وكلمة المرور مطلوبان.', ur: 'یوزر نیم اور پاس ورڈ درکار ہیں۔' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d1d', key: 'Username or Account ID', en: 'Username or Account ID', ar: 'اسم المستخدم أو معرف الحساب', ur: 'یوزر نیم یا اکاؤنٹ آئی ڈی' },
+  { id: '8c4f2b3d-5e7f-4b2c-ad9e-2f3a4b5c6d1e', key: 'Your username', en: 'Your username', ar: 'اسم المستخدم الخاص بك', ur: 'آپ کا یوزر نیم' }
 ];
 
 export const INITIAL_DB: DatabaseState = {
@@ -539,6 +598,7 @@ export const INITIAL_DB: DatabaseState = {
   purchaseOrders: [],
   goodsReceiptNotes: [],
   inventoryStocks: [],
+  stockLedgerTransactions: [],
   counters: {
     quotation: 1001,
     invoice: 1001,
@@ -558,28 +618,6 @@ export function saveDatabase(db: DatabaseState): void {
 }
 
 // Validation helpers
-export function getAndIncrementCounter(db: DatabaseState, type: 'quotation' | 'invoice' | 'expense' | 'voucher', companyId: string): { db: DatabaseState; value: number } {
-  const companyIndex = db.companies.findIndex(c => c.id === companyId);
-  if (companyIndex !== -1) {
-    const comp = db.companies[companyIndex];
-    if (!comp.counters) {
-      comp.counters = { quotation: 1001, invoice: 1001, expense: 1001, voucher: 1001 };
-    }
-    const val = comp.counters[type];
-    comp.counters[type] = val + 1;
-    
-    // Sync active companySetup if it matches
-    if (db.selectedCompanyId === companyId) {
-      db.companySetup = { ...comp };
-    }
-    return { db, value: val };
-  } else {
-    // Fallback
-    const val = db.counters[type];
-    db.counters[type] = val + 1;
-    return { db, value: val };
-  }
-}
 
 // Multiple fiscal months can be open concurrently for a company (cap of 3, enforced in
 // openNewMonth/closeMonth below and server-side in server/routes/transactions.ts). Returns
@@ -626,49 +664,6 @@ export function isDateInOpenMonth(db: DatabaseState, dateStr: string, companyId?
   const compId = companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
   const monthId = dateStr.substring(0, 7);
   return db.months.some(m => m.id === monthId && m.companyId === compId && m.status?.toLowerCase() === 'open');
-}
-
-export function validateTransactionDate(db: DatabaseState, dateStr: string, companyId?: string): { valid: boolean; error?: string } {
-  const compId = companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-  const openMonths = getOpenMonths(db, compId);
-  if (openMonths.length === 0) {
-    return { valid: false, error: 'There is no open fiscal month. Admin must open a fiscal month first.' };
-  }
-
-  // Date format is YYYY-MM-DD, fiscal month id is YYYY-MM. Valid if the SPECIFIC month this
-  // date falls in is open — not just if some other month happens to be open.
-  const monthId = dateStr.substring(0, 7);
-  const matchingOpenMonth = openMonths.find(m => m.id === monthId);
-  if (!matchingOpenMonth) {
-    const openList = openMonths.map(m => `${m.name} (${m.id})`).join(', ');
-    return {
-      valid: false,
-      error: `Transaction date (${dateStr}) does not fall within any currently open fiscal month. Open month(s): ${openList}.`
-    };
-  }
-
-  return { valid: true };
-}
-
-// Auto-save typed sales items that do not exist in products catalogue
-export function ensureSalesProductExists(db: DatabaseState, nameAndDesc: string, cost: number, companyId?: string): DatabaseState {
-  const trimName = nameAndDesc.trim();
-  if (!trimName) return db;
-  
-  const compId = companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-  const exists = db.products.some(p => p.name.toLowerCase() === trimName.toLowerCase() && p.type === 'Sales' && p.companyId === compId);
-  if (!exists) {
-    const newProduct: ProductService = {
-      id: generateId(),
-      name: trimName,
-      description: `Automatically created during quotation/invoice entry for "${trimName}"`,
-      unitPrice: cost,
-      type: 'Sales',
-      companyId: compId
-    };
-    db.products.push(newProduct);
-  }
-  return db;
 }
 
 // Calculate totals for quotations or invoices
@@ -726,590 +721,40 @@ export function calculateInvoiceTotals(
   };
 }
 
+// Credit Notes carry POSITIVE amounts on the document itself — by deliberate ZATCA/UBL
+// convention, intent is carried by documentSubtypeCode (381) plus the BillingReference,
+// not by sign (see CLAUDE.md's ZATCA section). But every internal report/dashboard figure
+// that sums invoice totals must treat a Credit Note as a REDUCTION to revenue/receivables/
+// VAT collected, or it silently double-counts — the original invoice and its own reversal
+// both landing as positive sales. Found live: Dashboard's "Gross Month Sales" and every
+// revenue figure in ReportViewer.tsx/SalesReportsModule.tsx summed grandTotal with no
+// documentType check at all. A Debit Note represents genuine additional charges and stays
+// positive, same as a regular Invoice — this is deliberately CreditNote-only.
+export function getInvoiceSign(inv: { documentType?: string }): number {
+  return inv.documentType === 'CreditNote' ? -1 : 1;
+}
+
 // ----------------------------------------
-// TRANSACTION OPERATIONS (with AUTO-VOUCHERS)
+// TRANSACTION OPERATIONS — retired. This section used to hold a full parallel
+// reimplementation of quotation/invoice/expense create-and-mutate business logic
+// (saveQuotation, updateQuotation, saveInvoice, convertQuotationToInvoice,
+// markInvoicePaid, saveExpense, markExpensePaid, cancelExpense), synced back via the
+// generic /api/migrate blob-sync endpoint. Every real call site has since moved onto
+// dedicated, transactional, row-locked REST routes in server/routes/transactions.ts and
+// server/routes/expenses.ts (see BACKLOG.md item 65) — confirmed via a full grep across
+// src/, tests/, and server/ before removal, zero remaining callers of any function that
+// used to live here. Removed rather than left as dead code specifically because CLAUDE.md
+// documents this exact class of duplicated logic as having caused a real production bug
+// once already (the Cancel Invoice incident, BACKLOG item 35) when a fix landed on the
+// real route while this parallel path kept silently running the old behavior.
 // ----------------------------------------
-
-// Add Quotation
-export function saveQuotation(db: DatabaseState, qData: Omit<Quotation, 'id' | 'quotationNumber' | 'createdById' | 'createdAt'>): { db: DatabaseState; error?: string } {
-  const companyId = qData.companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-  const dateCheck = validateTransactionDate(db, qData.date, companyId);
-  if (!dateCheck.valid) return { db, error: dateCheck.error };
-  
-  if (qData.items.length === 0) return { db, error: 'At least one line item is required.' };
-  
-  // Validate items
-  for (const item of qData.items) {
-    if (!item.description.trim()) return { db, error: 'Item description is mandatory.' };
-    if (isNaN(item.unitCost) || item.unitCost < 0) return { db, error: 'Item unit cost must be a valid positive number.' };
-  }
-
-  const { db: updatedDb, value: qCount } = getAndIncrementCounter(db, 'quotation', companyId);
-  db = updatedDb;
-  const qNumber = `QT-${qCount}`;
-  const newQuotation: Quotation = {
-    ...qData,
-    companyId,
-    id: generateId(),
-    quotationNumber: qNumber,
-    createdById: db.currentUser.id,
-    createdAt: new Date().toISOString()
-  };
-
-  // Ensure items are saved to master
-  for (const item of qData.items) {
-    db = ensureSalesProductExists(db, item.description, item.unitCost, companyId);
-  }
-
-  db.quotations.push(newQuotation);
-  
-
-  return { db };
-}
-
-// Edit Quotation
-export function updateQuotation(db: DatabaseState, qId: string, qData: Partial<Quotation>): { db: DatabaseState; error?: string } {
-  const qIndex = db.quotations.findIndex(q => q.id === qId);
-  if (qIndex === -1) return { db, error: 'Quotation not found.' };
-  
-  const existing = db.quotations[qIndex];
-  if (existing.status === 'Converted') return { db, error: 'Converted quotations cannot be modified.' };
-
-  const companyId = existing.companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-
-  if (qData.date) {
-    const dateCheck = validateTransactionDate(db, qData.date, companyId);
-    if (!dateCheck.valid) return { db, error: dateCheck.error };
-  }
-
-  if (qData.items) {
-    if (qData.items.length === 0) return { db, error: 'At least one line item is required.' };
-    for (const item of qData.items) {
-      if (!item.description.trim()) return { db, error: 'Item description is mandatory.' };
-      if (isNaN(item.unitCost) || item.unitCost < 0) return { db, error: 'Item unit cost must be a valid positive number.' };
-    }
-    // Ensure items are saved to master
-    for (const item of qData.items) {
-      db = ensureSalesProductExists(db, item.description, item.unitCost, companyId);
-    }
-  }
-
-  db.quotations[qIndex] = {
-    ...existing,
-    ...qData,
-  } as Quotation;
-
-
-  return { db };
-}
-
-// Add Invoice (with Receipt Voucher automatic posting if Paid)
-export function saveInvoice(db: DatabaseState, invData: Omit<Invoice, 'id' | 'invoiceNumber' | 'createdById' | 'createdAt'>): { db: DatabaseState; newInvoice?: Invoice; error?: string } {
-  const companyId = invData.companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-  const dateCheck = validateTransactionDate(db, invData.date, companyId);
-  console.log('Date check result:', dateCheck);
-  if (!dateCheck.valid) return { db, error: dateCheck.error };
-  
-  if (invData.items.length === 0) return { db, error: 'At least one line item is required.' };
-  
-  for (const item of invData.items) {
-    if (!item.description.trim()) {
-      console.log('Validation failed: Item description is mandatory.');
-      return { db, error: 'Item description is mandatory.' };
-    }
-    if (isNaN(item.unitCost) || item.unitCost < 0) {
-      console.log('Validation failed: Item unit cost must be a valid positive number.');
-      return { db, error: 'Item unit cost must be a valid positive number.' };
-    }
-  }
-
-  const { db: updatedDb1, value: invCount } = getAndIncrementCounter(db, 'invoice', companyId);
-  db = updatedDb1;
-  const invNumber = `INV-${invCount}`;
-  const invoiceId = generateId();
-  
-  const totals = calculateInvoiceTotals(db, invData.items, invData.taxSlabId, invData.discountPercentage);
-  const newInvoice: Invoice = {
-    ...invData,
-    companyId,
-    id: invoiceId,
-    invoiceNumber: invNumber,
-    createdById: db.currentUser.id,
-    createdAt: new Date().toISOString(),
-    amountPaid: invData.paymentStatus === 'Paid' ? totals.grandTotal : 0
-  };
-
-  // Ensure items saved to master
-  for (const item of invData.items) {
-    db = ensureSalesProductExists(db, item.description, item.unitCost, companyId);
-  }
-
-  db.invoices.push(newInvoice);
-
-  // Generate Receipt Voucher if status is Paid
-  if (invData.paymentStatus === 'Paid') {
-    const { db: updatedDb2, value: vchCount } = getAndIncrementCounter(db, 'voucher', companyId);
-    db = updatedDb2;
-    const voucherNumber = `VCH-${vchCount}`;
-    
-    const newVoucher: Voucher = {
-      id: generateId(),
-      voucherNumber,
-      type: 'Receipt',
-      date: (invData.paymentDate || invData.date).split('T')[0],
-      bankId: invData.bankId,
-      amount: totals.grandTotal,
-      description: `Receipt voucher generated automatically for paid invoice ${invNumber}`,
-      referenceType: 'Invoice',
-      referenceId: invoiceId,
-      createdById: db.currentUser.id,
-      createdAt: new Date().toISOString(),
-      companyId,
-      isPosSale: invData.isPosSale,
-      shiftId: invData.shiftId
-    };
-    
-    db.vouchers.push(newVoucher);
-  }
-
-
-  return { db, newInvoice };
-}
-
-// Convert Quotation to Invoice
-export function convertQuotationToInvoice(
-  db: DatabaseState,
-  quotationId: string,
-  invoiceDate: string,
-  bankId: string,
-  paymentStatus: 'Paid' | 'Partially Paid' | 'Unpaid',
-  customItems?: InvoiceItem[],
-  customDiscountPercentage?: number,
-  customTaxSlabId?: string,
-  customCustomerId?: string,
-  customNotes?: string
-): { db: DatabaseState; newInvoice?: Invoice; error?: string } {
-  const qIndex = db.quotations.findIndex(q => q.id === quotationId);
-  if (qIndex === -1) return { db, error: 'Quotation not found.' };
-  const quotation = db.quotations[qIndex];
-
-  const companyId = quotation.companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-
-  const openMonth = getActiveOpenMonth(db, companyId);
-  if (!openMonth) return { db, error: 'There is no open fiscal month.' };
-
-  if (quotation.status !== 'Accepted') {
-    return { db, error: `Only accepted quotations can be converted. Current status is: ${quotation.status}` };
-  }
-
-  const dateCheck = validateTransactionDate(db, invoiceDate, companyId);
-  if (!dateCheck.valid) return { db, error: dateCheck.error };
-
-  const { db: updatedDb1, value: invCount } = getAndIncrementCounter(db, 'invoice', companyId);
-  db = updatedDb1;
-  const invNumber = `INV-${invCount}`;
-  const invoiceId = generateId();
-
-  // Determine items: custom or default mapping from quotation items
-  const finalItems: InvoiceItem[] = customItems ? customItems.map(item => ({
-    id: item.id || generateId(),
-    description: item.description,
-    unitCost: item.unitCost,
-    quantity: item.quantity,
-    discountAmount: item.discountAmount
-  })) : quotation.items.map(item => ({
-    id: generateId(),
-    description: item.description,
-    unitCost: item.unitCost,
-    quantity: item.quantity,
-    discountAmount: item.discountAmount
-  }));
-
-  const finalDiscount = customDiscountPercentage !== undefined ? customDiscountPercentage : (quotation.discountPercentage || 0);
-  const finalTaxSlabId = customTaxSlabId || quotation.taxSlabId;
-  const finalCustomerId = customCustomerId || quotation.customerId;
-  const finalNotes = customNotes !== undefined ? customNotes : `Converted from accepted quotation ${quotation.quotationNumber}. ${quotation.notes}`;
-
-  const totals = calculateInvoiceTotals(db, finalItems, finalTaxSlabId, finalDiscount);
-
-  const newInvoice: Invoice = {
-    id: invoiceId,
-    invoiceNumber: invNumber,
-    date: invoiceDate,
-    customerId: finalCustomerId,
-    taxSlabId: finalTaxSlabId,
-    bankId,
-    paymentStatus,
-    paymentDate: paymentStatus === 'Paid' ? invoiceDate : null,
-    notes: finalNotes,
-    status: 'Active',
-    createdById: db.currentUser.id,
-    createdAt: new Date().toISOString(),
-    originQuotationId: quotationId,
-    items: finalItems,
-    discountPercentage: finalDiscount,
-    amountPaid: paymentStatus === 'Paid' ? totals.grandTotal : 0,
-    companyId
-  };
-
-  db.invoices.push(newInvoice);
-
-  // Update Quotation Status
-  db.quotations[qIndex].status = 'Converted';
-
-  // Generate Receipt Voucher if status is Paid
-  if (paymentStatus === 'Paid') {
-    const { db: updatedDb2, value: vchCount } = getAndIncrementCounter(db, 'voucher', companyId);
-    db = updatedDb2;
-    const voucherNumber = `VCH-${vchCount}`;
-
-    const newVoucher: Voucher = {
-      id: generateId(),
-      voucherNumber,
-      type: 'Receipt',
-      date: invoiceDate,
-      bankId,
-      amount: totals.grandTotal,
-      description: `Receipt voucher generated automatically for paid invoice ${invNumber} (Converted from ${quotation.quotationNumber})`,
-      referenceType: 'Invoice',
-      referenceId: invoiceId,
-      createdById: db.currentUser.id,
-      createdAt: new Date().toISOString(),
-      companyId
-    };
-
-    db.vouchers.push(newVoucher);
-  }
-
-
-  return { db, newInvoice };
-}
-
-// Update Invoice Payment Status (e.g. from Pending to Paid/Partially Paid -> generates Receipt Voucher)
-export function markInvoicePaid(
-  db: DatabaseState,
-  invoiceId: string,
-  paymentDate: string,
-  bankId?: string,
-  paymentAmount?: number
-): { db: DatabaseState; error?: string } {
-  const invIndex = db.invoices.findIndex(inv => inv.id === invoiceId);
-  if (invIndex === -1) return { db, error: 'Invoice not found.' };
-
-  const invoice = db.invoices[invIndex];
-  if (invoice.status === 'Cancelled') return { db, error: 'Cancelled invoices cannot be paid.' };
-  if (invoice.paymentStatus === 'Paid') return { db, error: 'Invoice is already fully paid.' };
-
-  const companyId = invoice.companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-
-  const dateCheck = validateTransactionDate(db, paymentDate, companyId);
-  if (!dateCheck.valid) return { db, error: dateCheck.error };
-
-  const targetBankId = bankId || invoice.bankId;
-  const totals = calculateInvoiceTotals(db, invoice.items, invoice.taxSlabId, invoice.discountPercentage);
-  const grandTotal = totals.grandTotal;
-
-  const currentPaid = invoice.amountPaid || 0;
-  const remaining = Number((grandTotal - currentPaid).toFixed(2));
-
-  let amountToPost = remaining;
-  if (paymentAmount !== undefined) {
-    if (paymentAmount <= 0) return { db, error: 'Payment amount must be greater than zero.' };
-    if (paymentAmount > remaining + 0.01) {
-      return { db, error: `Payment amount (${paymentAmount}) exceeds the remaining balance (${remaining}).` };
-    }
-    amountToPost = Math.min(paymentAmount, remaining);
-  }
-
-  if (amountToPost <= 0) return { db, error: 'No remaining balance to pay.' };
-
-  const newPaidAmount = Number((currentPaid + amountToPost).toFixed(2));
-
-  // Update invoice
-  db.invoices[invIndex].amountPaid = newPaidAmount;
-  db.invoices[invIndex].paymentStatus = newPaidAmount >= grandTotal - 0.01 ? 'Paid' : 'Partially Paid';
-  db.invoices[invIndex].paymentDate = paymentDate;
-  db.invoices[invIndex].bankId = targetBankId;
-
-  // Generate Receipt Voucher
-  const { db: updatedDb, value: vchCount } = getAndIncrementCounter(db, 'voucher', companyId);
-  db = updatedDb;
-  const voucherNumber = `VCH-${vchCount}`;
-
-  const newVoucher: Voucher = {
-    id: generateId(),
-    voucherNumber,
-    type: 'Receipt',
-    date: paymentDate,
-    bankId: targetBankId,
-    amount: amountToPost,
-    description: `Receipt voucher generated for invoice ${invoice.invoiceNumber} payment of ${amountToPost} ${(db.companies?.find(c => c.id === companyId) || db.companySetup)?.currency || 'SAR'}`,
-    referenceType: 'Invoice',
-    referenceId: invoiceId,
-    createdById: db.currentUser.id,
-    createdAt: new Date().toISOString(),
-    companyId
-  };
-
-  db.vouchers.push(newVoucher);
-
-
-  return { db };
-}
-
-// Add Expense (with Payment Voucher automatic posting if Paid)
-export function saveExpense(db: DatabaseState, expData: Omit<Expense, 'id' | 'expenseNumber' | 'createdById' | 'createdAt'>): { db: DatabaseState; error?: string } {
-  const companyId = expData.companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-  const dateCheck = validateTransactionDate(db, expData.date, companyId);
-  if (!dateCheck.valid) return { db, error: dateCheck.error };
-
-  const { db: updatedDb1, value: expCount } = getAndIncrementCounter(db, 'expense', companyId);
-  db = updatedDb1;
-  const expNumber = `EXP-${expCount}`;
-  const expenseId = generateId();
-
-  const newExpense: Expense = {
-    ...expData,
-    companyId,
-    id: expenseId,
-    expenseNumber: expNumber,
-    createdById: db.currentUser.id,
-    createdAt: new Date().toISOString()
-  };
-
-  db.expenses.push(newExpense);
-
-  // Auto payment voucher generation if Paid AND is Actual (Accruals do not trigger bank vouchers until settled)
-  if (expData.paymentStatus === 'Paid' && expData.type === 'Actual') {
-    const { db: updatedDb2, value: vchCount } = getAndIncrementCounter(db, 'voucher', companyId);
-    db = updatedDb2;
-    const voucherNumber = `VCH-${vchCount}`;
-    
-    const newVoucher: Voucher = {
-      id: generateId(),
-      voucherNumber,
-      type: 'Payment',
-      date: expData.paymentDate || expData.date,
-      bankId: expData.bankId,
-      amount: expData.amount,
-      description: `Payment voucher generated automatically for paid expense ${expNumber}`,
-      referenceType: 'Expense',
-      referenceId: expenseId,
-      createdById: db.currentUser.id,
-      createdAt: new Date().toISOString(),
-      companyId
-    };
-
-    db.vouchers.push(newVoucher);
-  }
-
-
-  return { db };
-}
-
-// Update Expense Payment Status (e.g., Pending to Paid -> generates Payment Voucher)
-export function markExpensePaid(
-  db: DatabaseState,
-  expenseId: string,
-  paymentDate: string,
-  bankId?: string,
-  paymentAmount?: number
-): { db: DatabaseState; error?: string } {
-  const expIndex = db.expenses.findIndex(exp => exp.id === expenseId);
-  if (expIndex === -1) return { db, error: 'Expense not found.' };
-
-  const expense = db.expenses[expIndex];
-  if (expense.status === 'Cancelled') return { db, error: 'Cancelled expenses cannot be paid.' };
-  if (expense.paymentStatus === 'Paid') return { db, error: 'Expense is already paid.' };
-
-  const companyId = expense.companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-
-  const dateCheck = validateTransactionDate(db, paymentDate, companyId);
-  if (!dateCheck.valid) return { db, error: dateCheck.error };
-
-  const targetBankId = bankId || expense.bankId;
-  const currentPaid = expense.amountPaid || 0;
-  const remaining = Number((expense.amount - currentPaid).toFixed(2));
-
-  let amountToPost = remaining;
-  if (paymentAmount !== undefined) {
-    if (paymentAmount <= 0) return { db, error: 'Payment amount must be greater than zero.' };
-    if (paymentAmount > remaining + 0.01) {
-      return { db, error: `Payment amount (${paymentAmount}) exceeds the remaining balance (${remaining}).` };
-    }
-    amountToPost = Math.min(paymentAmount, remaining);
-  }
-
-  if (amountToPost <= 0) return { db, error: 'No remaining balance to pay.' };
-
-  const newPaidAmount = Number((currentPaid + amountToPost).toFixed(2));
-
-  db.expenses[expIndex].amountPaid = newPaidAmount;
-  db.expenses[expIndex].paymentStatus = newPaidAmount >= expense.amount - 0.01 ? 'Paid' : 'Partially Paid';
-  db.expenses[expIndex].paymentDate = paymentDate; // latest payment date
-  db.expenses[expIndex].bankId = targetBankId; // bank of latest payment
-
-  // Payment voucher (only if Actual type; accrual settlement handles its own voucher when actual is posted)
-  if (expense.type === 'Actual') {
-    const { db: updatedDb, value: vchCount } = getAndIncrementCounter(db, 'voucher', companyId);
-    db = updatedDb;
-    const voucherNumber = `VCH-${vchCount}`;
-    const newVoucher: Voucher = {
-      id: generateId(),
-      voucherNumber,
-      type: 'Payment',
-      date: paymentDate,
-      bankId: targetBankId,
-      amount: amountToPost,
-      description: `Payment voucher generated for expense ${expense.expenseNumber} paid subsequently (${amountToPost.toFixed(2)})`,
-      referenceType: 'Expense',
-      referenceId: expenseId,
-      createdById: db.currentUser.id,
-      createdAt: new Date().toISOString(),
-      companyId
-    };
-    db.vouchers.push(newVoucher);
-  }
-
-
-  return { db };
-}
-
-// Cancel Expense (Requires Cancellation permission, handles Reversal Voucher)
-export function cancelExpense(db: DatabaseState, expenseId: string): { db: DatabaseState; error?: string } {
-  const expIndex = db.expenses.findIndex(exp => exp.id === expenseId);
-  if (expIndex === -1) return { db, error: 'Expense not found.' };
-
-  const expense = db.expenses[expIndex];
-  if (expense.status === 'Cancelled') return { db, error: 'Expense is already cancelled.' };
-
-  const companyId = expense.companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-
-  const openMonth = getActiveOpenMonth(db, companyId);
-  if (!openMonth) return { db, error: 'There is no open fiscal month.' };
-
-  const todayStr = new Date().toISOString().split('T')[0];
-  const finalReversalDate = todayStr.startsWith(openMonth.id) ? todayStr : (expense.date.startsWith(openMonth.id) ? expense.date : openMonth.id + "-01");
-
-  // Mark Cancelled
-  db.expenses[expIndex].status = 'Cancelled';
-
-  // If accrual, handle settlement flag?
-  if (expense.type === 'Accrual' && expense.settledExpenseId) {
-    // Break link in settled expense
-    const actualIndex = db.expenses.findIndex(e => e.id === expense.settledExpenseId);
-    if (actualIndex !== -1) {
-      db.expenses[actualIndex].originAccrualId = null;
-    }
-  }
-
-  // If actual, break link in accrual
-  if (expense.type === 'Actual' && expense.originAccrualId) {
-    const accrualIndex = db.expenses.findIndex(e => e.id === expense.originAccrualId);
-    if (accrualIndex !== -1) {
-      db.expenses[accrualIndex].accrualSettled = false;
-      db.expenses[accrualIndex].settledExpenseId = null;
-    }
-  }
-
-  // Generate Reversal Voucher if payment voucher was active
-  const activePayment = db.vouchers.find(v => v.referenceId === expenseId && v.referenceType === 'Expense' && v.type === 'Payment');
-  if (activePayment) {
-    const { db: updatedDb, value: vchCount } = getAndIncrementCounter(db, 'voucher', companyId);
-    db = updatedDb;
-    const voucherNumber = `VCH-${vchCount}`;
-    const reversalVoucher: Voucher = {
-      id: generateId(),
-      voucherNumber,
-      type: 'Reversal',
-      date: finalReversalDate,
-      bankId: activePayment.bankId,
-      amount: activePayment.amount,
-      description: `Reversal voucher for cancelled expense ${expense.expenseNumber} (Original: ${activePayment.voucherNumber})`,
-      referenceType: 'Expense',
-      referenceId: expenseId,
-      createdById: db.currentUser.id,
-      createdAt: new Date().toISOString(),
-      companyId
-    };
-    db.vouchers.push(reversalVoucher);
-  }
-
-
-  return { db };
-}
 
 // ----------------------------------------
 // BANK TRANSACTIONS (VOUCHERS & INTER-BANK)
 // ----------------------------------------
-
-// Inter-bank Cash Transfer (Admin only)
-export function saveInterBankTransfer(
-  db: DatabaseState,
-  sourceBankId: string,
-  destBankId: string,
-  amount: number,
-  description: string,
-  dateStr: string
-): { db: DatabaseState; error?: string } {
-  const sourceBank = db.banks.find(b => b.id === sourceBankId && b.isActive);
-  const destBank = db.banks.find(b => b.id === destBankId && b.isActive);
-
-  if (!sourceBank) return { db, error: 'Active source bank account not found.' };
-  if (!destBank) return { db, error: 'Active destination bank account not found.' };
-
-  const companyId = sourceBank.companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-
-  const dateCheck = validateTransactionDate(db, dateStr, companyId);
-  if (!dateCheck.valid) return { db, error: dateCheck.error };
-
-  if (sourceBankId === destBankId) return { db, error: 'Source and destination bank accounts must be different.' };
-  if (amount <= 0) return { db, error: 'Transfer amount must be greater than zero.' };
-
-  const transferId = generateId();
-
-  // Create paired transfer vouchers in the transaction list
-  const { db: updatedDb1, value: vchCountOut } = getAndIncrementCounter(db, 'voucher', companyId);
-  db = updatedDb1;
-  const voucherNumOut = `VCH-${vchCountOut}`;
-  const voucherOut: Voucher = {
-    id: generateId(),
-    voucherNumber: voucherNumOut,
-    type: 'TransferOut',
-    date: dateStr,
-    bankId: sourceBankId,
-    amount,
-    description: `Inter-bank Transfer Out to ${destBank.bankName}: ${description}`,
-    referenceType: 'Transfer',
-    referenceId: transferId,
-    createdById: db.currentUser.id,
-    createdAt: new Date().toISOString(),
-    companyId
-  };
-
-  const { db: updatedDb2, value: vchCountIn } = getAndIncrementCounter(db, 'voucher', companyId);
-  db = updatedDb2;
-  const voucherNumIn = `VCH-${vchCountIn}`;
-  const voucherIn: Voucher = {
-    id: generateId(),
-    voucherNumber: voucherNumIn,
-    type: 'TransferIn',
-    date: dateStr,
-    bankId: destBankId,
-    amount,
-    description: `Inter-bank Transfer In from ${sourceBank.bankName}: ${description}`,
-    referenceType: 'Transfer',
-    referenceId: transferId,
-    createdById: db.currentUser.id,
-    createdAt: new Date().toISOString(),
-    companyId
-  };
-
-  db.vouchers.push(voucherOut, voucherIn);
-
-
-  return { db };
-}
+// saveInterBankTransfer used to live here — removed as dead code alongside the block
+// above (BACKLOG.md item 65); every real inter-bank transfer now goes through the
+// dedicated REST route in server/routes/transactions.ts.
 
 // Bank Ledger Generation
 export function generateBankLedger(db: DatabaseState, bankId: string, startDate?: string, endDate?: string): BankLedgerEntry[] {
@@ -1383,188 +828,11 @@ export function getBankBalance(db: DatabaseState, bankId: string): number {
 }
 
 // ----------------------------------------
-// RECURRING EXPENSES (Module 10)
+// RECURRING EXPENSES (Module 10) — postRecurringExpense/settleAccrualExpense removed as
+// dead code (BACKLOG.md item 65); RecurringExpenses.tsx now posts/settles through the
+// dedicated REST routes in server/routes/transactions.ts (POST /recurring-postings,
+// POST /settle-accrual) exclusively.
 // ----------------------------------------
-
-// Post Recurring Expense as Actual or Accrual
-export function postRecurringExpense(
-  db: DatabaseState,
-  templateId: string,
-  monthId: string,
-  postType: 'Actual' | 'Accrual',
-  amount: number,
-  dateStr: string,
-  paymentStatus: 'Paid' | 'Unpaid',
-  bankId: string
-): { db: DatabaseState; error?: string } {
-  const template = db.recurringTemplates.find(t => t.id === templateId);
-  if (!template) return { db, error: 'Recurring template not found.' };
-
-  const companyId = template.companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-
-  const dateCheck = validateTransactionDate(db, dateStr, companyId);
-  if (!dateCheck.valid) return { db, error: dateCheck.error };
-
-  const postingKey = `${templateId}_${monthId}`;
-  const existingPosting = db.recurringPostings.find(p => p.id === postingKey);
-  if (existingPosting && existingPosting.status !== 'Unposted') {
-    return { db, error: 'This recurring template is already posted for this month.' };
-  }
-
-  // Create an Expense record representing the posting
-  const { db: updatedDb1, value: expCount } = getAndIncrementCounter(db, 'expense', companyId);
-  db = updatedDb1;
-  const expNumber = `EXP-${expCount}`;
-  const expenseId = generateId();
-
-  const newExpense: Expense = {
-    id: expenseId,
-    expenseNumber: expNumber,
-    date: dateStr,
-    vendorId: template.vendorId,
-    taxSlabId: template.taxSlabId,
-    bankId,
-    paymentStatus: postType === 'Accrual' ? 'Unpaid' : paymentStatus,
-    paymentDate: (postType === 'Actual' && paymentStatus === 'Paid') ? dateStr : null,
-    description: `${template.description} (${postType} - posted for ${monthId})`,
-    amount,
-    status: 'Active',
-    type: postType,
-    createdById: db.currentUser.id,
-    createdAt: new Date().toISOString(),
-    items: [], // No itemized lines for general recurring posting
-    companyId
-  };
-
-  db.expenses.push(newExpense);
-
-  // Save posting status
-  const newPosting: RecurringPosting = {
-    id: postingKey,
-    templateId,
-    monthId,
-    status: postType === 'Actual' ? 'Posted as Actual' : 'Posted as Accrual',
-    expenseId
-  };
-
-  // Replace or add
-  const pIndex = db.recurringPostings.findIndex(p => p.id === postingKey);
-  if (pIndex !== -1) {
-    db.recurringPostings[pIndex] = newPosting;
-  } else {
-    db.recurringPostings.push(newPosting);
-  }
-
-  // Generate Bank Payment Voucher if Actual & Paid
-  if (postType === 'Actual' && paymentStatus === 'Paid') {
-    const { db: updatedDb2, value: vchCount } = getAndIncrementCounter(db, 'voucher', companyId);
-    db = updatedDb2;
-    const voucherNumber = `VCH-${vchCount}`;
-    const newVoucher: Voucher = {
-      id: generateId(),
-      voucherNumber,
-      type: 'Payment',
-      date: dateStr,
-      bankId,
-      amount,
-      description: `Payment voucher generated automatically for paid recurring expense ${expNumber}`,
-      referenceType: 'Expense',
-      referenceId: expenseId,
-      createdById: db.currentUser.id,
-      createdAt: new Date().toISOString(),
-      companyId
-    };
-    db.vouchers.push(newVoucher);
-  }
-
-
-  return { db };
-}
-
-// Settle Accrual with Actual Expense
-export function settleAccrualExpense(
-  db: DatabaseState,
-  accrualExpenseId: string,
-  actualAmount: number,
-  actualDate: string,
-  paymentStatus: 'Paid' | 'Unpaid',
-  bankId: string
-): { db: DatabaseState; error?: string } {
-  const accIndex = db.expenses.findIndex(e => e.id === accrualExpenseId && e.type === 'Accrual');
-  if (accIndex === -1) return { db, error: 'Accrual expense not found.' };
-  
-  const accrualExpense = db.expenses[accIndex];
-  if (accrualExpense.accrualSettled) return { db, error: 'Accrual is already settled.' };
-
-  const companyId = accrualExpense.companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-
-  // Wait, actual date must fall in current open month!
-  const dateCheck = validateTransactionDate(db, actualDate, companyId);
-  if (!dateCheck.valid) return { db, error: dateCheck.error };
-
-  const { db: updatedDb1, value: expCount } = getAndIncrementCounter(db, 'expense', companyId);
-  db = updatedDb1;
-  const expNumber = `EXP-${expCount}`;
-  const actualExpenseId = generateId();
-
-  // Create standard Actual Expense linking back to Accrual
-  const actualExpense: Expense = {
-    id: actualExpenseId,
-    expenseNumber: expNumber,
-    date: actualDate,
-    vendorId: accrualExpense.vendorId,
-    taxSlabId: accrualExpense.taxSlabId,
-    bankId,
-    paymentStatus,
-    paymentDate: paymentStatus === 'Paid' ? actualDate : null,
-    description: `Accrual Settlement: Actual payment for "${accrualExpense.description}"`,
-    amount: actualAmount,
-    status: 'Active',
-    type: 'Actual',
-    originAccrualId: accrualExpenseId,
-    createdById: db.currentUser.id,
-    createdAt: new Date().toISOString(),
-    items: [],
-    companyId
-  };
-
-  db.expenses.push(actualExpense);
-
-  // Mark Accrual as Settled
-  db.expenses[accIndex].accrualSettled = true;
-  db.expenses[accIndex].settledExpenseId = actualExpenseId;
-
-  // Find corresponding posting and update status to 'Accrual Settled'
-  const posting = db.recurringPostings.find(p => p.expenseId === accrualExpenseId);
-  if (posting) {
-    posting.status = 'Accrual Settled';
-  }
-
-  // Generate Bank Payment Voucher if Paid
-  if (paymentStatus === 'Paid') {
-    const { db: updatedDb2, value: vchCount } = getAndIncrementCounter(db, 'voucher', companyId);
-    db = updatedDb2;
-    const voucherNumber = `VCH-${vchCount}`;
-    const newVoucher: Voucher = {
-      id: generateId(),
-      voucherNumber,
-      type: 'Payment',
-      date: actualDate,
-      bankId,
-      amount: actualAmount,
-      description: `Payment voucher for actual settlement of accrual ${accrualExpense.expenseNumber}`,
-      referenceType: 'Expense',
-      referenceId: actualExpenseId,
-      createdById: db.currentUser.id,
-      createdAt: new Date().toISOString(),
-      companyId
-    };
-    db.vouchers.push(newVoucher);
-  }
-
-
-  return { db };
-}
 
 // ----------------------------------------
 // MONTH MANAGEMENT (Module 9)
@@ -1722,75 +990,7 @@ export function openNewMonth(db: DatabaseState, yearStr: string, monthStr: strin
 }
 
 // ----------------------------------------
-// INVESTOR & EQUITY CAPITAL MANAGEMENT
+// INVESTOR & EQUITY CAPITAL MANAGEMENT — saveInvestor/saveCapitalInvestment removed as
+// dead code (BACKLOG.md item 65); zero remaining callers found anywhere in src/, tests/,
+// or server/ (equity capital contributions have no live UI entry point using this path).
 // ----------------------------------------
-
-export function saveInvestor(db: DatabaseState, investorData: Omit<Investor, 'id' | 'capitalContributed' | 'createdAt'>): { db: DatabaseState; error?: string } {
-  if (!investorData.name.trim()) return { db, error: 'Investor name is required.' };
-  
-  const companyId = investorData.companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-  const newInvestor: Investor = {
-    ...investorData,
-    companyId,
-    id: generateId(),
-    capitalContributed: 0,
-    createdAt: new Date().toISOString()
-  };
-
-  db.investors.push(newInvestor);
-
-  return { db };
-}
-
-export function saveCapitalInvestment(
-  db: DatabaseState,
-  investorId: string,
-  bankId: string,
-  amount: number,
-  dateStr: string,
-  description: string
-): { db: DatabaseState; error?: string } {
-  const investor = db.investors.find(i => i.id === investorId);
-  if (!investor) return { db, error: 'Selected investor not found.' };
-
-  const companyId = investor.companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
-
-  const dateCheck = validateTransactionDate(db, dateStr, companyId);
-  if (!dateCheck.valid) return { db, error: dateCheck.error };
-
-  if (amount <= 0) return { db, error: 'Investment amount must be greater than zero.' };
-
-  const bank = db.banks.find(b => b.id === bankId && b.isActive);
-  if (!bank) return { db, error: 'Active bank account not found.' };
-
-  // Create Capital Contribution Voucher (type 'Receipt', referenceType 'Equity')
-  const { db: updatedDb, value: vchCount } = getAndIncrementCounter(db, 'voucher', companyId);
-  db = updatedDb;
-  const voucherNumber = `VCH-${vchCount}`;
-  const newVoucher: Voucher = {
-    id: generateId(),
-    voucherNumber,
-    type: 'Receipt',
-    date: dateStr,
-    bankId,
-    amount,
-    description: `Equity Capital contribution from investor ${investor.name}: ${description}`,
-    referenceType: 'Equity',
-    referenceId: investorId,
-    createdById: db.currentUser.id,
-    createdAt: new Date().toISOString(),
-    companyId
-  };
-
-  // Add voucher
-  db.vouchers.push(newVoucher);
-
-  // Update investor's running capital contributed total
-  investor.capitalContributed = (investor.capitalContributed || 0) + amount;
-
-
-  return { db };
-}
-
-
-// ensure translation seed array exports are used for defaults

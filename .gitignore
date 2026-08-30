@@ -6,12 +6,20 @@ dist-ssr/
 # env files
 .env
 .env.*
+# Renamed from .env — deliberately non-standard so nothing on a hosting platform that
+# specifically manages files named .env (dashboard-injected env vars, deploy templating)
+# recognizes or overwrites this one. See CLAUDE.md's Secrets section.
+app.secrets
 
 # logs
 *.log
 
 # database dumps / backups
 *.sql
+db-backups/
+
+# Claude Code scratch output (throwaway test artifacts, not project source)
+.claude/scratch/
 
 # secrets
 src/db/dbCredentials.ts

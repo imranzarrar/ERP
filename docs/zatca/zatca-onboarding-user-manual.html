@@ -1,0 +1,619 @@
+<title>Warraq — ZATCA Onboarding User Manual</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+  :root {
+    /* Warraq brand palette — the app's own real "Classic Executive" default theme
+       (src/theme.ts), used as-is since it's the one color system this codebase
+       actually implements today. */
+    --w-primary: #4f46e5;
+    --w-primary-hover: #4338ca;
+    --w-primary-dark: #1e1b4b;
+    --w-primary-darktext: #312e81;
+    --w-accent: #6366f1;
+    --w-accent-light: #818cf8;
+    --w-light: #f5f3ff;
+    --w-light-border: #ddd6fe;
+    --w-midlight: #e0e7ff;
+    --w-darkmid: #3730a3;
+    --w-slate-950: #0b1120;
+    --w-slate-900: #0f172a;
+    --w-slate-800: #1e293b;
+
+    --good: #059669; --good-soft: #d1fae5; --good-ink: #065f46;
+    --warn: #d97706; --warn-soft: #fef3c7; --warn-ink: #92400e;
+    --crit: #e11d48; --crit-soft: #ffe4e6; --crit-ink: #9f1239;
+    --info: #2563eb; --info-soft: #dbeafe; --info-ink: #1e40af;
+
+    --ink: #1a1c23; --ink-soft: #565b6b; --paper: #f6f5fb; --paper-raised: #ffffff; --line: #e2e1ee;
+    --shadow: 0 1px 2px rgba(20,20,40,.06), 0 12px 28px -14px rgba(30,27,75,.28);
+    --font-display: "Space Grotesk", "Segoe UI Semibold", system-ui, sans-serif;
+    --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", "Consolas", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { color-scheme: light; }
+  body { margin: 0; }
+  .doc { background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 15.5px; line-height: 1.62; }
+  a { color: var(--w-primary); }
+  h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 700; color: var(--w-primary-dark); text-wrap: balance; letter-spacing: -0.01em; }
+  code { font-family: var(--font-mono); font-size: 0.85em; background: var(--w-light); border: 1px solid var(--w-light-border); padding: 0.05em 0.4em; border-radius: 4px; color: var(--w-primary-darktext); }
+
+  /* ============ COVER PAGE ============ */
+  .cover {
+    position: relative; overflow: hidden;
+    min-height: 29.2cm;
+    background: radial-gradient(circle at 15% 8%, #2d2a80 0%, var(--w-slate-950) 46%, #08060f 100%);
+    color: #fff;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 3.4cm 2.6cm 2cm;
+    page-break-after: always;
+  }
+  .cover::before {
+    content: ""; position: absolute; inset: 0; opacity: 0.5; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(129,140,248,.10) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(129,140,248,.10) 1px, transparent 1px);
+    background-size: 42px 42px;
+    -webkit-mask-image: radial-gradient(ellipse 90% 70% at 50% 30%, black 10%, transparent 75%);
+            mask-image: radial-gradient(ellipse 90% 70% at 50% 30%, black 10%, transparent 75%);
+  }
+  .cover::after {
+    content: ""; position: absolute; right: -12%; top: -14%; width: 62%; aspect-ratio: 1;
+    background: conic-gradient(from 200deg, #818cf8, #6366f1 30%, transparent 65%);
+    filter: blur(70px); opacity: 0.55; border-radius: 50%; pointer-events: none;
+  }
+  .cover-top { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; }
+  .cover-kicker { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.22em; text-transform: uppercase; color: #a5b4fc; border: 1px solid rgba(165,180,252,.35); padding: 0.4rem 0.85rem; border-radius: 100px; }
+  .cover-mark { display: flex; align-items: center; gap: 0.6rem; }
+  .cover-mark .glyph { width: 40px; height: 40px; border-radius: 11px; background: linear-gradient(135deg,#818cf8,#4f46e5 65%); display:flex; align-items:center; justify-content:center; font-family: var(--font-display); font-weight:800; font-size:1.25rem; color:#fff; box-shadow: 0 8px 22px -6px rgba(99,102,241,.65); }
+  .cover-mark span { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; letter-spacing: 0.02em; color: #e7e6fb; }
+
+  .cover-mid { position: relative; z-index: 2; margin-top: 5.5rem; }
+  .cover-eyebrow { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.14em; text-transform: uppercase; color: #a5b4fc; margin: 0 0 1.1rem; }
+  .cover-word { font-family: var(--font-display); font-weight: 800; font-size: clamp(3.6rem, 9vw, 6.4rem); line-height: 0.96; margin: 0; letter-spacing: -0.02em; background: linear-gradient(180deg,#ffffff 0%,#c7cbfb 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .cover-sub { font-family: var(--font-display); font-weight: 600; font-size: 1.35rem; color: #cfd2f7; margin: 0.3rem 0 0; }
+  .cover-title { font-size: 1.55rem; font-weight: 600; color: #fff; max-width: 30ch; margin: 2.6rem 0 0.8rem; font-family: var(--font-display); }
+  .cover-dek { font-size: 1.02rem; color: #b9bce8; max-width: 52ch; line-height: 1.6; margin: 0; }
+
+  .cover-bottom { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(4,1fr); gap: 1.6rem; border-top: 1px solid rgba(165,180,252,.22); padding-top: 1.6rem; }
+  .cover-bottom .stat b { display: block; font-family: var(--font-display); font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; color: #8b8fd0; margin-bottom: 0.35rem; font-weight: 600; }
+  .cover-bottom .stat span { font-size: 0.86rem; color: #e2e3f8; font-weight: 500; }
+
+  /* ============ BODY LAYOUT ============ */
+  .layout { display: grid; grid-template-columns: 250px minmax(0,1fr); max-width: 1280px; margin: 0 auto; }
+  @media (max-width: 880px) { .layout { grid-template-columns: 1fr; } .rail { position: static !important; border-right: none !important; border-bottom: 1px solid var(--line); } }
+  .rail { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; padding: 2rem 1.4rem 2rem; border-right: 1px solid var(--line); font-family: var(--font-display); background: var(--paper-raised); }
+  .rail-mark { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.4rem; }
+  .rail-mark .glyph { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg,#818cf8,#4f46e5 65%); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:0.9rem; color:#fff; }
+  .rail-mark b { font-size: 0.92rem; color: var(--w-primary-dark); }
+  .rail nav { display: flex; flex-direction: column; gap: 0.05rem; }
+  .rail nav a { display: block; font-size: 0.76rem; color: var(--ink-soft); text-decoration: none; padding: 0.42rem 0 0.42rem 0.7rem; border-left: 2px solid transparent; font-weight: 500; }
+  .rail nav a:hover { color: var(--w-primary-dark); }
+  .rail nav a.active { color: var(--w-primary); border-left-color: var(--w-primary); font-weight: 700; }
+
+  .content { padding: 3rem 3.25rem 6rem; min-width: 0; }
+  @media (max-width: 880px) { .content { padding: 2rem 1.25rem 4rem; } }
+
+  .about-note { background: var(--w-light); border: 1px solid var(--w-light-border); border-radius: 14px; padding: 1rem 1.3rem; font-size: 0.87rem; color: var(--w-primary-darktext); margin: 0 0 2.5rem; }
+  .about-note b { font-family: var(--font-display); }
+
+  section { max-width: 74ch; margin: 0 0 3rem; scroll-margin-top: 2rem; page-break-inside: avoid; }
+  section.wide { max-width: none; }
+  section h2 { font-size: 1.55rem; margin: 0 0 0.35rem; padding-top: 1.9rem; position: relative; }
+  section h2::before { content: ""; position: absolute; top: 0; left: 0; width: 46px; height: 4px; border-radius: 4px; background: linear-gradient(90deg,#4f46e5,#818cf8); }
+  .section-eyebrow { font-family: var(--font-mono); font-size: 0.72rem; color: var(--w-primary); font-weight: 600; letter-spacing: 0.04em; margin: 0 0 0.5rem; }
+  section h3 { font-size: 1.08rem; margin: 1.6rem 0 0.6rem; color: var(--ink); }
+  section p { margin: 0 0 1rem; }
+  ul.plain, ol.plain { padding-left: 1.2rem; margin: 0 0 1rem; }
+  ul.plain li, ol.plain li { margin-bottom: 0.45rem; }
+  ol.steps { padding-left: 1.4rem; margin: 0 0 1rem; }
+  ol.steps li { margin-bottom: 0.7rem; }
+
+  .callout { background: var(--paper-raised); border: 1px solid var(--line); border-left: 4px solid var(--w-primary); border-radius: 0 14px 14px 0; padding: 1.1rem 1.3rem; margin: 1.25rem 0; box-shadow: var(--shadow); }
+  .callout .label { font-family: var(--font-display); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--w-primary); margin-bottom: 0.4rem; font-weight: 700; }
+  .callout.risk { border-left-color: var(--warn); }
+  .callout.risk .label { color: var(--warn-ink); }
+  .callout.crit { border-left-color: var(--crit); }
+  .callout.crit .label { color: var(--crit-ink); }
+  .callout.good { border-left-color: var(--good); }
+  .callout.good .label { color: var(--good-ink); }
+
+  .pill { display: inline-flex; align-items: center; gap: 0.4rem; font-family: var(--font-display); font-size: 0.7rem; font-weight: 700; padding: 0.22rem 0.6rem 0.22rem 0.5rem; border-radius: 100px; white-space: nowrap; }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .pill.good { background: var(--good-soft); color: var(--good-ink); }
+  .pill.warn { background: var(--warn-soft); color: var(--warn-ink); }
+  .pill.crit { background: var(--crit-soft); color: var(--crit-ink); }
+  .pill.info { background: var(--info-soft); color: var(--info-ink); }
+  .pill.neutral { background: #f1f0fa; color: var(--ink-soft); border: 1px solid var(--line); }
+
+  .table-wrap { overflow-x: auto; margin: 1rem 0 1.75rem; border: 1px solid var(--line); border-radius: 12px; }
+  table.plan { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 520px; background: var(--paper-raised); }
+  table.plan th { text-align: left; font-family: var(--font-display); font-size: 0.66rem; letter-spacing: 0.05em; text-transform: uppercase; color: #fff; font-weight: 700; padding: 0.65rem 0.85rem; background: var(--w-primary-dark); white-space: nowrap; }
+  table.plan td { padding: 0.65rem 0.85rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.plan tbody tr:last-child td { border-bottom: none; }
+  table.plan td.id { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-soft); white-space: nowrap; }
+
+  /* Phase cards */
+  .phase-card { background: var(--paper-raised); border: 1px solid var(--line); box-shadow: var(--shadow); border-radius: 18px; padding: 1.4rem 1.5rem; margin-bottom: 1.3rem; page-break-inside: avoid; }
+  .phase-card .phead { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 0.6rem; }
+  .phase-card .pnum { flex-shrink:0; width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg,var(--w-accent),var(--w-primary)); color:#fff; font-family: var(--font-display); font-weight: 800; font-size: 0.98rem; display:flex; align-items:center; justify-content:center; box-shadow: 0 6px 16px -6px rgba(79,70,229,.55); }
+  .phase-card .ptitle { font-family: var(--font-display); font-weight: 700; font-size: 1.06rem; color: var(--ink); }
+  .phase-card .ptag { font-family: var(--font-mono); font-size: 0.66rem; color: var(--w-primary); background: var(--w-light); padding: 0.15rem 0.5rem; border-radius: 100px; margin-left: auto; white-space: nowrap; font-weight: 600; }
+  .phase-card p { margin: 0 0 0.6rem; font-size: 0.92rem; }
+  .phase-card .field-list { margin: 0.6rem 0; padding: 0; list-style: none; }
+  .phase-card .field-list li { display: flex; gap: 0.6rem; padding: 0.4rem 0; border-bottom: 1px dashed var(--line); font-size: 0.86rem; }
+  .phase-card .field-list li:last-child { border-bottom: none; }
+  .phase-card .field-list b { font-family: var(--font-display); font-size: 0.8rem; min-width: 13ch; flex-shrink: 0; color: var(--w-primary-darktext); }
+  .phase-card .gate { font-size: 0.85rem; border-top: 1px dashed var(--line); padding-top: 0.6rem; margin-top: 0.6rem; color: var(--ink-soft); }
+  .phase-card .gate b { font-family: var(--font-display); font-size: 0.66rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--good-ink); display: block; margin-bottom: 0.25rem; }
+  .btn-chip { display: inline-block; font-family: var(--font-display); font-weight: 700; font-size: 0.76rem; background: linear-gradient(135deg,var(--w-accent),var(--w-primary)); color: #fff; padding: 0.32rem 0.75rem; border-radius: 12px; margin: 0.1rem 0.15rem; box-shadow: 0 4px 10px -4px rgba(79,70,229,.6); }
+
+  .env-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.1rem; margin: 1.25rem 0 2rem; }
+  @media (max-width: 780px) { .env-grid { grid-template-columns: 1fr; } }
+  .env-card { background: var(--paper-raised); border: 1px solid var(--line); box-shadow: var(--shadow); border-radius: 16px; padding: 1.3rem 1.4rem; border-top: 4px solid var(--w-primary); }
+  .env-card.sandbox { border-top-color: var(--warn); }
+  .env-card.simulation { border-top-color: var(--info); }
+  .env-card.production { border-top-color: var(--good); }
+  .env-card h4 { margin: 0 0 0.3rem; font-size: 0.98rem; }
+  .env-card .tag { font-family: var(--font-mono); font-size: 0.63rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.18rem 0.55rem; border-radius: 100px; display: inline-block; margin-bottom: 0.6rem; font-weight: 700; }
+  .env-card.sandbox .tag { background: var(--warn-soft); color: var(--warn-ink); }
+  .env-card.simulation .tag { background: var(--info-soft); color: var(--info-ink); }
+  .env-card.production .tag { background: var(--good-soft); color: var(--good-ink); }
+  .env-card p { font-size: 0.85rem; color: var(--ink-soft); margin: 0; }
+
+  .checklist { list-style: none; margin: 0 0 1.25rem; padding: 0; }
+  .checklist li { display: flex; gap: 0.6rem; padding: 0.5rem 0; border-bottom: 1px dashed rgba(255,255,255,.18); font-size: 0.92rem; }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist input[type="checkbox"] { margin-top: 0.25rem; flex-shrink: 0; width: 15px; height: 15px; accent-color: var(--w-accent-light); }
+
+  .breadcrumb { font-family: var(--font-mono); font-size: 0.78rem; background: var(--w-primary-dark); color: #e0e1fb; padding: 0.7rem 1rem; border-radius: 10px; margin: 0.75rem 0 1.5rem; }
+  .breadcrumb b { color: #c7d2fe; }
+
+  .faq dt { font-family: var(--font-display); font-weight: 700; font-size: 0.94rem; margin: 1.4rem 0 0.4rem; color: var(--w-primary-dark); }
+  .faq dd { margin: 0 0 0; font-size: 0.9rem; color: var(--ink-soft); }
+
+  /* ---- Screen mockups (faithful reproductions of the real UI, not photos) ---- */
+  .screen { border-radius: 16px; overflow: hidden; box-shadow: 0 18px 40px -20px rgba(30,27,75,.45); border: 1px solid var(--line); margin: 1.1rem 0 1.6rem; background: #fff; page-break-inside: avoid; }
+  .screen .chrome { background: #e4e3f1; padding: 0.5rem 0.8rem; display: flex; align-items: center; gap: 0.4rem; border-bottom: 1px solid var(--line); }
+  .screen .chrome i { width: 9px; height: 9px; border-radius: 50%; background: #c9c8dc; display: inline-block; }
+  .screen .chrome span { font-family: var(--font-mono); font-size: 0.68rem; color: #7a7d95; margin-left: 0.5rem; }
+  .screen .body { padding: 1.1rem 1.2rem; font-size: 0.8rem; }
+  .fig-caption { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-soft); margin: -1.1rem 0 1.6rem; text-align: center; }
+
+  .mock-banner { border-radius: 12px; padding: 0.8rem 1rem; display:flex; gap:0.6rem; font-size: 0.76rem; margin-bottom: 0.9rem; }
+  .mock-banner.good { background: var(--good-soft); color: var(--good-ink); border: 1px solid #a7e3c8; }
+  .mock-banner.info { background: var(--info-soft); color: var(--info-ink); border: 1px solid #bcd3fb; }
+  .mock-cards { display: grid; grid-template-columns: repeat(4,1fr); gap: 0.6rem; margin-bottom: 1rem; }
+  .mock-card { background: #fafafe; border: 1px solid var(--line); border-radius: 10px; padding: 0.6rem 0.7rem; }
+  .mock-card b { display: block; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; color: #9a9db0; font-weight: 700; margin-bottom: 0.3rem; }
+  .mock-card span { font-size: 0.78rem; font-weight: 700; color: var(--ink); }
+  .mock-envrow { display: grid; grid-template-columns: repeat(3,1fr); gap: 0.6rem; margin-bottom: 1rem; }
+  .mock-env { border-radius: 10px; padding: 0.65rem 0.75rem; border: 2px solid var(--line); font-size: 0.72rem; }
+  .mock-env.active { border-color: var(--w-primary); background: var(--w-light); }
+  .mock-env b { display:block; font-size: 0.78rem; margin-bottom:0.2rem; }
+  .mock-env .badge { display:inline-block; font-size: 0.58rem; font-weight:700; padding:0.1rem 0.4rem; border-radius:100px; text-transform:uppercase; }
+  .mock-steps { display:flex; gap: 0.35rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  .mock-steps .s { flex:1; min-width: 90px; border-radius: 8px; padding: 0.4rem 0.55rem; font-size: 0.66rem; font-weight:700; display:flex; align-items:center; gap:0.35rem; }
+  .mock-steps .s.on { background: var(--w-primary); color:#fff; }
+  .mock-steps .s.done { background: var(--good-soft); color: var(--good-ink); }
+  .mock-steps .s.todo { background: #f1f0fa; color: #7a7d95; border: 1px solid var(--line); }
+  .mock-steps .s em { width:16px; height:16px; border-radius:50%; background:rgba(255,255,255,.3); display:inline-flex; align-items:center; justify-content:center; font-style:normal; font-size:0.6rem; flex-shrink:0; }
+  .mock-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  .mock-field label { display:block; font-size: 0.64rem; font-weight: 700; color: #555; margin-bottom: 0.25rem; }
+  .mock-field .box { border: 1px solid #d7d6e6; border-radius: 8px; padding: 0.4rem 0.55rem; font-family: var(--font-mono); font-size: 0.72rem; background: #fbfbff; color: #333; }
+  .mock-btn { display:inline-block; background: var(--w-primary); color:#fff; font-size:0.72rem; font-weight:700; padding: 0.45rem 0.9rem; border-radius: 10px; margin-top: 0.9rem; }
+  .mock-btn.ghost { background: #f1f0fa; color: var(--ink-soft); }
+  .mock-btn.good { background: var(--good); }
+  .mock-code { background: var(--w-slate-900); color: #86efac; font-family: var(--font-mono); font-size: 0.68rem; padding: 0.7rem 0.8rem; border-radius: 10px; word-break: break-all; margin-top: 0.6rem; line-height: 1.5; }
+  .mock-results { background: var(--w-slate-900); border-radius: 10px; padding: 0.8rem; margin-top: 0.6rem; }
+  .mock-results .row { display:flex; justify-content: space-between; align-items:center; background: var(--w-slate-800); border-radius: 8px; padding: 0.4rem 0.6rem; margin-bottom: 0.4rem; font-size: 0.68rem; color:#e2e2f5; }
+  .mock-results .row .st { font-weight:700; padding: 0.12rem 0.45rem; border-radius:6px; font-size:0.6rem; }
+  .mock-success { text-align:center; background: var(--good-soft); border: 1px solid #a7e3c8; border-radius: 14px; padding: 1.2rem; }
+  .mock-success .tick { width:36px; height:36px; border-radius:50%; background: var(--good); color:#fff; display:flex; align-items:center; justify-content:center; margin: 0 auto 0.6rem; font-weight:800; }
+
+  .signoff { background: linear-gradient(160deg,var(--w-slate-950),#221f52); color: #fff; padding: 2.4rem 2.6rem; margin: 3rem 0 0; border-radius: 20px; }
+  .signoff h2 { color: #fff; }
+  .signoff h2::before { display: none; }
+  .signoff p, .signoff li { color: #c6c8ef; }
+
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .rail { display: none !important; }
+    .layout { grid-template-columns: 1fr !important; max-width: none; }
+    .content { padding: 0 1.4cm 1.2cm; }
+    section { page-break-inside: avoid; }
+    .phase-card, .screen, .callout, .env-grid, .cover-bottom { page-break-inside: avoid; }
+    a { color: var(--w-primary); text-decoration: none; }
+  }
+  ::selection { background: var(--w-light-border); color: var(--w-primary-dark); }
+</style>
+
+<div class="doc">
+
+  <!-- ============ COVER PAGE ============ -->
+  <div class="cover">
+    <div class="cover-top">
+      <div class="cover-mark"><span class="glyph">W</span><span>WARRAQ ERP SYSTEM</span></div>
+      <span class="cover-kicker">User Manual</span>
+    </div>
+    <div class="cover-mid">
+      <p class="cover-eyebrow">Saudi Arabia · ZATCA Phase 2 · Fatoora E-Invoicing</p>
+      <h1 class="cover-word">Warraq</h1>
+      <p class="cover-sub">ERP System</p>
+      <p class="cover-title">ZATCA Onboarding — Company Setup Guide</p>
+      <p class="cover-dek">A complete, step-by-step walkthrough for connecting a company to ZATCA across Sandbox, Simulation, and Production — written for a company administrator, matched exactly to the live onboarding screen.</p>
+    </div>
+    <div class="cover-bottom">
+      <div class="stat"><b>Audience</b><span>Company Admin / Super Admin</span></div>
+      <div class="stat"><b>Environments</b><span>Sandbox · Simulation · Production</span></div>
+      <div class="stat"><b>Module</b><span>Admin Settings → ZATCA Phase 2</span></div>
+      <div class="stat"><b>Success signal</b><span>Invoice status: Cleared / Reported</span></div>
+    </div>
+  </div>
+
+  <div class="layout">
+    <aside class="rail" id="rail">
+      <div class="rail-mark"><span class="glyph">W</span><b>Warraq — ZATCA Manual</b></div>
+      <nav>
+        <a href="#start">Before you start</a>
+        <a href="#find">01 — Finding the wizard</a>
+        <a href="#screen">02 — Reading the screen</a>
+        <a href="#envs">03 — The three environments</a>
+        <a href="#steps">04 — The 5-step walkthrough</a>
+        <a href="#sandbox">05 — Sandbox specifics</a>
+        <a href="#simprod">06 — Simulation &amp; Production</a>
+        <a href="#active">07 — Going live</a>
+        <a href="#proof">08 — Proving it worked</a>
+        <a href="#troubleshoot">09 — Troubleshooting</a>
+        <a href="#checklist">10 — Printable checklist</a>
+        <a href="#appendix">11 — Appendix</a>
+      </nav>
+    </aside>
+
+    <main class="content">
+
+      <div class="about-note"><b>About the screens in this manual.</b> The panels styled like app windows throughout this document are faithful reproductions of the real ZATCA onboarding screen — same labels, same field rules, same colors and layout as the live interface — redrawn for print clarity rather than captured as photographs. Everything they show matches the running application at the time this manual was written.</div>
+
+      <section id="start">
+        <h2>Before you start</h2>
+        <p><b>Who can do this.</b> Only a <b>Company Admin</b> or <b>Super Admin</b> can see and use this screen. It cannot be delegated to a staff role, even a very trusted one — there is no permission toggle for it by design, because it touches the company's cryptographic signing keys.</p>
+        <p><b>One important thing to un-learn first:</b> the <b>Company Profile</b> tab has its own "VAT Number" field. That field is cosmetic only — it prints on invoice templates and shows on the company card. It is <b>completely separate</b> from ZATCA onboarding and is never sent to ZATCA. The real tax identity used for ZATCA lives inside the ZATCA wizard itself, entered independently for each of the three environments.</p>
+        <div class="callout">
+          <div class="label">The single idea this whole manual is built on</div>
+          <p style="margin:0;">Sandbox, Simulation, and Production are <b>three completely independent onboarding processes</b> for the same company. Each has its own identity, its own cryptographic key, its own certificates, and its own "done" state. Finishing Sandbox does not advance Simulation or Production even slightly — you will walk through the exact same 5 steps three separate times, once per environment, on purpose.</p>
+        </div>
+        <p>The three environments, in the order almost every company should actually use them:</p>
+        <ol class="plain">
+          <li><b>Sandbox</b> — a free ZATCA test environment. It uses ZATCA's own published test company identity, not yours, and every field pre-fills automatically. This is where you learn the screen and prove the pipeline works, with zero paperwork.</li>
+          <li><b>Simulation</b> — ZATCA's pre-production environment. From here on you use your company's <em>real</em> registered VAT/CR and address. This is the dress rehearsal before real tax invoices go out.</li>
+          <li><b>Production</b> — the live gateway. Real invoices, real tax liability, real government clearance.</li>
+        </ol>
+      </section>
+
+      <section id="find">
+        <p class="section-eyebrow">01 / Finding the wizard</p>
+        <h2>Where this screen lives</h2>
+        <div class="breadcrumb"><b>Log in</b> → open <b>Admin Settings</b> → left menu group <b>"Organization &amp; Setup"</b> → <b>"ZATCA Phase 2 E-Invoicing"</b></div>
+        <p>Make sure the correct company is selected as your active company first (top of the app) — everything on this screen applies to whichever company you currently have active. If "ZATCA Phase 2 E-Invoicing" isn't in the menu at all, your account isn't a Company Admin or Super Admin for this company.</p>
+      </section>
+
+      <section id="screen" class="wide" style="max-width:74ch;">
+        <p class="section-eyebrow">02 / Reading the screen</p>
+        <h2>What you're looking at before you touch anything</h2>
+        <p>The page opens with a colored banner at the very top. <b>Read it carefully once — it is easy to misread.</b></p>
+
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Admin Settings → ZATCA Phase 2 E-Invoicing</span></div>
+          <div class="body">
+            <div class="mock-banner good"><b>✓</b><div><b style="display:block;font-weight:800;">About this app's Sandbox code — not [Your Company]'s onboarding progress.</b>The signing logic has been independently verified against ZATCA's real gateway — [Your Company] itself hasn't onboarded yet; that's tracked by the steps below, not this message.</div></div>
+            <div class="mock-cards">
+              <div class="mock-card"><b>Active for Live Processing</b><span>SANDBOX</span></div>
+              <div class="mock-card"><b>Sandbox Onboarding State</b><span style="color:#059669;">● Onboarded</span></div>
+              <div class="mock-card"><b>Next Sequence Counter</b><span>#1</span></div>
+              <div class="mock-card"><b>Previous Invoice Hash</b><span style="font-family:var(--font-mono);font-size:0.62rem;">NWZlY2ViNjZm…</span></div>
+            </div>
+            <div class="mock-envrow">
+              <div class="mock-env active"><b>Sandbox Portal</b><span class="badge" style="background:var(--warn-soft);color:var(--warn-ink);">Testing</span><p style="margin:0.3rem 0 0;">CSR / CSID testing, no tax liability.</p></div>
+              <div class="mock-env"><b>Simulation Portal</b><span class="badge" style="background:var(--info-soft);color:var(--info-ink);">Staging</span><p style="margin:0.3rem 0 0;">Mirrors live ZATCA rules.</p></div>
+              <div class="mock-env"><b>Production Gateway</b><span class="badge" style="background:var(--good-soft);color:var(--good-ink);">Live Tax</span><p style="margin:0.3rem 0 0;">Real-time clearance &amp; reporting.</p></div>
+            </div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 1 — the wizard's landing view: status banner, live status cards, environment selector</p>
+
+        <p>Below the banner, four status cards summarize live state:</p>
+        <ul class="plain">
+          <li><b>Active for Live Processing</b> — which one of the three environments real invoices are currently being sent to.</li>
+          <li><b>[Environment] Onboarding State</b> — <span class="pill good">Onboarded</span> or <span class="pill warn">Pending Setup</span>, for whichever environment you currently have selected below.</li>
+          <li><b>Next Sequence Counter (ICV)</b> and <b>Previous Invoice Hash (PIH)</b> — internal bookkeeping ZATCA requires to chain every invoice cryptographically to the one before it. You don't need to act on these.</li>
+        </ul>
+        <p>Below that are three clickable <b>environment cards</b> — Sandbox, Simulation, Production. Clicking one switches which environment's setup you're viewing/editing (it does <b>not</b> submit invoices or change what's "live" — that's the separate "Set active" link in each card's corner).</p>
+      </section>
+
+      <section id="envs" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">03 / The three environments at a glance</p>
+        <h2>What's genuinely different between them</h2>
+        <div class="env-grid">
+          <div class="env-card sandbox">
+            <span class="tag">Testing</span>
+            <h4>Sandbox</h4>
+            <p>Uses ZATCA's own shared public test identity. Every Step 1 field pre-fills. OTP is always <code>123456</code>. No real ZATCA portal account needed. Safe to redo as many times as you like.</p>
+          </div>
+          <div class="env-card simulation">
+            <span class="tag">Staging</span>
+            <h4>Simulation</h4>
+            <p>Your company's real VAT/CR/address, entered by you. Requires a real login to ZATCA's Fatoora Portal to fetch a one-time OTP. Mirrors production rules and validation, without real tax consequences.</p>
+          </div>
+          <div class="env-card production">
+            <span class="tag">Live Tax</span>
+            <h4>Production</h4>
+            <p>Same real-identity requirement as Simulation, but this is the official gateway — every invoice submitted here is a genuine legal filing with the Saudi tax authority.</p>
+          </div>
+        </div>
+        <p>Whichever one you're working on, the process is the identical 5-step sequence in §04 — only the answers you type in Step 1, and where the OTP in Step 3 comes from, differ.</p>
+      </section>
+
+      <section id="steps" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">04 / The 5-step walkthrough</p>
+        <h2 style="max-width:74ch;">Do this once per environment, top to bottom, in order</h2>
+        <p style="max-width:74ch;">Click the environment card you're working on first (§02) so the wizard below is pointed at the right one, then follow these steps.</p>
+
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Step progress</span></div>
+          <div class="body">
+            <div class="mock-steps">
+              <div class="s done"><em>✓</em>1 · Identity</div>
+              <div class="s done"><em>✓</em>2 · Key pair &amp; CSR</div>
+              <div class="s on"><em>3</em>OTP &amp; Compliance CSID</div>
+              <div class="s todo"><em>4</em>Compliance Test</div>
+              <div class="s todo"><em>5</em>Production CSID</div>
+            </div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 2 — the 5-step progress bar; green = complete, indigo = current</p>
+
+        <div class="phase-card">
+          <div class="phead"><span class="pnum">1</span><span class="ptitle">Company Identity &amp; National Address</span><span class="ptag">Form</span></div>
+          <p>Fill in your tax identity and registered address for this environment.</p>
+          <ul class="field-list">
+            <li><b>15-Digit VAT (TIN)</b> Exactly 15 digits, and — this is the part people get wrong — it must both <b>start and end</b> with the digit <code>3</code> (e.g. <code>300000000000003</code>).</li>
+            <li><b>CR Number</b> Your Commercial Registration number. Any non-empty value.</li>
+            <li><b>Building Number</b> 4-digit National Address building number.</li>
+            <li><b>Street Name</b>, <b>District</b>, <b>City</b> Plain text, all required.</li>
+            <li><b>Postal Code</b> Exactly 5 digits.</li>
+            <li><b>Business Industry Category</b> Free text, e.g. "Commerce / Retail".</li>
+          </ul>
+
+          <div class="screen" style="margin-top:0.9rem;">
+            <div class="chrome"><i></i><i></i><i></i><span>Step 1 — Company Identity (Sandbox)</span></div>
+            <div class="body">
+              <div class="mock-form">
+                <div class="mock-field"><label>15-DIGIT VAT NUMBER (TIN)*</label><div class="box">300123456700003</div></div>
+                <div class="mock-field"><label>COMMERCIAL REGISTRATION (CR)</label><div class="box">1010000000</div></div>
+                <div class="mock-field"><label>BUILDING NUMBER</label><div class="box">2322</div></div>
+                <div class="mock-field"><label>STREET NAME</label><div class="box">Prince Sultan</div></div>
+                <div class="mock-field"><label>DISTRICT</label><div class="box">Al-Murabba</div></div>
+                <div class="mock-field"><label>CITY</label><div class="box">Riyadh</div></div>
+                <div class="mock-field"><label>POSTAL CODE</label><div class="box">23333</div></div>
+                <div class="mock-field"><label>BUSINESS CATEGORY</label><div class="box">Commerce</div></div>
+              </div>
+              <div class="mock-btn">Save &amp; Continue to Step 2 →</div>
+            </div>
+          </div>
+          <p class="fig-caption">Figure 3 — Sandbox's Step 1, pre-filled with ZATCA's own published test identity</p>
+
+          <p>On <b>Sandbox</b> these are already filled in — you normally just press Save without changing anything. On <b>Simulation/Production</b> every field starts blank and must match your company's real official registration exactly.</p>
+          <div class="gate"><b>What "done" looks like</b>No red error text is showing, and you land on Step 2. Coming back to this environment later, your answers are still there, exactly as you left them.</div>
+        </div>
+
+        <div class="phase-card">
+          <div class="phead"><span class="pnum">2</span><span class="ptitle">Generate Key Pair &amp; CSR</span><span class="ptag">One click</span></div>
+          <p>In plain terms: this creates a private cryptographic key that will digitally sign every invoice for this environment, and packages your Step 1 details into a formal request (a "CSR") proving who that key belongs to. You only need to click the button.</p>
+          <div class="screen">
+            <div class="chrome"><i></i><i></i><i></i><span>Step 2 — Key Pair &amp; CSR</span></div>
+            <div class="body">
+              <div class="mock-btn">🔑 Generate ECDSA Keypair &amp; CSR</div>
+              <div class="mock-code">MIIBLTCB1AIBADBBMQ8wDQYDVQQDDAZFQ0RTQTEQMA4GA1UECgwHV2FycmFxMRIw…</div>
+            </div>
+          </div>
+          <p class="fig-caption">Figure 4 — the generated Base64 CSR (this text is expected to look scrambled)</p>
+          <div class="callout risk">
+            <div class="label">If you click this again later</div>
+            <p style="margin:0;">If this environment already has a certificate issued, clicking Generate again warns that it <b>invalidates</b> the existing certificate and you'll have to redo Step 3 onward. Only confirm if that's genuinely what you intend.</p>
+          </div>
+          <div class="gate"><b>What "done" looks like</b>A non-empty CSR block appears, and you land on Step 3.</div>
+        </div>
+
+        <div class="phase-card">
+          <div class="phead"><span class="pnum">3</span><span class="ptitle">Enter OTP &amp; Issue Compliance CSID</span><span class="ptag">Real ZATCA call</span></div>
+          <p>An OTP (One-Time Password) is how ZATCA confirms you actually control this tax identity. This is the first step that actually contacts ZATCA's real servers.</p>
+          <div class="screen">
+            <div class="chrome"><i></i><i></i><i></i><span>Step 3 — OTP &amp; Compliance CSID</span></div>
+            <div class="body">
+              <div class="mock-field" style="max-width:220px;margin:0 auto 0.8rem;"><label style="text-align:center;">ZATCA PORTAL OTP CODE</label><div class="box" style="text-align:center;letter-spacing:0.3em;font-size:1rem;font-weight:800;">1 2 3 4 5 6</div></div>
+              <div class="mock-banner good" style="justify-content:center;"><b>✓</b>Ready for ZATCA Gateway Handshake — gw-fatoora.zatca.gov.sa/e-invoicing/developer-portal</div>
+              <div class="mock-btn good" style="display:block;text-align:center;">🛡 Issue Compliance CSID</div>
+            </div>
+          </div>
+          <p class="fig-caption">Figure 5 — Sandbox's OTP defaults to 123456; Simulation/Production need a real portal OTP</p>
+          <p><b>On Sandbox:</b> the OTP box already shows <code>123456</code>. <b>On Simulation/Production:</b> you need a real 6-digit OTP from ZATCA's Fatoora Portal (see §06) — valid ~1 hour, single-use.</p>
+          <div class="gate"><b>What "done" looks like</b>A green success message naming a Request ID appears, and you land on Step 4.</div>
+        </div>
+
+        <div class="phase-card">
+          <div class="phead"><span class="pnum">4</span><span class="ptitle">Run the Compliance Test Suite</span><span class="ptag">Real ZATCA call</span></div>
+          <p>Sends two genuine sample invoices to ZATCA — one Standard (B2B) and one Simplified (B2C) — and asks ZATCA to check them. Mandatory before this environment can go live.</p>
+          <div class="screen">
+            <div class="chrome"><i></i><i></i><i></i><span>Step 4 — Compliance Test Suite results</span></div>
+            <div class="body">
+              <div class="mock-btn ghost">↻ Run Compliance Tests</div>
+              <div class="mock-results">
+                <div class="row"><span>Standard B2B Invoice Test</span><span class="st" style="background:rgba(5,150,105,.25);color:#6ee7b7;">CLEARED</span></div>
+                <div class="row"><span>Simplified B2C Invoice Test</span><span class="st" style="background:rgba(5,150,105,.25);color:#6ee7b7;">REPORTED</span></div>
+                <div class="row"><span>Credit Note Test</span><span class="st" style="background:rgba(148,163,184,.25);color:#cbd5e1;">NOT_IMPLEMENTED</span></div>
+                <div class="row"><span>Debit Note Test</span><span class="st" style="background:rgba(148,163,184,.25);color:#cbd5e1;">NOT_IMPLEMENTED</span></div>
+              </div>
+              <div class="mock-btn good" style="margin-top:0.9rem;">✓ Upgrade to Production CSID →</div>
+            </div>
+          </div>
+          <p class="fig-caption">Figure 6 — a passing suite; Credit/Debit Note are honestly reported as not built yet, not faked</p>
+          <p>Once the two real tests both clear, <span class="btn-chip">Upgrade to Production CSID</span> becomes clickable.</p>
+          <div class="gate"><b>What "done" looks like</b>The button is enabled and you're able to click through to Step 5. If a test doesn't clear, the exact rejection detail is shown — fix the underlying data and re-run; it can be re-run as many times as needed.</div>
+        </div>
+
+        <div class="phase-card">
+          <div class="phead"><span class="pnum">5</span><span class="ptitle">Production CSID (onboarding complete)</span><span class="ptag">Finish line</span></div>
+          <p>Despite the name, this step runs for <b>every</b> environment, including Sandbox — ZATCA issues the final certificate this environment will use to sign real invoices from now on.</p>
+          <div class="screen">
+            <div class="chrome"><i></i><i></i><i></i><span>Step 5 — Onboarding complete</span></div>
+            <div class="body">
+              <div class="mock-success">
+                <div class="tick">✓</div>
+                <b style="display:block;font-size:0.95rem;color:var(--good-ink);">SANDBOX Fully Onboarded to ZATCA Phase 2!</b>
+                <p style="margin:0.5rem 0 0;font-size:0.78rem;color:var(--good-ink);">Authorized for UBL 2.1 e-invoice signing, real-time B2B clearance, B2C reporting, and hash-chaining in this environment.</p>
+              </div>
+            </div>
+          </div>
+          <p class="fig-caption">Figure 7 — the completion panel shown for whichever environment you just finished</p>
+          <div class="gate"><b>What "done" looks like</b>The green confirmation panel is showing, and this environment now shows a green <span class="pill good">Onboarded</span> badge on its card back in §02.</div>
+        </div>
+
+        <p>Repeat all five steps for each remaining environment you plan to use — each environment's progress is saved independently and waits exactly where you left it.</p>
+      </section>
+
+      <section id="sandbox">
+        <p class="section-eyebrow">05 / Sandbox specifics</p>
+        <h2>One message in Step 5 that looks like an error but isn't</h2>
+        <p>ZATCA's Sandbox is deliberately "static" — every company's sandbox onboarding gets issued the exact same test certificate, tied to ZATCA's own shared test identity, no matter what you typed in Step 1. This app detects that and automatically adjusts to make it work correctly.</p>
+        <div class="callout good">
+          <div class="label">Expected, not an error</div>
+          <p style="margin:0;">"Production CSID activated for sandbox. ZATCA returned its known static test certificate, so this environment's signing key was switched to ZATCA's own matching sample private key — invoices will now sign correctly and validate cleanly."</p>
+        </div>
+        <p>This is the app correctly handling a documented ZATCA sandbox quirk, not a fault. Onboarding is genuinely complete. This adjustment applies to Sandbox only and never touches Simulation or Production.</p>
+      </section>
+
+      <section id="simprod">
+        <p class="section-eyebrow">06 / Simulation &amp; Production specifics</p>
+        <h2>The one step that happens outside this app</h2>
+        <p>Steps 1, 2, 4, and 5 all happen entirely inside this app. Step 3's OTP is the one exception — for Simulation and Production, that code has to come from a real login to ZATCA's own Fatoora Portal, because it's ZATCA confirming you actually control the real company identity you entered in Step 1.</p>
+        <ol class="steps">
+          <li>Log in to ZATCA's Fatoora Portal using your company's real ZATCA/government credentials (outside this app).</li>
+          <li>Find the option to onboard a new e-invoicing solution / generate an onboarding OTP for the environment you're working on. ZATCA's own portal screens are the authority on exact wording — they can change independently of this app.</li>
+          <li>Copy the 6-digit code shown. Valid for roughly one hour, single-use.</li>
+          <li>Immediately switch back to this app's Step 3, paste the code, and press <span class="btn-chip">Issue Compliance CSID</span> right away.</li>
+        </ol>
+        <div class="callout risk">
+          <div class="label">A subtlety worth knowing before you start Step 2</div>
+          <p style="margin:0;">The CSR generated in Step 2 only stays available in your browser for the current session. If you refresh the page or come back later, Step 3 will refuse to submit and tell you to regenerate it — this protects a real, single-use OTP from being wasted on a stale request. Do Step 2 and Step 3 back-to-back in one sitting.</p>
+        </div>
+        <p>Everything else genuinely, cryptographically belongs to your company for these two environments — there is no shared/static identity trick here the way there is for Sandbox; a real mismatch is a real problem and the app refuses to silently proceed.</p>
+      </section>
+
+      <section id="active" class="wide" style="max-width:74ch;">
+        <p class="section-eyebrow">07 / Going live: the active environment</p>
+        <h2>Onboarded is not the same as "in use"</h2>
+        <p>Completing the 5 steps for an environment does <b>not</b> automatically start sending real invoices there. A separate switch controls which single environment new invoices actually go to. Once an environment shows <span class="pill good">Onboarded</span>, a <b>"Set active"</b> link appears on its card.</p>
+        <div class="callout risk">
+          <div class="label">Guard rail — read this either way</div>
+          <p style="margin:0;">You cannot set an environment active until it shows <span class="pill good">Onboarded</span> — the app rejects the attempt with a clear message. There is no way to accidentally send real invoices to an environment that hasn't finished the 5 steps.</p>
+        </div>
+        <div class="callout crit">
+          <div class="label">The one gotcha that can make invoices silently do nothing</div>
+          <p style="margin:0;">A separate, company-wide <b>"ZATCA Integration"</b> switch (Admin Settings → Companies Directory, Super Admin only) turns on <b>automatically</b> the moment a company finishes onboarding <b>Sandbox</b> for the first time. <b>If a company's first completed environment is Simulation or Production instead</b>, this switch is never auto-enabled — every invoice sits at <code>DISABLED</code> with zero calls attempted, even though onboarding looks complete. If that's your situation, ask a Super Admin to check this toggle before concluding something is broken.</p>
+        </div>
+      </section>
+
+      <section id="proof" class="wide" style="max-width:74ch;">
+        <p class="section-eyebrow">08 / Proving it worked</p>
+        <h2>The actual pass/fail test</h2>
+        <p>Onboarding is only real proof once a genuine invoice clears through it.</p>
+        <ol class="steps">
+          <li>Make sure the customer has the right details on file: a <b>B2B</b> customer needs a full ZATCA identity — VAT, building number, street, district, city, postal code. A <b>B2C</b> customer only needs a name.</li>
+          <li>Create a normal invoice for that customer as you always would (Invoices or POS).</li>
+          <li>Saving finishes instantly on screen — ZATCA submission happens moments later in the background. Reopen the invoice after a few seconds to see the result.</li>
+          <li>Read the ZATCA status:
+            <ul class="plain" style="margin-top:0.5rem;">
+              <li><span class="pill good">Cleared</span> (B2B) or <span class="pill info">Reported</span> (B2C) — <b>success.</b></li>
+              <li><span class="pill crit">Rejected</span> — open the ZATCA detail panel for the specific reason and correct it.</li>
+              <li><span class="pill neutral">Not Submitted</span> — see §07's crit callout; the company-wide switch is very likely off.</li>
+            </ul>
+          </li>
+        </ol>
+      </section>
+
+      <section id="troubleshoot" class="wide" style="max-width:74ch;">
+        <p class="section-eyebrow">09 / Troubleshooting</p>
+        <h2>Messages you might see, and exactly what they mean</h2>
+        <dl class="faq">
+          <dt>"VAT/TIN must be exactly 15 digits, starting and ending with 3."</dt>
+          <dd>Step 1 rejection. Check the last digit, not just the first.</dd>
+          <dt>"No CSR is loaded in this session. Go back to Step 2..."</dt>
+          <dd>You reached Step 3 after refreshing or returning later. Go back to Step 2, generate again, then continue straight through.</dd>
+          <dt>"[ENVIRONMENT] already has an issued CSID..."</dt>
+          <dd>A confirmation dialog, not an error. Only proceed if you want to redo Step 3 onward.</dd>
+          <dt>"ZATCA issued a certificate that does not match this environment's private key."</dt>
+          <dd>On Simulation/Production, a real problem the app caught and refused to accept — nothing was saved. Retry; if it repeats, it needs investigation by whoever maintains the app.</dd>
+          <dt>"[ENVIRONMENT] has not completed onboarding yet — cannot set it as active."</dt>
+          <dd>Finish all 5 steps for that environment first.</dd>
+          <dt>An invoice sits at "Not Submitted" indefinitely.</dt>
+          <dd>Almost always the company-wide ZATCA Integration switch (§07). Have a Super Admin check it.</dd>
+          <dt>A B2B customer's invoice never attempts ZATCA submission.</dt>
+          <dd>The customer record is missing a required field. Complete the ZATCA identity fields on the customer, then resend.</dd>
+        </dl>
+      </section>
+
+      <section id="checklist" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">10 / Printable checklist</p>
+        <h2 style="max-width:74ch;">One page per environment — check these off as you go</h2>
+        <div class="table-wrap">
+          <table class="plan">
+            <thead><tr><th>#</th><th>Action</th><th>Environment</th><th>Done when</th></tr></thead>
+            <tbody>
+              <tr><td class="id">0</td><td>Correct company selected as active</td><td>Once</td><td>Company name shown matches the one you intend to onboard</td></tr>
+              <tr><td class="id">1</td><td>Step 1 identity saved</td><td>Per env.</td><td>No red errors; "Continue to Step 2" was clicked</td></tr>
+              <tr><td class="id">2</td><td>Keypair &amp; CSR generated</td><td>Per env.</td><td>Base64 text block visible</td></tr>
+              <tr><td class="id">3</td><td>OTP obtained (Sim/Prod: real Fatoora Portal)</td><td>Per env.</td><td>6-digit code entered</td></tr>
+              <tr><td class="id">4</td><td>Compliance CSID issued</td><td>Per env.</td><td>Green success + Request ID shown</td></tr>
+              <tr><td class="id">5</td><td>Compliance test suite passed</td><td>Per env.</td><td>Both real tests CLEARED/REPORTED</td></tr>
+              <tr><td class="id">6</td><td>Production CSID issued</td><td>Per env.</td><td>"Fully Onboarded" panel shown; badge turns green</td></tr>
+              <tr><td class="id">7</td><td>Environment set active</td><td>Once, when ready</td><td>"Active for Live Processing" card shows it</td></tr>
+              <tr><td class="id">8</td><td>ZATCA Integration switch confirmed on</td><td>Once, if needed</td><td>Companies Directory shows "Enabled"</td></tr>
+              <tr><td class="id">9</td><td>Real invoice sent and checked</td><td>Once per env.</td><td>Status reads Cleared or Reported</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="appendix" style="max-width:74ch;">
+        <div class="signoff">
+          <h2>Appendix — access &amp; data, in plain terms</h2>
+          <ul class="checklist">
+            <li>Only Company Admins and Super Admins can view or edit ZATCA onboarding for a company.</li>
+            <li>Sandbox, Simulation, and Production each store a completely separate identity, private key, and certificate.</li>
+            <li>The OTP typed in Step 3 is used once, immediately, and is never saved anywhere by the app.</li>
+            <li>Every company's ZATCA data is fully isolated from every other company on the Warraq platform.</li>
+          </ul>
+          <p style="margin-top:1rem;">This manual reflects the onboarding screen exactly as built at the time of writing. If the live screen ever visibly differs from what's described here, trust the screen, and flag the difference so this manual can be corrected.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll('.rail nav a'));
+    var sections = links.map(function (a) { return document.querySelector(a.getAttribute('href')); }).filter(Boolean);
+    if (!('IntersectionObserver' in window) || !sections.length) return;
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        var id = '#' + entry.target.id;
+        links.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === id); });
+      });
+    }, { rootMargin: '-15% 0px -70% 0px', threshold: 0 });
+    sections.forEach(function (s) { io.observe(s); });
+  })();
+</script>

@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'motion/react';
 import React from 'react';
-import { useTranslation, usePermissions } from './hooks';
+import { useTranslation, usePermissions, translateMonthLabel } from './hooks';
 import { getDatabase, saveDatabase, getActiveOpenMonth, getOpenMonths, DatabaseState } from './dbStore';
 import { THEME_PROFILES, applyTheme } from './theme';
 import { ensureCompatibleImage } from './imageUtils';
@@ -9,6 +9,7 @@ import { ensureCompatibleImage } from './imageUtils';
 import Dashboard from './components/Dashboard';
 import QuotationModule from './components/QuotationModule';
 import InvoiceModule from './components/InvoiceModule';
+import InvoiceViewScreen from './components/InvoiceViewScreen';
 import ExpenseModule from './components/ExpenseModule';
 import RecurringExpenses from './components/RecurringExpenses';
 import PosModule from './components/PosModule';
@@ -16,7 +17,11 @@ import MasterEntities from './components/MasterEntities';
 import AdminSettings from './components/AdminSettings';
 import DocumentRenderer from './components/DocumentRenderer';
 import ReportViewer from './components/ReportViewer';
+import SalesReportsModule from './components/SalesReportsModule';
+import PurchaseReportsModule from './components/PurchaseReportsModule';
+import InventoryReportsModule from './components/InventoryReportsModule';
 import LoginScreen from './components/LoginScreen';
+import ResetPasswordScreen from './components/ResetPasswordScreen';
 import InventoryModule from './components/InventoryModule';
 
 // Importing Icons
@@ -56,6 +61,22 @@ export default function App() {
  const [db, setDb] = React.useState<DatabaseState>(() => getDatabase());
  const [dbLoaded, setDbLoaded] = React.useState(false);
  const [sessionUserId, setSessionUserId] = React.useState<string | null>(localStorage.getItem('erp_session_user_id'));
+ // Pre-login language choice — LoginScreen and ResetPasswordScreen render before any
+ // db.currentUser exists, so there's no uiLanguage to read yet. Persisted separately from
+ // the account-level preference (which is only set once someone actually logs in) so a
+ // shared/kiosk machine remembers what the login screen itself was last shown in.
+ const [preLoginLang, setPreLoginLang] = React.useState<'en' | 'ar' | 'ur'>(() => {
+   const stored = localStorage.getItem('erp_pre_login_lang');
+   return stored === 'ar' || stored === 'ur' ? stored : 'en';
+ });
+ const handlePreLoginLangChange = (lang: 'en' | 'ar' | 'ur') => {
+   localStorage.setItem('erp_pre_login_lang', lang);
+   setPreLoginLang(lang);
+ };
+ // Forgot-password reset link (?resetToken=...) — checked ahead of the logged-in-vs-login
+ // branch below so it works the same way regardless of whether a stale session happens
+ // to still be present in this browser.
+ const [resetToken, setResetToken] = React.useState<string | null>(() => new URLSearchParams(window.location.search).get('resetToken'));
 
  React.useEffect(() => {
   if (!sessionUserId) {
@@ -125,6 +146,30 @@ export default function App() {
       translations: data.translations || [],
       posShifts: data.posShifts || [],
       posHeldInvoices: data.posHeldInvoices || [],
+      // Inventory & Procurement — previously absent from this merge entirely, so this
+      // whole slice only ever reflected local optimistic appends made during the current
+      // browser session (InventoryModule.tsx's own onUpdateDbLocal calls after each
+      // create action) and reverted to empty on every full reload, even though the real
+      // data was always correctly saved and correctly scoped server-side. A user create a
+      // GRN, then a real page reload (a crash, or just F5) silently wiped it from view.
+      warehouses: data.warehouses || [],
+      purchaseRequisitions: data.purchaseRequisitions || [],
+      purchaseOrders: data.purchaseOrders || [],
+      goodsReceiptNotes: data.goodsReceiptNotes || [],
+      inventoryStocks: data.inventoryStocks || [],
+      purchaseBills: data.purchaseBills || [],
+      purchaseReturns: data.purchaseReturns || [],
+      physicalStockTakes: data.physicalStockTakes || [],
+      productCategories: data.productCategories || [],
+      unitsOfMeasure: data.unitsOfMeasure || [],
+      productWarehouses: data.productWarehouses || [],
+      // Same gap, same fix — Roles/RBAC and per-company tax slabs were also never copied
+      // from the server response here, so `db.taxSlabs` stayed pinned to dbStore.ts's
+      // hardcoded SEED_TAX_SLABS default forever (never the company's real slabs), and
+      // db.roles/userRoles stayed permanently empty on every fresh load.
+      taxSlabs: data.taxSlabs || [],
+      roles: data.roles || [],
+      userRoles: data.userRoles || [],
       currentUser: loggedUser || prev.currentUser,
       selectedCompanyId,
       companySetup,
@@ -162,6 +207,13 @@ export default function App() {
   const triggerDbRefresh = async () => {
     if (!sessionUserId) return;
     try {
+      // Deliberately no ?companyId= here. `db` in this closure can be stale relative to
+      // the caller's own just-applied setDb() (e.g. the company switcher calls
+      // setDb(...) then awaits this in the same handler, before the new state has
+      // actually re-rendered) - passing a stale selectedCompanyId would override the
+      // session with the *previous* company right after switch-company just correctly
+      // updated it. The session (updated by POST /api/switch-company before any switch,
+      // and at login otherwise) is the reliable source of truth; no query param needed.
       const r = await fetch('/api/state');
       if (r.ok) {
         const data = await r.json();
@@ -197,6 +249,22 @@ export default function App() {
               translations: data.translations || [],
               posShifts: data.posShifts || [],
               posHeldInvoices: data.posHeldInvoices || [],
+              // See the matching comment in the initial-load effect above — same gap,
+              // same fix, this is the refresh path fired after most create/update actions.
+              warehouses: data.warehouses || [],
+              purchaseRequisitions: data.purchaseRequisitions || [],
+              purchaseOrders: data.purchaseOrders || [],
+              goodsReceiptNotes: data.goodsReceiptNotes || [],
+              inventoryStocks: data.inventoryStocks || [],
+              purchaseBills: data.purchaseBills || [],
+              purchaseReturns: data.purchaseReturns || [],
+              physicalStockTakes: data.physicalStockTakes || [],
+              productCategories: data.productCategories || [],
+              unitsOfMeasure: data.unitsOfMeasure || [],
+              productWarehouses: data.productWarehouses || [],
+              taxSlabs: data.taxSlabs || [],
+              roles: data.roles || [],
+              userRoles: data.userRoles || [],
               currentUser: loggedUser || prev.currentUser,
               selectedCompanyId,
             };
@@ -211,28 +279,27 @@ export default function App() {
     }
   };
 
-  const handleUpdateDb = (newDb: DatabaseState | ((prev: DatabaseState) => DatabaseState)) => {
-    let resolvedDb: DatabaseState;
-    setDb(prev => {
-      resolvedDb = typeof newDb === 'function' ? newDb(prev) : newDb;
-      
-      // Sync to Postgres (Server database is single source of truth)
-      fetch('/api/migrate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(resolvedDb)
-      }).then(res => {
-        if (!res.ok) {
-          throw new Error('Sync failed with status ' + res.status);
-        }
-        setCloudError(null);
-      }).catch(err => {
-        console.error('Error syncing to Postgres:', err);
-        setCloudError('Warning: Server database sync failed. Please check network connection.');
-      });
-
-      return resolvedDb;
-    });
+  // Every actual write in this app now goes through its own dedicated /api/... REST
+  // route (see server/routes/*.ts) — the full-blob POST /api/migrate sync this file used
+  // to trigger on every write (an app-wide "save everything currently held in memory"
+  // hazard) has no remaining callers as of this cleanup; removed along with it.
+  //
+  // Deliberately typed to accept ONLY an updater function, never a raw DatabaseState
+  // object — this used to also accept a plain object, and nine separate call sites across
+  // InvoiceModule/QuotationModule/PosModule exploited that by handing this a RAW,
+  // unmerged `GET /api/state` JSON response directly. That response has no
+  // selectedCompanyId/companySetup/currentUser field at all (those only exist because
+  // this exact merge derives them on initial load), so every one of those calls silently
+  // wiped the active-company selection and the logged-in user out of `db` the instant it
+  // ran — confirmed live: resubmitting an invoice to ZATCA reset the company selector to
+  // the first company in the list. Restricting the type to a function forces every caller
+  // to write `prev => ({ ...prev, someField: newValue })` — a scoped patch that can never
+  // drop a field it didn't explicitly touch — and makes the old raw-object call shape a
+  // compile error instead of a silent runtime data-loss bug. If this ever fails to
+  // compile elsewhere in the app, that call site has the same bug and needs the same fix,
+  // not a cast back to the old signature.
+  const handleUpdateDbLocal = (updater: (prev: DatabaseState) => DatabaseState) => {
+    setDb(updater);
   };
 
   const activeDb = db;
@@ -256,8 +323,58 @@ export default function App() {
     }
   }, [activeCompanySetup?.themeId]);
 
+  // Single-column persistence for two real, per-user/per-company settings — a targeted
+  // PATCH, not a full-blob rewrite of every table in the company just to flip one field.
+  // Local state updates immediately (optimistic); a failed PATCH surfaces via the
+  // existing cloudError banner.
+  const handleThemeChange = (themeId: string) => {
+    const companyId = db.selectedCompanyId;
+    const updatedCompanySetup = { ...activeCompanySetup, themeId };
+    setDb(prev => ({
+      ...prev,
+      companySetup: updatedCompanySetup,
+      companies: prev.companies?.map(c => c.id === companyId ? updatedCompanySetup : c) || [updatedCompanySetup]
+    }));
+    fetch(`/api/companies/${companyId}/theme`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ themeId })
+    }).then(async res => {
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || `status ${res.status}`);
+      }
+      setCloudError(null);
+    }).catch(err => {
+      console.error('Error saving theme:', err);
+      setCloudError('Warning: theme change could not be saved. Please try again.');
+    });
+  };
+
+  const handleLanguageChange = (uiLanguage: 'en' | 'ar' | 'ur') => {
+    setDb(prev => ({
+      ...prev,
+      users: prev.users.map(u => u.id === currentUser?.id ? { ...u, uiLanguage } : u),
+      currentUser: prev.currentUser ? { ...prev.currentUser, uiLanguage } : prev.currentUser
+    }));
+    fetch('/api/users/me/language', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uiLanguage })
+    }).then(async res => {
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || `status ${res.status}`);
+      }
+      setCloudError(null);
+    }).catch(err => {
+      console.error('Error saving language:', err);
+      setCloudError('Warning: language change could not be saved. Please try again.');
+    });
+  };
+
   const [printDoc, setPrintDoc] = React.useState<{
-    type: 'Quotation' | 'Invoice' | 'Expense' | 'Voucher' | 'Ledger' | 'Report';
+    type: 'Quotation' | 'Invoice' | 'Expense' | 'Voucher' | 'PaymentReceipt' | 'Ledger' | 'Report';
     data: any;
   } | null>(null);
 
@@ -266,13 +383,28 @@ export default function App() {
   // '-add' tab; the Add page reads it back to know whether it's creating or editing.
   const [editTarget, setEditTarget] = React.useState<{ module: string; id: string } | null>(null);
 
+  // Same shape/role as editTarget, for the invoice View screen — set right before
+  // navigating to 'invoices-view' (post-create, or a list row's own View link).
+  const [viewTarget, setViewTarget] = React.useState<{ id: string } | null>(null);
+
   const [settingsTab, setSettingsTab] = React.useState<string>('company');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState<boolean>(false);
   const [navSearchQuery, setNavSearchQuery] = React.useState<string>('');
   const { t, isRTL, lang } = useTranslation(db);
-  const [expandedNavGroups, setExpandedNavGroups] = React.useState<Record<string, boolean>>({
-    pos: true, sales: true, procurement: true
-  });
+  // Every nav group starts collapsed at login — a group only opens once explicitly
+  // toggled, searched, or it contains the current page (see isGroupExpanded below).
+  const [expandedNavGroups, setExpandedNavGroups] = React.useState<Record<string, boolean>>({});
+
+  // The root <div dir={isRTL ? "rtl" : "ltr"}> below correctly drives RTL layout for
+  // everything React renders, but <html lang> lives in index.html, outside React's
+  // reach — it stayed hardcoded to "en" regardless of the selected language. That
+  // attribute is what screen readers, spell-check, and the browser's own
+  // font-selection/translation-offer heuristics actually key off, not the nested div's
+  // dir attribute, so it needs to be kept in sync separately.
+  React.useEffect(() => {
+    document.documentElement.lang = lang;
+    document.documentElement.dir = isRTL ? 'rtl' : 'ltr';
+  }, [lang, isRTL]);
 
   const handleLogout = () => {
     fetch('/api/logout', { method: 'POST' }).catch(() => null);
@@ -304,6 +436,23 @@ export default function App() {
     }
   };
 
+  if (resetToken) {
+    return (
+      <ResetPasswordScreen
+        token={resetToken}
+        onDone={() => {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('resetToken');
+          window.history.replaceState({}, '', url.toString());
+          setResetToken(null);
+        }}
+        lang={preLoginLang}
+        onLangChange={handlePreLoginLangChange}
+        db={db}
+      />
+    );
+  }
+
   if (!dbLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-indigo-50/30">
@@ -315,6 +464,9 @@ export default function App() {
   if (!currentUser) {
     return (
       <LoginScreen
+        lang={preLoginLang}
+        onLangChange={handlePreLoginLangChange}
+        db={db}
         onLoginSuccess={(loggedUser) => {
           localStorage.setItem('erp_session_user_id', loggedUser.id);
           setSessionUserId(loggedUser.id);
@@ -344,6 +496,21 @@ export default function App() {
   const isAdmin = currentUser?.role === 'admin' || currentUser?.isSuperAdmin === true;
   const isSuperAdmin = currentUser?.isSuperAdmin === true;
   const { can } = usePermissions(currentUser);
+  // A nav entry can require any ONE of several permissions (e.g. the Settings shell is
+  // reachable if the actor holds *any* delegable settings-adjacent permission, not one
+  // specific leaf) — admins already pass every individual `can()` check via
+  // normalizePermissions' own isAdmin bypass, so this needs no separate isAdmin branch.
+  const canAny = (key: string | string[]): boolean => Array.isArray(key) ? key.some(k => can(k)) : can(key);
+  // Every permission that unlocks at least one Settings sub-tab (AdminSettings.tsx's own
+  // CATEGORY_GROUPS gates each sub-tab individually with the matching leaf) - the
+  // Settings shell itself just needs to know whether *any* of them apply, so a delegated
+  // non-admin actor sees the nav entry at all. Company Profile/ZATCA/Roles/Companies
+  // Directory/Translations/Database stay admin-tier-only by design and are deliberately
+  // not in this list - see permission-crud-model skill.
+  const SETTINGS_ACCESS_PERMISSIONS = [
+    'banks.read', 'taxSlabs.read', 'templates.read', 'users.read',
+    'investors.access', 'fiscalMonths.open', 'fiscalMonths.close',
+  ];
  const openMonth = getActiveOpenMonth(activeDb);
  // Up to 3 fiscal months may be open concurrently now; openMonth is just the oldest
  // (the only one currently closable). Surface the total count alongside it.
@@ -355,11 +522,11 @@ export default function App() {
   label: string;
   icon: any;
   adminOnly: boolean;
-  permissionKey?: string;
+  permissionKey?: string | string[];
   subItems?: {
     id: string;
     label: string;
-    permissionKey?: string;
+    permissionKey?: string | string[];
     adminOnly?: boolean;
   }[];
 };
@@ -394,14 +561,21 @@ type NavSection = {
         {
           id: 'procurement', label: t('Procurements'), icon: TrendingDown, adminOnly: false,
           subItems: [
-            { id: 'expenses', label: t('Expenses'), permissionKey: 'expense.view' },
+            { id: 'expenses', label: t('Expenses'), permissionKey: 'expense.read' },
             { id: 'expenses-add', label: t('New Expense'), permissionKey: 'expense.create' },
             { id: 'recurring', label: t('Recurring & Accruals'), adminOnly: true }
           ]
         }
       ]
     },
-    ...(activeCompanySetup?.isInventoryModuleEnabled ? [
+    // Visibility is purely permission-driven (inventory.access/.pr/.po/.grn/.stock) — no
+    // company-level "module enabled" gate anymore. There used to be one
+    // (isInventoryModuleEnabled), but it had no admin bypass, unlike every permission check
+    // in normalizePermissions(), so it silently hid this whole section from super-admins
+    // too whenever a company's flag defaulted to off. Removed rather than patched with a
+    // bypass, per explicit product decision — the permission system alone is the source of
+    // truth for what's visible now, same as every other module.
+    ...[
       {
         title: t('Inventory Management'),
         items: [
@@ -415,51 +589,181 @@ type NavSection = {
               { id: 'inventory-pr', label: t('Purchase Requisitions'), permissionKey: 'inventory.pr' },
               { id: 'inventory-po', label: t('Purchase Orders'), permissionKey: 'inventory.po' },
               { id: 'inventory-grn', label: t('Goods Receipt (GRN)'), permissionKey: 'inventory.grn' },
-              { id: 'inventory-stock', label: t('Stock Registry'), permissionKey: 'inventory.stock' }
+              { id: 'inventory-stock', label: t('Stock Registry'), permissionKey: 'inventory.stock' },
+              { id: 'inventory-bills', label: t('Purchase Bills'), permissionKey: 'purchaseBills.read' },
+              { id: 'inventory-returns', label: t('Purchase Returns'), permissionKey: 'purchaseReturns.read' },
+              { id: 'inventory-stocktakes', label: t('Physical Stock Takes'), permissionKey: 'stockTakes.read' }
             ]
           }
         ]
       }
-    ] : []),
+    ],
     {
       title: t('Master Registries'),
+      // Three category accordions instead of one flat 12-entry list — same reasoning and
+      // pattern as the Intelligence & Reports restructuring above: group by what the data
+      // actually represents (who you trade with / what you sell / where it lives) so a
+      // role only ever scans the categories, and the entries inside them, it actually has.
       items: [
-        { 
-          id: 'registries', label: t('Master Registries'), icon: FolderTree, adminOnly: false,
+        {
+          id: 'registries-partners', label: t('Trading Partners'), icon: FolderTree, adminOnly: false,
           subItems: [
-            { id: 'customers', label: t('Customers CRM'), permissionKey: 'customers.view' },
-            { id: 'customers-add', label: t('New Customer'), permissionKey: 'customers.edit' },
-            { id: 'vendors', label: t('Vendors Directory'), permissionKey: 'vendors.view' },
-            { id: 'vendors-add', label: t('New Vendor'), permissionKey: 'vendors.edit' },
-            { id: 'products', label: t('Products & Pricing'), permissionKey: 'products.view' },
-            { id: 'products-add', label: t('New Product'), permissionKey: 'products.edit' },
-            { id: 'categories', label: t('Product Categories'), permissionKey: 'categories.view' },
-            { id: 'categories-add', label: t('New Category'), permissionKey: 'categories.edit' },
-            { id: 'units', label: t('Units of Measure'), permissionKey: 'units.view' },
-            { id: 'units-add', label: t('New Unit'), permissionKey: 'units.edit' },
-            { id: 'warehouses', label: t('Physical Warehouses'), permissionKey: 'warehouses.view' },
-            { id: 'warehouses-add', label: t('New Warehouse'), permissionKey: 'warehouses.edit' }
+            { id: 'customers', label: t('Customers CRM'), permissionKey: 'customers.read' },
+            { id: 'customers-add', label: t('New Customer'), permissionKey: 'customers.create' },
+            { id: 'vendors', label: t('Vendors Directory'), permissionKey: 'vendors.read' },
+            { id: 'vendors-add', label: t('New Vendor'), permissionKey: 'vendors.create' }
+          ]
+        },
+        {
+          id: 'registries-catalog', label: t('Product Catalog'), icon: FolderTree, adminOnly: false,
+          subItems: [
+            { id: 'products', label: t('Products & Pricing'), permissionKey: 'products.read' },
+            { id: 'products-add', label: t('New Product'), permissionKey: 'products.create' },
+            { id: 'categories', label: t('Product Categories'), permissionKey: 'categories.read' },
+            { id: 'categories-add', label: t('New Category'), permissionKey: 'categories.create' },
+            { id: 'units', label: t('Units of Measure'), permissionKey: 'units.read' },
+            { id: 'units-add', label: t('New Unit'), permissionKey: 'units.create' }
+          ]
+        },
+        {
+          id: 'registries-warehouses', label: t('Warehouses'), icon: FolderTree, adminOnly: false,
+          subItems: [
+            { id: 'warehouses', label: t('Physical Warehouses'), permissionKey: 'warehouses.read' },
+            { id: 'warehouses-add', label: t('New Warehouse'), permissionKey: 'warehouses.create' }
           ]
         }
       ]
     },
     {
       title: t('Intelligence & Reports'),
+      // Four category accordions, not one long flat list — a flat list would have grown
+      // to 24 individual entries as the report catalog expanded, easily the longest
+      // section in the sidebar and far harder to scan than any other group. Each category
+      // is its own accordion parent (same pattern as Inventory Management above: the
+      // parent is a togglable label only, every real destination is a subItem,
+      // individually permission-gated) so a role only ever sees the categories — and the
+      // reports inside them — they actually have access to.
       items: [
-        { id: 'reports', label: t('Financial Reports'), icon: BarChart3, adminOnly: false, permissionKey: 'reports.access' }
+        {
+          id: 'reports', label: t('Financial Reports'), icon: BarChart3, adminOnly: false,
+          subItems: [
+            { id: 'reports-trialbalance', label: t('Trial Balance Ledger'), permissionKey: 'reports.trialBalance' },
+            { id: 'reports-salesvat', label: t('Sales VAT Register'), permissionKey: 'reports.salesVat' },
+            { id: 'reports-purchasevat', label: t('Purchase VAT Register'), permissionKey: 'reports.purchaseVat' },
+            { id: 'reports-bankledger', label: t('Bank Statement Ledger'), permissionKey: 'reports.bankLedger' },
+            { id: 'reports-profitloss', label: t('Profit & Loss'), permissionKey: 'reports.profitLoss' },
+            { id: 'reports-outstanding', label: t('Outstanding Aging & Balances'), permissionKey: 'reports.outstanding' },
+            { id: 'reports-balancesheet', label: t('Balance Sheet'), permissionKey: 'reports.balanceSheet' },
+            { id: 'reports-vatreturn', label: t('VAT Return Summary'), permissionKey: 'reports.vatReturnSummary' },
+            { id: 'reports-investorshare', label: t('Investor Profit Share'), permissionKey: 'reports.investorProfitShare' },
+            { id: 'reports-monthclosing', label: t('Fiscal Month Closing History'), permissionKey: 'reports.fiscalMonthClosingHistory' }
+          ]
+        },
+        {
+          id: 'reports-sales', label: t('Sales Reports'), icon: FileText, adminOnly: false,
+          subItems: [
+            { id: 'reports-salesregister', label: t('Sales Register'), permissionKey: 'reports.salesRegister' },
+            { id: 'reports-itemsales', label: t('Item-wise Sales Report'), permissionKey: 'reports.itemWiseSales' },
+            { id: 'reports-customerstatement', label: t('Customer Statement of Account'), permissionKey: 'reports.customerStatement' },
+            { id: 'reports-quotationconversion', label: t('Quotation Conversion Report'), permissionKey: 'reports.quotationConversion' },
+            { id: 'reports-salesbystaff', label: t('Sales by Staff'), permissionKey: 'reports.salesByStaff' },
+            { id: 'reports-posshiftsummary', label: t('POS Shift Summary'), permissionKey: 'reports.posShiftSummary' }
+          ]
+        },
+        {
+          id: 'reports-purchase', label: t('Purchase Reports'), icon: TrendingDown, adminOnly: false,
+          subItems: [
+            { id: 'reports-purchaseregister', label: t('Purchase Register'), permissionKey: 'reports.purchaseRegister' },
+            { id: 'reports-vendorstatement', label: t('Vendor Statement of Account'), permissionKey: 'reports.vendorStatement' },
+            { id: 'reports-postatus', label: t('Purchase Order Status Report'), permissionKey: 'reports.poStatus' },
+            { id: 'reports-grnvariance', label: t('GRN vs. PO Variance'), permissionKey: 'reports.grnPoVariance' }
+          ]
+        },
+        {
+          id: 'reports-inventory', label: t('Inventory Reports'), icon: Boxes, adminOnly: false,
+          subItems: [
+            { id: 'reports-stockvaluation', label: t('Stock Valuation Report'), permissionKey: 'reports.stockValuation' },
+            { id: 'reports-itemprofitability', label: t('Item Profitability Report'), permissionKey: 'reports.itemProfitability' },
+            { id: 'reports-lowstock', label: t('Low Stock / Reorder Report'), permissionKey: 'reports.lowStock' },
+            { id: 'reports-stocktakevariance', label: t('Stock Take Variance History'), permissionKey: 'reports.stockTakeVarianceHistory' },
+            { id: 'reports-stockmovementledger', label: t('Stock Movement Ledger'), permissionKey: 'reports.stockMovementLedger' }
+          ]
+        }
       ]
     },
     {
       title: t('Setup & Governance'),
       items: [
-        { id: 'settings', label: t('Settings & Companies'), icon: Settings, adminOnly: true }
+        { id: 'settings', label: t('Settings & Companies'), icon: Settings, adminOnly: false, permissionKey: SETTINGS_ACCESS_PERMISSIONS }
       ]
     }
   ];
 
 
+  // Accordion bookkeeping: every group-header id (a nav item with subItems), and a
+  // subItem-id -> owning-group-id lookup, both derived from navSections so they never
+  // drift out of sync with the actual menu structure defined above.
+  const allNavGroupIds = navSections.flatMap(s => s.items.filter(i => i.subItems && i.subItems.length > 0).map(i => i.id));
+  const subItemToGroupId: Record<string, string> = {};
+  navSections.forEach(s => s.items.forEach(i => {
+    if (i.subItems) i.subItems.forEach(sub => { subItemToGroupId[sub.id] = i.id; });
+  }));
+
+  // Page header title for every report nav id, derived from the same subItems' own
+  // labels above — the report catalog is now 24 entries across 4 categories, so this is
+  // generated from the single source of truth (the nav definition) instead of a second
+  // hand-maintained ternary chain that could silently drift from the actual menu labels.
+  const REPORT_NAV_TITLES: Record<string, string> = {};
+  navSections.forEach(s => s.items.forEach(i => {
+    if (i.id.startsWith('reports') && i.subItems) {
+      i.subItems.forEach(sub => { REPORT_NAV_TITLES[sub.id] = sub.label; });
+    }
+  }));
+
+  // One-line subtitle per report, shown under the page title. Hand-written (not derived
+  // from the nav label) since a subtitle needs to say more than the title already does.
+  const REPORT_NAV_DESCRIPTIONS: Record<string, string> = {
+    'reports-trialbalance': t('Company-wide debits and credits, balanced across every ledger account.'),
+    'reports-salesvat': t('Output VAT collected on sales, itemised per invoice.'),
+    'reports-purchasevat': t('Input VAT paid on purchases, itemised per expense.'),
+    'reports-bankledger': t('Running balance and transaction history per bank account.'),
+    'reports-profitloss': t('Revenue, expenses, and net profit for the selected period.'),
+    'reports-outstanding': t('Aging customer receivables and vendor payables still open.'),
+    'reports-balancesheet': t('Assets, liabilities, and equity as of a chosen date.'),
+    'reports-vatreturn': t('Net VAT payable or refundable — Output VAT minus Input VAT for a filing period.'),
+    'reports-investorshare': t("Each investor's profit-share allocation for the selected period."),
+    'reports-monthclosing': t('Locked profit & loss snapshots from every closed fiscal month.'),
+    'reports-salesregister': t('Every sales invoice in a period, with status and payment detail.'),
+    'reports-itemsales': t('Quantity sold and revenue earned per product.'),
+    'reports-customerstatement': t('Running balance of invoices and payments for one customer.'),
+    'reports-quotationconversion': t('Quotations issued vs. converted into invoices — your sales conversion rate.'),
+    'reports-salesbystaff': t('Revenue generated per salesperson.'),
+    'reports-posshiftsummary': t('Cash vs. bank sales and cash variance per POS shift.'),
+    'reports-purchaseregister': t('Every purchase expense in a period, by vendor and category.'),
+    'reports-vendorstatement': t('Running balance of bills and payments for one vendor.'),
+    'reports-postatus': t("Purchase orders by fulfillment status, with aging on what's still open."),
+    'reports-grnvariance': t('Ordered vs. actually received quantity, per purchase order line.'),
+    'reports-stockvaluation': t('On-hand quantity valued at average cost, per product and warehouse.'),
+    'reports-itemprofitability': t('Average sale price vs. average cost margin, per product.'),
+    'reports-lowstock': t('Products below their configured reorder level, per warehouse.'),
+    'reports-stocktakevariance': t('Over/under counts from every completed physical stock take.'),
+    'reports-stockmovementledger': t('Every posted in/out stock movement, chronologically, with a running ending quantity.'),
+  };
+
+  // Accordion: opening a group collapses every other group first, so only one section's
+  // subItems are ever expanded at once — keeps the sidebar from growing tall with every
+  // section left open. Closing the currently-open group just closes it.
   const toggleNavGroup = (id: string) => {
-    setExpandedNavGroups(prev => ({...prev, [id]: !prev[id]}));
+    setExpandedNavGroups(prev => {
+      const isCurrentlyOpen = prev[id] === true;
+      if (isCurrentlyOpen) {
+        return { ...prev, [id]: false };
+      }
+      const next: Record<string, boolean> = {};
+      allNavGroupIds.forEach(gid => { next[gid] = false; });
+      next[id] = true;
+      return next;
+    });
   };
 
   // Flattened { tabId -> { permissionKey?, adminOnly? } } built from navSections — the
@@ -470,7 +774,7 @@ type NavSection = {
   // the Rules of Hooks. navSections itself is already recomputed every render, so this
   // plain recomputation costs nothing extra.
   const tabPermissionMap = (() => {
-    const map = new Map<string, { permissionKey?: string; adminOnly?: boolean }>();
+    const map = new Map<string, { permissionKey?: string | string[]; adminOnly?: boolean }>();
     for (const section of navSections) {
       for (const item of section.items) {
         map.set(item.id, { permissionKey: item.permissionKey, adminOnly: item.adminOnly });
@@ -488,7 +792,7 @@ type NavSection = {
     const entry = tabPermissionMap.get(tabId);
     if (!entry) return true;
     if (entry.adminOnly && !isAdmin) return false;
-    if (entry.permissionKey && !can(entry.permissionKey)) return false;
+    if (entry.permissionKey && !canAny(entry.permissionKey)) return false;
     return true;
   };
 
@@ -499,6 +803,7 @@ type NavSection = {
  const resolvedTabId = tabId.startsWith('settings-') ? 'settings' : tabId;
  if (!isTabAllowed(resolvedTabId)) return;
  if (!preserveEditTarget) setEditTarget(null);
+ if (tabId !== 'invoices-view') setViewTarget(null);
  if (tabId.startsWith('settings-')) {
  const sub = tabId.split('-')[1];
  setSettingsTab(sub);
@@ -510,6 +815,17 @@ type NavSection = {
  setActiveTab(tabId);
  }
  setMobileMenuOpen(false);
+
+ // Accordion continued: navigating to a subItem keeps that subItem's own group open
+ // (so the item you just clicked stays visible/selected) but collapses every other
+ // group; navigating to a top-level leaf (Dashboard, Reports, Settings — none of
+ // which own a subItem) collapses every group, since none of them need to stay open.
+ const owningGroup = subItemToGroupId[tabId];
+ setExpandedNavGroups(() => {
+ const next: Record<string, boolean> = {};
+ allNavGroupIds.forEach(gid => { next[gid] = gid === owningGroup; });
+ return next;
+ });
  };
 
  // Shared List/Add wiring for the six MasterEntities sub-tabs — each gets a
@@ -518,7 +834,7 @@ type NavSection = {
  const renderMasterEntities = (sub: 'customers' | 'vendors' | 'products' | 'categories' | 'units' | 'warehouses') => (
  <MasterEntities
  db={activeDb}
- onUpdateDb={handleUpdateDb}
+ onUpdateDbLocal={handleUpdateDbLocal}
  forceSubTab={sub}
  mode={activeTab === `${sub}-add` ? 'add' : 'list'}
  editId={editTarget?.module === sub ? editTarget.id : undefined}
@@ -577,6 +893,43 @@ type NavSection = {
  </button>
  </div>
 
+ {/* Account row — identity (who's logged in) and Sign Out (how to leave) merged into
+ one always-visible row right under the header, instead of splitting them across the
+ top and the bottom of a nav list that can scroll taller than the viewport. */}
+ {!isSidebarCollapsed ? (
+ <div className="mx-3.5 mt-3 flex items-center gap-2 shrink-0">
+ <div className="flex items-center gap-2 min-w-0 flex-1 bg-black/20 border border-indigo-900/40 rounded-xl px-2.5 py-1.5">
+ <div className="p-1 bg-indigo-900/50 border border-indigo-700/50 rounded-lg text-indigo-300 shrink-0">
+ <UserIcon className="w-3.5 h-3.5" />
+ </div>
+ <div className="min-w-0">
+ <span className="text-[11px] font-extrabold text-white block truncate">{currentUser?.username}</span>
+ <span className="text-[8px] font-bold text-indigo-400 uppercase tracking-wider block truncate">{currentUser?.role}</span>
+ </div>
+ </div>
+ <button
+ onClick={handleLogout}
+ className="p-2.5 bg-rose-950/30 hover:bg-rose-900/50 border border-rose-900/40 text-rose-300 rounded-xl transition-all cursor-pointer shrink-0"
+ title={t('Sign Out')}
+ >
+ <LogOut className="w-3.5 h-3.5" />
+ </button>
+ </div>
+ ) : (
+ <div className="mt-3 flex flex-col items-center gap-1.5 shrink-0">
+ <div className="p-2 bg-indigo-900/40 border border-indigo-700/40 rounded-xl text-indigo-300" title={`${currentUser?.username} (${currentUser?.role})`}>
+ <UserIcon className="w-4 h-4" />
+ </div>
+ <button
+ onClick={handleLogout}
+ className="mx-auto p-2 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/50 text-rose-300 rounded-xl transition-all cursor-pointer shrink-0"
+ title={t('Sign Out')}
+ >
+ <LogOut className="w-4 h-4" />
+ </button>
+ </div>
+ )}
+
  {/* Navigation Quick Search Filter (When Expanded) */}
  {!isSidebarCollapsed && (
  <div className="px-3.5 pt-3">
@@ -611,14 +964,23 @@ type NavSection = {
  <select
  id="company-select"
  value={activeDb.selectedCompanyId}
- onChange={(e) => {
+ onChange={async (e) => {
  const targetCompanyId = e.target.value;
  const targetCompSetup = db.companies?.find(c => c.id === targetCompanyId) || db.companySetup;
- handleUpdateDb({
- ...db,
- selectedCompanyId: targetCompanyId,
- companySetup: targetCompSetup
+ setDb(prev => ({ ...prev, selectedCompanyId: targetCompanyId, companySetup: targetCompSetup }));
+ // Persist the selection into the session so every other request (and every other
+ // page/tab) honors it too — /api/state is now scoped per-company, not an unfiltered
+ // blob, so switching companies genuinely needs a real refetch of that company's data.
+ try {
+ await fetch('/api/switch-company', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ companyId: targetCompanyId }),
  });
+ } catch (err) {
+ console.error('Failed to persist company switch:', err);
+ }
+ await triggerDbRefresh();
  }}
  className="w-full bg-indigo-950/50 border border-indigo-800/80 text-slate-200 text-xs font-bold rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans cursor-pointer hover:border-slate-700/60 transition-colors truncate"
  >
@@ -654,7 +1016,7 @@ type NavSection = {
  {openMonth ? (
  <span className="text-emerald-400 font-extrabold flex items-center gap-1.5">
  <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping"></span>
- <span className="truncate">{t("Month Open:")} {t(openMonth.name)}{openMonthsCount > 1 ? ` (+${openMonthsCount - 1})` : ''}</span>
+ <span className="truncate">{t("Month Open:")} {translateMonthLabel(openMonth.name, t)}{openMonthsCount > 1 ? ` (+${openMonthsCount - 1})` : ''}</span>
  </span>
  ) : (
  <span className="text-rose-400 font-bold flex items-center gap-1.5">
@@ -663,7 +1025,7 @@ type NavSection = {
  )}
  </div>
  ) : (
- <div className="my-1.5 flex justify-center" title={openMonth ? `Month Open: ${openMonth.name}${openMonthsCount > 1 ? ` (+${openMonthsCount - 1} more)` : ''}` : "No Month Open"}>
+ <div className="my-1.5 flex justify-center" title={openMonth ? `${t("Month Open:")} ${translateMonthLabel(openMonth.name, t)}${openMonthsCount > 1 ? ` (+${openMonthsCount - 1} more)` : ''}` : t("No Month Open")}>
  <span className={`w-3 h-3 rounded-full ${openMonth ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
  </div>
  )}
@@ -674,13 +1036,13 @@ type NavSection = {
  // Filter out items in the section that are admin-only or restricted
  let visibleItems = section.items.filter(item => {
  if (item.adminOnly && !isAdmin) return false;
-    const hasParentPermission = !item.permissionKey || can(item.permissionKey);
-    
+    const hasParentPermission = !item.permissionKey || canAny(item.permissionKey);
+
     let hasAccessToSubItem = false;
     if (item.subItems && item.subItems.length > 0) {
-      hasAccessToSubItem = item.subItems.some(sub => 
+      hasAccessToSubItem = item.subItems.some(sub =>
         (!sub.adminOnly || isAdmin) &&
-        (!sub.permissionKey || can(sub.permissionKey))
+        (!sub.permissionKey || canAny(sub.permissionKey))
       );
     }
 
@@ -710,22 +1072,27 @@ type NavSection = {
  <div className="space-y-0.5">
  {visibleItems.map(item => {
                       const isQueryActive = navSearchQuery.trim().length > 0;
-                      const isGroupExpanded = isQueryActive || expandedNavGroups[item.id] !== false;
                       const hasSubItems = item.subItems && item.subItems.length > 0;
-                      
+
                       // Filter subItems based on permission and search query
                       const visibleSubItems = hasSubItems ? item.subItems!.filter(sub => {
                         if (sub.adminOnly && !isAdmin) return false;
-                        if (sub.permissionKey && !can(sub.permissionKey)) return false;
+                        if (sub.permissionKey && !canAny(sub.permissionKey)) return false;
                         if (isQueryActive) {
                           return sub.label.toLowerCase().includes(navSearchQuery.toLowerCase()) || item.label.toLowerCase().includes(navSearchQuery.toLowerCase());
                         }
                         return true;
                       }) : [];
-                      
+
                       const actualHasSubItems = visibleSubItems.length > 0;
                       const isSubItemSelected = actualHasSubItems && visibleSubItems.some(sub => activeTab === sub.id);
                       const isSelected = activeTab === item.id || isSubItemSelected;
+                      // Collapsed by default at login (expandedNavGroups starts empty) —
+                      // a group only opens once explicitly toggled (toggleNavGroup) or
+                      // navigated into (handleNavigate's accordion, which already sets the
+                      // owning group true whenever its tab becomes active), so no separate
+                      // "contains the active tab" fallback is needed here.
+                      const isGroupExpanded = isQueryActive || expandedNavGroups[item.id] === true;
                       const Icon = item.icon;
 
                       // Collapsed sidebar view
@@ -818,62 +1185,39 @@ type NavSection = {
  </nav>
  </div>
 
- {/* Sidebar Footer User Info */}
+ {/* Sidebar Footer — language switcher + version only; identity and Sign Out now
+ live together in the account row right under the header (see above). */}
  <div className={`p-3 border-t border-indigo-900/50 bg-slate-950/80 ${isSidebarCollapsed ? 'flex flex-col items-center gap-2' : 'space-y-2.5'}`}>
  {!isSidebarCollapsed ? (
  <>
- <div className="flex items-center justify-between gap-2">
- <div className="flex items-center gap-2.5 min-w-0">
- <div className="p-1.5 bg-indigo-900/50 border border-indigo-700/50 rounded-lg text-indigo-300 shrink-0">
- <UserIcon className="w-4 h-4" />
- </div>
- <div className="min-w-0">
- <span className="text-[11px] font-extrabold text-white block truncate">{currentUser?.username}</span>
- <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider block truncate">{currentUser?.role}</span>
- </div>
- </div>
- </div>
-
- <div className="flex gap-1 w-full justify-center pt-1 border-t border-indigo-900/40">
+ <div className="flex gap-1 w-full justify-center">
  {['en', 'ar', 'ur'].map(l => (
  <button
  key={l}
- onClick={() => {
- const updatedUsers = db.users.map(u => u.id === currentUser.id ? { ...u, uiLanguage: l as any } : u);
- handleUpdateDb({ ...db, users: updatedUsers, currentUser: { ...currentUser, uiLanguage: l as any } });
- }}
+ onClick={() => handleLanguageChange(l as any)}
  className={`px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase transition-colors cursor-pointer ${lang === l ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'}`}
  >
  {l}
  </button>
  ))}
  </div>
- 
- <button
- onClick={handleLogout}
- className="w-full mt-1 py-1.5 px-2 bg-rose-950/30 hover:bg-rose-900/50 border border-rose-900/40 text-rose-200 rounded-xl text-[10px] font-extrabold uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer"
- >
- <LogOut className="w-3.5 h-3.5 text-rose-400" />
- <span>Sign Out</span>
- </button>
 
  <div className="text-[9px] text-slate-500 font-mono text-center pt-1">
  Ver 1.4.0 • ERP Stable Build
  </div>
  </>
  ) : (
- <>
- <div className="p-2 bg-indigo-900/40 border border-indigo-700/40 rounded-xl text-indigo-300" title={`${currentUser?.username} (${currentUser?.role})`}>
- <UserIcon className="w-4 h-4" />
- </div>
+ <div className="flex gap-1 flex-col items-center">
+ {['en', 'ar', 'ur'].map(l => (
  <button
- onClick={handleLogout}
- className="p-2 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/50 text-rose-300 rounded-xl transition-all cursor-pointer"
- title="Sign Out"
+ key={l}
+ onClick={() => handleLanguageChange(l as any)}
+ className={`w-7 py-0.5 rounded text-[9px] font-extrabold uppercase transition-colors cursor-pointer ${lang === l ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'}`}
  >
- <LogOut className="w-4 h-4" />
+ {l}
  </button>
- </>
+ ))}
+ </div>
  )}
  </div>
  </aside>
@@ -902,15 +1246,21 @@ type NavSection = {
  <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded uppercase tracking-wider shrink-0">Super Admin Workspace</span>
  <select
  value={activeDb.selectedCompanyId}
- onChange={(e) => {
+ onChange={async (e) => {
  const nextCompanyId = e.target.value;
  const nextCompanySetup = db.companies?.find(c => c.id === nextCompanyId) || db.companySetup;
- const updatedDb = {
- ...db,
- selectedCompanyId: nextCompanyId,
- companySetup: nextCompanySetup
- };
- handleUpdateDb(updatedDb);
+ setDb(prev => ({ ...prev, selectedCompanyId: nextCompanyId, companySetup: nextCompanySetup }));
+ // Same session-persisting switch as the sidebar selector above.
+ try {
+ await fetch('/api/switch-company', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ companyId: nextCompanyId }),
+ });
+ } catch (err) {
+ console.error('Failed to persist company switch:', err);
+ }
+ await triggerDbRefresh();
  }}
  className="bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow-sm transition-all"
  >
@@ -929,18 +1279,7 @@ type NavSection = {
  return (
  <button
  key={p.id}
- onClick={() => {
- const updatedCompanySetup = {
- ...activeCompanySetup,
- themeId: p.id
- };
- const updatedDb = {
- ...db,
- companySetup: updatedCompanySetup,
- companies: db.companies?.map(c => c.id === activeDb.selectedCompanyId ? updatedCompanySetup : c) || [updatedCompanySetup]
- };
- handleUpdateDb(updatedDb);
- }}
+ onClick={() => handleThemeChange(p.id)}
  className={`w-3.5 h-3.5 rounded-full border transition-all cursor-pointer ${
  isSelected 
  ? 'ring-2 ring-indigo-600 ring-offset-1 scale-110 border-white' 
@@ -960,16 +1299,41 @@ type NavSection = {
  <div>
  <h2 className="text-xl font-extrabold text-slate-900 tracking-tight font-sans capitalize">
  {activeTab === 'dashboard' ? t('Workshop Overview') :
- activeTab === 'reports' ? t('Financial Reports Register') :
+ activeTab.startsWith('reports-') ? (REPORT_NAV_TITLES[activeTab] || t('Financial Reports')) :
  activeTab === 'customers' ? t('Customer Registry (CRM)') :
+ activeTab === 'customers-add' ? (editTarget?.module === 'customers' ? t('Edit Customer') : t('New Customer')) :
  activeTab === 'vendors' ? t('Vendor & Suppliers Directory') :
+ activeTab === 'vendors-add' ? (editTarget?.module === 'vendors' ? t('Edit Vendor') : t('New Vendor')) :
  activeTab === 'products' ? t('Products & Service Catalog') :
+ activeTab === 'products-add' ? (editTarget?.module === 'products' ? t('Edit Product') : t('New Product')) :
  activeTab === 'categories' ? t('Product Categories') :
+ activeTab === 'categories-add' ? (editTarget?.module === 'categories' ? t('Edit Category') : t('New Category')) :
  activeTab === 'units' ? t('Units of Measure') :
+ activeTab === 'units-add' ? (editTarget?.module === 'units' ? t('Edit Unit') : t('New Unit')) :
  activeTab === 'warehouses' ? t('Physical Warehouses') :
+ activeTab === 'warehouses-add' ? (editTarget?.module === 'warehouses' ? t('Edit Warehouse') : t('New Warehouse')) :
+ activeTab === 'quotations' ? t('Quotation Book') :
  activeTab === 'quotations-add' ? (editTarget?.module === 'quotations' ? t('Modify Existing Quotation') : t('New Quotation')) :
+ activeTab === 'invoices' ? t('Sales Invoices') :
  activeTab === 'invoices-add' ? t('New Sales Invoice') :
+ activeTab === 'invoices-view' ? t('View invoice') :
+ activeTab === 'expenses' ? t('Recorded Expenses & Assets') :
  activeTab === 'expenses-add' ? t('New Expense') :
+ activeTab === 'recurring' ? t('Recurring & Accruals') :
+ activeTab === 'pos' ? t('Point of Sale (POS)') :
+ activeTab === 'pos-terminal' ? t('Terminal') :
+ activeTab === 'pos-shifts' ? t('Shifts & Z-Reports') :
+ activeTab === 'pos-history' ? t('Sales History') :
+ activeTab === 'procurement' ? t('Procurements') :
+ activeTab === 'inventory' ? t('Inventory System') :
+ activeTab === 'inventory-pr' ? t('Purchase Requisitions') :
+ activeTab === 'inventory-po' ? t('Purchase Orders') :
+ activeTab === 'inventory-grn' ? t('Goods Receipt (GRN)') :
+ activeTab === 'inventory-stock' ? t('Stock Registry') :
+ activeTab === 'inventory-bills' ? t('Purchase Bills') :
+ activeTab === 'inventory-returns' ? t('Purchase Returns') :
+ activeTab === 'inventory-stocktakes' ? t('Physical Stock Takes') :
+ activeTab === 'settings' ? t('Settings & Companies') :
  t(activeTab)}
  </h2>
  <p className="text-xs text-slate-400 mt-1">
@@ -981,7 +1345,7 @@ type NavSection = {
  {activeTab === 'expenses' && t('Procure tool bits, sheets, and audit workshop costs.')}
  {activeTab === 'expenses-add' && t('Procure tool bits, sheets, and audit workshop costs.')}
  {activeTab === 'recurring' && t('Manage salaries, rent ledger templates, and outstanding accruals.')}
- {activeTab === 'reports' && t('Generate Trial Balances, Sales and Purchase VAT registers, and Bank ledgers.')}
+ {activeTab.startsWith('reports-') && (REPORT_NAV_DESCRIPTIONS[activeTab] || '')}
  {activeTab === 'customers' && t('Manage commercial accounts, client contacts, and outstanding customer VAT balances.')}
  {activeTab === 'vendors' && t('Manage suppliers list, procurement contacts, and supplier details.')}
  {activeTab === 'pos' && t('Fast and responsive POS interface for retail counter sales.')}
@@ -995,7 +1359,7 @@ type NavSection = {
 
  <div className="flex items-center gap-3">
  <button
- onClick={() => setActiveTab('dashboard')}
+ onClick={() => triggerDbRefresh()}
  className="px-3.5 py-1.5 bg-white hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold transition border border-slate-100 shadow-sm"
  >
  {t("Reload View")}
@@ -1007,10 +1371,9 @@ type NavSection = {
  </div>
  </div>
 
- {/* Background-sync failure banner — surfaces handleUpdateDb's cloudError, which
- previously had no rendering anywhere: every optimistic write across the app
- (Users, Bank Accounts, Tax Slabs, Recurring templates, POS, Inventory, etc.)
- could silently fail to persist to Postgres with zero visible signal. */}
+ {/* Background-sync failure banner — surfaces cloudError, set whenever a state
+ refresh from GET /api/state fails, so a broken connection to Postgres has a
+ visible signal instead of silently leaving stale data on screen. */}
  {cloudError && (
  <div className="bg-rose-50 text-rose-700 p-3 px-6 text-xs font-semibold rounded-xl border border-rose-100 flex items-center gap-2 shrink-0">
  <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
@@ -1041,7 +1404,8 @@ type NavSection = {
  {(activeTab === 'quotations' || activeTab === 'quotations-add') && (
  <QuotationModule
  db={activeDb}
- onUpdateDb={handleUpdateDb}
+ onUpdateDbLocal={handleUpdateDbLocal}
+ onRefreshDb={triggerDbRefresh}
  onPrintDoc={(type, data) => setPrintDoc({ type, data })}
  mode={activeTab === 'quotations-add' ? 'add' : 'list'}
  editId={editTarget?.module === 'quotations' ? editTarget.id : undefined}
@@ -1054,29 +1418,94 @@ type NavSection = {
  {(activeTab === 'invoices' || activeTab === 'invoices-add') && (
  <InvoiceModule
  db={activeDb}
- onUpdateDb={handleUpdateDb}
+ onUpdateDbLocal={handleUpdateDbLocal}
+ onRefreshDb={triggerDbRefresh}
  onPrintDoc={(type, data) => setPrintDoc({ type, data })}
  mode={activeTab === 'invoices-add' ? 'add' : 'list'}
  onDone={() => handleNavigate('invoices')}
  onCreateNew={() => handleNavigate('invoices-add')}
+ onViewInvoice={(id) => { setViewTarget({ id }); handleNavigate('invoices-view'); }}
+ />
+ )}
+ {activeTab === 'invoices-view' && viewTarget && (
+ <InvoiceViewScreen
+ db={activeDb}
+ invoiceId={viewTarget.id}
+ onBack={() => handleNavigate('invoices')}
+ onPrintDoc={(type, data) => setPrintDoc({ type, data })}
+ onRefreshDb={triggerDbRefresh}
  />
  )}
  {(activeTab === 'expenses' || activeTab === 'expenses-add') && (
  <ExpenseModule
  db={activeDb}
- onUpdateDb={handleUpdateDb}
  mode={activeTab === 'expenses-add' ? 'add' : 'list'}
  onDone={() => handleNavigate('expenses')}
  onCreateNew={() => handleNavigate('expenses-add')}
  onPrintDoc={(type, data) => setPrintDoc({ type, data })}
+ onRefreshDb={triggerDbRefresh}
  />
  )}
  {activeTab === 'recurring' && isAdmin && (
- <RecurringExpenses db={activeDb} onUpdateDb={handleUpdateDb} onRefreshDb={triggerDbRefresh} />
+ <RecurringExpenses db={activeDb} onRefreshDb={triggerDbRefresh} />
  )}
- {activeTab === 'reports' && (
+ {/* Financial Reports — which report to show is purely nav-driven (10 separate
+ sidebar entries, same as InventoryModule's defaultTab prop for PR/PO/GRN) — no
+ in-page tab switcher inside these modules for this to fall back to. */}
+ {['reports-trialbalance', 'reports-salesvat', 'reports-purchasevat', 'reports-bankledger', 'reports-profitloss', 'reports-outstanding', 'reports-balancesheet', 'reports-vatreturn', 'reports-investorshare', 'reports-monthclosing'].includes(activeTab) && (
  <ReportViewer
  db={activeDb}
+ defaultReportType={
+ activeTab === 'reports-trialbalance' ? 'TrialBalance' :
+ activeTab === 'reports-salesvat' ? 'SalesVAT' :
+ activeTab === 'reports-purchasevat' ? 'PurchaseVAT' :
+ activeTab === 'reports-bankledger' ? 'BankLedger' :
+ activeTab === 'reports-profitloss' ? 'ProfitLoss' :
+ activeTab === 'reports-outstanding' ? 'Outstanding' :
+ activeTab === 'reports-balancesheet' ? 'BalanceSheet' :
+ activeTab === 'reports-vatreturn' ? 'VatReturnSummary' :
+ activeTab === 'reports-investorshare' ? 'InvestorProfitShare' :
+ 'FiscalMonthClosingHistory'
+ }
+ onPrintDoc={(type, data) => setPrintDoc({ type, data })}
+ />
+ )}
+ {['reports-salesregister', 'reports-itemsales', 'reports-customerstatement', 'reports-quotationconversion', 'reports-salesbystaff', 'reports-posshiftsummary'].includes(activeTab) && (
+ <SalesReportsModule
+ db={activeDb}
+ defaultReportType={
+ activeTab === 'reports-salesregister' ? 'SalesRegister' :
+ activeTab === 'reports-itemsales' ? 'ItemWiseSales' :
+ activeTab === 'reports-customerstatement' ? 'CustomerStatement' :
+ activeTab === 'reports-quotationconversion' ? 'QuotationConversion' :
+ activeTab === 'reports-salesbystaff' ? 'SalesByStaff' :
+ 'PosShiftSummary'
+ }
+ onPrintDoc={(type, data) => setPrintDoc({ type, data })}
+ />
+ )}
+ {['reports-purchaseregister', 'reports-vendorstatement', 'reports-postatus', 'reports-grnvariance'].includes(activeTab) && (
+ <PurchaseReportsModule
+ db={activeDb}
+ defaultReportType={
+ activeTab === 'reports-purchaseregister' ? 'PurchaseRegister' :
+ activeTab === 'reports-vendorstatement' ? 'VendorStatement' :
+ activeTab === 'reports-postatus' ? 'PoStatus' :
+ 'GrnPoVariance'
+ }
+ onPrintDoc={(type, data) => setPrintDoc({ type, data })}
+ />
+ )}
+ {['reports-stockvaluation', 'reports-itemprofitability', 'reports-lowstock', 'reports-stocktakevariance', 'reports-stockmovementledger'].includes(activeTab) && (
+ <InventoryReportsModule
+ db={activeDb}
+ defaultReportType={
+ activeTab === 'reports-stockvaluation' ? 'StockValuation' :
+ activeTab === 'reports-itemprofitability' ? 'ItemProfitability' :
+ activeTab === 'reports-lowstock' ? 'LowStock' :
+ activeTab === 'reports-stocktakevariance' ? 'StockTakeVarianceHistory' :
+ 'StockMovementLedger'
+ }
  onPrintDoc={(type, data) => setPrintDoc({ type, data })}
  />
  )}
@@ -1086,20 +1515,22 @@ type NavSection = {
  {(activeTab === 'units' || activeTab === 'units-add') && renderMasterEntities('units')}
  {(activeTab === 'warehouses' || activeTab === 'warehouses-add') && renderMasterEntities('warehouses')}
  {(activeTab === 'pos' || activeTab.startsWith('pos-')) && (
-            <PosModule db={activeDb} onUpdateDb={handleUpdateDb} currentUser={currentUser} defaultTab={activeTab === 'pos' ? 'terminal' : activeTab.replace('pos-', '') as any} onClose={() => setActiveTab('dashboard')} />
+            <PosModule db={activeDb} onUpdateDbLocal={handleUpdateDbLocal} onRefreshDb={triggerDbRefresh} currentUser={currentUser} defaultTab={activeTab === 'pos' ? 'terminal' : activeTab.replace('pos-', '') as any} onClose={() => setActiveTab('dashboard')} />
           )}
   {(activeTab === 'products' || activeTab === 'products-add') && renderMasterEntities('products')}
  {(activeTab === 'inventory' || activeTab.startsWith('inventory-')) && (
          <InventoryModule
            db={activeDb}
-           onUpdateDb={handleUpdateDb}
+           onUpdateDbLocal={handleUpdateDbLocal}
            currentUser={currentUser}
+           onRefreshDb={triggerDbRefresh}
+           onPrintDoc={(type, data) => setPrintDoc({ type, data })}
            defaultTab={activeTab === 'inventory' ? 'stock' : (activeTab.replace('inventory-', '') as any)}
          />
        )}
 
-       {activeTab === 'settings' && isAdmin && (
- <AdminSettings db={activeDb} onUpdateDb={handleUpdateDb} onRefreshDb={triggerDbRefresh} defaultTab={settingsTab as any} />
+       {activeTab === 'settings' && canAny(SETTINGS_ACCESS_PERMISSIONS) && (
+ <AdminSettings db={activeDb} onUpdateDbLocal={handleUpdateDbLocal} onRefreshDb={triggerDbRefresh} defaultTab={settingsTab as any} />
  )}
  </>
  )}

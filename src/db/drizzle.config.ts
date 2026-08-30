@@ -1,15 +1,13 @@
 import { defineConfig } from "drizzle-kit";
 import * as dotenv from "dotenv";
-import { DB_PROVIDER, AIVEN_CONFIG } from "./dbCredentials";
 
-dotenv.config();
+// See server.ts for why this isn't the default `.env` filename.
+dotenv.config({ path: "app.secrets", quiet: true });
 
-const sqlHost = DB_PROVIDER === 'aiven' ? AIVEN_CONFIG.host : process.env.SQL_HOST;
-const sqlDbName = DB_PROVIDER === 'aiven' ? AIVEN_CONFIG.database : process.env.SQL_DB_NAME;
-const user = DB_PROVIDER === 'aiven' ? AIVEN_CONFIG.user : process.env.SQL_USER;
-const password = DB_PROVIDER === 'aiven' ? AIVEN_CONFIG.password : process.env.SQL_PASSWORD;
-const port = DB_PROVIDER === 'aiven' ? AIVEN_CONFIG.port : 5432;
-const ssl = DB_PROVIDER === 'aiven' ? AIVEN_CONFIG.ssl : false;
+const sqlHost = process.env.SQL_HOST;
+const sqlDbName = process.env.SQL_DB_NAME;
+const user = process.env.SQL_USER;
+const password = process.env.SQL_PASSWORD;
 
 if (!sqlHost || !sqlDbName || !user || !password) {
   console.warn("Missing SQL credentials, checking standard Postgres vars if needed");
@@ -22,11 +20,11 @@ export default defineConfig({
   schemaFilter: ["public"],
   dbCredentials: {
     host: sqlHost as string,
-    port: port as number,
+    port: 5432,
     user: user as string,
     password: password as string,
     database: sqlDbName as string,
-    ssl: ssl,
+    ssl: false,
   },
   verbose: true,
 });

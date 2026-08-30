@@ -128,7 +128,12 @@ export async function migrateDataToPostgres(data: any, ctx: MigrateContext = {})
         currency: c.currency || 'SAR',
         portalTitle: c.portalTitle,
         portalSubtitle: c.portalSubtitle,
-        counters: c.counters,
+        // counters intentionally omitted: it is exclusively owned by the row-locked
+        // getAndIncrementCounter() path (server/lib/businessLogic.ts). Including a
+        // client's in-memory snapshot here lets a stale tab's next unrelated save
+        // silently roll the shared document-number counter backward, causing a later
+        // real invoice/quotation/etc. to be issued with a number already in use
+        // (confirmed root cause of duplicate invoiceNumber rows for a live company).
         posSettings: c.posSettings,
         isInventoryModuleEnabled: c.isInventoryModuleEnabled ?? false,
         zatcaEnabled: c.zatcaEnabled ?? false,
@@ -147,11 +152,19 @@ export async function migrateDataToPostgres(data: any, ctx: MigrateContext = {})
       if (!isCallerAdmin) {
         skipped.users = 'caller is not admin/super-admin';
       } else {
+        // Looked up for EVERY caller (not just non-super-admin) — GET /api/state never
+        // returns password hashes to the client (a deliberate security exclusion), so
+        // u.password is always empty on a plain resync. Without this lookup, the password
+        // fallback below would silently overwrite every real user's password with a hash
+        // of '123456' on every single full-state sync (this app fires those automatically,
+        // unprompted, on nearly every save) — confirmed live against real production users;
+        // this is the actual cause of the earlier "admin password mysteriously reset"
+        // incident, not an isolated one-off.
         const existingById = new Map<string, any>();
         for (const u of data.users) {
-          if (u.id && ctx.user && !isCallerSuperAdmin) {
+          if (u.id) {
             const [existing] = await db.select().from(schema.users).where(eq(schema.users.id, u.id));
-            if (existing && existing.companyId && existing.companyId !== ctx.targetCompanyId) {
+            if (existing && ctx.user && !isCallerSuperAdmin && existing.companyId && existing.companyId !== ctx.targetCompanyId) {
               throw Object.assign(new Error(`Cannot modify user '${u.id}': belongs to another company.`), { status: 403 });
             }
             if (existing) existingById.set(u.id, existing);
@@ -160,11 +173,16 @@ export async function migrateDataToPostgres(data: any, ctx: MigrateContext = {})
 
         const records = [];
         for (const u of data.users) {
-          let password = u.password || '123456';
-          if (password && !password.startsWith('$2b$') && !password.startsWith('$2a$')) {
-            password = await bcrypt.hash(password, 10);
-          }
           const existing = existingById.get(u.id);
+          // Only ever hash/replace a password when the caller actually supplied a new one.
+          // A missing/empty u.password means "unchanged" — keep the existing stored hash
+          // (or fall back to a default only for a genuinely brand-new user with no row yet).
+          let password = existing?.password || '123456';
+          if (u.password) {
+            password = u.password.startsWith('$2b$') || u.password.startsWith('$2a$')
+              ? u.password
+              : await bcrypt.hash(u.password, 10);
+          }
           const requestedRole = u.role || 'user';
           // An ignored escalation attempt on an existing user falls back to their current
           // role, not a hard reset to 'user' (which would itself be an unintended downgrade).
@@ -236,11 +254,22 @@ export async function migrateDataToPostgres(data: any, ctx: MigrateContext = {})
     // 4. Tax Slabs
     if (data.taxSlabs?.length) {
       const scoped = await scopeAndAuthorizeRecords(schema.taxSlabs, data.taxSlabs, { ctx, requiredPermission: 'taxSlabs.edit', tableName: 'taxSlabs', skipped });
-      const records = scoped.map((t: any) => ({
+      // companyId is a NOT NULL uuid column — a record carrying an empty/missing companyId
+      // (e.g. a browser tab's stale in-memory copy of a row from before it was properly
+      // scoped to a company) would otherwise throw a raw Postgres error and abort this
+      // entire blob sync, including every other unrelated, legitimate change bundled in
+      // the same request. Drop just that record instead — confirmed live: this exact
+      // shape (a shared/legacy tax slab cached with companyId '') kept failing every full
+      // sync from an already-open tab even though the row itself was already fixed in DB.
+      const validScoped = scoped.filter((t: any) => !!t.companyId);
+      if (validScoped.length < scoped.length) {
+        skipped.taxSlabs = (skipped.taxSlabs ? skipped.taxSlabs + '; ' : '') + `${scoped.length - validScoped.length} row(s) dropped: missing/invalid companyId (stale cached record — reload to pick up the corrected copy)`;
+      }
+      const records = validScoped.map((t: any) => ({
         id: t.id,
         name: t.name || '',
         percentage: String(t.percentage || 0),
-        companyId: t.companyId ?? null,
+        companyId: t.companyId,
         isDefault: !!t.isDefault,
       }));
       // Authoritatively clear any OTHER existing default for a company before setting a
@@ -339,31 +368,17 @@ export async function migrateDataToPostgres(data: any, ctx: MigrateContext = {})
       await upsert(schema.bankAccounts, records);
     }
 
-    // 9. Fiscal Months — composite primary key [id, companyId] already isolates by
-    // company (forcing companyId on a record just creates/updates *this* company's row
-    // at that id, it can never collide with another company's row at the same id), so no
-    // separate existing-row ownership lookup is needed here — only permission + force.
+    // 9. Fiscal Months — deliberately NOT synced through this generic blob path. Opening
+    // and closing a month are two separately-permissioned, higher-stakes operations
+    // (fiscalMonths.open / fiscalMonths.close — see permissionSchema.ts) that the real
+    // dedicated route (POST /api/transactions/months) already enforces correctly and
+    // exclusively; AdminSettings.tsx's handleOpenMonth/handleConfirmClose already call
+    // that route directly and only use this generic sync path to reflect the result into
+    // local state afterward. A coarse blob-sync gate here couldn't distinguish open from
+    // close per-record anyway. If a payload somehow still includes `data.months`, it's
+    // silently ignored rather than given a permissive fallback check.
     if (data.months?.length) {
-      let monthsInput = data.months;
-      if (ctx.user && !isCallerSuperAdmin) {
-        if (!hasPermission(ctx.user, 'fiscalMonths.access')) {
-          skipped.months = "missing permission 'fiscalMonths.access'";
-          monthsInput = [];
-        } else {
-          monthsInput = monthsInput.map((m: any) => ({ ...m, companyId: ctx.targetCompanyId }));
-        }
-      }
-      const records = monthsInput.map((m: any) => ({
-        id: m.id,
-        name: m.name,
-        status: m.status,
-        closedAt: m.closedAt ? new Date(m.closedAt) : null,
-        closedOption: m.closedOption,
-        closedPnL: m.closedPnL,
-        companyId: m.companyId,
-        attachmentUrl: m.attachmentUrl,
-      }));
-      await upsert(schema.fiscalMonths, records, ['id', 'companyId']);
+      skipped.months = 'fiscal month changes must go through POST /api/transactions/months, not the generic sync';
     }
 
     // 10. Quotations & Items

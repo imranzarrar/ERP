@@ -1,9 +1,12 @@
 import { db } from '../../../src/db/index.js';
 import * as schema from '../../../src/db/schema.js';
-import { eq, desc } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { sha256Base64 } from './crypto.js';
+import { generateId } from '../../../src/id.js';
 import { DOMParser } from '@xmldom/xmldom';
 import { XmlCanonicalizer } from 'xmldsigjs';
+
+export type ZatcaEnvironment = 'sandbox' | 'simulation' | 'production';
 
 // ZATCA's well-known initial Previous Invoice Hash for the first invoice in a chain:
 // Base64 of the ASCII hex STRING of SHA-256('0') (not the raw digest bytes — ZATCA's own
@@ -24,24 +27,30 @@ export interface HashChainState {
 }
 
 /**
-  * Retrieves the next ICV and previous invoice hash for a given company.
+  * Retrieves the next ICV and previous invoice hash for a given company, scoped to one
+  * ZATCA environment. Sandbox, Simulation, and Production are entirely separate ZATCA
+  * backends with zero shared submission history (see CLAUDE.md's ZATCA section) — a point
+  * lookup on `zatcaChainState`'s `(companyId, environment)` row, not a scan of `invoices`,
+  * so this stays O(1) regardless of how large a tenant's invoice history grows. Invoice,
+  * CreditNote, and DebitNote for one company share a single continuous sequence — there is
+  * deliberately no `documentType` dimension here, matching ZATCA's chain-integrity model.
   *
-  * Pass a locked transaction (see reserveNextHashChainState below) when this reservation
-  * must be durable and race-free; the default `db` executor is read-only/unlocked and
-  * safe only for display purposes (e.g. "next ICV" shown in the onboarding status panel)
-  * where a stale read has no consequence.
+  * Pass a locked transaction when this reservation must be durable and race-free — every
+  * real caller already holds a row lock on the `companies` row for the duration of the
+  * reservation (see processInvoiceZatca), which fully serializes concurrent calls for the
+  * same company; this function does not need its own separate lock on top of that. The
+  * default `db` executor is read-only/unlocked and safe only for display purposes (e.g.
+  * "next ICV" shown in the onboarding status panel) where a stale read has no consequence.
   */
-export async function getNextHashChainState(companyId: string, executor: any = db): Promise<HashChainState> {
-  const [lastInvoice] = await executor.select({
-    icv: schema.invoices.icv,
-    currentInvoiceHash: schema.invoices.currentInvoiceHash,
+export async function getNextHashChainState(companyId: string, environment: ZatcaEnvironment, executor: any = db): Promise<HashChainState> {
+  const [state] = await executor.select({
+    currentIcv: schema.zatcaChainState.currentIcv,
+    currentHash: schema.zatcaChainState.currentHash,
   })
-  .from(schema.invoices)
-  .where(eq(schema.invoices.companyId, companyId))
-  .orderBy(desc(schema.invoices.icv))
-  .limit(1);
+  .from(schema.zatcaChainState)
+  .where(and(eq(schema.zatcaChainState.companyId, companyId), eq(schema.zatcaChainState.environment, environment)));
 
-  if (!lastInvoice || !lastInvoice.icv || lastInvoice.icv === 0) {
+  if (!state || !state.currentIcv) {
     return {
       icv: 1,
       previousInvoiceHash: INITIAL_PREVIOUS_INVOICE_HASH,
@@ -49,9 +58,52 @@ export async function getNextHashChainState(companyId: string, executor: any = d
   }
 
   return {
-    icv: (lastInvoice.icv || 0) + 1,
-    previousInvoiceHash: lastInvoice.currentInvoiceHash || INITIAL_PREVIOUS_INVOICE_HASH,
+    icv: state.currentIcv + 1,
+    previousInvoiceHash: state.currentHash || INITIAL_PREVIOUS_INVOICE_HASH,
   };
+}
+
+/**
+  * True if `icv` is still the actual tip of this company's chain for this environment —
+  * i.e. nothing else has been generated at a later position since. Used to decide whether
+  * a stalled invoice's original reservation can still be safely reused/rolled back
+  * (processInvoiceZatca's resubmission logic, and the cancel-route rollback) or whether it
+  * has already been superseded and must be treated as permanently burned.
+  */
+export async function isStillChainTip(companyId: string, environment: ZatcaEnvironment, icv: number, executor: any = db): Promise<boolean> {
+  const [state] = await executor.select({ currentIcv: schema.zatcaChainState.currentIcv })
+    .from(schema.zatcaChainState)
+    .where(and(eq(schema.zatcaChainState.companyId, companyId), eq(schema.zatcaChainState.environment, environment)));
+  return !!state && state.currentIcv === icv;
+}
+
+/**
+  * Durably sets this company's chain-state tip for one environment to an exact
+  * (icv, hash) pair — upserting the `zatcaChainState` row. Used both to advance the chain
+  * forward after a real reservation (icv/hash of the document just built) and to roll it
+  * back on cancellation of an invoice that never reached ZATCA and was still the tip
+  * (icv-1/previousInvoiceHash of the cancelled invoice — see the cancel route). Must be
+  * called under the same company-row lock as the read that decided the new value.
+  */
+export async function setHashChainState(companyId: string, environment: ZatcaEnvironment, icv: number, hash: string | null, executor: any = db): Promise<void> {
+  const [existing] = await executor.select({ id: schema.zatcaChainState.id })
+    .from(schema.zatcaChainState)
+    .where(and(eq(schema.zatcaChainState.companyId, companyId), eq(schema.zatcaChainState.environment, environment)));
+
+  if (existing) {
+    await executor.update(schema.zatcaChainState)
+      .set({ currentIcv: icv, currentHash: hash, updatedAt: new Date() })
+      .where(eq(schema.zatcaChainState.id, existing.id));
+  } else {
+    await executor.insert(schema.zatcaChainState).values({
+      id: generateId(),
+      companyId,
+      environment,
+      currentIcv: icv,
+      currentHash: hash,
+      updatedAt: new Date(),
+    });
+  }
 }
 
 /**

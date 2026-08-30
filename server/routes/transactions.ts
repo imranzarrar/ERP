@@ -2,19 +2,21 @@ import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, inArray, and, desc } from 'drizzle-orm';
-import { getAndIncrementCounter, validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, round2, computePaymentStatus } from '../lib/businessLogic.js';
+import { getAndIncrementCounter, validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, postCreditNoteReversalVoucher, round2, round4, computePaymentStatus, deductStockForSale } from '../lib/businessLogic.js';
+import { isStillChainTip, setHashChainState, ZatcaEnvironment } from '../lib/zatca/hashChain.js';
 import { normalizePermissions } from '../../src/types.js';
 import { processInvoiceZatca } from '../lib/zatca/processInvoice.js';
 import { hasPermission, assertOwnsRow } from '../lib/authz.js';
 import { parseLimitOffset } from '../lib/pagination.js';
 import { generateId } from '../../src/id.js';
+import { normalizeZatcaUnitCode } from '../../src/zatcaUnitCodes.js';
 
 const router = express.Router();
 
 router.get('/quotations', async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
-    if (!permissions.quotation.view.enabled) return res.status(403).json({ error: 'Forbidden' });
+    if (!permissions.quotation.read.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     const conditions = [eq(schema.quotations.companyId, req.targetCompanyId)];
     if (!(req.user.role === 'admin' || req.user.isSuperAdmin)) {
@@ -40,15 +42,26 @@ router.get('/quotations', async (req: any, res) => {
 router.post('/quotations', async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
-    if (!permissions.quotation.create.enabled) return res.status(403).json({ error: 'Forbidden' });
-
     const { quotationData } = req.body;
 
+    // Upsert route: an `id` naming an existing row is an edit, gated by quotation.update
+    // (not quotation.create) — the two are separately grantable, same as every other
+    // upsert route in this app (expenses/products/units/customers/vendors). A converted
+    // or cancelled quotation is terminal for edits regardless of permission, matching the
+    // dedicated PUT /quotations/:id route's own rule.
+    let existing: typeof schema.quotations.$inferSelect | undefined;
     if (quotationData.id) {
-      const [existing] = await db.select().from(schema.quotations).where(eq(schema.quotations.id, quotationData.id));
+      [existing] = await db.select().from(schema.quotations).where(eq(schema.quotations.id, quotationData.id));
       if (!assertOwnsRow(existing, req)) {
         return res.status(403).json({ error: 'Forbidden: this quotation belongs to another company' });
       }
+    }
+    if (existing) {
+      if (!permissions.quotation.update.enabled) return res.status(403).json({ error: 'Forbidden' });
+      if (existing.status === 'Converted') return res.status(400).json({ error: 'Converted quotations cannot be modified.' });
+      if (existing.isCancelled) return res.status(400).json({ error: 'Cancelled quotations cannot be modified.' });
+    } else if (!permissions.quotation.create.enabled) {
+      return res.status(403).json({ error: 'Forbidden' });
     }
 
     quotationData.companyId = req.targetCompanyId;
@@ -89,7 +102,8 @@ router.post('/quotations', async (req: any, res) => {
           quotationId: newQuotation.id,
           unitCost: String(round2(Number(item.unitCost))),
           quantity: String(item.quantity),
-          discountAmount: item.discountAmount ? String(round2(Number(item.discountAmount))) : '0'
+          discountAmount: item.discountAmount ? String(round2(Number(item.discountAmount))) : '0',
+          unit: normalizeZatcaUnitCode(item.unit),
         })));
       }
     });
@@ -103,7 +117,7 @@ router.post('/quotations', async (req: any, res) => {
 router.put('/quotations/:id', async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
-    if (!permissions.quotation.create.enabled) return res.status(403).json({ error: 'Forbidden' });
+    if (!permissions.quotation.update.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     const { id } = req.params;
     const { quotationData } = req.body;
@@ -113,6 +127,7 @@ router.put('/quotations/:id', async (req: any, res) => {
       const [existing] = await tx.select().from(schema.quotations).where(and(eq(schema.quotations.id, id), eq(schema.quotations.companyId, req.targetCompanyId)));
       if (!existing) throw new Error('Quotation not found.');
       if (existing.status === 'Converted') throw new Error('Converted quotations cannot be modified.');
+      if (existing.isCancelled) throw new Error('Cancelled quotations cannot be modified.');
 
       const companyId = req.targetCompanyId;
       qData.companyId = companyId;
@@ -133,11 +148,40 @@ router.put('/quotations/:id', async (req: any, res) => {
           quotationId: id,
           unitCost: String(round2(Number(item.unitCost))),
           quantity: String(item.quantity),
-          discountAmount: item.discountAmount ? String(round2(Number(item.discountAmount))) : '0'
+          discountAmount: item.discountAmount ? String(round2(Number(item.discountAmount))) : '0',
+          unit: normalizeZatcaUnitCode(item.unit),
         })));
       }
     });
 
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+// Cancel a quotation — sets the dedicated isCancelled flag rather than overloading
+// `status` (which stays a pure Draft/Sent/Accepted/Converted phase record). A quotation
+// displays as "Cancelled" whenever isCancelled is true, regardless of what phase it was
+// in when cancelled. Converted quotations are terminal in the other direction (already
+// fulfilled into an invoice) and can't be cancelled from here.
+router.post('/quotations/:id/cancel', async (req: any, res) => {
+  try {
+    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+    if (!permissions.quotation.delete.enabled) return res.status(403).json({ error: 'Forbidden' });
+
+    const { id } = req.params;
+    const [existing] = await db.select().from(schema.quotations)
+      .where(and(eq(schema.quotations.id, id), eq(schema.quotations.companyId, req.targetCompanyId)));
+    if (!existing) return res.status(404).json({ error: 'Quotation not found.' });
+    if (existing.status === 'Converted') {
+      return res.status(400).json({ error: 'Converted quotations cannot be cancelled.' });
+    }
+    if (existing.isCancelled) {
+      return res.status(400).json({ error: 'Quotation is already cancelled.' });
+    }
+
+    await db.update(schema.quotations).set({ isCancelled: true }).where(eq(schema.quotations.id, id));
     res.json({ success: true });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
@@ -156,6 +200,7 @@ router.post('/quotations/:id/convert', async (req: any, res) => {
       // 1. Fetch quotation
       const [quotation] = await tx.select().from(schema.quotations).where(and(eq(schema.quotations.id, id), eq(schema.quotations.companyId, req.targetCompanyId)));
       if (!quotation) throw new Error('Quotation not found.');
+      if (quotation.isCancelled) throw new Error('Cancelled quotations cannot be converted.');
       if (quotation.status !== 'Accepted') throw new Error(`Only accepted quotations can be converted. Current status: ${quotation.status}`);
 
       const companyId = req.targetCompanyId;
@@ -219,8 +264,32 @@ router.post('/quotations/:id/convert', async (req: any, res) => {
         description: item.description,
         unitCost: String(round2(Number(item.unitCost))),
         quantity: String(item.quantity),
-        discountAmount: item.discountAmount ? String(round2(Number(item.discountAmount))) : '0'
+        discountAmount: item.discountAmount ? String(round2(Number(item.discountAmount))) : '0',
+        unit: normalizeZatcaUnitCode(item.unit),
+        productId: item.productId || null,
       })));
+
+      // Fold each catalog-linked line into the product's weighted-average sale price —
+      // this conversion always represents a genuinely new sale (a fresh invoice row, never
+      // an edit), so unlike the main /invoices route there's no isNewInvoice branch needed.
+      for (const item of itemsToInsert) {
+        if (!item.productId) continue;
+        const [product] = await tx.select({
+          averageSalePrice: schema.productsServices.averageSalePrice,
+          totalQuantitySold: schema.productsServices.totalQuantitySold,
+        }).from(schema.productsServices).where(eq(schema.productsServices.id, item.productId)).for('update');
+        if (product) {
+          const priorQty = Number(product.totalQuantitySold || 0);
+          const priorAvg = Number(product.averageSalePrice || 0);
+          const soldQty = Number(item.quantity);
+          const newQty = priorQty + soldQty;
+          const newAvg = newQty > 0 ? round4((priorQty * priorAvg + soldQty * Number(item.unitCost)) / newQty) : priorAvg;
+          await tx.update(schema.productsServices)
+            .set({ averageSalePrice: String(newAvg), totalQuantitySold: String(round2(newQty)) })
+            .where(eq(schema.productsServices.id, item.productId));
+        }
+        await deductStockForSale(tx, companyId, item.productId, Number(item.quantity), invoiceId, newInvoice.createdAt as Date);
+      }
 
       // 7. Update Quotation Status
       await tx.update(schema.quotations).set({ status: 'Converted' }).where(eq(schema.quotations.id, id));
@@ -250,7 +319,7 @@ router.post('/quotations/:id/convert', async (req: any, res) => {
 router.get('/invoices', async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
-    if (!permissions.invoice.view.enabled) return res.status(403).json({ error: 'Forbidden' });
+    if (!permissions.invoice.read.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     const companyId = req.targetCompanyId;
     const conditions = [eq(schema.invoices.companyId, companyId)];
@@ -279,6 +348,12 @@ router.post('/invoices', async (req: any, res) => {
       const [existing] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invData.id));
       if (!assertOwnsRow(existing, req)) {
         return res.status(403).json({ error: 'Forbidden: this invoice belongs to another company' });
+      }
+      // Regulatory rule, not a permission check: once ZATCA has a submission in flight
+      // or cleared/reported an invoice, its content is immutable — no role or permission
+      // can override this. Applies regardless of `invoice.create`/`invoice.update` above.
+      if (existing && ['SUBMITTING', 'CLEARED', 'REPORTED'].includes(existing.zatcaStatus as string)) {
+        return res.status(400).json({ error: 'This invoice has already been submitted to ZATCA and can no longer be edited. Issue a Credit Note instead.' });
       }
     }
 
@@ -333,13 +408,22 @@ router.post('/invoices', async (req: any, res) => {
       invData.amountPaid = String(round2(Number(invData.amountPaid || 0)));
 
       // 3. Insert/Update Invoice
-      const [newInvoice] = await tx.insert(schema.invoices).values({
+      // createdAt/paymentDate are `timestamp` (Date-mode) columns — the driver serializes
+      // every bound parameter for the whole statement up front (Postgres, not drizzle,
+      // decides at execute time whether the INSERT or the ON CONFLICT...SET branch actually
+      // applies), so the SET clause's values need the same Date conversion as VALUES, not
+      // the raw invData (which still has string dates straight from the request body).
+      // Passing the raw string there broke every invoice creation carrying a paymentDate
+      // (e.g. any invoice saved as Paid) with a raw driver error: "value.toISOString is
+      // not a function" — reproduced live against the "UX test company" invoice-create flow.
+      const invoiceValues = {
         ...invData,
         createdAt: invData.createdAt ? new Date(invData.createdAt) : new Date(),
         paymentDate: invData.paymentDate ? new Date(invData.paymentDate) : null,
-      }).onConflictDoUpdate({
+      };
+      const [newInvoice] = await tx.insert(schema.invoices).values(invoiceValues).onConflictDoUpdate({
         target: schema.invoices.id,
-        set: invData
+        set: invoiceValues
       }).returning();
       
       savedInvoiceId = newInvoice.id;
@@ -347,16 +431,46 @@ router.post('/invoices', async (req: any, res) => {
       // 4. Insert/Update Items
       if (items && items.length > 0) {
         for (const item of items) {
-          await tx.insert(schema.invoiceItems).values({
+          // Same object used for both branches (values and set) — see invoiceValues
+          // above for why: Postgres serializes both branches' parameters up front
+          // regardless of which one actually executes, so a raw/unvalidated value in
+          // either one reaches the driver either way.
+          const itemValues = {
             ...item,
             invoiceId: newInvoice.id,
             unitCost: String(round2(Number(item.unitCost))),
             quantity: String(item.quantity),
-            discountAmount: item.discountAmount ? String(round2(Number(item.discountAmount))) : '0'
-          }).onConflictDoUpdate({
+            discountAmount: item.discountAmount ? String(round2(Number(item.discountAmount))) : '0',
+            unit: normalizeZatcaUnitCode(item.unit),
+          };
+          await tx.insert(schema.invoiceItems).values(itemValues).onConflictDoUpdate({
             target: schema.invoiceItems.id,
-            set: item
+            set: itemValues
           });
+
+          // Fold into the product's weighted-average sale price — only on true new-invoice
+          // creation (not an edit of an existing one, and not a Credit/Debit Note, which
+          // goes through the separate /invoices/:id/note route below and deliberately
+          // doesn't touch this average — same forward-only philosophy as GRN reversal not
+          // unwinding averageCost). Only lines actually picked from the catalog carry a
+          // productId; a free-typed line simply doesn't contribute.
+          if (isNewInvoice && item.productId) {
+            const [product] = await tx.select({
+              averageSalePrice: schema.productsServices.averageSalePrice,
+              totalQuantitySold: schema.productsServices.totalQuantitySold,
+            }).from(schema.productsServices).where(eq(schema.productsServices.id, item.productId)).for('update');
+            if (product) {
+              const priorQty = Number(product.totalQuantitySold || 0);
+              const priorAvg = Number(product.averageSalePrice || 0);
+              const soldQty = Number(item.quantity);
+              const newQty = priorQty + soldQty;
+              const newAvg = newQty > 0 ? round4((priorQty * priorAvg + soldQty * Number(item.unitCost)) / newQty) : priorAvg;
+              await tx.update(schema.productsServices)
+                .set({ averageSalePrice: String(newAvg), totalQuantitySold: String(round2(newQty)) })
+                .where(eq(schema.productsServices.id, item.productId));
+            }
+            await deductStockForSale(tx, companyId, item.productId, Number(item.quantity), newInvoice.id, invoiceValues.createdAt as Date);
+          }
         }
       }
 
@@ -405,6 +519,23 @@ router.post('/invoices/:id/note', async (req: any, res) => {
       .where(and(eq(schema.invoices.id, originalInvoiceId), eq(schema.invoices.companyId, companyId)));
     if (!original) return res.status(404).json({ error: 'Original invoice not found' });
 
+    // A Credit Note here is a full-document reversal (MVP scope, see the file comment
+    // above) — a second one against the same original would credit the customer twice for
+    // one sale. Debit Notes are deliberately not blocked here: they represent genuine new
+    // additional charges, not a reversal, so more than one against the same invoice isn't
+    // inherently wrong the way a duplicate Credit Note is.
+    if (type === 'CreditNote') {
+      const [existingCreditNote] = await db.select().from(schema.invoices)
+        .where(and(
+          eq(schema.invoices.originalInvoiceId, originalInvoiceId),
+          eq(schema.invoices.documentType, 'CreditNote'),
+          eq(schema.invoices.companyId, companyId)
+        ));
+      if (existingCreditNote) {
+        return res.status(400).json({ error: `A Credit Note (${existingCreditNote.invoiceNumber}) has already been issued for this invoice.` });
+      }
+    }
+
     const originalItems = await db.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, originalInvoiceId));
     if (originalItems.length === 0) {
       return res.status(400).json({ error: 'Original invoice has no line items to reference' });
@@ -450,21 +581,29 @@ router.post('/invoices/:id/note', async (req: any, res) => {
           quantity: item.quantity,
           discountAmount: item.discountAmount,
           taxSlabId: item.taxSlabId,
+          // A Credit/Debit Note must reverse the original invoice's units exactly — a
+          // line originally sold in KGM being reversed as PCE would misrepresent what's
+          // actually being credited/debited.
+          unit: item.unit,
+          // Carried through for display/reporting only — deliberately does NOT fold back
+          // into averageSalePrice. Same forward-only philosophy as GRN reversal not
+          // unwinding averageCost: a moving weighted average can't be precisely reversed
+          // without replaying full history, so credits/debits are excluded from the
+          // average rather than approximated.
+          productId: item.productId,
         });
       }
 
       // A Credit Note structurally reverses the original invoice — if any of it was
-      // actually paid, reverse that receipt too. Reuses the same synthetic
-      // `status: 'Cancelled'` override already used by the /cancel route above to route
-      // into syncVoucherForInvoice's reversal branch (month-closed-aware: deletes the
-      // open-month Receipt outright, or posts a dated Reversal voucher if the month's
-      // closed) without ever touching the original invoice's own stored paymentStatus.
-      // Debit Notes represent new unpaid charges, not a reversal, so they never reach here.
+      // actually paid, reverse that receipt too. Unlike Cancel, the original invoice's own
+      // status/paymentStatus is deliberately left untouched (see the note above this
+      // route), so the money-out side must be recorded as a genuine Reversal voucher
+      // rather than deleted — see postCreditNoteReversalVoucher's own comment for why
+      // reusing syncVoucherForInvoice's Cancel-branch here silently erased the Bank
+      // Statement Ledger's record of the original receipt. Debit Notes represent new
+      // unpaid charges, not a reversal, so they never reach here.
       if (type === 'CreditNote' && Number(original.amountPaid) > 0) {
-        await syncVoucherForInvoice(tx, originalInvoiceId, companyId, {
-          ...original,
-          status: 'Cancelled',
-        }, user.id);
+        await postCreditNoteReversalVoucher(tx, originalInvoiceId, companyId, original.date, user.id);
       }
     });
 
@@ -480,15 +619,65 @@ router.post('/invoices/:id/note', async (req: any, res) => {
   }
 });
 
+// Accepts an optional partial `amount` in the body. Omitting it (or any caller that
+// predates this — every existing test call included, since none of them relied on this
+// being ignored, only on the end result of "fully paid") keeps behaving exactly as
+// before: settle the full remaining balance. Passing `amount` settles only that much,
+// leaving the invoice 'Partially Paid' if a balance remains.
+//
+// Deliberately NOT built on syncVoucherForInvoice — that helper upserts exactly one
+// Receipt voucher per invoice (by referenceType+referenceId+type), which is correct for
+// "this invoice's payment status changed" everywhere else it's used (cancellation
+// reversal, credit notes) but wrong here: a second partial payment must post a *second*,
+// separate voucher, not silently overwrite the amount on the first one. Every partial
+// settlement gets its own real voucher row, matching src/dbStore.ts's markInvoicePaid
+// (the legacy path this route replaces) so migrating InvoiceModule.tsx's "Receive
+// Payment" modal onto this route doesn't change what a customer's payment history shows.
 router.post('/invoices/:id/paid', async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
-    if (!permissions.invoice.create.enabled) return res.status(403).json({ error: 'Forbidden' });
+    if (!permissions.invoice.update.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     const { id } = req.params;
+    const requestedAmount = req.body?.amount !== undefined ? Number(req.body.amount) : undefined;
+    if (requestedAmount !== undefined && (!Number.isFinite(requestedAmount) || requestedAmount <= 0)) {
+      return res.status(400).json({ error: 'Payment amount must be greater than zero.' });
+    }
+
+    let createdVoucher: any;
     await db.transaction(async (tx) => {
-      const [invoice] = await tx.select().from(schema.invoices).where(and(eq(schema.invoices.id, id), eq(schema.invoices.companyId, req.targetCompanyId)));
+      // FOR UPDATE — without this, two payments landing close together (e.g. cash recorded
+      // by a cashier immediately followed by a bank transfer entered by an accountant) both
+      // read the same currentPaid/remaining and the second write silently clobbers the
+      // first's amountPaid, even though both Receipt vouchers were correctly inserted —
+      // the invoice's own denormalized amountPaid/paymentStatus would then understate what
+      // was actually collected. Purchase Bills' own /pay route already locks this way.
+      const [invoice] = await tx.select().from(schema.invoices).where(and(eq(schema.invoices.id, id), eq(schema.invoices.companyId, req.targetCompanyId))).for('update');
       if (!invoice) throw new Error('Invoice not found');
+      if (invoice.status === 'Cancelled') {
+        const err: any = new Error('Cancelled invoices cannot be paid.');
+        err.status = 400;
+        throw err;
+      }
+      if (invoice.paymentStatus === 'Paid') {
+        const err: any = new Error('Invoice is already fully paid.');
+        err.status = 400;
+        throw err;
+      }
+      // A Credit Note reduces what the customer owes on the original invoice — it is not
+      // itself a receivable, so it can never be "paid". (A Debit Note, by contrast,
+      // represents genuine additional charges and is legitimately payable — this check is
+      // deliberately scoped to CreditNote only.)
+      if (invoice.documentType === 'CreditNote') {
+        const err: any = new Error('A Credit Note cannot be paid — it reduces the original invoice\'s balance, it does not create one of its own.');
+        err.status = 400;
+        throw err;
+      }
+
+      const paymentDate = req.body?.paymentDate ? String(req.body.paymentDate) : new Date().toISOString().split('T')[0];
+      // Throws (with .status set) rather than returning a validity object — propagates
+      // straight up through this transaction callback to the outer catch below.
+      await validateTransactionDate(paymentDate, invoice.companyId);
 
       const invItems = await tx.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, id));
       const [taxSlab] = invoice.taxSlabId ? await tx.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, invoice.taxSlabId)) : [undefined];
@@ -501,18 +690,74 @@ router.post('/invoices/:id/paid', async (req: any, res) => {
       const discountedSubtotal = round2(Math.max(0, itemsSubtotal - headerDiscount));
       const taxAmount = round2(discountedSubtotal * (percentage / 100));
       const grandTotal = round2(discountedSubtotal + taxAmount);
-      const amountPaidStr = String(grandTotal);
 
-      await tx.update(schema.invoices).set({ paymentStatus: 'Paid', amountPaid: amountPaidStr }).where(eq(schema.invoices.id, id));
+      const currentPaid = round2(Number(invoice.amountPaid || 0));
+      const remaining = round2(grandTotal - currentPaid);
+      if (remaining <= 0) {
+        const err: any = new Error('No remaining balance to pay.');
+        err.status = 400;
+        throw err;
+      }
 
-      await syncVoucherForInvoice(tx, id, invoice.companyId, {
-        ...invoice,
-        paymentStatus: 'Paid',
-        amountPaid: amountPaidStr,
-        amount: amountPaidStr,
-      }, req.user.id);
+      let amountToPost = remaining;
+      if (requestedAmount !== undefined) {
+        if (requestedAmount > remaining + 0.01) {
+          const err: any = new Error(`Payment amount (${requestedAmount}) exceeds the remaining balance (${remaining}).`);
+          err.status = 400;
+          throw err;
+        }
+        amountToPost = Math.min(requestedAmount, remaining);
+      }
+
+      const newPaidAmount = round2(currentPaid + amountToPost);
+      const newPaymentStatus = computePaymentStatus(newPaidAmount, grandTotal);
+      const targetBankId = req.body?.bankId || invoice.bankId;
+      // A client-supplied bankId must actually belong to this company — otherwise a
+      // malformed/malicious request could post a receipt (and misattribute real cash)
+      // against another tenant's bank account.
+      if (req.body?.bankId) {
+        const [bank] = await tx.select({ id: schema.bankAccounts.id }).from(schema.bankAccounts)
+          .where(and(eq(schema.bankAccounts.id, targetBankId), eq(schema.bankAccounts.companyId, invoice.companyId)));
+        if (!bank) {
+          const err: any = new Error('Selected bank account was not found for this company.');
+          err.status = 400;
+          throw err;
+        }
+      }
+
+      // The invoice's own bankId is the bank it was issued expecting payment to (shown on
+      // the printed document) — it must stay stable across however many separate,
+      // possibly different-bank installments actually settle it. Each installment's real
+      // bank is recorded on its own Receipt voucher below, not on the invoice row.
+      await tx.update(schema.invoices)
+        .set({
+          paymentStatus: newPaymentStatus,
+          amountPaid: String(newPaidAmount),
+          paymentDate: new Date(paymentDate),
+        })
+        .where(eq(schema.invoices.id, id));
+
+      const vchCount = await getAndIncrementCounter(tx, invoice.companyId, 'voucher');
+      const [voucher] = await tx.insert(schema.vouchers).values({
+        id: generateId(),
+        voucherNumber: `VCH-${vchCount}`,
+        type: 'Receipt',
+        date: paymentDate,
+        bankId: targetBankId,
+        amount: String(amountToPost),
+        description: `Receipt voucher generated for invoice ${invoice.invoiceNumber} payment of ${amountToPost}`,
+        referenceType: 'Invoice',
+        referenceId: id,
+        companyId: invoice.companyId,
+        createdById: req.user.id,
+        createdAt: new Date(),
+      }).returning();
+      createdVoucher = voucher;
     });
-    res.json({ success: true });
+    // Returned so the client can immediately open a printable payment receipt — see
+    // DocumentRenderer.tsx's renderVoucher, the same one ReportViewer.tsx's voucher
+    // register already prints from.
+    res.json({ success: true, voucher: createdVoucher });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
   }
@@ -521,11 +766,16 @@ router.post('/invoices/:id/paid', async (req: any, res) => {
 router.post('/invoices/:id/cancel', async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
-    if (!permissions.cancel.access.enabled) return res.status(403).json({ error: 'Forbidden' });
+    if (!permissions.invoice.delete.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     const { id } = req.params;
     await db.transaction(async (tx) => {
-      const [invoice] = await tx.select().from(schema.invoices).where(and(eq(schema.invoices.id, id), eq(schema.invoices.companyId, req.targetCompanyId)));
+      // FOR UPDATE — processInvoiceZatca's fire-and-forget SUBMITTING transition (see
+      // processInvoice.ts) runs as a plain UPDATE, which itself takes an implicit
+      // Postgres row lock for its duration; locking the row here too means this read
+      // genuinely waits out any in-flight submission instead of racing a stale copy of
+      // zatcaStatus, whichever of the two happens to reach the row first.
+      const [invoice] = await tx.select().from(schema.invoices).where(and(eq(schema.invoices.id, id), eq(schema.invoices.companyId, req.targetCompanyId))).for('update');
       if (!invoice) throw new Error('Invoice not found');
 
       if (['SUBMITTING', 'CLEARED', 'REPORTED'].includes(invoice.zatcaStatus as string)) {
@@ -535,6 +785,37 @@ router.post('/invoices/:id/cancel', async (req: any, res) => {
       }
 
       await tx.update(schema.invoices).set({ status: 'Cancelled' }).where(eq(schema.invoices.id, id));
+
+      // This invoice may already have reserved a real ZATCA chain position (icv/
+      // previousInvoiceHash) even though it's being cancelled here — processInvoiceZatca
+      // runs fire-and-forget immediately at creation, well before a user has a realistic
+      // window to cancel. The guard above already guarantees zatcaStatus can only be
+      // NOT_SUBMITTED/ERROR/REJECTED/DISABLED at this point (never SUBMITTING/CLEARED/
+      // REPORTED), so only the never-reached-ZATCA case is even reachable here — but it
+      // still needs isStillChainTip to be true, or something else has already chained off
+      // this invoice's hash and the position is permanently structural regardless of
+      // cancellation (same conservative rule as processInvoiceZatca's resubmission logic;
+      // see hashChain.ts). When both hold, roll the chain tip back to what it was before
+      // this invoice claimed it, so the next real invoice legitimately gets this ICV back
+      // instead of it being wasted forever.
+      if (invoice.icv) {
+        const neverReachedZatca = invoice.zatcaStatus === 'NOT_SUBMITTED'
+          && Array.isArray(invoice.zatcaValidationResults)
+          && (invoice.zatcaValidationResults as any[]).some((r: any) => r?.code === 'ONBOARDING_INCOMPLETE');
+
+        if (neverReachedZatca) {
+          // Same company-row lock processInvoiceZatca holds for the duration of any
+          // zatcaChainState read/write — without it, this rollback could race a concurrent
+          // reservation for a different invoice of the same company.
+          const [company] = await tx.select({ zatcaEnvironment: schema.companies.zatcaEnvironment })
+            .from(schema.companies).where(eq(schema.companies.id, invoice.companyId)).for('update');
+          const environment = (company?.zatcaEnvironment as ZatcaEnvironment) || 'sandbox';
+
+          if (await isStillChainTip(invoice.companyId, environment, invoice.icv, tx)) {
+            await setHashChainState(invoice.companyId, environment, invoice.icv - 1, invoice.previousInvoiceHash, tx);
+          }
+        }
+      }
 
       await syncVoucherForInvoice(tx, id, invoice.companyId, {
         ...invoice,
@@ -581,6 +862,67 @@ router.post('/investors', async (req: any, res) => {
   }
 });
 
+// Records a capital contribution against an existing investor — ports saveCapitalInvestment
+// from src/dbStore.ts faithfully (same validation order, same voucher shape). Creates a
+// Receipt voucher (referenceType 'Equity') and bumps the investor's running
+// capitalContributed total.
+router.post('/investors/:id/investment', async (req: any, res) => {
+  try {
+    if (!hasPermission(req.user, 'investors.access')) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    const { id: investorId } = req.params;
+    const { bankId, amount, date, description } = req.body;
+    const companyId = req.targetCompanyId;
+    const amountNum = Number(amount);
+
+    await db.transaction(async (tx) => {
+      const [investor] = await tx.select().from(schema.investors)
+        .where(and(eq(schema.investors.id, investorId), eq(schema.investors.companyId, companyId)));
+      if (!investor) throw new Error('Selected investor not found.');
+
+      await validateTransactionDate(date, companyId);
+
+      if (!(amountNum > 0)) {
+        const err: any = new Error('Investment amount must be greater than zero.');
+        err.status = 400;
+        throw err;
+      }
+
+      const [bank] = await tx.select().from(schema.bankAccounts)
+        .where(and(eq(schema.bankAccounts.id, bankId), eq(schema.bankAccounts.isActive, true), eq(schema.bankAccounts.companyId, companyId)));
+      if (!bank) throw new Error('Active bank account not found.');
+
+      const vchCount = await getAndIncrementCounter(tx, companyId, 'voucher');
+      const voucherNumber = `VCH-${vchCount}`;
+
+      await tx.insert(schema.vouchers).values({
+        id: generateId(),
+        voucherNumber,
+        type: 'Receipt',
+        date,
+        bankId,
+        amount: String(amountNum),
+        description: `Equity Capital contribution from investor ${investor.name}: ${description}`,
+        referenceType: 'Equity',
+        referenceId: investorId,
+        createdById: req.user.id,
+        createdAt: new Date(),
+        companyId,
+      });
+
+      await tx.update(schema.investors)
+        .set({ capitalContributed: String(round2(Number(investor.capitalContributed || 0) + amountNum)) })
+        .where(eq(schema.investors.id, investorId));
+    });
+
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
 // --- Fiscal Months ---
 router.get('/months', async (req: any, res) => {
   try {
@@ -615,10 +957,6 @@ const MAX_OPEN_FISCAL_MONTHS = 3;
 
 router.post('/months', async (req: any, res) => {
   try {
-    if (!hasPermission(req.user, 'fiscalMonths.access')) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-
     const data = req.body;
     const mData = { ...data };
     mData.companyId = req.targetCompanyId;
@@ -628,6 +966,13 @@ router.post('/months', async (req: any, res) => {
       const lower = mData.status.toLowerCase();
       if (lower === 'open') mData.status = 'Open';
       else if (lower === 'closed') mData.status = 'Closed';
+    }
+
+    // Open and Close are separately-grantable authorities (see permissionSchema.ts) -
+    // check the one that matches what's actually being requested, not a shared flag.
+    const requiredLeaf = mData.status === 'Closed' ? 'fiscalMonths.close' : 'fiscalMonths.open';
+    if (!hasPermission(req.user, requiredLeaf)) {
+      return res.status(403).json({ error: 'Forbidden' });
     }
 
     if (mData.closedAt) mData.closedAt = new Date(mData.closedAt);
@@ -879,9 +1224,179 @@ router.post('/settle-accrual', async (req: any, res) => {
   }
 });
 
+// --- Recurring Expense Templates (CRUD) — ports src/dbStore.ts's in-memory template
+// management from RecurringExpenses.tsx onto real per-record routes, sibling to the
+// recurring-postings/settle-accrual routes above which already own this domain. ---
+router.post('/recurring-templates', async (req: any, res) => {
+  try {
+    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+    if (!permissions.expense.create.enabled) return res.status(403).json({ error: 'Forbidden' });
+
+    const { description, defaultAmount, bankId, vendorId, taxSlabId, isActive } = req.body;
+    const amountNum = Number(defaultAmount);
+    if (!description || isNaN(amountNum) || amountNum <= 0) {
+      return res.status(400).json({ error: 'Please enter a valid amount.' });
+    }
+    const companyId = req.targetCompanyId;
+    const id = generateId();
+
+    await db.insert(schema.recurringExpenseTemplates).values({
+      id,
+      description,
+      defaultAmount: String(round2(amountNum)),
+      bankId,
+      vendorId,
+      taxSlabId,
+      isActive: isActive !== false,
+      companyId,
+    });
+
+    res.json({ success: true, id });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+router.put('/recurring-templates/:id', async (req: any, res) => {
+  try {
+    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+    if (!permissions.expense.update.enabled) return res.status(403).json({ error: 'Forbidden' });
+
+    const { id } = req.params;
+    const { description, defaultAmount, bankId, vendorId, taxSlabId, isActive } = req.body;
+    const amountNum = Number(defaultAmount);
+    if (!description || isNaN(amountNum) || amountNum <= 0) {
+      return res.status(400).json({ error: 'Please enter a valid amount.' });
+    }
+    const companyId = req.targetCompanyId;
+
+    const [existing] = await db.select().from(schema.recurringExpenseTemplates)
+      .where(and(eq(schema.recurringExpenseTemplates.id, id), eq(schema.recurringExpenseTemplates.companyId, companyId)));
+    if (!existing) return res.status(404).json({ error: 'Recurring template not found.' });
+
+    await db.update(schema.recurringExpenseTemplates).set({
+      description,
+      defaultAmount: String(round2(amountNum)),
+      bankId,
+      vendorId,
+      taxSlabId,
+      isActive: isActive !== false,
+    }).where(eq(schema.recurringExpenseTemplates.id, id));
+
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+router.patch('/recurring-templates/:id/toggle', async (req: any, res) => {
+  try {
+    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+    if (!permissions.expense.delete.enabled) return res.status(403).json({ error: 'Forbidden' });
+
+    const { id } = req.params;
+    const companyId = req.targetCompanyId;
+
+    const [existing] = await db.select().from(schema.recurringExpenseTemplates)
+      .where(and(eq(schema.recurringExpenseTemplates.id, id), eq(schema.recurringExpenseTemplates.companyId, companyId)));
+    if (!existing) return res.status(404).json({ error: 'Recurring template not found.' });
+
+    const newActive = !existing.isActive;
+    await db.update(schema.recurringExpenseTemplates).set({ isActive: newActive }).where(eq(schema.recurringExpenseTemplates.id, id));
+
+    res.json({ success: true, isActive: newActive });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+router.delete('/recurring-templates/:id', async (req: any, res) => {
+  try {
+    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+    if (!permissions.expense.delete.enabled) return res.status(403).json({ error: 'Forbidden' });
+
+    const { id } = req.params;
+    const companyId = req.targetCompanyId;
+
+    const [existing] = await db.select().from(schema.recurringExpenseTemplates)
+      .where(and(eq(schema.recurringExpenseTemplates.id, id), eq(schema.recurringExpenseTemplates.companyId, companyId)));
+    if (!existing) return res.status(404).json({ error: 'Recurring template not found.' });
+
+    // No cascading delete of recurringPostings, matching dbStore.ts's in-memory behavior
+    // ("This will not affect prior postings but prevents future occurrences.") — a template
+    // with existing postings will hit the recurringPostings.templateId FK and 500; that's an
+    // existing schema constraint, not new behavior introduced here.
+    await db.delete(schema.recurringExpenseTemplates).where(eq(schema.recurringExpenseTemplates.id, id));
+
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+// --- Accrual entry management (edit / delete) — ports src/dbStore.ts's in-memory
+// handleSaveAccrual/handleDeleteAccrual from RecurringExpenses.tsx. ---
+router.put('/accruals/:id', async (req: any, res) => {
+  try {
+    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+    if (!permissions.expense.update.enabled) return res.status(403).json({ error: 'Forbidden' });
+
+    const { id } = req.params;
+    const { description, amount, vendorId, bankId, date, taxSlabId } = req.body;
+    const amountNum = Number(amount);
+    if (isNaN(amountNum) || amountNum <= 0) return res.status(400).json({ error: 'Please enter a valid amount.' });
+
+    const companyId = req.targetCompanyId;
+    const [existing] = await db.select().from(schema.expenses)
+      .where(and(eq(schema.expenses.id, id), eq(schema.expenses.companyId, companyId)));
+    if (!existing) return res.status(404).json({ error: 'Accrual entry not found.' });
+
+    await db.update(schema.expenses).set({
+      description,
+      amount: String(round2(amountNum)),
+      vendorId,
+      bankId,
+      date,
+      taxSlabId,
+    }).where(eq(schema.expenses.id, id));
+
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+router.delete('/accruals/:id', async (req: any, res) => {
+  try {
+    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+    if (!permissions.expense.delete.enabled) return res.status(403).json({ error: 'Forbidden' });
+
+    const { id } = req.params;
+    const companyId = req.targetCompanyId;
+
+    await db.transaction(async (tx) => {
+      const [existing] = await tx.select().from(schema.expenses)
+        .where(and(eq(schema.expenses.id, id), eq(schema.expenses.companyId, companyId)));
+      if (!existing) throw new Error('Accrual entry not found.');
+
+      // Delete linked recurring postings and any line items before the expense row itself,
+      // matching dbStore.ts's handleDeleteAccrual (which drops both the accrual liability
+      // and its associated postings) while satisfying real FK constraints the in-memory
+      // version never had to worry about.
+      await tx.delete(schema.recurringPostings).where(eq(schema.recurringPostings.expenseId, id));
+      await tx.delete(schema.expenseItems).where(eq(schema.expenseItems.expenseId, id));
+      await tx.delete(schema.expenses).where(eq(schema.expenses.id, id));
+    });
+
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
 router.post('/interbank-transfer', async (req: any, res) => {
   try {
-    if (!hasPermission(req.user, 'banks.edit')) {
+    if (!hasPermission(req.user, 'banks.transfer')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 

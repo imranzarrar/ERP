@@ -101,6 +101,40 @@ export function decodeZatcaCsidCertificate(binarySecurityToken: string): ZatcaCe
   return { pem, hash, issuer, serialNumber, publicKeySpkiDer, signatureDer };
 }
 
+// Extracts the taxpayer identity a ZATCA-issued certificate is ACTUALLY bound to, read
+// directly from the certificate itself rather than trusted from whatever CSR fields were
+// submitted to request it. Necessary because ZATCA's Sandbox environment can issue a
+// certificate that genuinely pairs with the caller's own submitted keypair (so
+// certificateMatchesPrivateKey below correctly passes) while still forcing the
+// certificate's SUBJECT identity to ZATCA's shared public test taxpayer — confirmed live:
+// a company's own CSR declared VAT 300000000000003, but the Production CSID certificate
+// ZATCA returned had Subject CN "TST-886431145-399999999900003" and SAN UID
+// "399999999900003" (ZATCA's shared sandbox test identity), not the VAT the CSR asked
+// for. Every invoice's declared seller VAT must match what the signing certificate is
+// actually authorized for, or ZATCA's real API rejects clearance/reporting with a
+// "certificate-permissions" error — even though the signature itself is cryptographically
+// valid. This is a MORE GENERAL check than comparing against one specific hardcoded
+// sample certificate's bytes (sandboxSampleIdentity.ts) — it reads whatever identity this
+// exact certificate declares, whichever of ZATCA's sandbox quirks produced it.
+export function extractZatcaCertificateTaxpayerIdentity(binarySecurityToken: string): { vatNumber?: string; crNumber?: string } {
+  const certBodyText = Buffer.from(binarySecurityToken, 'base64').toString('utf8');
+  const pem = `-----BEGIN CERTIFICATE-----\n${certBodyText}\n-----END CERTIFICATE-----`;
+  const x509 = new crypto.X509Certificate(pem);
+
+  // SAN carries a DirName block with comma-separated "key=value" pairs; ZATCA embeds the
+  // VAT as "UID=<vat>" there (Node's X509Certificate exposes this as a single string).
+  const uidMatch = x509.subjectAltName?.match(/UID=([0-9]+)/);
+  const vatNumber = uidMatch?.[1];
+
+  // ZATCA's test/sandbox certificates use Subject CN "TST-<cr>-<vat>"; real
+  // Simulation/Production certs don't follow this pattern, so a non-match here is
+  // expected and fine — vatNumber (from SAN, always present) is the field that matters.
+  const cnMatch = x509.subject.match(/CN=TST-(\d+)-(\d+)/);
+  const crNumber = cnMatch?.[1];
+
+  return { vatNumber, crNumber };
+}
+
 // A ZATCA CSID response's certificate must be for the SAME keypair we submitted in the
 // CSR — otherwise every signature made with our stored private key will be
 // cryptographically invalid against that certificate's public key, and ZATCA (or any

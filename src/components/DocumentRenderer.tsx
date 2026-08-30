@@ -11,12 +11,15 @@ import {
 } from '../types';
 import { Printer, Download, Eye, X, Globe, FileText, Check, AlertCircle } from 'lucide-react';
 import { calculateInvoiceTotals, DatabaseState } from '../dbStore';
+import { useTranslation } from '../hooks';
 import { ensureCompatibleImage } from '../imageUtils';
-import { DEFAULT_DOCUMENT_LAYOUT } from '../documentTemplateDefaults';
+import QRCode from 'qrcode';
+import { DEFAULT_DOCUMENT_LAYOUT, COL_SPAN_MD, COL_SPAN_PRINT } from '../documentTemplateDefaults';
+import { amountToWordsForCurrency } from '../numberToWords';
 
 interface DocumentRendererProps {
- documentType: 'Quotation' | 'Invoice' | 'Expense' | 'Voucher' | 'Ledger' | 'Report';
- data: any; // Can be Quotation, Invoice, Expense, Voucher, or Ledger/Report data
+ documentType: 'Quotation' | 'Invoice' | 'Expense' | 'Voucher' | 'PaymentReceipt' | 'Ledger' | 'Report';
+ data: any; // Can be Quotation, Invoice, Expense, Voucher, PaymentReceipt, or Ledger/Report data
  companySetup: CompanySetup;
  templates: DocumentTemplate[];
  taxSlabs: TaxSlab[];
@@ -175,9 +178,23 @@ export default function DocumentRenderer({
  const isRTL = isArabic || isUrdu;
  const dir = isRTL ? 'rtl' : 'ltr';
 
+ // Quotation/Invoice go through the fixed local dictionaries above, driven by the
+ // TEMPLATE's own configured language (a company printing a customer-facing invoice in
+ // Arabic regardless of which employee created it) — deliberately independent of the
+ // viewing user's own UI language. Every other document type printed from this component
+ // (Expense, Voucher, PaymentReceipt, Ledger, Report) is an internal/back-office document
+ // with no customer-facing template language of its own, so it falls back to the app's
+ // real, DB-backed translation system keyed on the *viewing user's* uiLanguage — the same
+ // one every other screen in the app uses. Without this fallback, every t() call in
+ // renderExpense/renderVoucher/renderPaymentReceipt/renderLedger/renderReport was a
+ // silent no-op (isBilingualDoc is false for all of them), always rendering English
+ // regardless of language — a real, previously-undiscovered bug this fixes for all five
+ // render paths at once, rather than needing every call site touched individually.
+ const { t: tGeneral } = useTranslation(db || ({ translations: [] } as unknown as DatabaseState));
  const t = (key: string): string => {
  if (isUrdu) return URDU_TRANSLATIONS[key] || key;
  if (isArabic) return TRANSLATIONS[key] || key;
+ if (!isBilingualDoc) return tGeneral(key);
  return key;
  };
 
@@ -331,11 +348,11 @@ export default function DocumentRenderer({
  ${styleTags}
  <style>
  /* Print-only concerns the cloned app stylesheet above doesn't cover: base page
- chrome, physical paper size/margins, thermal-receipt scaling, and the Arabic
- font import for browsers/print drivers that skip @import inside a cloned
- <style> tag. --font-arabic itself (index.css) IS cloned above, so this import
- is a belt-and-braces fallback, not the primary source. */
- @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap');
+ chrome, physical paper size/margins, and thermal-receipt scaling. The Arabic
+ (--font-arabic / Cairo) and every other app font are self-hosted via
+ @fontsource (index.css, bundled by Vite) and already came across in the
+ cloned stylesheet above — same-origin, so no separate import is needed here,
+ and none of this print path depends on an external host being reachable. */
  html, body {
  margin: 0;
  padding: 20px;
@@ -344,6 +361,17 @@ export default function DocumentRenderer({
  background-color: white;
  }
  @media print {
+ /* Browsers strip background-color/box-shadow from print output by default (an
+ ink-saving "economy" mode) regardless of the element's own CSS — without this,
+ every colored table header/status badge/accent totals box in this document (all
+ Tailwind bg-* usage) prints as plain white even though it's fully colored in the
+ on-screen preview and in the cloned stylesheet above. This is the single most
+ likely cause of "the PDF doesn't look like what I saw on screen." */
+ * {
+ -webkit-print-color-adjust: exact !important;
+ print-color-adjust: exact !important;
+ color-adjust: exact !important;
+ }
  body { padding: 0; margin: 0; width: 100%; }
  .no-print { display: none !important; }
  @page {
@@ -373,8 +401,27 @@ export default function DocumentRenderer({
  ${printContent.outerHTML}
  <script>
  window.onload = function() {
+ // window.onload fires once the popup's own resources (its cloned stylesheets,
+ // including the Google Fonts @import above) have started loading, but does NOT
+ // reliably wait for an @import-loaded webfont to actually finish downloading and
+ // apply before firing — inconsistent across browsers. Printing before that
+ // finishes silently falls back to a system font for that snapshot only, so the
+ // PDF's typography doesn't match the on-screen preview (which had time to load
+ // the font normally). document.fonts.ready resolves once every requested font
+ // has actually loaded; race it against a short timeout so a font that fails to
+ // load entirely doesn't hang the print dialog forever.
+ var doPrint = function() {
  window.print();
  setTimeout(function() { window.close(); }, 500);
+ };
+ if (window.document.fonts && window.document.fonts.ready) {
+ Promise.race([
+ window.document.fonts.ready,
+ new Promise(function(resolve) { setTimeout(resolve, 1500); })
+ ]).then(doPrint);
+ } else {
+ doPrint();
+ }
  };
  </script>
  </body>
@@ -399,6 +446,14 @@ export default function DocumentRenderer({
   const isDebitNote = noteKind === 'DebitNote';
   const originalInvoiceId = isInvoice ? (doc as Invoice).originalInvoiceId : undefined;
   const originalInvoice = originalInvoiceId && db ? db.invoices.find(i => i.id === originalInvoiceId) : undefined;
+  // Derived, not a stored status value (see permission-crud-model skill: cancellation/
+  // reversal is a dedicated flag, not an overloaded status column) — an invoice that has
+  // already been reversed by a Credit Note should read "Credited" on its own printout
+  // instead of still showing the underlying 'Active' status, which reads as if nothing
+  // happened to it.
+  const existingCreditNote = isInvoice && db
+   ? db.invoices.find(i => i.originalInvoiceId === (doc as Invoice).id && i.documentType === 'CreditNote')
+   : undefined;
   const noteReason = isInvoice ? (doc as Invoice).creditNoteReason : undefined;
   // Amber for Credit Note (matches the amber "warn" tone InvoiceModule.tsx already
   // uses for the same document elsewhere in the app), blue for Debit Note (matches
@@ -471,7 +526,19 @@ export default function DocumentRenderer({
     docZatcaStatus === 'PENDING' ? 'SUBMISSION PENDING' :
     'NOT YET CLEARED BY ZATCA';
   const qrDataStr = zatcaQr || `--- SAUDI ARABIA ELECTRONIC INVOICE (ZATCA) ---\nSeller: ${seller}\nVAT ID: ${currentVat}\nDoc ID: ${docNum}\nDate: ${timestamp}\nGross: ${totals.subtotal.toFixed(2)} SAR\nDiscount: ${totals.discountAmount.toFixed(2)} SAR\nVAT (15%): ${totals.taxAmount.toFixed(2)} SAR\nGrand Total: ${totals.grandTotal.toFixed(2)} SAR\nStatus: ${zatcaPlaceholderStatusLabel}`;
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrDataStr)}`;
+  // Generated locally (not fetched from a third-party image API) so Print, the browser's
+  // own print-to-PDF, and the Download PDF path (html2canvas rasterizing this component's
+  // DOM) never depend on an external host being reachable — a real, repeated cause of
+  // "Failed to generate PDF" when html2canvas's CORS-mode image fetch for a remote QR
+  // couldn't complete (network blips, ad/tracker blockers, corporate proxies).
+  const [localQrDataUri, setLocalQrDataUri] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    QRCode.toDataURL(qrDataStr, { margin: 1, width: 300 })
+      .then((url) => { if (!cancelled) setLocalQrDataUri(url); })
+      .catch(() => { if (!cancelled) setLocalQrDataUri(null); });
+    return () => { cancelled = true; };
+  }, [qrDataStr]);
 
   // Parse custom template layout configurations
   let parsedLayout: any[] = [];
@@ -602,7 +669,7 @@ export default function DocumentRenderer({
    <div className={`flex flex-col h-full justify-between ${getGlobalFontClass()}`} id="printable-inner">
     <div className={`grid grid-cols-12 gap-x-4 ${getGridGapClass()}`}>
      {activeBlocks.map((block) => {
-      const blockColClass = `col-span-12 md:col-span-${block.w}`;
+      const blockColClass = `col-span-12 ${COL_SPAN_MD[block.w] || COL_SPAN_MD[12]} ${COL_SPAN_PRINT[block.w] || COL_SPAN_PRINT[12]}`;
 
       if (block.id === 'logo') {
        // Spacer, not `return null` — this block shares its grid row with doc_details.
@@ -649,17 +716,26 @@ export default function DocumentRenderer({
        const showAddress = block.props?.showAddress !== false;
        const showVat = block.props?.showVat !== false;
        const isBilingual = block.props?.isBilingual !== false;
+       // Narrow/compact templates (e.g. Detailed Tax Invoice) drop the repeated
+       // "اسم البائع / {name}" line and tighten the address/line spacing — the header
+       // block was the single biggest space cost on a dense invoice, pushing a 20-line
+       // items table onto a second page before any real content was even rendered.
+       const compact = block.props?.compact === true;
        const textAlignClass = block.props?.align === 'right' ? 'text-right' : block.props?.align === 'center' ? 'text-center' : '';
        return (
         <div key={block.id} className={`${blockColClass} text-slate-800 ${textAlignClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <h1 className={`text-xl font-bold ${theme.primaryText}`}>
+         <h1 className={`${compact ? 'text-base' : 'text-xl'} font-bold ${theme.primaryText}`}>
           {companySetup.name}
           {isBilingual && (
-           <span className="block text-[11px] font-medium text-slate-400 mt-0.5">اسم البائع / {companySetup.name}</span>
+           compact ? (
+            <span className="ms-1.5 text-[9px] font-medium text-slate-400 align-middle">(البائع)</span>
+           ) : (
+            <span className="block text-[11px] font-medium text-slate-400 mt-0.5">اسم البائع / {companySetup.name}</span>
+           )
           )}
          </h1>
          {showAddress && (
-          <p className="text-xs text-slate-500 whitespace-pre-line leading-relaxed max-w-sm mt-1">{companySetup.address}</p>
+          <p className={`text-xs text-slate-500 whitespace-pre-line ${compact ? 'leading-snug mt-0.5 line-clamp-2' : 'leading-relaxed mt-1'} max-w-sm`}>{companySetup.address}</p>
          )}
          <p className="text-xs text-slate-500 mt-0.5">{t('Phone')}: {companySetup.phone} | {t('Email')}: {companySetup.email}</p>
          {showVat && companySetup.vatNumber && (
@@ -667,6 +743,14 @@ export default function DocumentRenderer({
            VAT Reg: <span className="font-mono">{companySetup.vatNumber}</span>
            {isBilingual && (
             <span className="ms-1 font-normal text-slate-400 text-[10px]">(الرقم الضريبي)</span>
+           )}
+          </p>
+         )}
+         {showVat && companySetup.crNumber && (
+          <p className={`text-xs font-semibold mt-0.5 ${theme.accentText}`}>
+           {t('CR')}: <span className="font-mono">{companySetup.crNumber}</span>
+           {isBilingual && (
+            <span className="ms-1 font-normal text-slate-400 text-[10px]">(السجل التجاري)</span>
            )}
           </p>
          )}
@@ -678,6 +762,12 @@ export default function DocumentRenderer({
        const isBilingual = block.props?.isBilingual !== false;
        const showPaymentStatus = block.props?.showPaymentStatus !== false;
        const showOriginQ = block.props?.showOriginQ !== false;
+       // Narrow/compact templates (Detailed Tax Invoice) shrink the title, fold the
+       // Arabic sub-captions inline instead of onto their own line, and merge
+       // Invoice Number/Date and Status/Payment Status onto shared lines — this block
+       // sits in the same row as the logo, so its height sets the floor for the whole
+       // header, and it was previously the tallest single block on the page.
+       const compact = block.props?.compact === true;
        // Default (no explicit align) is the RTL-aware "far side" convention: pushed to
        // the end of the reading direction, which reads as right-aligned in LTR and
        // left-aligned in RTL. An explicit align overrides that with a fixed physical
@@ -690,19 +780,33 @@ export default function DocumentRenderer({
        // flush against the column's LEFT edge with right-aligned text inside it. The
        // default and "center" branches were already correct (default's text-align is
        // itself direction-aware to match ms-auto; mx-auto is symmetric either way).
+       // md:* alone isn't enough here: `md:` is a viewport-WIDTH query (768px), but Chrome
+       // evaluates width-based media queries during actual print/PDF rendering against the
+       // page's printable width, not the on-screen popup window's width — A4 minus this
+       // app's 0.4in print margins leaves ~717px, below 768px, so md:ms-auto/mx-auto/ml-auto
+       // silently never applied specifically during print/PDF generation even though the
+       // on-screen preview (a wide popup window) looked correctly aligned. print:* is a
+       // media *type* query, immune to this, so it's paired with every md:* alignment class
+       // below (same fix as the col-span-width bug in documentTemplateDefaults.ts).
        const docDetailsPosClass = !block.props?.align
-        ? `text-${dir === 'rtl' ? 'left' : 'right'} md:ms-auto`
+        ? `text-${dir === 'rtl' ? 'left' : 'right'} md:ms-auto print:ms-auto`
         : block.props.align === 'left' ? 'text-left'
-        : block.props.align === 'center' ? 'text-center md:mx-auto'
-        : 'text-right md:ml-auto';
+        : block.props.align === 'center' ? 'text-center md:mx-auto print:mx-auto'
+        : 'text-right md:ml-auto print:ml-auto';
        return (
         <div key={block.id} className={`${blockColClass} ${docDetailsPosClass} max-w-xs ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <h2 className={`text-2xl font-bold uppercase tracking-wider ${noteAccentText} mb-1`}>
+         <h2 className={`${compact ? 'text-base' : 'text-2xl'} font-bold uppercase tracking-wider ${noteAccentText} mb-1`}>
           {isCreditNote ? t('Credit Note') : isDebitNote ? t('Debit Note') : isInvoice ? t('Invoice') : t('Quotation')}
           {isBilingual && (
-           <span className="block text-sm font-semibold text-slate-400 mt-0.5">
-            {isCreditNote ? 'إشعار دائن' : isDebitNote ? 'إشعار مدين' : isInvoice ? 'فاتورة مبيعات' : 'عرض سعر'}
-           </span>
+           compact ? (
+            <span className="ms-1.5 text-[10px] font-semibold text-slate-400 normal-case align-middle">
+             / {isCreditNote ? 'إشعار دائن' : isDebitNote ? 'إشعار مدين' : isInvoice ? 'فاتورة مبيعات' : 'عرض سعر'}
+            </span>
+           ) : (
+            <span className="block text-sm font-semibold text-slate-400 mt-0.5">
+             {isCreditNote ? 'إشعار دائن' : isDebitNote ? 'إشعار مدين' : isInvoice ? 'فاتورة مبيعات' : 'عرض سعر'}
+            </span>
+           )
           )}
           {(isCreditNote || isDebitNote) && (
            <span className={`inline-block mt-1.5 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider normal-case ${noteBadgeClass}`}>
@@ -710,27 +814,42 @@ export default function DocumentRenderer({
            </span>
           )}
          </h2>
-         <div className="text-xs text-slate-500 space-y-1">
+         <div className={`text-xs text-slate-500 ${compact ? 'space-y-0.5' : 'space-y-1'}`}>
           <p>
            <span className="font-semibold text-slate-700">
             {isInvoice ? t('Invoice Number') : t('Quotation Number')}:
            </span>{' '}
            {docNum}
            {isBilingual && (
-            <span className="block text-[9px] text-slate-400">
-             {isInvoice ? 'رقم الفاتورة' : 'رقم عرض السعر'}
+            compact ? (
+             <span className="ms-1 text-[9px] text-slate-400">({isInvoice ? 'رقم الفاتورة' : 'رقم عرض السعر'})</span>
+            ) : (
+             <span className="block text-[9px] text-slate-400">
+              {isInvoice ? 'رقم الفاتورة' : 'رقم عرض السعر'}
+             </span>
+            )
+           )}
+           {compact && (
+            <span className="ms-2">
+             <span className="font-semibold text-slate-700">{t('Date')}:</span> {doc.date}
             </span>
            )}
           </p>
-          <p>
-           <span className="font-semibold text-slate-700">{t('Date')}:</span> {doc.date}
-           {isBilingual && <span className="block text-[9px] text-slate-400">التاريخ</span>}
-          </p>
+          {!compact && (
+           <p>
+            <span className="font-semibold text-slate-700">{t('Date')}:</span> {doc.date}
+            {isBilingual && <span className="block text-[9px] text-slate-400">التاريخ</span>}
+           </p>
+          )}
           {(isCreditNote || isDebitNote) && (
            <p className={`font-semibold ${noteAccentText}`}>
             <span>Ref: {originalInvoice ? originalInvoice.invoiceNumber : (originalInvoiceId || '—')}</span>
             {isBilingual && (
-             <span className="block text-[9px] text-slate-400 font-normal">{t('Reference Invoice')}</span>
+             compact ? (
+              <span className="ms-1 text-[9px] text-slate-400 font-normal">({t('Reference Invoice')})</span>
+             ) : (
+              <span className="block text-[9px] text-slate-400 font-normal">{t('Reference Invoice')}</span>
+             )
             )}
             {noteReason && (
              <span className="block text-[10px] text-slate-500 font-normal normal-case mt-0.5">{noteReason}</span>
@@ -759,20 +878,38 @@ export default function DocumentRenderer({
            }
            return null;
           })()}
-          {isInvoice && (doc as Invoice).paymentStatus === 'Paid' && (
-           <p><span className="font-semibold text-emerald-600 font-bold">{t('Payment Date')}:</span> {(doc as Invoice).paymentDate}</p>
+          {isInvoice && (doc as Invoice).documentType !== 'CreditNote' && (doc as Invoice).paymentStatus === 'Paid' && (
+           // paymentDate is a `timestamp` column (schema.ts) — unlike `date` (a plain text
+           // column, already just "YYYY-MM-DD"), it round-trips through the API as a full
+           // ISO datetime string (e.g. "2026-08-03T00:00:00.000Z"). Truncate to the date
+           // portion so it matches every other date field's format on this document instead
+           // of leaking a raw timestamp onto a printed invoice.
+           <p><span className="font-semibold text-emerald-600 font-bold">{t('Payment Date')}:</span> {(doc as Invoice).paymentDate ? String((doc as Invoice).paymentDate).split('T')[0] : ''}</p>
           )}
-          <p>
-           <span className="font-semibold text-slate-700">{t('Status')}:</span>{' '}
-           <span className={`px-1.5 py-0.5 rounded font-semibold ${
-            doc.status === 'Cancelled' ? 'bg-rose-100 text-rose-800' :
-            doc.status === 'Converted' ? 'bg-cyan-100 text-cyan-800' :
-            doc.status === 'Accepted' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-800'
-           }`}>
-            {t(doc.status)}
+          <p className={compact ? 'flex flex-wrap items-center gap-x-3' : ''}>
+           <span>
+            <span className="font-semibold text-slate-700">{t('Status')}:</span>{' '}
+            <span className={`px-1.5 py-0.5 rounded font-semibold ${
+             existingCreditNote ? 'bg-amber-100 text-amber-800' :
+             doc.status === 'Cancelled' ? 'bg-rose-100 text-rose-800' :
+             doc.status === 'Converted' ? 'bg-cyan-100 text-cyan-800' :
+             doc.status === 'Accepted' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-800'
+            }`}>
+             {existingCreditNote ? t('Credited') : t(doc.status)}
+            </span>
            </span>
+           {compact && isInvoice && showPaymentStatus && (doc as Invoice).documentType !== 'CreditNote' && (
+            <span>
+             <span className="font-semibold text-slate-700">{t('Payment Status')}:</span>{' '}
+             <span className={`px-1.5 py-0.5 rounded font-semibold ${
+              (doc as Invoice).paymentStatus === 'Paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+             }`}>
+              {t((doc as Invoice).paymentStatus)}
+             </span>
+            </span>
+           )}
           </p>
-          {isInvoice && showPaymentStatus && (
+          {!compact && isInvoice && showPaymentStatus && (doc as Invoice).documentType !== 'CreditNote' && (
            <p>
             <span className="font-semibold text-slate-700">{t('Payment Status')}:</span>{' '}
             <span className={`px-1.5 py-0.5 rounded font-semibold ${
@@ -792,6 +929,11 @@ export default function DocumentRenderer({
        const showAddress = block.props?.showAddress !== false;
        const showContact = block.props?.showContact !== false;
        const borderStyle = block.props?.borderStyle || 'solid';
+       // Narrow/compact templates (Detailed Tax Invoice) use a smaller card and tighter
+       // internal spacing — this card sits beside company_details in the same row, so
+       // its height (previously inflated further by the itemized address below) set
+       // the floor for that whole row.
+       const compact = block.props?.compact === true;
        // A bordered card (like totals_summary), not a paragraph — align positions the
        // card itself within its column (default: full width, unaffected; center/right
        // narrow it to make room to visibly shift, then position it there) rather than
@@ -813,7 +955,7 @@ export default function DocumentRenderer({
        // ml-auto (margin-left, physical) always pushes right regardless of direction.
        const cardPosClass = block.props?.align === 'right' ? 'w-4/5 ml-auto' : block.props?.align === 'center' ? 'w-4/5 mx-auto' : '';
 
-       let cardClass = "p-4 rounded-2xl bg-white text-xs ";
+       let cardClass = `${compact ? 'p-2.5' : 'p-4'} rounded-2xl bg-white text-xs `;
        if (borderStyle === 'solid') cardClass += "border border-slate-150 shadow-sm";
        else if (borderStyle === 'dashed') cardClass += "border border-dashed border-slate-350";
        else cardClass += "p-0";
@@ -822,26 +964,86 @@ export default function DocumentRenderer({
        return (
         <div key={block.id} className={`${blockColClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
          <div className={cardClass}>
-          <div className="flex justify-between items-center pb-1.5 mb-2 border-b border-slate-100">
+          <div className={`flex justify-between items-center border-b border-slate-100 ${compact ? 'pb-1 mb-1' : 'pb-1.5 mb-2'}`}>
            <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Customer')}</h3>
            {isBilingual && (
             <span className="text-[10px] font-bold text-slate-400">العميل / Buyer</span>
            )}
           </div>
           {data.customerData ? (
-           <div className="text-xs text-slate-700 space-y-1">
-            <p className="font-semibold text-slate-900 text-sm">{data.customerData.name}</p>
-            {showContact && data.customerData.phone !== '-' && <p>{t('Phone')}: {data.customerData.phone}</p>}
-            {showContact && data.customerData.email !== '-' && <p>{t('Email')}: {data.customerData.email}</p>}
-            {showAddress && data.customerData.address !== '-' && <p>{t('Address')}: {data.customerData.address}</p>}
+           <div className={`text-xs text-slate-700 ${compact ? 'space-y-0.5' : 'space-y-1'}`}>
+            <p className={`font-semibold text-slate-900 ${compact ? 'text-xs' : 'text-sm'}`}>{data.customerData.name}</p>
+            {showContact && (data.customerData.phone !== '-' || data.customerData.email !== '-') && (
+             compact ? (
+              <p>
+               {data.customerData.phone !== '-' && <span>{data.customerData.phone}</span>}
+               {data.customerData.phone !== '-' && data.customerData.email !== '-' && <span> | </span>}
+               {data.customerData.email !== '-' && <span>{data.customerData.email}</span>}
+              </p>
+             ) : (
+              <>
+               {data.customerData.phone !== '-' && <p>{t('Phone')}: {data.customerData.phone}</p>}
+               {data.customerData.email !== '-' && <p>{t('Email')}: {data.customerData.email}</p>}
+              </>
+             )
+            )}
+            {/* Itemized mode (the Detailed Tax Invoice template) shows the individual
+                ZATCA address fields (customers.buildingNumber/streetName/district/city/
+                postalCode/countryCode — already stored, just never rendered separately
+                before) instead of one free-text line, matching the traditional GCC
+                tax-invoice layout — but folded onto one flowing, comma-joined line
+                (like a normal mailing address) rather than one label+value line per
+                field, which used to run up to 6 lines tall and was the single biggest
+                contributor to the header spilling the items table onto page 2. Falls
+                back to the single-line address whenever none of those granular fields
+                are actually filled in (e.g. older customer records created before this
+                data was collected), so an itemized template never prints an empty line. */}
+            {showAddress && block.props?.addressStyle === 'itemized' && (
+             data.customerData.buildingNumber || data.customerData.streetName ||
+             data.customerData.district || data.customerData.city || data.customerData.postalCode
+            ) ? (
+             <p>
+              {[
+               [data.customerData.buildingNumber, data.customerData.streetName].filter(Boolean).join(' '),
+               data.customerData.district,
+               data.customerData.city,
+               data.customerData.postalCode,
+               data.customerData.countryCode || 'SA'
+              ].filter(Boolean).join(', ')}
+             </p>
+            ) : (
+             showAddress && data.customerData.address !== '-' && (
+              compact
+               ? <p className="line-clamp-2">{data.customerData.address}</p>
+               : <p>{t('Address')}: {data.customerData.address}</p>
+             )
+            )}
             {/* ZATCA's data dictionary marks Buyer VAT (BT-48) Mandatory for Standard
                 (B2B) invoices — it was already correctly written into the XML, but
                 never shown on the human-readable printed document itself. */}
-            {data.customerData.vatNumber && (
-             <p className="font-semibold">
-              {t('VAT Reg')}: <span className="font-mono">{data.customerData.vatNumber}</span>
-              {isBilingual && <span className="ms-1 font-normal text-slate-400 text-[10px]">(الرقم الضريبي للعميل)</span>}
-             </p>
+            {(data.customerData.vatNumber || data.customerData.crNumber) && (
+             compact ? (
+              <p className="font-semibold">
+               {data.customerData.vatNumber && <span>{t('VAT Reg')}: <span className="font-mono">{data.customerData.vatNumber}</span></span>}
+               {data.customerData.vatNumber && data.customerData.crNumber && <span> | </span>}
+               {data.customerData.crNumber && <span>{t('CR')}: <span className="font-mono">{data.customerData.crNumber}</span></span>}
+              </p>
+             ) : (
+              <>
+               {data.customerData.vatNumber && (
+                <p className="font-semibold">
+                 {t('VAT Reg')}: <span className="font-mono">{data.customerData.vatNumber}</span>
+                 {isBilingual && <span className="ms-1 font-normal text-slate-400 text-[10px]">(الرقم الضريبي للعميل)</span>}
+                </p>
+               )}
+               {data.customerData.crNumber && (
+                <p className="font-semibold">
+                 {t('CR')}: <span className="font-mono">{data.customerData.crNumber}</span>
+                 {isBilingual && <span className="ms-1 font-normal text-slate-400 text-[10px]">(السجل التجاري للعميل)</span>}
+                </p>
+               )}
+              </>
+             )
             )}
            </div>
           ) : (
@@ -854,10 +1056,11 @@ export default function DocumentRenderer({
 
       if (block.id === 'custom_header') {
        if (currentTemplate?.printHeader === false || !companySetup.customHeader) return null;
+       const compact = block.props?.compact === true;
        const textAlignClass = block.props?.align === 'right' ? 'text-right' : block.props?.align === 'center' ? 'text-center' : 'text-left';
        return (
         <div key={block.id} className={`${blockColClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <div className={`p-3.5 bg-slate-50/50 rounded-xl text-xs text-slate-600 border border-slate-100 whitespace-pre-line ${textAlignClass}`}>
+         <div className={`bg-slate-50/50 rounded-xl text-xs text-slate-600 border border-slate-100 whitespace-pre-line ${compact ? 'p-1.5 line-clamp-2' : 'p-3.5'} ${textAlignClass}`}>
           {companySetup.customHeader}
          </div>
         </div>
@@ -868,10 +1071,34 @@ export default function DocumentRenderer({
        const isBilingual = block.props?.isBilingual !== false;
        const showSNo = block.props?.showSNo !== false;
        const rowStyle = block.props?.borderStyle || 'stripe';
+       // Opt-in (default false), unlike the flags above — these add whole new columns
+       // rather than toggle an existing one, so an existing template's layout width
+       // stays unaffected unless a template (like Detailed Tax Invoice) explicitly asks
+       // for them.
+       const showItemCode = block.props?.showItemCode === true;
+       const showTaxAmount = block.props?.showTaxAmount === true;
+       const showLineSubtotal = block.props?.showLineSubtotal === true;
+       // When showLineSubtotal is on, the existing amount column (net-of-discount,
+       // pre-VAT) is relabeled "Taxable" and a genuine post-VAT "Subtotal" column is
+       // added after it — otherwise that column keeps meaning "Total" as it always has,
+       // for backward compatibility with every existing template.
+       const amountColLabel = showLineSubtotal ? t('Taxable') : t('Total');
+       const amountColLabelAr = showLineSubtotal ? 'الخاضع للضريبة' : 'الإجمالي';
        // getItemTaxRate is shared/hoisted above (also used by the totals_summary
        // block's multi-rate breakdown) — previously the printed table showed no rate
        // at all, so a mixed-rate invoice (a real, tested scenario this session) gave a
        // customer no way to see which line was taxed at which rate.
+       // Compact mode: shrinks row padding (py-2.5 -> py-1) and font-size (text-xs/12px
+       // -> 10.5px) — measured live on a real 20-line invoice: at py-2.5/text-xs the
+       // table alone was 1059px tall against a 1045px A4 printable height, meaning even
+       // a zero-height header couldn't have made 20 lines fit on one page. Both literal
+       // class strings ('py-1'/'py-2.5', the arbitrary text size) appear as complete
+       // tokens right here, so Tailwind's static scanner compiles them regardless of
+       // which one this ternary picks at render time (same reasoning as COL_SPAN_MD's
+       // comment in documentTemplateDefaults.ts).
+       const compact = block.props?.compact === true;
+       const cellPad = compact ? 'py-0.5' : 'py-2.5';
+       const tableFontClass = block.props?.fontSize ? '' : (compact ? 'text-[10.5px]' : 'text-xs');
 
        return (
         // The <table> itself used to hardcode text-xs unconditionally — since font-size
@@ -884,30 +1111,42 @@ export default function DocumentRenderer({
         // when no explicit fontSize is configured, so the override actually takes effect
         // while the existing default (no override) appearance is unchanged.
         <div key={block.id} className={`${blockColClass} overflow-x-auto ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <table className={`w-full ${block.props?.fontSize ? '' : 'text-xs'} border-collapse min-w-[500px]`}>
+         <table className={`w-full ${tableFontClass} border-collapse min-w-[500px]`}>
           <thead>
            <tr className={theme.tableHeaderClass}>
-            {showSNo && <th className="py-2.5 px-3 font-semibold text-center w-12 whitespace-nowrap">{t('S.No')}</th>}
-            <th className={`py-2.5 px-3 font-semibold ${isRTL ? 'text-end' : 'text-start'}`}>
+            {showSNo && <th className={`${cellPad} px-3 font-semibold text-center w-12 whitespace-nowrap`}>{t('S.No')}</th>}
+            {showItemCode && <th className={`${cellPad} px-3 font-semibold text-center w-20 whitespace-nowrap`}>
+             {t('Item Code')}
+             {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">رمز الصنف</span>}
+            </th>}
+            <th className={`${cellPad} px-3 font-semibold ${isRTL ? 'text-end' : 'text-start'}`}>
              {t('Description')}
              {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">الوصف / البند</span>}
             </th>
-            <th className="py-2.5 px-3 font-semibold text-center w-24 whitespace-nowrap">
+            <th className={`${cellPad} px-3 font-semibold text-center w-24 whitespace-nowrap`}>
              {t('Unit Cost')}
              {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">سعر الوحدة</span>}
             </th>
-            <th className="py-2.5 px-3 font-semibold text-center w-20 whitespace-nowrap">
+            <th className={`${cellPad} px-3 font-semibold text-center w-20 whitespace-nowrap`}>
              {t('Quantity')}
              {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">الكمية</span>}
             </th>
-            <th className="py-2.5 px-3 font-semibold text-center w-16 whitespace-nowrap">
+            <th className={`${cellPad} px-3 font-semibold text-center w-16 whitespace-nowrap`}>
              {t('VAT %')}
              {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">نسبة الضريبة</span>}
             </th>
-            <th className={`py-2.5 px-3 font-semibold w-24 whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>
-             {t('Total')}
-             {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">الإجمالي</span>}
+            <th className={`${cellPad} px-3 font-semibold w-24 whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>
+             {amountColLabel}
+             {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">{amountColLabelAr}</span>}
             </th>
+            {showTaxAmount && <th className={`${cellPad} px-3 font-semibold w-24 whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>
+             {t('Tax Amount')}
+             {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">مبلغ الضريبة</span>}
+            </th>}
+            {showLineSubtotal && <th className={`${cellPad} px-3 font-semibold w-24 whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>
+             {t('Subtotal')}
+             {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">المجموع الفرعي</span>}
+            </th>}
            </tr>
           </thead>
           <tbody>
@@ -917,8 +1156,14 @@ export default function DocumentRenderer({
             const itemRate = getItemTaxRate(item);
             return (
              <tr key={item.id} className={`border-b border-slate-100 ${stripeClass}`}>
-              {showSNo && <td className="py-2.5 px-3 text-center text-slate-500 w-12 whitespace-nowrap">{idx + 1}</td>}
-              <td className={`py-2.5 px-3 text-slate-800 font-medium ${isRTL ? 'text-end' : 'text-start'}`}>
+              {showSNo && <td className={`${cellPad} px-3 text-center text-slate-500 w-12 whitespace-nowrap`}>{idx + 1}</td>}
+              {showItemCode && (() => {
+               // Free-typed lines (no productId — see invoiceItems.productId's schema
+               // comment) have no catalog code to show; blank rather than an error.
+               const product = item.productId ? db?.products?.find((p: any) => p.id === item.productId) : null;
+               return <td className={`${cellPad} px-3 text-center text-slate-500 w-20 whitespace-nowrap font-mono`}>{product?.sku || product?.barcode || '—'}</td>;
+              })()}
+              <td className={`${cellPad} px-3 text-slate-800 font-medium ${isRTL ? 'text-end' : 'text-start'}`}>
                <div>{item.description}</div>
                {item.discountAmount > 0 && block.props?.showDiscount !== false && (
                 <div className="text-[10px] text-rose-500 font-semibold">
@@ -926,7 +1171,7 @@ export default function DocumentRenderer({
                 </div>
                )}
               </td>
-              <td className="py-2.5 px-3 text-center text-slate-600 w-24 whitespace-nowrap">
+              <td className={`${cellPad} px-3 text-center text-slate-600 w-24 whitespace-nowrap`}>
                {item.discountAmount > 0 ? (
                 <span>
                  <span className="line-through text-slate-400 me-1">{fmt(item.unitCost)}</span>
@@ -936,9 +1181,27 @@ export default function DocumentRenderer({
                 fmt(item.unitCost)
                )}
               </td>
-              <td className="py-2.5 px-3 text-center text-slate-600 w-20 whitespace-nowrap">{item.quantity}</td>
-              <td className="py-2.5 px-3 text-center text-slate-600 w-16 whitespace-nowrap">{itemRate}%</td>
-              <td className={`py-2.5 px-3 text-slate-800 font-semibold w-24 whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>{fmt(itemNetCost * item.quantity)}</td>
+              <td className={`${cellPad} px-3 text-center text-slate-600 w-20 whitespace-nowrap`}>
+               {item.quantity}
+               {/* The same unit code submitted to ZATCA in this invoice's XML
+                   (normalizeZatcaUnitCode, src/zatcaUnitCodes.ts) — always shown
+                   (including the PCE default) so the printed document and the ZATCA
+                   submission never silently disagree about what unit a line was sold
+                   in, and so it's directly visible during compliance verification. */}
+               <span className="text-[10px] text-slate-400 ms-1">{item.unit || 'PCE'}</span>
+              </td>
+              <td className={`${cellPad} px-3 text-center text-slate-600 w-16 whitespace-nowrap`}>{itemRate}%</td>
+              {(() => {
+               const lineTaxable = itemNetCost * item.quantity;
+               const lineTax = lineTaxable * (itemRate / 100);
+               return (
+                <>
+                 <td className={`${cellPad} px-3 text-slate-800 font-semibold w-24 whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>{fmt(lineTaxable)}</td>
+                 {showTaxAmount && <td className={`${cellPad} px-3 text-slate-600 w-24 whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>{fmt(lineTax)}</td>}
+                 {showLineSubtotal && <td className={`${cellPad} px-3 text-slate-900 font-bold w-24 whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>{fmt(lineTaxable + lineTax)}</td>}
+                </>
+               );
+              })()}
              </tr>
             );
            })}
@@ -960,15 +1223,16 @@ export default function DocumentRenderer({
        // this one has content, matching how the row looks whenever notes IS set.
        if (!notes) return <div key={block.id} className={blockColClass} />;
        const isBilingual = block.props?.isBilingual === true;
+       const compact = block.props?.compact === true;
        const textAlignClass = block.props?.align === 'right' ? 'text-right' : block.props?.align === 'center' ? 'text-center' : 'text-left';
        return (
         <div key={block.id} className={`${blockColClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <div className={`border border-slate-150 rounded-xl p-3.5 bg-slate-50/40 ${textAlignClass}`}>
+         <div className={`border border-slate-150 rounded-xl bg-slate-50/40 ${compact ? 'p-2' : 'p-3.5'} ${textAlignClass}`}>
           <h4 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
            {t('Notes')}
            {isBilingual && <span className="ms-1.5 text-[9px] text-slate-400">الشروط والأحكام</span>}
           </h4>
-          <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">{notes}</p>
+          <p className={`text-xs text-slate-600 whitespace-pre-line ${compact ? 'leading-snug line-clamp-3' : 'leading-relaxed'}`}>{notes}</p>
          </div>
         </div>
        );
@@ -991,17 +1255,33 @@ export default function DocumentRenderer({
        if (currentTemplate?.printQrCode === false) return <div key={block.id} className={blockColClass} />;
        const alignClass = block.props?.align === 'right' ? 'justify-end' : block.props?.align === 'left' ? 'justify-start' : 'justify-center';
        const isBilingual = block.props?.isBilingual !== false;
-       const size = block.props?.size || 'medium';
+       const compact = block.props?.compact === true;
+       const size = compact ? 'small' : (block.props?.size || 'medium');
        const sizeClass = size === 'small' ? 'w-12 h-12' : size === 'large' ? 'w-24 h-24' : 'w-20 h-20';
-       
+
        return (
         <div key={block.id} className={`${blockColClass} flex ${alignClass} items-center ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <div className="flex flex-col items-center justify-center p-2.5 bg-white rounded-xl border border-slate-150 shadow-sm shrink-0">
-          <img src={qrCodeUrl} alt="ZATCA QR Verification" className={sizeClass} referrerPolicy="no-referrer" />
-          <span className={`text-[8px] font-bold uppercase tracking-wider mt-1 whitespace-nowrap ${isZatcaConfirmed ? 'text-slate-400' : 'text-amber-500'}`}>
-           {isZatcaConfirmed
-            ? (isBilingual ? `${docZatcaStatus === 'CLEARED' ? 'Cleared' : 'Reported'} / ${docZatcaStatus === 'CLEARED' ? 'تم التخليص' : 'تم الإبلاغ'}` : (docZatcaStatus === 'CLEARED' ? 'Cleared' : 'Reported'))
-            : (isBilingual ? 'Not Yet Cleared / قيد الانتظار' : 'Not Yet Cleared')}
+         <div className={`flex flex-col items-center justify-center bg-white rounded-xl border border-slate-150 shadow-sm shrink-0 ${compact ? 'p-1.5' : 'p-2.5'}`}>
+          {localQrDataUri ? (
+           <img src={localQrDataUri} alt="ZATCA QR Verification" className={sizeClass} />
+          ) : (
+           <div className={`${sizeClass} bg-slate-100 rounded`} />
+          )}
+          {/* tracking-wider (letter-spacing) breaks Arabic's cursive glyph joining —
+              Arabic letters must connect to their neighbors, and forcing a gap between
+              them renders as disconnected/overlapping shapes instead of legible script
+              (confirmed live: "تم التخليص" printed garbled). Keep tracking-wider/uppercase
+              on the Latin portion only; the Arabic portion gets its own untracked span,
+              matching every other bilingual caption in this file. */}
+          <span className={`text-[8px] font-bold mt-1 whitespace-nowrap ${isZatcaConfirmed ? 'text-slate-400' : 'text-amber-500'}`}>
+           <span className="uppercase tracking-wider">
+            {isZatcaConfirmed ? (docZatcaStatus === 'CLEARED' ? 'Cleared' : 'Reported') : 'Not Yet Cleared'}
+           </span>
+           {isBilingual && (
+            <span className="ms-1">
+             / {isZatcaConfirmed ? (docZatcaStatus === 'CLEARED' ? 'تم التخليص' : 'تم الإبلاغ') : 'قيد الانتظار'}
+            </span>
+           )}
           </span>
          </div>
         </div>
@@ -1039,14 +1319,23 @@ export default function DocumentRenderer({
        // just above: ms-auto is direction-aware and flips to push the box LEFT under an
        // RTL (Arabic/Urdu) template, silently contradicting an admin's explicit "right"
        // pick. md:ml-auto is physical and always pushes right regardless of direction.
-       const totalsPosClass = block.props?.align === 'left' ? '' : block.props?.align === 'center' ? 'md:mx-auto' : block.props?.align === 'right' ? 'md:ml-auto' : 'md:ms-auto';
+       // md: alone doesn't survive actual print/PDF rendering — see docDetailsPosClass's
+       // comment above for why print:* is paired with every md:* alignment class here too.
+       const totalsPosClass = block.props?.align === 'left' ? '' : block.props?.align === 'center' ? 'md:mx-auto print:mx-auto' : block.props?.align === 'right' ? 'md:ml-auto print:ml-auto' : 'md:ms-auto print:ms-auto';
+       // Compact mode drops the Arabic sub-captions (folded into the label itself for
+       // bilingual clarity, e.g. "VAT / ضريبة") and tightens padding/spacing — this row
+       // shares grid space with notes/qr_code and was part of the 195px footer block
+       // that, together with a dense items table, was still pushing a 20-line invoice
+       // onto a second page even with an already-compact header.
+       const compact = block.props?.compact === true;
        return (
         <div key={block.id} className={`${blockColClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <div className={`space-y-1.5 border border-slate-100 p-4 rounded-xl bg-slate-50 ${totalsWidthClass} ${totalsPosClass}`}>
+         <div className={`border border-slate-100 rounded-xl bg-slate-50 ${compact ? 'space-y-0.5 p-2' : 'space-y-1.5 p-4'} ${totalsWidthClass} ${totalsPosClass}`}>
          <div className="flex justify-between text-xs text-slate-600">
           <span className="whitespace-nowrap">
-           {t('Subtotal')}:
-           {isBilingual && <span className="block text-[8px] text-slate-400">المجموع الفرعي</span>}
+           {t('Subtotal')}{isBilingual && !compact && ':'}
+           {isBilingual && (compact ? <span className="text-[9px] text-slate-400"> / المجموع الفرعي:</span> : <span className="block text-[8px] text-slate-400">المجموع الفرعي</span>)}
+           {!isBilingual && ':'}
           </span>
           <span className="font-medium whitespace-nowrap font-mono">{fmt(totals.subtotal)}</span>
          </div>
@@ -1055,17 +1344,17 @@ export default function DocumentRenderer({
           <div className="flex justify-between text-xs text-rose-600 font-bold">
            <span className="whitespace-nowrap">
             Total Discount:
-            {isBilingual && <span className="block text-[8px] text-rose-400">مجموع الخصومات</span>}
+            {isBilingual && !compact && <span className="block text-[8px] text-rose-400">مجموع الخصومات</span>}
            </span>
            <span className="whitespace-nowrap font-mono">-{fmt(totals.discountAmount)}</span>
           </div>
          )}
 
          {totals.discountAmount > 0 && (
-          <div className="flex justify-between text-xs text-slate-700 font-semibold border-t border-slate-100 pt-1">
+          <div className={`flex justify-between text-xs text-slate-700 font-semibold border-t border-slate-100 ${compact ? '' : 'pt-1'}`}>
            <span className="whitespace-nowrap">
             Net Subtotal:
-            {isBilingual && <span className="block text-[8px] text-slate-400">صافي الفرعي</span>}
+            {isBilingual && !compact && <span className="block text-[8px] text-slate-400">صافي الفرعي</span>}
            </span>
            <span className="whitespace-nowrap font-mono">{fmt(totals.discountedSubtotal)}</span>
           </div>
@@ -1079,7 +1368,7 @@ export default function DocumentRenderer({
            <div key={rate} className="flex justify-between text-xs text-slate-600">
             <span className="whitespace-nowrap">
              {t('VAT')} ({rate}%):
-             {isBilingual && <span className="block text-[8px] text-slate-400">ضريبة القيمة المضافة</span>}
+             {isBilingual && !compact && <span className="block text-[8px] text-slate-400">ضريبة القيمة المضافة</span>}
             </span>
             <span className="font-medium whitespace-nowrap font-mono">{fmt(Number(group.taxAmount.toFixed(2)))}</span>
            </div>
@@ -1088,19 +1377,35 @@ export default function DocumentRenderer({
           <div className="flex justify-between text-xs text-slate-600">
            <span className="whitespace-nowrap">
             {t('VAT')} ({totals.percentage}%):
-            {isBilingual && <span className="block text-[8px] text-slate-400">ضريبة القيمة المضافة</span>}
+            {isBilingual && !compact && <span className="block text-[8px] text-slate-400">ضريبة القيمة المضافة</span>}
            </span>
            <span className="font-medium whitespace-nowrap font-mono">{fmt(totals.taxAmount)}</span>
           </div>
          )}
 
-                   <div className="flex justify-between text-sm font-bold text-slate-900 border-t border-slate-200 pt-2 mt-1">
+                   <div className={`flex justify-between text-sm font-bold text-slate-900 border-t border-slate-200 ${compact ? 'pt-1' : 'pt-2 mt-1'}`}>
            <span className="whitespace-nowrap">
             {t('Grand Total')}:
-            {isBilingual && <span className="block text-[9px] text-slate-400">الإجمالي الكلي</span>}
+            {isBilingual && !compact && <span className="block text-[9px] text-slate-400">الإجمالي الكلي</span>}
            </span>
            <span className={`${totalAccentText} text-base whitespace-nowrap font-mono font-bold`}>{fmt(totals.grandTotal)}</span>
           </div>
+
+          {/* Declared in documentTemplateDefaults.ts's DEFAULT_DOCUMENT_LAYOUT since that
+              file was first written, but never actually implemented here — an admin
+              could enable "Grand Total in Words" in the Canvas Designer and it silently
+              did nothing. Defaults to on (`!== false`) for consistency with every other
+              flag in this block, which means it now also activates on the existing
+              default template, not just the new Detailed Tax Invoice one. Hidden entirely
+              in compact mode — it's the lowest-value line in this block (a legal nicety,
+              not a number anyone reads first) and often the single tallest line since it
+              wraps to 2 full-width lines for a large total. */}
+          {block.props?.showGrandTotalWords !== false && !compact && (
+           <div className="text-[10px] text-slate-500 border-t border-slate-100 pt-1.5 mt-1 leading-snug">
+            <span className="font-semibold text-slate-600">{t('Amount in Words')}: </span>
+            {amountToWordsForCurrency(totals.grandTotal, companySetup.currency)}
+           </div>
+          )}
          </div>
         </div>
        );
@@ -1136,9 +1441,18 @@ export default function DocumentRenderer({
         else if (binding === 'companyBank') valueStr = (companySetup as any).bankIban || data.bankData?.iban || '-';
         else if (binding === 'createdBy') valueStr = (doc as any).createdBy || 'Admin';
 
+        // Same "Box Frame Style" options as customer_info (solid/dashed/none) — the
+        // Canvas Designer panel previously never exposed this control for custom_field
+        // at all, so every custom field was stuck with a hardcoded solid card.
+        const borderStyle = block.props?.borderStyle || 'solid';
+        let cardClass = "p-2.5 rounded-xl bg-slate-50/50 space-y-0.5 ";
+        if (borderStyle === 'solid') cardClass += "border border-slate-150";
+        else if (borderStyle === 'dashed') cardClass += "border border-dashed border-slate-350";
+        else cardClass += "p-0";
+
         return (
          <div key={block.id} className={`${blockColClass} ${alignClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-          <div className="p-2.5 rounded-xl border border-slate-150 bg-slate-50/50 space-y-0.5">
+          <div className={cardClass}>
            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
             {block.props?.labelEn || block.title || 'Custom Field'}
             {block.props?.isBilingual !== false && block.props?.labelAr && (
@@ -1273,6 +1587,40 @@ export default function DocumentRenderer({
  };
 
  const renderVoucher = (vch: Voucher) => {
+ // Who the money actually moved with — a customer for an Invoice-linked voucher, a
+ // vendor for an Expense/PurchaseBill-linked one. The LABEL depends on direction, not
+ // just who's involved: a Reversal moves money the opposite way from a normal
+ // Receipt/Payment (mirrors the Debit/Credit column logic a few lines below — a
+ // Reversal against an Invoice is money going back OUT to the customer, e.g. a Credit
+ // Note undoing a prior receipt; a Reversal against an Expense/PurchaseBill is money
+ // coming back IN from the vendor). Getting this backwards on a printed reversal
+ // receipt would misrepresent which way the cash actually moved.
+ const isReversal = vch.type === 'Reversal';
+ const voucherParty = (() => {
+ if (vch.referenceType === 'Invoice' && db) {
+ const inv = db.invoices.find(i => i.id === vch.referenceId);
+ const cust = inv ? db.customers.find(c => c.id === inv.customerId) : undefined;
+ if (cust) return { label: isReversal ? 'Refunded To' : 'Received From', name: cust.name, phone: cust.phone, email: cust.email, address: cust.address };
+ } else if (vch.referenceType === 'Expense' && db) {
+ const exp = db.expenses.find(e => e.id === vch.referenceId);
+ const vend = exp ? db.vendors.find(v => v.id === exp.vendorId) : undefined;
+ if (vend) return { label: isReversal ? 'Refunded By' : 'Paid To', name: vend.name, phone: vend.phone, email: vend.email, address: vend.address };
+ } else if (vch.referenceType === 'PurchaseBill' && db) {
+ const bill = (db as any).purchaseBills?.find((b: any) => b.id === vch.referenceId);
+ const vend = bill ? db.vendors.find(v => v.id === bill.vendorId) : undefined;
+ if (vend) return { label: isReversal ? 'Refunded By' : 'Paid To', name: vend.name, phone: vend.phone, email: vend.email, address: vend.address };
+ } else if (vch.referenceType === 'Equity' && db) {
+ // referenceId is the investor's own id directly (not an invoice/expense/bill to look
+ // through) — see POST /investors/:id/contribute in transactions.ts.
+ const investor = (db as any).investors?.find((i: any) => i.id === vch.referenceId);
+ if (investor) return { label: isReversal ? 'Refunded To' : 'Received From', name: investor.name, phone: investor.phone, email: investor.email, address: undefined };
+ }
+ // 'Transfer' (TransferOut/TransferIn) deliberately falls through to null — referenceId
+ // is a synthetic id pairing the two legs of an inter-bank transfer, not a customer,
+ // vendor, or investor; there is genuinely no "party" to show for it.
+ return null;
+ })();
+
  return (
  <div className="flex flex-col h-full justify-between text-xs">
  <div>
@@ -1291,30 +1639,43 @@ export default function DocumentRenderer({
  </div>
  </div>
 
+ {voucherParty && (
+ <div className="mb-6">
+ <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{t(voucherParty.label)}</p>
+ <p className="text-sm font-bold text-slate-900">{voucherParty.name}</p>
+ {(voucherParty.phone || voucherParty.email) && (
+ <p className="text-[11px] text-slate-500">{[voucherParty.phone, voucherParty.email].filter(v => v && v !== '-').join(' | ')}</p>
+ )}
+ {voucherParty.address && voucherParty.address !== '-' && (
+ <p className="text-[11px] text-slate-500 whitespace-pre-line">{voucherParty.address}</p>
+ )}
+ </div>
+ )}
+
  <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 mb-6">
  <div className="flex justify-between items-center mb-2">
- <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600">Total Voucher Amount</span>
+ <span className="text-xs font-semibold uppercase tracking-wider text-indigo-600">{t('Total Voucher Amount')}</span>
  <span className="text-xl font-black text-indigo-900">{fmt(vch.amount)}</span>
  </div>
  <p className="text-[11px] text-indigo-800 leading-relaxed">
- <span className="font-bold">Description:</span> {vch.description}
+ <span className="font-bold">{t('Description:')}</span> {vch.description}
  </p>
  </div>
 
  <div className="overflow-x-auto"><table className="w-full text-xs min-w-[500px]">
  <thead>
  <tr className="bg-slate-100 text-slate-600">
- <th className="py-2 px-3 text-start">Account Affected</th>
- <th className="py-2 px-3 text-start">Reference Source</th>
- <th className="py-2 px-3 text-start">Document ID</th>
- <th className="py-2 px-3 text-end">Debit (Inflow)</th>
- <th className="py-2 px-3 text-end">Credit (Outflow)</th>
+ <th className="py-2 px-3 text-start">{t('Account Affected')}</th>
+ <th className="py-2 px-3 text-start">{t('Reference Source')}</th>
+ <th className="py-2 px-3 text-start">{t('Document ID')}</th>
+ <th className="py-2 px-3 text-end">{t('Debit / Inflow')}</th>
+ <th className="py-2 px-3 text-end">{t('Credit / Outflow')}</th>
  </tr>
  </thead>
  <tbody>
  <tr>
  <td className="py-3 px-3 font-semibold text-slate-800">
- 🏦 {data.bankData?.bankName || 'Bank Ledger Account'}
+ 🏦 {data.bankData?.bankName || t('Bank Ledger Account')}
  </td>
  <td className="py-3 px-3 text-slate-600">{vch.referenceType}</td>
  <td className="py-3 px-3 text-slate-600 font-mono">
@@ -1333,6 +1694,13 @@ export default function DocumentRenderer({
  docNum = exp.expenseNumber;
  refType = 'Expense';
  }
+ } else if (vch.referenceType === 'PurchaseBill' && db) {
+ // No cross-module "view this Purchase Bill" navigation exists from a printed
+ // document today (onViewAnotherDoc only knows Quotation/Invoice/Expense/Voucher,
+ // and Purchase Bills live in a separate Inventory/Procurement screen) — shown as
+ // plain text rather than a dead/incorrect link.
+ const bill = (db as any).purchaseBills?.find((b: any) => b.id === vch.referenceId);
+ if (bill) docNum = bill.billNumber;
  }
 
  if (docNum !== '-' && refType && onViewAnotherDoc) {
@@ -1349,7 +1717,7 @@ export default function DocumentRenderer({
  </>
  );
  }
- return <span>{vch.referenceId}</span>;
+ return <span className="font-mono font-bold text-slate-800">{docNum !== '-' ? docNum : vch.referenceId}</span>;
  })()}
  </td>
  <td className="py-3 px-3 text-end text-emerald-600 font-bold">
@@ -1365,11 +1733,11 @@ export default function DocumentRenderer({
  <div className="mt-8 grid grid-cols-2 gap-12 pt-8">
  <div className="text-center">
  <div className="border-b border-slate-300 w-36 mx-auto mb-2 h-10"></div>
- <p className="text-[10px] text-slate-400">Authorized Signature</p>
+ <p className="text-[10px] text-slate-400">{t('Authorized Signature')}</p>
  </div>
  <div className="text-center">
  <div className="border-b border-slate-300 w-36 mx-auto mb-2 h-10"></div>
- <p className="text-[10px] text-slate-400">Receiver Signature</p>
+ <p className="text-[10px] text-slate-400">{t('Receiver Signature')}</p>
  </div>
  </div>
  </div>
@@ -1383,39 +1751,173 @@ export default function DocumentRenderer({
  );
  };
 
+ // A clean, customer/vendor-facing "proof of payment" slip — deliberately separate from
+ // renderVoucher above, which is the internal double-entry-style accounting record (its
+ // Debit/Credit/"Account Affected" bookkeeping table is meaningful to this company's own
+ // books, not to whoever is holding the receipt). Same underlying Voucher data, just a
+ // different audience: no accounting table, instead the settled document's reference and
+ // remaining balance, and the amount spelled out in words the way an invoice already does.
+ const renderPaymentReceipt = (vch: Voucher) => {
+  const isReversal = vch.type === 'Reversal';
+  // Mirrors renderVoucher's own party resolution (same reasoning: label depends on
+  // direction, not just who's involved) — kept as its own local copy rather than a
+  // shared helper since the two renderers otherwise share almost nothing else.
+  const voucherParty = (() => {
+   if (vch.referenceType === 'Invoice' && db) {
+    const inv = db.invoices.find(i => i.id === vch.referenceId);
+    const cust = inv ? db.customers.find(c => c.id === inv.customerId) : undefined;
+    if (cust) return { label: isReversal ? 'Refunded To' : 'Received From', name: cust.name, phone: cust.phone, email: cust.email, address: cust.address };
+   } else if (vch.referenceType === 'Expense' && db) {
+    const exp = db.expenses.find(e => e.id === vch.referenceId);
+    const vend = exp ? db.vendors.find(v => v.id === exp.vendorId) : undefined;
+    if (vend) return { label: isReversal ? 'Refunded By' : 'Paid To', name: vend.name, phone: vend.phone, email: vend.email, address: vend.address };
+   } else if (vch.referenceType === 'PurchaseBill' && db) {
+    const bill = (db as any).purchaseBills?.find((b: any) => b.id === vch.referenceId);
+    const vend = bill ? db.vendors.find(v => v.id === bill.vendorId) : undefined;
+    if (vend) return { label: isReversal ? 'Refunded By' : 'Paid To', name: vend.name, phone: vend.phone, email: vend.email, address: vend.address };
+   } else if (vch.referenceType === 'Equity' && db) {
+    const investor = (db as any).investors?.find((i: any) => i.id === vch.referenceId);
+    if (investor) return { label: isReversal ? 'Refunded To' : 'Received From', name: investor.name, phone: investor.phone, email: investor.email, address: undefined };
+   }
+   return null;
+  })();
+
+  // The settled document's own number + what's still owed after this specific payment —
+  // the whole point of a receipt is proving what was paid and what, if anything, remains.
+  const settledDoc = (() => {
+   if (vch.referenceType === 'Invoice' && db) {
+    const inv = db.invoices.find(i => i.id === vch.referenceId);
+    if (!inv) return null;
+    const grandTotal = calculateInvoiceTotals({ taxSlabs } as any, inv.items, inv.taxSlabId, inv.discountPercentage).grandTotal;
+    return { docNum: inv.invoiceNumber, remaining: Math.max(0, grandTotal - (inv.amountPaid || 0)) };
+   }
+   if (vch.referenceType === 'Expense' && db) {
+    const exp = db.expenses.find(e => e.id === vch.referenceId);
+    if (!exp) return null;
+    return { docNum: exp.expenseNumber, remaining: Math.max(0, exp.amount - (exp.amountPaid || 0)) };
+   }
+   if (vch.referenceType === 'PurchaseBill' && db) {
+    const bill = (db as any).purchaseBills?.find((b: any) => b.id === vch.referenceId);
+    if (!bill) return null;
+    return { docNum: bill.billNumber, remaining: Math.max(0, bill.grandTotal - (bill.amountPaid || 0)) };
+   }
+   return null;
+  })();
+
+  const title = isReversal ? 'Refund Receipt' : vch.type === 'Receipt' ? 'Payment Receipt' : 'Payment Voucher';
+
+  return (
+   <div className="flex flex-col h-full justify-between text-xs">
+    <div>
+     <div className="flex justify-between items-start border-b border-slate-200 pb-6 mb-6">
+      <div>
+       <h1 className="text-xl font-bold text-slate-900">{companySetup.name}</h1>
+       <p className="text-xs text-slate-500">{companySetup.address}</p>
+       <p className="text-xs text-slate-500">{t('Phone')}: {companySetup.phone} | {t('Email')}: {companySetup.email}</p>
+      </div>
+      <div className="text-end">
+       <h2 className="text-xl font-bold uppercase text-emerald-700 tracking-wider mb-1">{t(title)}</h2>
+       <p className="text-slate-500"><span className="font-semibold">{t('Receipt Number')}:</span> {vch.voucherNumber}</p>
+       <p className="text-slate-500"><span className="font-semibold">{t('Date')}:</span> {vch.date}</p>
+      </div>
+     </div>
+
+     {voucherParty && (
+      <div className="mb-6">
+       <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{t(voucherParty.label)}</p>
+       <p className="text-sm font-bold text-slate-900">{voucherParty.name}</p>
+       {(voucherParty.phone || voucherParty.email) && (
+        <p className="text-[11px] text-slate-500">{[voucherParty.phone, voucherParty.email].filter(v => v && v !== '-').join(' | ')}</p>
+       )}
+       {voucherParty.address && voucherParty.address !== '-' && (
+        <p className="text-[11px] text-slate-500 whitespace-pre-line">{voucherParty.address}</p>
+       )}
+      </div>
+     )}
+
+     <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 mb-4">
+      <div className="flex justify-between items-center">
+       <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700">{t('Amount')}</span>
+       <span className="text-2xl font-black text-emerald-900">{fmt(vch.amount)}</span>
+      </div>
+      <p className="text-[11px] text-emerald-800 mt-1 italic">{amountToWordsForCurrency(Number(vch.amount), companySetup.currency)}</p>
+     </div>
+
+     <div className="grid grid-cols-2 gap-4 text-xs mb-6">
+      <div>
+       <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Payment Method')}</p>
+       <p className="font-semibold text-slate-800">{data.bankData?.bankName || t('Bank Account')}</p>
+      </div>
+      {settledDoc && (
+       <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Against Document')}</p>
+        <p className="font-semibold text-slate-800 font-mono">{settledDoc.docNum}</p>
+       </div>
+      )}
+      {settledDoc && (
+       <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Balance Remaining')}</p>
+        <p className={`font-bold ${settledDoc.remaining > 0.01 ? 'text-amber-600' : 'text-emerald-600'}`}>
+         {settledDoc.remaining > 0.01 ? fmt(settledDoc.remaining) : t('Fully Settled')}
+        </p>
+       </div>
+      )}
+     </div>
+
+     <div className="mt-10 grid grid-cols-2 gap-12 pt-8">
+      <div className="text-center">
+       <div className="border-b border-slate-300 w-36 mx-auto mb-2 h-10"></div>
+       <p className="text-[10px] text-slate-400">{t('Authorized Signature')}</p>
+      </div>
+      <div className="text-center">
+       <div className="border-b border-slate-300 w-36 mx-auto mb-2 h-10"></div>
+       <p className="text-[10px] text-slate-400">{t('Receiver Signature')}</p>
+      </div>
+     </div>
+    </div>
+
+    {companySetup.customFooter && (
+     <div className="footer-text mt-12 pt-4 border-t border-slate-200 text-center text-[10px] text-slate-400">
+      {companySetup.customFooter}
+     </div>
+    )}
+   </div>
+  );
+ };
+
  const renderLedger = (ledgerData: { bank: any; entries: BankLedgerEntry[] }) => {
  return (
  <div className="text-xs">
  <div className="border-b border-slate-200 pb-4 mb-4 flex justify-between items-end">
  <div>
  <h1 className="text-base font-bold text-slate-900">{companySetup.name}</h1>
- <p className="text-[10px] text-slate-500">Bank Statement Report</p>
+ <p className="text-[10px] text-slate-500">{t('Bank Statement Report')}</p>
  </div>
  <div className="text-end">
- <h2 className="text-lg font-bold text-indigo-700">BANK ACCOUNT LEDGER</h2>
+ <h2 className="text-lg font-bold text-indigo-700">{t('BANK ACCOUNT LEDGER')}</h2>
  <p className="text-[11px] font-bold text-slate-800">{ledgerData.bank.bankName}</p>
- <p className="text-[10px] text-slate-500">A/C Title: {ledgerData.bank.accountTitle} | No: {ledgerData.bank.accountNumber}</p>
+ <p className="text-[10px] text-slate-500">{t('A/C Title:')} {ledgerData.bank.accountTitle} | {t('No:')} {ledgerData.bank.accountNumber}</p>
  </div>
  </div>
 
  <div className="overflow-x-auto"><table className="w-full text-start text-[11px] min-w-[600px]">
  <thead>
  <tr className="bg-slate-100 text-slate-700 border-b border-slate-300">
- <th className="py-2 px-2">Date</th>
- <th className="py-2 px-2">Voucher No</th>
- <th className="py-2 px-2">Type</th>
- <th className="py-2 px-2">Description</th>
- <th className="py-2 px-2 text-end">Debit (Receipts)</th>
- <th className="py-2 px-2 text-end">Credit (Payments)</th>
- <th className="py-2 px-2 text-end">Running Balance</th>
+ <th className="py-2 px-2">{t('Date')}</th>
+ <th className="py-2 px-2">{t('Voucher No')}</th>
+ <th className="py-2 px-2">{t('Type')}</th>
+ <th className="py-2 px-2">{t('Description')}</th>
+ <th className="py-2 px-2 text-end">{t('Debit (Receipts)')}</th>
+ <th className="py-2 px-2 text-end">{t('Credit (Payments)')}</th>
+ <th className="py-2 px-2 text-end">{t('Running Balance')}</th>
  </tr>
  </thead>
  <tbody>
  <tr className="border-b border-slate-200 bg-slate-50 font-semibold text-slate-600">
  <td className="py-2 px-2">-</td>
  <td className="py-2 px-2">-</td>
- <td className="py-2 px-2">OPENING</td>
- <td className="py-2 px-2">Account Initial Setup Balance</td>
+ <td className="py-2 px-2">{t('OPENING')}</td>
+ <td className="py-2 px-2">{t('Account Initial Setup Balance')}</td>
  <td className="py-2 px-2 text-end">-</td>
  <td className="py-2 px-2 text-end">-</td>
  <td className="py-2 px-2 text-end">{fmt(ledgerData.bank.openingBalance)}</td>
@@ -1430,7 +1932,7 @@ export default function DocumentRenderer({
  entry.type === 'Payment' ? 'bg-rose-50 text-rose-700' :
  entry.type === 'Reversal' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'
  }`}>
- {entry.type}
+ {t(entry.type)}
  </span>
  </td>
  <td className="py-2 px-2 max-w-xs truncate">{entry.description}</td>
@@ -1448,7 +1950,7 @@ export default function DocumentRenderer({
  };
 
  const renderReport = (reportWrapper: any) => {
- let title = 'Financial Report';
+ let title = t('Financial Report');
  let subtitle = '';
  let columns: string[] = [];
  let rows: any[][] = [];
@@ -1456,17 +1958,17 @@ export default function DocumentRenderer({
  if (!reportWrapper) {
  return (
  <div className="text-center py-6 text-rose-500">
- No report data provided.
+ {t('No report data provided.')}
  </div>
  );
  }
 
  const { type, startDate, endDate, data: rData } = reportWrapper;
- subtitle = `Period: ${startDate || ''} to ${endDate || ''}`;
+ subtitle = `${t('Period:')} ${startDate || ''} ${t('to')} ${endDate || ''}`;
 
  if (type === 'TrialBalance' && rData) {
- title = 'Trial Balance Sheet (Dual-Ledger)';
- columns = ['Ledger Chart Account Head', `Debit (${currencySymbol})`, `Credit (${currencySymbol})`];
+ title = t('Trial Balance Sheet (Dual-Ledger)');
+ columns = [t('Ledger Chart Account Head'), `${t('Debit')} (${currencySymbol})`, `${t('Credit')} (${currencySymbol})`];
  const ledgers = rData.ledgers || [];
  rows = ledgers.map((l: any) => [
  l.name,
@@ -1474,13 +1976,13 @@ export default function DocumentRenderer({
  l.credit > 0 ? `${currencySymbol} ${l.credit.toFixed(2)}` : '-'
  ]);
  rows.push([
- 'Balanced Sum Total:',
+ t('Balanced Sum Total:'),
  `${currencySymbol} ${(rData.totalDebits || 0).toFixed(2)}`,
  `${currencySymbol} ${(rData.totalCredits || 0).toFixed(2)}`
  ]);
  } else if (type === 'SalesVAT' && Array.isArray(rData)) {
- title = 'Sales VAT Register (Output Tax)';
- columns = ['Invoice No', 'Date', 'Customer Name', 'VAT Reg No', `Subtotal (${currencySymbol})`, `VAT Amount (15%) (${currencySymbol})`, `Grand Total (${currencySymbol})`];
+ title = t('Sales VAT Register (Output Tax)');
+ columns = [t('Invoice No'), t('Date'), t('Customer Name'), t('VAT Reg No'), `${t('Subtotal')} (${currencySymbol})`, `${t('VAT Amount (15%)')} (${currencySymbol})`, `${t('Grand Total')} (${currencySymbol})`];
  rows = rData.map((r: any) => [
  r.invoiceNumber,
  r.date,
@@ -1494,7 +1996,7 @@ export default function DocumentRenderer({
  const taxSum = rData.reduce((s: number, r: any) => s + r.taxAmount, 0);
  const grandSum = rData.reduce((s: number, r: any) => s + r.grandTotal, 0);
  rows.push([
- 'Total Sum:',
+ t('Total Sum:'),
  '',
  '',
  '',
@@ -1503,8 +2005,8 @@ export default function DocumentRenderer({
  `${currencySymbol} ${grandSum.toFixed(2)}`
  ]);
  } else if (type === 'PurchaseVAT' && Array.isArray(rData)) {
- title = 'Purchase VAT Register (Input Tax)';
- columns = ['Expense No', 'Date', 'Vendor Name', 'VAT Reg No', `Subtotal (${currencySymbol})`, `VAT Input (${currencySymbol})`, `Total Paid (${currencySymbol})`];
+ title = t('Purchase VAT Register (Input Tax)');
+ columns = [t('Expense No'), t('Date'), t('Vendor Name'), t('VAT Reg No'), `${t('Subtotal')} (${currencySymbol})`, `${t('VAT Input')} (${currencySymbol})`, `${t('Total Paid')} (${currencySymbol})`];
  rows = rData.map((r: any) => [
  r.expenseNumber,
  r.date,
@@ -1518,7 +2020,7 @@ export default function DocumentRenderer({
  const taxSum = rData.reduce((s: number, r: any) => s + r.taxAmount, 0);
  const grandSum = rData.reduce((s: number, r: any) => s + r.grandTotal, 0);
  rows.push([
- 'Total Sum:',
+ t('Total Sum:'),
  '',
  '',
  '',
@@ -1528,10 +2030,10 @@ export default function DocumentRenderer({
  ]);
  } else if (type === 'BankLedger' && rData) {
  const isAllBanks = rData.bankName === 'All Banks Combined';
- title = `Bank General Ledger: ${rData.bankName || ''}`;
+ title = `${t('Bank General Ledger')}: ${isAllBanks ? t('All Banks Combined') : (rData.bankName || '')}`;
  columns = isAllBanks
- ? ['Voucher No', 'Date', 'Bank', 'Type', 'Source Doc #', 'Description', `Inflow (Debit) (${currencySymbol})`, `Outflow (Credit) (${currencySymbol})`, `Running Balance (${currencySymbol})`]
- : ['Voucher No', 'Date', 'Type', 'Source Doc #', 'Description', `Inflow (Debit) (${currencySymbol})`, `Outflow (Credit) (${currencySymbol})`, `Running Balance (${currencySymbol})`];
+ ? [t('Voucher No'), t('Date'), t('Bank'), t('Type'), t('Source Doc #'), t('Description'), `${t('Debit / Inflow')} (${currencySymbol})`, `${t('Credit / Outflow')} (${currencySymbol})`, `${t('Running Balance')} (${currencySymbol})`]
+ : [t('Voucher No'), t('Date'), t('Type'), t('Source Doc #'), t('Description'), `${t('Debit / Inflow')} (${currencySymbol})`, `${t('Credit / Outflow')} (${currencySymbol})`, `${t('Running Balance')} (${currencySymbol})`];
  const vouchers = rData.vouchers || [];
  rows = vouchers.map((v: any) => {
  let docNum = '-';
@@ -1555,7 +2057,7 @@ export default function DocumentRenderer({
  rowData.push(v.bankName || '-');
  }
  rowData.push(
- v.type,
+ t(v.type),
  docNum,
  v.description,
  v.debit > 0 ? `+${v.debit.toFixed(2)}` : '-',
@@ -1565,7 +2067,7 @@ export default function DocumentRenderer({
  return rowData;
  });
  rows.push([
- 'End Balance:',
+ t('End Balance:'),
  '',
  ...(isAllBanks ? [''] : []),
  '',
@@ -1576,26 +2078,26 @@ export default function DocumentRenderer({
  `${currencySymbol} ${(rData.endingBalance || 0).toFixed(2)}`
  ]);
  } else if (type === 'Outstanding' && rData) {
- title = 'Outstanding Accounts Statement (A/R & A/P)';
- columns = ['Classification', 'Document #', 'Due/Exp Date', 'Contact Entity', 'Payment Status', `Total (${currencySymbol})`, `Paid (${currencySymbol})`, `Outstanding Balance (${currencySymbol})`];
- 
+ title = t('Outstanding Accounts Statement (A/R & A/P)');
+ columns = [t('Classification'), t('Document #'), t('Due/Exp Date'), t('Contact Entity'), t('Payment Status'), `${t('Total')} (${currencySymbol})`, `${t('Paid')} (${currencySymbol})`, `${t('Outstanding Balance')} (${currencySymbol})`];
+
  const invRows = (rData.invoices || []).map((i: any) => [
- 'Receivable (Customer Invoice)',
+ t('Receivable (Customer Invoice)'),
  i.docNumber,
  i.date,
  i.contactName,
- i.paymentStatus,
+ t(i.paymentStatus),
  `${currencySymbol} ${i.total.toFixed(2)}`,
  `${currencySymbol} ${i.paid.toFixed(2)}`,
  `${currencySymbol} ${i.outstanding.toFixed(2)}`
  ]);
 
  const expRows = (rData.expenses || []).map((e: any) => [
- 'Payable (Supplier Expense)',
+ t('Payable (Supplier Expense)'),
  e.docNumber,
  e.date,
  e.contactName,
- e.paymentStatus,
+ t(e.paymentStatus),
  `${currencySymbol} ${e.total.toFixed(2)}`,
  `${currencySymbol} ${e.paid.toFixed(2)}`,
  `${currencySymbol} ${e.outstanding.toFixed(2)}`
@@ -1607,36 +2109,144 @@ export default function DocumentRenderer({
  const totalPayable = (rData.expenses || []).reduce((sum: number, e: any) => sum + e.outstanding, 0);
 
  rows.push([
- 'Totals Summary:',
+ t('Totals Summary:'),
  '',
  '',
  '',
  '',
- `A/R: ${currencySymbol} ${totalReceivable.toFixed(2)}`,
- `A/P: ${currencySymbol} ${totalPayable.toFixed(2)}`,
- `Net Receivable: ${currencySymbol} ${(totalReceivable - totalPayable).toFixed(2)}`
+ `${t('A/R')}: ${currencySymbol} ${totalReceivable.toFixed(2)}`,
+ `${t('A/P')}: ${currencySymbol} ${totalPayable.toFixed(2)}`,
+ `${t('Net Receivable')}: ${currencySymbol} ${(totalReceivable - totalPayable).toFixed(2)}`
  ]);
  } else if (type === 'ProfitLoss' && rData) {
- title = 'Profit & Loss Statement (Financial Performance)';
- subtitle = `Basis: ${rData.accountingBasis} | Period: ${startDate || ''} to ${endDate || ''}`;
- columns = ['Category', 'Details', `Amount (${currencySymbol})`];
- 
- rows.push(['Income Statement', 'Total Revenue', `${currencySymbol} ${rData.totalRevenue.toFixed(2)}`]);
- rows.push(['Income Statement', 'Total Expenses', `${currencySymbol} ${rData.totalExpenses.toFixed(2)}`]);
- rows.push(['Income Statement', 'Net Profit', `${currencySymbol} ${rData.netProfit.toFixed(2)}`]);
+ title = t('Profit & Loss Statement');
+ subtitle = `${t('Basis:')} ${rData.accountingBasis === 'Accrual' ? t('Accrual Basis') : t('Cash Basis')} | ${t('Period:')} ${startDate || ''} ${t('to')} ${endDate || ''}`;
+ columns = [t('Category'), t('Details'), `${t('Amount')} (${currencySymbol})`];
+
+ rows.push([t('Income Statement'), t('Total Revenue'), `${currencySymbol} ${rData.totalRevenue.toFixed(2)}`]);
+ rows.push([t('Income Statement'), t('Total Expenses'), `${currencySymbol} ${rData.totalExpenses.toFixed(2)}`]);
+ rows.push([t('Income Statement'), t('Net Profit'), `${currencySymbol} ${rData.netProfit.toFixed(2)}`]);
  rows.push(['---', '---', '---']);
- rows.push(['Cash Flow Analysis', 'Operating Inflows', `+${currencySymbol} ${rData.operatingInflows.toFixed(2)}`]);
- rows.push(['Cash Flow Analysis', 'Operating Outflows', `-${currencySymbol} ${rData.operatingOutflows.toFixed(2)}`]);
- rows.push(['Cash Flow Analysis', 'Investing Outflows (CapEx)', `-${currencySymbol} ${rData.investingOutflows.toFixed(2)}`]);
- rows.push(['Cash Flow Analysis', 'Financing Inflows (Equity)', `+${currencySymbol} ${rData.financingInflows.toFixed(2)}`]);
- rows.push(['Cash Flow Analysis', 'Net Cash Flow', `${currencySymbol} ${rData.netCashFlow.toFixed(2)}`]);
+ rows.push([t('Cash Flow Analysis'), t('Operating Inflows'), `+${currencySymbol} ${rData.operatingInflows.toFixed(2)}`]);
+ rows.push([t('Cash Flow Analysis'), t('Operating Outflows'), `-${currencySymbol} ${rData.operatingOutflows.toFixed(2)}`]);
+ rows.push([t('Cash Flow Analysis'), t('Investing Outflows (CapEx)'), `-${currencySymbol} ${rData.investingOutflows.toFixed(2)}`]);
+ rows.push([t('Cash Flow Analysis'), t('Financing Inflows (Equity)'), `+${currencySymbol} ${rData.financingInflows.toFixed(2)}`]);
+ rows.push([t('Cash Flow Analysis'), t('Net Cash Flow'), `${currencySymbol} ${rData.netCashFlow.toFixed(2)}`]);
 
  if (rData.investorShares && rData.investorShares.length > 0) {
  rows.push(['---', '---', '---']);
  rData.investorShares.forEach((inv: any) => {
- rows.push(['Investor Profit Share', `${inv.name} (${inv.profitPercentage}%)`, `${currencySymbol} ${inv.shareAmount.toFixed(2)}`]);
+ rows.push([t('Investor Profit Share'), `${inv.name} (${inv.profitPercentage}%)`, `${currencySymbol} ${inv.shareAmount.toFixed(2)}`]);
  });
  }
+ } else if (type === 'BalanceSheet' && rData) {
+ title = t('Balance Sheet');
+ subtitle = `${t('As of')} ${rData.asOfDate}`;
+ columns = [t('Section'), t('Line'), `${t('Amount')} (${currencySymbol})`];
+ rows.push([t('Assets'), t('Bank Balances'), `${currencySymbol} ${rData.bankBalance.toFixed(2)}`]);
+ rows.push([t('Assets'), t('Accounts Receivable'), `${currencySymbol} ${rData.accountsReceivable.toFixed(2)}`]);
+ rows.push([t('Assets'), t('Inventory Value'), `${currencySymbol} ${rData.inventoryValue.toFixed(2)}`]);
+ rows.push([t('Assets'), t('Total Assets'), `${currencySymbol} ${rData.totalAssets.toFixed(2)}`]);
+ rows.push([t('Liabilities'), t('Accounts Payable'), `${currencySymbol} ${rData.accountsPayable.toFixed(2)}`]);
+ rows.push([t('Liabilities'), t('Total Liabilities'), `${currencySymbol} ${rData.totalLiabilities.toFixed(2)}`]);
+ rows.push([t('Equity'), t('Capital Contributed'), `${currencySymbol} ${rData.capitalContributed.toFixed(2)}`]);
+ rows.push([t('Equity'), t('Retained Earnings'), `${currencySymbol} ${rData.retainedEarnings.toFixed(2)}`]);
+ rows.push([t('Equity'), t('Total Equity'), `${currencySymbol} ${rData.totalEquity.toFixed(2)}`]);
+ } else if (type === 'VatReturnSummary' && rData) {
+ title = t('VAT Return Summary');
+ subtitle = `${t('Filing Period:')} ${rData.startDate} ${t('to')} ${rData.endDate}`;
+ columns = [t('Item'), `${t('Amount')} (${currencySymbol})`];
+ rows.push([t('Output VAT (Sales)'), `${currencySymbol} ${rData.outputVat.toFixed(2)}`]);
+ rows.push([t('Input VAT (Purchases)'), `${currencySymbol} ${rData.inputVat.toFixed(2)}`]);
+ rows.push([rData.netVatPayable >= 0 ? t('Net VAT Payable') : t('Net VAT Refundable'), `${currencySymbol} ${Math.abs(rData.netVatPayable).toFixed(2)}`]);
+ } else if (type === 'InvestorProfitShare' && rData) {
+ title = t('Investor Profit Share');
+ subtitle = `${t('Period:')} ${rData.startDate} ${t('to')} ${rData.endDate} | ${t('Net Profit:')} ${currencySymbol} ${rData.netProfit.toFixed(2)}`;
+ columns = [t('Investor'), t('Profit %'), `${t('Share Amount')} (${currencySymbol})`];
+ rows = (rData.investorShares || []).map((inv: any) => [inv.name, `${inv.profitPercentage}%`, `${currencySymbol} ${inv.shareAmount.toFixed(2)}`]);
+ } else if (type === 'FiscalMonthClosingHistory' && rData) {
+ title = t('Fiscal Month Closing History');
+ columns = [t('Month'), t('Closed At'), `${t('Revenue')} (${currencySymbol})`, `${t('Expenses')} (${currencySymbol})`, `${t('Net Profit')} (${currencySymbol})`];
+ rows = (rData.months || []).map((m: any) => [m.name, m.closedAt ? String(m.closedAt).split('T')[0] : '-', `${currencySymbol} ${Number(m.closedPnL?.totalRevenue || 0).toFixed(2)}`, `${currencySymbol} ${Number(m.closedPnL?.totalExpenses || 0).toFixed(2)}`, `${currencySymbol} ${Number(m.closedPnL?.netProfit || 0).toFixed(2)}`]);
+ } else if (type === 'SalesRegister' && rData) {
+ title = t('Sales Register');
+ subtitle = `${t('Period:')} ${startDate || ''} ${t('to')} ${endDate || ''}`;
+ columns = [t('Invoice #'), t('Date'), t('Customer'), t('Status'), t('Payment'), t('ZATCA'), `${t('Grand Total')} (${currencySymbol})`];
+ rows = (rData.rows || []).map((r: any) => [r.invoiceNumber, r.date, r.customerName, t(r.status), t(r.paymentStatus), t(r.zatcaStatus), `${currencySymbol} ${r.grandTotal.toFixed(2)}`]);
+ rows.push([t('Total'), '', '', '', '', '', `${currencySymbol} ${(rData.totalSales || 0).toFixed(2)}`]);
+ } else if (type === 'ItemWiseSales' && rData) {
+ title = t('Item-wise Sales Report');
+ subtitle = `${t('Period:')} ${startDate || ''} ${t('to')} ${endDate || ''}`;
+ columns = [t('Product'), t('Quantity Sold'), `${t('Revenue')} (${currencySymbol})`];
+ rows = (rData.rows || []).map((r: any) => [r.name, String(r.quantity), `${currencySymbol} ${r.revenue.toFixed(2)}`]);
+ rows.push([t('Total'), String(rData.totalQuantity || 0), `${currencySymbol} ${(rData.totalRevenue || 0).toFixed(2)}`]);
+ } else if (type === 'CustomerStatement' && rData) {
+ title = `${t('Customer Statement')}: ${rData.customerName || ''}`;
+ columns = [t('Date'), t('Type'), t('Document #'), `${t('Invoiced')} (${currencySymbol})`, `${t('Received')} (${currencySymbol})`, `${t('Balance')} (${currencySymbol})`];
+ rows = (rData.entries || []).map((e: any) => [e.date, t(e.type), e.docNumber, e.debit > 0 ? `${currencySymbol} ${e.debit.toFixed(2)}` : '-', e.credit > 0 ? `${currencySymbol} ${e.credit.toFixed(2)}` : '-', `${currencySymbol} ${e.runningBalance.toFixed(2)}`]);
+ rows.push([t('Ending Balance'), '', '', '', '', `${currencySymbol} ${(rData.endingBalance || 0).toFixed(2)}`]);
+ } else if (type === 'QuotationConversion' && rData) {
+ title = t('Quotation Conversion Report');
+ subtitle = `${t('Period:')} ${startDate || ''} ${t('to')} ${endDate || ''} | ${t('Conversion Rate:')} ${(rData.conversionRate || 0).toFixed(1)}%`;
+ columns = [t('Quotation #'), t('Date'), t('Customer'), t('Status')];
+ rows = (rData.rows || []).map((r: any) => [r.quotationNumber, r.date, r.customerName, t(r.status)]);
+ } else if (type === 'SalesByStaff' && rData) {
+ title = t('Sales by Staff');
+ subtitle = `${t('Period:')} ${startDate || ''} ${t('to')} ${endDate || ''}`;
+ columns = [t('Staff'), t('Invoices'), `${t('Revenue')} (${currencySymbol})`];
+ rows = (rData.rows || []).map((r: any) => [r.username, String(r.invoiceCount), `${currencySymbol} ${r.revenue.toFixed(2)}`]);
+ rows.push([t('Total'), '', `${currencySymbol} ${(rData.totalRevenue || 0).toFixed(2)}`]);
+ } else if (type === 'PosShiftSummary' && rData) {
+ title = t('POS Shift Summary');
+ subtitle = `${t('Period:')} ${startDate || ''} ${t('to')} ${endDate || ''}`;
+ columns = [t('Date'), t('Cashier'), t('Status'), `${t('Sales')} (${currencySymbol})`, `${t('Expected Cash')} (${currencySymbol})`, `${t('End Cash')} (${currencySymbol})`, `${t('Variance')} (${currencySymbol})`];
+ rows = (rData.rows || []).map((r: any) => [r.date, r.cashier, t(r.status), `${currencySymbol} ${r.totalSales.toFixed(2)}`, `${currencySymbol} ${r.expectedCash.toFixed(2)}`, `${currencySymbol} ${r.endCash.toFixed(2)}`, `${currencySymbol} ${r.variance.toFixed(2)}`]);
+ } else if (type === 'PurchaseRegister' && rData) {
+ title = t('Purchase Register');
+ subtitle = `${t('Period:')} ${startDate || ''} ${t('to')} ${endDate || ''}`;
+ columns = [t('Expense #'), t('Date'), t('Vendor'), t('Classification'), t('Payment'), `${t('Amount')} (${currencySymbol})`];
+ rows = (rData.rows || []).map((r: any) => [r.expenseNumber, r.date, r.vendorName, r.classification ? t(r.classification) : '', t(r.paymentStatus), `${currencySymbol} ${r.amount.toFixed(2)}`]);
+ rows.push([t('Total'), '', '', '', '', `${currencySymbol} ${(rData.totalAmount || 0).toFixed(2)}`]);
+ } else if (type === 'VendorStatement' && rData) {
+ title = `${t('Vendor Statement')}: ${rData.vendorName || ''}`;
+ columns = [t('Date'), t('Type'), t('Document #'), `${t('Billed')} (${currencySymbol})`, `${t('Paid')} (${currencySymbol})`, `${t('Balance')} (${currencySymbol})`];
+ rows = (rData.entries || []).map((e: any) => [e.date, t(e.type), e.docNumber, e.debit > 0 ? `${currencySymbol} ${e.debit.toFixed(2)}` : '-', e.credit > 0 ? `${currencySymbol} ${e.credit.toFixed(2)}` : '-', `${currencySymbol} ${e.runningBalance.toFixed(2)}`]);
+ rows.push([t('Ending Balance'), '', '', '', '', `${currencySymbol} ${(rData.endingBalance || 0).toFixed(2)}`]);
+ } else if (type === 'PoStatus' && rData) {
+ title = t('Purchase Order Status Report');
+ subtitle = `${t('Period:')} ${startDate || ''} ${t('to')} ${endDate || ''}`;
+ columns = [t('PO #'), t('Date'), t('Vendor'), t('Status'), t('Age (days)'), `${t('Total')} (${currencySymbol})`];
+ rows = (rData.rows || []).map((r: any) => [r.poNumber, r.date, r.vendorName, t(r.status), r.ageDays !== null ? String(r.ageDays) : '-', `${currencySymbol} ${r.totalAmount.toFixed(2)}`]);
+ rows.push([t('Total'), '', '', '', '', `${currencySymbol} ${(rData.totalAmount || 0).toFixed(2)}`]);
+ } else if (type === 'GrnPoVariance' && rData) {
+ title = t('GRN vs. PO Variance');
+ subtitle = `${t('Period:')} ${startDate || ''} ${t('to')} ${endDate || ''}`;
+ columns = [t('PO #'), t('Vendor'), t('Product'), t('Ordered'), t('Received'), t('Variance')];
+ rows = (rData.rows || []).map((r: any) => [r.poNumber, r.vendorName, r.productName, String(r.ordered), String(r.received), String(r.variance)]);
+ } else if (type === 'StockValuation' && rData) {
+ title = t('Stock Valuation Report');
+ columns = [t('Product'), t('Warehouse'), t('On Hand'), `${t('Unit Cost')} (${currencySymbol})`, `${t('Value')} (${currencySymbol})`];
+ rows = (rData.rows || []).map((r: any) => [r.productName, r.warehouseName, String(r.quantity), `${currencySymbol} ${r.unitCost.toFixed(4)}`, `${currencySymbol} ${r.value.toFixed(2)}`]);
+ rows.push([t('Total Stock Value'), '', '', '', `${currencySymbol} ${(rData.totalValue || 0).toFixed(2)}`]);
+ } else if (type === 'ItemProfitability' && rData) {
+ title = t('Item Profitability Report');
+ columns = [t('Product'), t('Qty Sold'), `${t('Avg Cost')} (${currencySymbol})`, `${t('Avg Sale Price')} (${currencySymbol})`, `${t('Margin')} (${currencySymbol})`, t('Margin %')];
+ rows = (rData.rows || []).map((r: any) => [r.productName, String(r.totalQuantitySold), `${currencySymbol} ${r.averageCost.toFixed(4)}`, `${currencySymbol} ${r.averageSalePrice.toFixed(4)}`, `${currencySymbol} ${r.marginAmount.toFixed(2)}`, `${r.marginPct.toFixed(1)}%`]);
+ } else if (type === 'LowStock' && rData) {
+ title = t('Low Stock / Reorder Report');
+ columns = [t('Product'), t('Warehouse'), t('On Hand'), t('Min Level'), t('Shortfall')];
+ rows = (rData.rows || []).map((r: any) => [r.productName, r.warehouseName, String(r.onHand), String(r.minLevel), String(r.shortfall)]);
+ } else if (type === 'StockTakeVarianceHistory' && rData) {
+ title = t('Stock Take Variance History');
+ subtitle = `${t('Period:')} ${startDate || ''} ${t('to')} ${endDate || ''}`;
+ columns = [t('Stock Take #'), t('Date'), t('Warehouse'), t('Product'), t('System Qty'), t('Counted Qty'), t('Variance')];
+ rows = (rData.rows || []).map((r: any) => [r.referenceNumber, r.date, r.warehouseName, r.productName, String(r.systemQuantity), String(r.physicalQuantity), (r.variance > 0 ? '+' : '') + String(r.variance)]);
+ } else if (type === 'StockMovementLedger' && rData) {
+ title = t('Stock Movement Ledger');
+ subtitle = `${t('Period:')} ${startDate || ''} ${t('to')} ${endDate || ''}`;
+ const movementTypeLabels: Record<string, string> = { GRN: t('Goods Receipt'), Return: t('Purchase Return'), Sale: t('Sale'), Adjustment: t('Stock Adjustment'), StockTake: t('Stock Take') };
+ columns = [t('Date'), t('Product'), t('Warehouse'), t('Type'), t('Batch'), t('Qty Change'), t('Ending Qty')];
+ rows = (rData.rows || []).map((r: any) => [r.date.slice(0, 10), r.productName, r.warehouseName, movementTypeLabels[r.transactionType] || r.transactionType, r.batchNumber || '-', (r.quantityChange >= 0 ? '+' : '') + String(r.quantityChange), String(r.endingQuantity)]);
  } else {
  title = reportWrapper.title || title;
  subtitle = reportWrapper.subtitle || subtitle;
@@ -1669,7 +2279,7 @@ export default function DocumentRenderer({
  {rows.length === 0 ? (
  <tr>
  <td colSpan={columns.length} className="py-6 text-center text-slate-400">
- No records found for the active criteria.
+ {t('No records found for the active criteria.')}
  </td>
  </tr>
  ) : (
@@ -1700,6 +2310,8 @@ export default function DocumentRenderer({
  return renderExpense(data);
  case 'Voucher':
  return renderVoucher(data);
+ case 'PaymentReceipt':
+ return renderPaymentReceipt(data);
  case 'Ledger':
  return renderLedger(data);
  case 'Report':
@@ -1773,35 +2385,17 @@ export default function DocumentRenderer({
  </div>
  )}
 
+ {/* PDF download and signed-XML download both live in the dedicated Invoice View
+ screen now (Download PDF, View signed XML) — this toolbar keeps only Print
+ itself, so the two entry points don't duplicate each other. */}
  <button
  onClick={handlePrint}
  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition"
  id="btn-print-doc"
  >
  <Printer className="w-3.5 h-3.5" />
- <span>Print / Save PDF</span>
+ <span>Print</span>
  </button>
-
- {documentType === 'Invoice' && (data as Invoice)?.xmlContent && (
- <button
- onClick={() => {
- const inv = data as Invoice;
- const blob = new Blob([inv.xmlContent || ''], { type: 'text/xml' });
- const url = URL.createObjectURL(blob);
- const a = document.createElement('a');
- a.href = url;
- a.download = `ZATCA-UBL-${inv.invoiceNumber}.xml`;
- a.click();
- URL.revokeObjectURL(url);
- }}
- className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition cursor-pointer shadow-sm"
- id="btn-download-xml"
- title="Download ZATCA Phase 2 Signed UBL 2.1 XML"
- >
- <Download className="w-3.5 h-3.5" />
- <span>ZATCA XML</span>
- </button>
- )}
 
  <button
  onClick={onClose}

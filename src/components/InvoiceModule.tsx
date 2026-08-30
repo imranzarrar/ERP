@@ -1,45 +1,54 @@
 import React from 'react';
 import { useTranslation } from '../hooks';
 // from 'react';
-import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, getDefaultTaxSlabId, markInvoicePaid, calculateInvoiceTotals } from '../dbStore';
+import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, getDefaultTaxSlabId, calculateInvoiceTotals } from '../dbStore';
 import { generateId } from '../id';
 import { Invoice, InvoiceItem, Customer, TaxSlab, BankAccount, User, normalizePermissions } from '../types';
 import StatusPill, { StatusPillTone } from './StatusPill';
+import ItemCatalogSearch from './ItemCatalogSearch';
 import {
-  FileText,
   Plus,
   Trash,
   Check,
-  Printer,
-  ChevronRight,
   AlertTriangle,
   Search,
   CheckSquare,
-  Ban,
   Lock,
-  Calendar,
   ChevronUp,
   ChevronDown,
   Paperclip,
   X,
-  Maximize2,
   TrendingUp,
-  DollarSign,
   Clock,
   CreditCard,
   Sparkles,
   Receipt,
-  Building,
-  UserCheck,
   ShieldCheck,
-  QrCode,
-  FileCode,
-  RefreshCw
+  RefreshCw,
+  Eye
 } from 'lucide-react';
 
 interface InvoiceModuleProps {
  db: DatabaseState;
- onUpdateDb: (db: DatabaseState) => void;
+ // Local-only React state update — no /api/migrate POST. Use this after a change was
+ // already persisted via its own dedicated /api/transactions/... route, for a patch that
+ // only needs to touch specific known fields (never a raw GET /api/state response — see
+ // onRefreshDb below for why). Deliberately a function-updater only, not a raw
+ // DatabaseState — see App.tsx's handleUpdateDbLocal comment for the incident this
+ // prevents at compile time.
+ onUpdateDbLocal: (updater: (prev: DatabaseState) => DatabaseState) => void;
+ // Real GET /api/state refetch (App.tsx's triggerDbRefresh), merged the same way the
+ // initial page load is. Every handler in this file used to fetch /api/state itself and
+ // hand the RAW response straight to onUpdateDbLocal as a full replacement of `db` —
+ // that silently dropped selectedCompanyId/companySetup/currentUser, since none of those
+ // exist in the server's response at all (they're derived client-side only, by this exact
+ // merge). Confirmed live: resubmitting an invoice to ZATCA reset the active-company
+ // selector back to the first company in the list and broke admin/permission checks
+ // reading db.currentUser, moments after a real, successful save. Use this for the actual
+ // state update instead; a handler may still do its own scoped GET /api/state read for a
+ // specific lookup (e.g. the newly created invoice's id for the print preview) without
+ // ever passing that raw object to onUpdateDbLocal.
+ onRefreshDb?: () => Promise<void>;
  onPrintDoc: (type: 'Quotation' | 'Invoice' | 'Expense', data: any) => void;
  // 'list' renders the Sales Invoices table; 'add' renders the create form — each is
  // mounted under its own nav tab/permission (invoices vs invoices-add). No edit mode:
@@ -47,9 +56,13 @@ interface InvoiceModuleProps {
  mode: 'list' | 'add';
  onDone: () => void;
  onCreateNew: () => void;
+ // Navigates to the dedicated View screen for one invoice — used both by a successful
+ // save (replacing the old auto-open-print-modal behavior) and by the list row's own
+ // View link.
+ onViewInvoice: (id: string) => void;
 }
 
-export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone, onCreateNew }: InvoiceModuleProps) {
+export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrintDoc, mode, onDone, onCreateNew, onViewInvoice }: InvoiceModuleProps) {
  const { t, isRTL, lang } = useTranslation(db);
  const currentUser = db.currentUser;
  const isAdmin = currentUser?.role === 'admin' || currentUser?.isSuperAdmin === true;
@@ -71,8 +84,6 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  const [filterStatus, setFilterStatus] = React.useState<'All' | 'Unpaid'>('All');
  const [filterZatcaStatus, setFilterZatcaStatus] = React.useState<string>('All');
  const [filterDocType, setFilterDocType] = React.useState<'All' | 'Invoice' | 'CreditNote' | 'DebitNote'>('All');
- const [zatcaModalInvoice, setZatcaModalInvoice] = React.useState<Invoice | null>(null);
- const [isSubmittingZatca, setIsSubmittingZatca] = React.useState<boolean>(false);
 
  // Update filters if openMonth changes
   // Filter Invoices
@@ -103,7 +114,7 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
         if (docType !== filterDocType) return false;
       }
 
-      return isAdmin || userPermissions.invoice.view.enabled || (currentUser?.id ? inv.createdById === currentUser.id : false);
+      return userPermissions.invoice.read.enabled || (currentUser?.id ? inv.createdById === currentUser.id : false);
     });
   }, [db.invoices, db.selectedCompanyId, filterStartDate, filterEndDate, filterStatus, filterZatcaStatus, filterDocType, isAdmin, currentUser]);
 
@@ -138,38 +149,11 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  setFormBankId(defaultBank);
  setFormItems([{ description: '', unitCost: 0, quantity: 1, discountAmount: 0, taxSlabId: defaultTax }]);
  }
- setPayingInvoice(null);
  }, [db.selectedCompanyId, openMonth?.id]);
 
  const triggerError = (msg: string) => {
  setError(msg);
  setTimeout(() => setError(null), 4500);
- };
-
- const handleManualZatcaSubmit = async (invoiceId: string) => {
-   setIsSubmittingZatca(true);
-   try {
-     const res = await fetch(`/api/zatca/submit-invoice/${invoiceId}`, {
-       method: 'POST',
-       headers: { 'Content-Type': 'application/json' },
-     });
-     const data = await res.json();
-     if (!res.ok || data.error) {
-       triggerError(data.error || 'Failed to submit to ZATCA');
-     } else {
-       triggerSuccess(`ZATCA Submission Status: ${data.status || 'Success'}`);
-       const refreshed = await fetch('/api/state').then(r => r.json()).catch(() => null);
-       if (refreshed) {
-         onUpdateDb(refreshed);
-         const updatedInv = refreshed.invoices?.find((i: Invoice) => i.id === invoiceId);
-         if (updatedInv) setZatcaModalInvoice(updatedInv);
-       }
-     }
-   } catch (err: any) {
-     triggerError(err.message || 'Error submitting to ZATCA');
-   } finally {
-     setIsSubmittingZatca(false);
-   }
  };
 
  // View state — fixed for the lifetime of this mount by which page (mode) rendered it.
@@ -194,68 +178,6 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  const [activeAutocompleteIdx, setActiveAutocompleteIdx] = React.useState<number | null>(null);
  const [autocompleteFilter, setAutocompleteFilter] = React.useState('');
 
- // Sub-payment prompt modal
- const [payingInvoice, setPayingInvoice] = React.useState<Invoice | null>(null);
- const [payForm, setPayForm] = React.useState({
- date: openMonth ? `${openMonth.id}-01` : '',
- bankId: '',
- amount: ''
- });
-
- // Credit/Debit Note modal — creates a new ZATCA document referencing an existing
- // invoice (full-document reversal only; see server/routes/transactions.ts's
- // POST /invoices/:id/note for the MVP scope note).
- const [noteInvoice, setNoteInvoice] = React.useState<Invoice | null>(null);
- const [noteForm, setNoteForm] = React.useState<{ type: 'CreditNote' | 'DebitNote'; reason: string }>({ type: 'CreditNote', reason: '' });
- const [isSavingNote, setIsSavingNote] = React.useState(false);
- // Local to the modal, not the page-level success/error banners — this modal is a
- // `fixed inset-0` full-screen overlay, so a banner rendered in the page behind it is
- // completely covered regardless of z-index (fixed-position elements establish their
- // own stacking context above normal in-flow content). Confirmed live: a real create
- // failure produced zero visible feedback and left the modal open with no way to tell
- // what happened except clicking Cancel.
- const [noteError, setNoteError] = React.useState<string | null>(null);
-
- const handleCreateNote = async (e: React.FormEvent) => {
- e.preventDefault();
- if (!noteInvoice) return;
- setIsSavingNote(true);
- setNoteError(null);
- try {
- const res = await fetch(`/api/transactions/invoices/${noteInvoice.id}/note?companyId=${db.selectedCompanyId}`, {
- method: 'POST',
- headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify({ type: noteForm.type, reason: noteForm.reason }),
- });
- const result = await res.json();
- if (!res.ok || result.error) {
- throw new Error(result.error || 'Failed to create the note.');
- }
- const refreshed = await fetch('/api/state').then(r => r.json()).catch(() => null);
- if (!refreshed) {
- throw new Error('Note created, but the workspace could not be refreshed. Please reload the page.');
- }
- onUpdateDb(refreshed);
- const newNote = refreshed.invoices?.find((i: Invoice) => i.id === result.noteId);
- const noteLabel = noteForm.type === 'CreditNote' ? 'Credit' : 'Debit';
- triggerSuccess(`${noteLabel} Note ${newNote?.invoiceNumber || ''} created against ${noteInvoice.invoiceNumber}.`);
- setNoteInvoice(null);
- setNoteForm({ type: 'CreditNote', reason: '' });
- // Immediately open the new document's print/preview so its creation is visibly
- // confirmed, matching the same pattern handleSaveInvoice already uses — otherwise
- // the only way to see it succeeded is to spot the new row in the list yourself.
- if (newNote) {
- const cust = refreshed.customers?.find((c: Customer) => c.id === newNote.customerId);
- const bank = refreshed.banks?.find((b: BankAccount) => b.id === newNote.bankId);
- onPrintDoc('Invoice', { ...newNote, customerData: cust, bankData: bank });
- }
- } catch (err: any) {
- setNoteError(err.message || 'Failed to create the note.');
- } finally {
- setIsSavingNote(false);
- }
- };
-
  const salesProducts = React.useMemo(() => {
    return (db.products || []).filter(p => {
      const isCompMatch = !p.companyId || p.companyId === db.selectedCompanyId;
@@ -271,7 +193,7 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  };
 
  const handleAddLineItem = () => {
- setFormItems([...formItems, { description: '', unitCost: 0, quantity: 1, discountAmount: 0, taxSlabId: formTaxSlabId }]);
+ setFormItems([...formItems, { description: '', unitCost: 0, quantity: 1, discountAmount: 0, taxSlabId: formTaxSlabId, unit: 'PCE' }]);
  };
 
  const handleRemoveLineItem = (idx: number) => {
@@ -305,7 +227,7 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  // Submit Save
  const handleSaveInvoice = async (e: React.FormEvent) => {
  e.preventDefault();
- if (!isAdmin && !userPermissions.invoice.create.enabled) {
+ if (!userPermissions.invoice.create.enabled) {
  return triggerError('You do not have permission to issue sales invoices.');
  }
 
@@ -368,26 +290,24 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
    if (!refreshed) {
      throw new Error('Invoice saved, but the workspace could not be refreshed. Please reload the page.');
    }
-   onUpdateDb(refreshed);
+   if (onRefreshDb) await onRefreshDb();
 
    const newInv = refreshed.invoices?.find((i: Invoice) => i.id === result.invoiceId);
    triggerSuccess(`Invoice ${newInv?.invoiceNumber || ''} issued successfully.`);
 
    if (newInv) {
-     // Finalized creation flow: go straight to the invoice's print/preview overlay
-     // (the same DocumentRenderer every other Print button uses) instead of forcing
-     // the ZATCA details modal open. The dedicated save endpoint above already
-     // auto-triggers ZATCA clearance/reporting server-side (fire-and-forget) — poll
-     // once, shortly after, so a rejection is surfaced here too instead of only
-     // being discoverable by reopening the invoice's ZATCA modal later.
-     const cust = refreshed.customers?.find((c: Customer) => c.id === newInv.customerId) || db.customers.find(c => c.id === newInv.customerId);
-     const bank = refreshed.banks?.find((b: BankAccount) => b.id === newInv.bankId) || db.banks.find(b => b.id === newInv.bankId);
-     onPrintDoc('Invoice', { ...newInv, customerData: cust, bankData: bank });
+     // Finalized creation flow: land on the invoice's dedicated View screen (Print,
+     // Download PDF, ZATCA status, and payment/credit-note actions all live there now)
+     // instead of forcing the print/preview overlay open immediately. The dedicated
+     // save endpoint above already auto-triggers ZATCA clearance/reporting server-side
+     // (fire-and-forget) — poll once, shortly after, so a rejection is surfaced as a
+     // toast even though the user has already navigated away from this form.
+     onViewInvoice(newInv.id);
 
      setTimeout(() => {
        fetch('/api/state').then(r => r.json()).then(latest => {
          if (!latest?.invoices) return;
-         onUpdateDb(latest);
+         if (onRefreshDb) onRefreshDb();
          const latestInv = latest.invoices.find((i: Invoice) => i.id === newInv.id);
          const zStatus = latestInv?.zatcaStatus;
          if (zStatus === 'REJECTED' || zStatus === 'ERROR') {
@@ -398,9 +318,9 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
          }
        }).catch(err => console.error('ZATCA status check error:', err));
      }, 2500);
+   } else {
+     onDone();
    }
-
-   onDone();
  } catch (err: any) {
    triggerError(err.message || 'Failed to save invoice.');
  } finally {
@@ -408,63 +328,6 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  }
  };
 
- // Mark pending invoice paid
- const handleInitiatePay = (inv: Invoice) => {
- if (!openMonth) return triggerError('Please open a fiscal month first.');
- setPayingInvoice(inv);
- const today = new Date().toISOString().split('T')[0];
- const initialDate = isDateInOpenMonth(db, today) ? today : `${openMonth.id}-01`;
- const totalAmt = getInvoiceTotal(inv);
- const paidAmt = inv.amountPaid || 0;
- const remainingAmt = Number((totalAmt - paidAmt).toFixed(2));
- setPayForm({
- date: initialDate,
- bankId: inv.bankId || db.banks.find(b => b.isDefault)?.id || '',
- amount: remainingAmt.toString()
- });
- };
-
- const handleConfirmPay = (e: React.FormEvent) => {
- e.preventDefault();
- if (!payingInvoice) return;
-
- const amt = parseFloat(payForm.amount);
- if (isNaN(amt) || amt <= 0) {
- return triggerError('Please enter a valid payment amount greater than zero.');
- }
-
- const result = markInvoicePaid(db, payingInvoice.id, payForm.date, payForm.bankId, amt);
- if (result.error) {
- triggerError(result.error);
- } else {
- triggerSuccess(`Invoice ${payingInvoice.invoiceNumber} payment of ${amt} ${currencySymbol} received and receipt voucher generated.`);
- onUpdateDb(result.db);
- setPayingInvoice(null);
- }
- };
-
- // Cancel invoice
- const handleCancelInvoice = async (invId: string) => {
- const canCancel = isAdmin || userPermissions.cancel.access.enabled;
- if (!canCancel) return triggerError('You do not have cancellation permission.');
-
- try {
-   const res = await fetch(`/api/transactions/invoices/${invId}/cancel`, {
-     method: 'POST',
-     headers: { 'Content-Type': 'application/json' },
-   });
-   const data = await res.json();
-   if (!res.ok || data.error) {
-     triggerError(data.error || 'Failed to cancel invoice.');
-   } else {
-     const refreshed = await fetch('/api/state').then(r => r.json()).catch(() => null);
-     if (refreshed) onUpdateDb(refreshed);
-     triggerSuccess('Invoice cancelled successfully. Reverse receipt vouchers posted.');
-   }
- } catch (err: any) {
-   triggerError(err.message || 'Error cancelling invoice.');
- }
- };
 
  // Helper to format invoice grand total
  const getInvoiceTotal = (inv: Invoice) => {
@@ -692,7 +555,7 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  </span>
  </div>
  </div>
- {openMonth && (isAdmin || userPermissions.invoice.create.enabled) && (
+ {openMonth && userPermissions.invoice.create.enabled && (
  <button
  onClick={handleInitiateCreate}
  className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-2 text-xs font-extrabold flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
@@ -789,10 +652,10 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  paginatedInvoices.map(inv => {
  const cust = db.customers.find(c => c.id === inv.customerId);
  const bank = db.banks.find(b => b.id === inv.bankId);
- const isPending = (inv.paymentStatus === 'Unpaid' || inv.paymentStatus === 'Partially Paid') && inv.status === 'Active';
- const zatcaBlocksCancel = !!inv.zatcaStatus && ['SUBMITTING', 'CLEARED', 'REPORTED'].includes(inv.zatcaStatus);
- const showCancelButton = (isAdmin || userPermissions.cancel.access.enabled) && inv.status === 'Active';
- const canCancel = showCancelButton && !zatcaBlocksCancel;
+ // A Credit Note here is a full-document reversal (MVP scope) — a second one against the
+ // same invoice would credit the customer twice for one sale, so once one exists the
+ // action is hidden rather than left clickable into a guaranteed server 400.
+ const existingCreditNote = db.invoices.find(i => i.originalInvoiceId === inv.id && i.documentType === 'CreditNote');
  const totalAmt = getInvoiceTotal(inv);
  const paidAmt = inv.amountPaid || 0;
  const remainingAmt = Number((totalAmt - paidAmt).toFixed(2));
@@ -801,12 +664,19 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-50/20">
  <td className="p-3 font-bold text-slate-900">
  <div className="flex items-center gap-2">
+ <button
+ type="button"
+ onClick={() => onViewInvoice(inv.id)}
+ className="hover:text-indigo-600 hover:underline transition-colors"
+ title={t('View invoice')}
+ >
  {inv.invoiceNumber}
+ </button>
  {inv.attachmentUrl && (
  <button
  onClick={() => setViewAttachment(inv.attachmentUrl)}
  className="p-1.5 bg-slate-100 hover:bg-indigo-100 text-slate-500 hover:text-indigo-600 rounded-lg transition-colors"
- title="View Attachment"
+ title={t('View Attachment')}
  >
  <Paperclip className="w-3.5 h-3.5" />
  </button>
@@ -836,36 +706,50 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  </td>
  <td className="p-3 text-center">
  <StatusPill tone={inv.documentType === 'CreditNote' ? 'warn' : inv.documentType === 'DebitNote' ? 'info' : 'neutral'}>
- {inv.documentType === 'CreditNote' ? 'Credit Note' : inv.documentType === 'DebitNote' ? 'Debit Note' : 'Invoice'}
+ {inv.documentType === 'CreditNote' ? t('Credit Note') : inv.documentType === 'DebitNote' ? t('Debit Note') : t('Invoice')}
  </StatusPill>
  {inv.originalInvoiceId && (() => {
  const original = db.invoices.find(o => o.id === inv.originalInvoiceId);
  return original ? (
- <div className="text-[9px] text-slate-400 font-mono mt-0.5 whitespace-nowrap">Ref: {original.invoiceNumber}</div>
+ <div className="text-[9px] text-slate-400 font-mono mt-0.5 whitespace-nowrap">{t('Ref:')} {original.invoiceNumber}</div>
  ) : null;
  })()}
  </td>
  <td className="p-3 text-slate-600">{inv.date}</td>
- <td className="p-3 font-semibold text-slate-700">{cust?.name || 'Walk-in'}</td>
- <td className="p-3 text-slate-500 font-medium">{bank?.bankName || 'Default'}</td>
+ <td className="p-3 font-semibold text-slate-700">{cust?.name || t('Walk-in')}</td>
+ <td className="p-3 text-slate-500 font-medium">{bank?.bankName || t('Default')}</td>
  <td className="p-3 text-end font-bold text-slate-900">
  <div>{totalAmt.toFixed(2)} {currencySymbol}</div>
- {inv.paymentStatus === 'Partially Paid' && (
+ {inv.paymentStatus === 'Partially Paid' && inv.documentType !== 'CreditNote' && (
  <div className="text-[9px] font-medium text-slate-400">{t("Paid:")} {paidAmt.toFixed(2)}</div>
  )}
  </td>
  <td className="p-3 text-center">
- <StatusPill tone={inv.status === 'Active' ? 'good' : 'critical'}>{inv.status}</StatusPill>
+ {existingCreditNote ? (
+  <StatusPill tone="warn">{t('Credited')}</StatusPill>
+ ) : (
+  <StatusPill tone={inv.status === 'Active' ? 'good' : 'critical'}>{t(inv.status)}</StatusPill>
+ )}
  </td>
  <td className="p-3 text-center">
  <div className="flex flex-col items-center gap-0.5">
+ {inv.documentType === 'CreditNote' ? (
+ // paymentStatus is stored as 'Unpaid' on every Credit Note (schema default, never
+ // actually meaningful — see server/routes/transactions.ts's note-creation route),
+ // since a Credit Note is not a receivable of its own. Showing the raw value here
+ // reads as "the customer still owes this," backwards from what a credit means.
+ <StatusPill tone="neutral">{t('Not Applicable')}</StatusPill>
+ ) : (
+ <>
  <StatusPill tone={inv.paymentStatus === 'Paid' ? 'good' : inv.paymentStatus === 'Partially Paid' ? 'info' : 'warn'}>
- {inv.paymentStatus}
+ {t(inv.paymentStatus)}
  </StatusPill>
  {(inv.paymentStatus === 'Partially Paid' || inv.paymentStatus === 'Unpaid') && (
  <span className="text-[9px] font-mono text-slate-400 font-semibold">
  {t("Paid:")} {paidAmt.toFixed(2)} / {t("Due:")} {remainingAmt.toFixed(2)}
  </span>
+ )}
+ </>
  )}
  </div>
  </td>
@@ -880,77 +764,26 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
        zStatus === 'DISABLED' ? 'warn' :
        'neutral';
      return (
-       <button
-         onClick={() => setZatcaModalInvoice(inv)}
-         className="inline-flex items-center gap-1 cursor-pointer group"
-         title={zStatus === 'DISABLED' ? 'ZATCA integration is not enabled for this company yet' : 'View ZATCA Phase 2 Details & QR'}
-       >
-         <StatusPill tone={zTone}>
-           <ShieldCheck className="w-2.5 h-2.5" />
-           {zStatus}
-         </StatusPill>
-       </button>
+       <StatusPill tone={zTone}>
+         <ShieldCheck className="w-2.5 h-2.5" />
+         {t(zStatus)}
+       </StatusPill>
      );
    })()}
  </td>
- <td className="p-3 text-end space-x-1.5">
- <div className="inline-flex items-center justify-end gap-1.5 flex-wrap">
+ {/* Actions collapses to a single entry point — every action (ZATCA detail/QR,
+ Print, Record Payment, Cancel, Credit Note) now lives inside the dedicated
+ View Invoice screen instead of being duplicated here as separate icons. */}
+ <td className="p-3 text-end">
  <button
-   onClick={() => setZatcaModalInvoice(inv)}
-   className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition cursor-pointer inline-flex items-center gap-1 text-[11px] font-bold border border-emerald-200"
-   title="ZATCA Phase 2 Details & QR Code"
+ type="button"
+ onClick={() => onViewInvoice(inv.id)}
+ className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition cursor-pointer inline-flex items-center gap-1.5 text-[11px] font-bold border border-indigo-200"
+ title={t('View invoice')}
  >
-   <ShieldCheck className="w-3.5 h-3.5" />
-   <span>ZATCA</span>
+ <Eye className="w-3.5 h-3.5" />
+ <span>{t('View')}</span>
  </button>
- <button
- onClick={() => onPrintDoc('Invoice', { ...inv, customerData: cust, bankData: bank })}
- className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition cursor-pointer inline-flex items-center gap-1 text-[11px] font-semibold"
- title="Print / PDF Invoice"
- >
- <Printer className="w-3.5 h-3.5" />
- <span>Print</span>
- </button>
-
- {isPending && openMonth && (
- <button
- onClick={() => handleInitiatePay(inv)}
- className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer inline-flex items-center gap-1 text-[10px] font-bold shadow-sm"
- title="Receive Payment"
- >
- <CreditCard className="w-3.5 h-3.5" />
- <span>Receive Pay</span>
- </button>
- )}
-
- {showCancelButton && (
- <button
- onClick={() => {
- if (!canCancel) return;
- if (window.confirm('⚠️ Are you sure you want to CANCEL this sales invoice? This action will void the invoice and post a reversal receipt voucher. It cannot be undone!')) {
- handleCancelInvoice(inv.id);
- }
- }}
- disabled={!canCancel}
- className={`p-1.5 rounded-lg transition inline-flex items-center gap-1 text-[11px] font-bold ${canCancel ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 cursor-pointer' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
- title={canCancel ? 'Cancel Invoice' : 'This invoice has already been submitted to ZATCA and cannot be cancelled. Issue a Credit/Debit Note instead.'}
- >
- <AlertTriangle className="w-3.5 h-3.5" />
- <span>Cancel</span>
- </button>
- )}
-
- {(!inv.documentType || inv.documentType === 'Invoice') && (
- <button
- onClick={() => { setNoteInvoice(inv); setNoteForm({ type: 'CreditNote', reason: '' }); setNoteError(null); }}
- className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 transition cursor-pointer inline-flex items-center gap-1 text-[11px] font-bold"
- title="Create Credit/Debit Note"
- >
- <FileText className="w-3.5 h-3.5" />
- <span>Credit/Debit</span>
- </button>
- )}
- </div>
  </td>
  </tr>
  );
@@ -1145,14 +978,14 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  }}
  className="w-full bg-slate-50/70 hover:bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] text-slate-700 focus:outline-none"
  />
- {formAttachmentUrl && <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">✓ File attached</p>}
+ {formAttachmentUrl && <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">✓ {t('File attached')}</p>}
  </div>
- 
+
  <div className="lg:col-span-5 space-y-0.5">
  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Notes / Memo")}</label>
  <input
  type="text"
- placeholder="Job description, payments, setups"
+ placeholder={t('Job description, payments, setups')}
  value={formNotes}
  onChange={(e) => setFormNotes(e.target.value)}
  className="w-full bg-slate-50/70 hover:bg-white border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-medium focus:outline-none transition-all"
@@ -1191,29 +1024,32 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
  <td className="py-2 px-3 text-slate-400 font-bold text-[11px] align-top pt-3">{idx + 1}</td>
  <td className="py-2 px-2 align-top">
- <input
- type="text"
+ <ItemCatalogSearch
  required
- list={`sales-catalog-${idx}`}
  placeholder={t("Type or search item from catalog...")}
  value={item.description}
- onChange={(e) => {
- const val = e.target.value;
+ items={salesProducts}
+ currencySymbol={currencySymbol}
+ noMatchesLabel={t('No matching items found.')}
+ onChangeText={(val) => {
  handleUpdateLineItem(idx, 'description', val);
- const matched = salesProducts.find(p => p.name.toLowerCase() === val.trim().toLowerCase());
- if (matched) {
+ // Editing free-text after a catalog selection means the line may no longer match
+ // that product — clear the link (onSelectItem below re-sets it if this change was
+ // itself the result of picking a match from the dropdown).
+ handleUpdateLineItem(idx, 'productId', undefined);
+ }}
+ onSelectItem={(matched) => {
  handleUpdateLineItem(idx, 'unitCost', matched.unitPrice || 0);
- }
+ // matched.unit can be 'No' (None/Default) or 'Lumpsum' (MasterEntities.tsx's
+ // product Unit-of-Measure picker) — neither is a real ZATCA code, so this falls
+ // back to 'PCE' the same way normalizeZatcaUnitCode does server-side, rather
+ // than carrying a non-code string onto the invoice line.
+ const zatcaCode = matched.unit && matched.unit !== 'No' && matched.unit !== 'Lumpsum' ? matched.unit : 'PCE';
+ handleUpdateLineItem(idx, 'unit', zatcaCode);
+ handleUpdateLineItem(idx, 'productId', matched.id);
  }}
  className="w-full bg-slate-50/50 hover:bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
  />
- <datalist id={`sales-catalog-${idx}`}>
- {salesProducts.map(p => (
- <option key={p.id} value={p.name}>
- {`${Number(p.unitPrice || 0).toFixed(2)} ${currencySymbol} ${p.description ? '— ' + p.description : ''}`}
- </option>
- ))}
- </datalist>
  </td>
 
  <td className="py-2 px-2 align-top">
@@ -1305,40 +1141,40 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  <div className="flex justify-end pt-4 border-t border-slate-100">
  <div className="w-80 bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-1.5 text-xs">
  <div className="flex justify-between text-slate-500">
- <span>Items Gross Subtotal:</span>
+ <span>{t('Items Gross Subtotal:')}</span>
  <span className="font-semibold text-slate-800">
  {calculateInvoiceTotals(db, formItems, formTaxSlabId, formDiscountPercentage).grossSubtotal.toFixed(2)} {currencySymbol}
  </span>
  </div>
- 
+
  {(() => {
    const calc = calculateInvoiceTotals(db, formItems, formTaxSlabId, formDiscountPercentage);
    return (
      <>
        {calc.totalLineDiscount > 0 && (
          <div className="flex justify-between text-rose-600 font-semibold">
-           <span>Line Item Discounts:</span>
+           <span>{t('Line Item Discounts:')}</span>
            <span>-{calc.totalLineDiscount.toFixed(2)} {currencySymbol}</span>
          </div>
        )}
 
        {calc.totalLineDiscount > 0 && (
          <div className="flex justify-between text-slate-600 font-medium border-t border-slate-100/80 pt-1">
-           <span>Net Subtotal:</span>
+           <span>{t('Net Subtotal:')}</span>
            <span className="font-semibold text-slate-800">{calc.subtotal.toFixed(2)} {currencySymbol}</span>
          </div>
        )}
 
        {formDiscountPercentage > 0 && (
          <div className="flex justify-between text-rose-600 font-semibold">
-           <span>Header Discount ({formDiscountPercentage}%):</span>
+           <span>{t('Header Discount')} ({formDiscountPercentage}%):</span>
            <span>-{calc.discountAmount.toFixed(2)} {currencySymbol}</span>
          </div>
        )}
 
        {calc.totalDiscount > 0 && (
          <div className="flex justify-between text-slate-700 font-bold border-t border-slate-100 pt-1">
-           <span>Total Discount Applied:</span>
+           <span>{t('Total Discount Applied:')}</span>
            <span className="text-rose-600">-{calc.totalDiscount.toFixed(2)} {currencySymbol}</span>
          </div>
        )}
@@ -1347,7 +1183,7 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  })()}
 
  <div className="flex justify-between text-slate-500">
- <span>VAT Slab ({calculateInvoiceTotals(db, formItems, formTaxSlabId, formDiscountPercentage).percentage}%):</span>
+ <span>{t('VAT Slab')} ({calculateInvoiceTotals(db, formItems, formTaxSlabId, formDiscountPercentage).percentage}%):</span>
  <span>
  {calculateInvoiceTotals(db, formItems, formTaxSlabId, formDiscountPercentage).taxAmount.toFixed(2)} {currencySymbol}
  </span>
@@ -1369,7 +1205,7 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  disabled={isSavingInvoice}
  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-semibold text-xs disabled:opacity-50"
  >
- Cancel
+ {t('Cancel')}
  </button>
  <button
  type="submit"
@@ -1377,158 +1213,13 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-5 py-2 font-bold text-xs shadow-sm disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
  >
  <RefreshCw className={`w-3.5 h-3.5 ${isSavingInvoice ? 'animate-spin' : 'hidden'}`} />
- {isSavingInvoice ? 'Saving...' : 'Confirm & Issue Invoice'}
+ {isSavingInvoice ? t('Saving...') : t('Confirm & Issue Invoice')}
  </button>
  </div>
  </form>
- )}
-
- {/* Subsequent payment modal */}
- {payingInvoice && (
- <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex justify-center items-center p-4 overflow-y-auto">
- <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl p-6 w-full max-w-sm my-auto animate-in fade-in zoom-in-95 duration-100 text-xs text-slate-600">
- <h3 className="font-bold text-sm text-slate-900 mb-1 flex items-center gap-1">
- <CheckSquare className="w-5 h-5 text-emerald-600" />
- {t('Receive Invoice Payment')}
- </h3>
- <p className="mb-4">Recording subsequent payment settlement for invoice {payingInvoice.invoiceNumber}.</p>
-
- <form onSubmit={handleConfirmPay} className="space-y-4">
- <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Payment Receipt Date</label>
- <input
- type="date"
- required
- value={payForm.date}
- onChange={(e) => setPayForm({ ...payForm, date: e.target.value })}
- className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800"
- />
- </div>
-
- <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t("Post Inflow Bank")}</label>
- {isAdmin ? (
- <select
- required
- value={payForm.bankId}
- onChange={(e) => setPayForm({ ...payForm, bankId: e.target.value })}
- className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800"
- >
- {db.banks.filter(b => b.isActive).map(b => (
- <option key={b.id} value={b.id}>{b.bankName}</option>
- ))}
- </select>
- ) : (
- <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-500 font-semibold flex items-center gap-1.5">
- <Lock className="w-3.5 h-3.5 text-slate-400" />
- <span>{db.banks.find(b => b.id === payForm.bankId)?.bankName || 'Default Bank'}</span>
- </div>
- )}
- </div>
-
- <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Amount Received ({currencySymbol})</label>
- <div className="relative">
- <input
- type="number"
- step="0.01"
- required
- max={Number((getInvoiceTotal(payingInvoice) - (payingInvoice.amountPaid || 0)).toFixed(2))}
- min="0.01"
- value={payForm.amount}
- onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })}
- className="w-full bg-slate-50 border border-slate-200 rounded-xl ps-2.5 pe-12 py-1.5 text-xs text-slate-800 font-bold"
- />
- <div className="absolute inset-y-0 end-0 pe-3 flex items-center pointer-events-none text-[10px] font-bold text-slate-400">
- {currencySymbol}
- </div>
- </div>
- <div className="flex justify-between text-[10px] text-slate-400 pt-1 px-0.5">
- <span>Already {t("Paid:")} {(payingInvoice.amountPaid || 0).toFixed(2)} {currencySymbol}</span>
- <span>Remaining: {(getInvoiceTotal(payingInvoice) - (payingInvoice.amountPaid || 0)).toFixed(2)} {currencySymbol}</span>
- </div>
- </div>
-
- <div className="flex justify-end gap-2.5 pt-2">
- <button
- type="button"
- onClick={() => setPayingInvoice(null)}
- className="px-3 py-1.5 bg-slate-100 text-slate-500 rounded-lg font-semibold hover:bg-slate-200"
- >
- Cancel
- </button>
- <button
- type="submit"
- className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm"
- >
- Receive Cash Out
- </button>
- </div>
- </form>
- </div>
- </div>
  )}
 
  {/* CREDIT/DEBIT NOTE MODAL */}
- {noteInvoice && (
- <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex justify-center items-center p-4 overflow-y-auto">
- <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl p-6 w-full max-w-sm my-auto animate-in fade-in zoom-in-95 duration-100 text-xs text-slate-600">
- <h3 className="font-bold text-sm text-slate-900 mb-1 flex items-center gap-1">
- <FileText className="w-5 h-5 text-amber-600" />
- {t('Create Credit/Debit Note')}
- </h3>
- <p className="mb-4">Full-document reversal referencing invoice {noteInvoice.invoiceNumber}. This creates a new, separately-signed ZATCA document — the original invoice is not modified.</p>
-
- {noteError && (
- <div className="bg-rose-50 text-rose-700 p-2.5 px-3 mb-4 text-xs font-semibold rounded-xl border border-rose-100 flex items-start gap-2">
- <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
- <span>{noteError}</span>
- </div>
- )}
-
- <form onSubmit={handleCreateNote} className="space-y-4">
- <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Note Type</label>
- {/* Debit Note temporarily disabled per product decision — only Credit Note can be
-     created right now. noteForm.type stays fixed at its 'CreditNote' default. */}
- <div className="w-full py-1.5 rounded-xl font-bold text-xs border bg-amber-600 text-white border-amber-600 text-center">
- Credit Note
- </div>
- </div>
-
- <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Reason</label>
- <textarea
- value={noteForm.reason}
- onChange={(e) => setNoteForm({ ...noteForm, reason: e.target.value })}
- placeholder={noteForm.type === 'CreditNote' ? 'e.g. Goods returned by customer' : 'e.g. Additional charges agreed after original invoice'}
- className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800"
- rows={2}
- />
- </div>
-
- <div className="flex justify-end gap-2.5 pt-2">
- <button
- type="button"
- onClick={() => setNoteInvoice(null)}
- disabled={isSavingNote}
- className="px-3 py-1.5 bg-slate-100 text-slate-500 rounded-lg font-semibold hover:bg-slate-200 disabled:opacity-50"
- >
- Cancel
- </button>
- <button
- type="submit"
- disabled={isSavingNote}
- className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg shadow-sm disabled:opacity-60"
- >
- {isSavingNote ? 'Saving...' : `Create ${noteForm.type === 'CreditNote' ? 'Credit' : 'Debit'} Note`}
- </button>
- </div>
- </form>
- </div>
- </div>
- )}
-
  {/* ATTACHMENT MODAL */}
  {viewAttachment && (
  <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
@@ -1549,168 +1240,6 @@ export default function InvoiceModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  </div>
  )}
 
- {/* ZATCA PHASE 2 DETAILS MODAL */}
- {zatcaModalInvoice && (
-   <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
-     <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-3xl overflow-hidden my-auto animate-in fade-in zoom-in duration-200">
-       <div className="flex justify-between items-center p-4 border-b border-slate-100 bg-slate-900 text-white">
-         <div className="flex items-center gap-2.5">
-           <ShieldCheck className="w-5 h-5 text-emerald-400" />
-           <div>
-             <h3 className="font-bold text-sm">ZATCA Phase 2 E-Invoice Clearance</h3>
-             <p className="text-[10px] text-slate-400 font-mono">Invoice: {zatcaModalInvoice.invoiceNumber}</p>
-           </div>
-         </div>
-         <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                const cust = db.customers.find(c => c.id === zatcaModalInvoice.customerId);
-                const bank = db.banks.find(b => b.id === zatcaModalInvoice.bankId);
-                onPrintDoc('Invoice', { ...zatcaModalInvoice, customerData: cust, bankData: bank });
-              }}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-lg text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Print Invoice</span>
-            </button>
-            <button onClick={() => setZatcaModalInvoice(null)} className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-       </div>
-
-       <div className="p-6 space-y-5 max-h-[80vh] overflow-y-auto text-xs">
-         {/* Status Bar */}
-         <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-           <div>
-             <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">ZATCA Clearance Status</div>
-             <div className="mt-1 flex items-center gap-2">
-               <StatusPill tone={
-                 zatcaModalInvoice.zatcaStatus === 'CLEARED' ? 'good' :
-                 zatcaModalInvoice.zatcaStatus === 'REPORTED' ? 'info' :
-                 zatcaModalInvoice.zatcaStatus === 'PENDING' || zatcaModalInvoice.zatcaStatus === 'SUBMITTING' ? 'warn' :
-                 zatcaModalInvoice.zatcaStatus === 'REJECTED' || zatcaModalInvoice.zatcaStatus === 'ERROR' ? 'critical' :
-                 zatcaModalInvoice.zatcaStatus === 'DISABLED' ? 'warn' :
-                 'neutral'
-               } className="!text-xs !px-2.5 !py-1">
-                 {zatcaModalInvoice.zatcaStatus || 'NOT_SUBMITTED'}
-               </StatusPill>
-               {zatcaModalInvoice.clearanceTimestamp && (
-                 <span className="text-[10px] text-slate-500">
-                   Timestamp: {new Date(zatcaModalInvoice.clearanceTimestamp).toLocaleString()}
-                 </span>
-               )}
-             </div>
-             {zatcaModalInvoice.zatcaStatus === 'DISABLED' && (
-               <p className="text-[10px] text-slate-500 mt-1.5 max-w-xs">
-                 ZATCA integration is not enabled for this company yet. Ask a Super Admin to enable it in Admin Settings, or complete Sandbox onboarding to enable it automatically.
-               </p>
-             )}
-           </div>
-
-           <button
-             onClick={() => handleManualZatcaSubmit(zatcaModalInvoice.id)}
-             disabled={isSubmittingZatca || zatcaModalInvoice.zatcaStatus === 'DISABLED'}
-             title={zatcaModalInvoice.zatcaStatus === 'DISABLED' ? 'ZATCA integration is not enabled for this company yet' : undefined}
-             className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
-           >
-             <RefreshCw className={`w-3.5 h-3.5 ${isSubmittingZatca ? 'animate-spin' : ''}`} />
-             {isSubmittingZatca ? 'Submitting to ZATCA...' : zatcaModalInvoice.zatcaStatus === 'DISABLED' ? 'ZATCA Not Enabled' : 'Submit / Re-submit to ZATCA'}
-           </button>
-         </div>
-
-         {/* Cryptographic Details & QR */}
-         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-           <div className="md:col-span-2 space-y-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-             <div className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
-               <FileCode className="w-4 h-4 text-indigo-600" />
-               Hash Chain & Cryptographic Identifier
-             </div>
-             <div className="space-y-1.5 font-mono text-[11px] break-all">
-               <div>
-                 <span className="text-slate-500 font-sans text-[10px] uppercase font-bold block">Invoice UUID:</span>
-                 <span className="text-slate-800 font-semibold">{zatcaModalInvoice.uuid || 'N/A'}</span>
-               </div>
-               <div>
-                 <span className="text-slate-500 font-sans text-[10px] uppercase font-bold block">Invoice Counter (ICV):</span>
-                 <span className="text-indigo-600 font-bold">{zatcaModalInvoice.icv ?? 'N/A'}</span>
-               </div>
-               <div>
-                 <span className="text-slate-500 font-sans text-[10px] uppercase font-bold block">Current Invoice Hash (SHA-256):</span>
-                 <span className="text-slate-700">{zatcaModalInvoice.currentInvoiceHash || 'N/A'}</span>
-               </div>
-               <div>
-                 <span className="text-slate-500 font-sans text-[10px] uppercase font-bold block">Previous Invoice Hash (PIH):</span>
-                 <span className="text-slate-700">{zatcaModalInvoice.previousInvoiceHash || 'N/A'}</span>
-               </div>
-             </div>
-           </div>
-
-           <div className="flex flex-col items-center justify-center p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-center">
-             <div className="font-bold text-slate-800 mb-2 flex items-center gap-1 text-xs">
-               <QrCode className="w-4 h-4 text-emerald-600" />
-               ZATCA Phase 2 QR Code
-             </div>
-             {zatcaModalInvoice.qrCodeContent ? (
-               <img
-                 src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(zatcaModalInvoice.qrCodeContent)}`}
-                 alt="ZATCA Phase 2 QR Code"
-                 className="w-32 h-32 rounded border border-slate-200 bg-white p-1"
-               />
-             ) : (
-               <div className="w-32 h-32 rounded bg-slate-100 flex items-center justify-center text-slate-400 text-[10px] p-2">
-                 No QR Code Generated Yet
-               </div>
-             )}
-           </div>
-         </div>
-
-         {/* Validation Warnings / Errors */}
-         {zatcaModalInvoice.zatcaValidationResults && (zatcaModalInvoice.zatcaValidationResults as any[]).length > 0 && (
-           <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 space-y-1.5">
-             <div className="font-bold text-amber-900 flex items-center gap-1.5">
-               <AlertTriangle className="w-4 h-4 text-amber-600" />
-               ZATCA Gateway Validation Diagnostics
-             </div>
-             <ul className="list-disc list-inside space-y-1 text-amber-800 text-[11px] font-mono">
-               {(zatcaModalInvoice.zatcaValidationResults as any[]).map((res: any, idx: number) => (
-                 <li key={idx}>
-                   [{res.type || res.code || 'INFO'}]: {res.message || JSON.stringify(res)}
-                 </li>
-               ))}
-             </ul>
-           </div>
-         )}
-
-         {/* Signed XML Preview */}
-         {zatcaModalInvoice.xmlContent && (
-           <div className="space-y-1.5">
-             <div className="flex items-center justify-between">
-               <span className="font-bold text-slate-800 text-xs">Signed UBL 2.1 XML Content</span>
-               <button
-                 onClick={() => {
-                   const blob = new Blob([zatcaModalInvoice.xmlContent || ''], { type: 'text/xml' });
-                   const url = URL.createObjectURL(blob);
-                   const a = document.createElement('a');
-                   a.href = url;
-                   a.download = `ZATCA-UBL-${zatcaModalInvoice.invoiceNumber}.xml`;
-                   a.click();
-                 }}
-                 className="text-[10px] text-indigo-600 font-bold hover:underline cursor-pointer"
-               >
-                 Download XML File
-               </button>
-             </div>
-             <pre className="p-3 bg-slate-900 text-emerald-400 font-mono text-[10px] rounded-xl overflow-x-auto max-h-48 border border-slate-800">
-               {zatcaModalInvoice.xmlContent}
-             </pre>
-           </div>
-         )}
-       </div>
-     </div>
-   </div>
- )}
  </div>
  );
 }

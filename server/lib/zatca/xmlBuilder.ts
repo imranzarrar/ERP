@@ -63,6 +63,27 @@ export interface ZatcaInvoiceData {
     // (Out of scope). Defaults to 'S' for callers that don't resolve it (e.g. the
     // compliance-suite's synthetic 15% samples, which are genuinely Standard-rated).
     taxCategoryCode?: string;
+    // Required by ZATCA (BR-KSA-23 and related) whenever taxCategoryCode is 'E' (Exempt)
+    // or 'Z' (Zero-rated) — the specific VATEX-SA-xx code/text is a real legal
+    // classification that varies per company (see src/db/schema.ts's taxSlabs comment
+    // for why there's no safe generic default). Omitted from the XML entirely when unset,
+    // which reproduces today's existing (non-blocking, sandbox-only) warning rather than
+    // emitting a fabricated code.
+    exemptionReasonCode?: string;
+    exemptionReason?: string;
+    // The gap between (quantity * unitPrice) and subtotal — i.e. any per-item discount
+    // plus this line's share of a header-level percentage discount, combined. Must be
+    // declared as its own cac:AllowanceCharge (BR-KSA-EN16931-11): subtotal already has
+    // this baked in while unitPrice stays the raw, undiscounted price, so without this
+    // element ZATCA's own line-net-amount reconciliation (quantity * PriceAmount) no
+    // longer equals LineExtensionAmount on any discounted line — exactly the warning this
+    // field exists to eliminate. Omitted (no AllowanceCharge emitted) when zero.
+    lineDiscountAmount?: number;
+    // UN/ECE Recommendation 20 unit-of-measure code (see src/zatcaUnitCodes.ts) —
+    // previously this whole field didn't exist and every line was hardcoded to 'PCE'
+    // regardless of what was actually sold. Defaults to 'PCE' here too for callers that
+    // don't resolve it (e.g. the compliance-suite's synthetic samples).
+    unitCode?: string;
   }>;
   subtotal: number;
   totalVat: number;
@@ -92,6 +113,22 @@ export function generateZatcaUblXml(data: ZatcaInvoiceData): GeneratedZatcaDocum
   const sellerTin = (data.seller.tin || '300000000000003').padEnd(15, '0');
   const sellerBuilding = (data.seller.buildingNumber || '1234').padEnd(4, '0');
   const sellerPostal = (data.seller.postalCode || '12345').padEnd(5, '0');
+  // ZATCA's own schematron (BR-KSA-F-08) requires the CRN scheme's Other Seller ID to be
+  // exactly 10 numeric digits. Confirmed live: ZATCA's own sandbox test certificate for
+  // this shared identity embeds a genuinely 9-digit CR ("886431145", extracted verbatim
+  // in x509.ts's extractZatcaCertificateTaxpayerIdentity from the cert's own Subject CN
+  // "TST-886431145-..." — not a parsing bug, the certificate itself is 9 digits) —
+  // left-padding with a leading zero is the standard normalization for a legacy 9-digit
+  // Saudi CR number to the current 10-digit format, and satisfies the schematron's
+  // structural check without fabricating a digit ZATCA never actually issued. Padded only
+  // here, at the point of XML emission — the stored crNumber value itself (shown as-is on
+  // the printed invoice's own "CR:" line elsewhere) is intentionally left untouched.
+  // Emitted for both Standard/B2B and Simplified/B2C invoices — tried gating this to B2B
+  // only (seemed reasonable: the buyer never sees a B2C receipt's seller-ID field), but
+  // ZATCA's real sandbox rejected the resulting XML with a NEW warning (BR-KSA-08, "seller
+  // identification must exist") that doesn't distinguish B2B/B2C at all — confirmed this
+  // field is unconditionally required, not tied to buyer type.
+  const sellerCrNumber = (data.seller.crNumber || '1010000000').padStart(10, '0');
 
   // ZATCA (and EN16931's BR-CO-17/BR-CO-18) require one cac:TaxSubtotal PER DISTINCT tax
   // category actually present on the invoice — not one header-level subtotal derived from
@@ -99,24 +136,32 @@ export function generateZatcaUblXml(data: ZatcaInvoiceData): GeneratedZatcaDocum
   // exempt line must report both categories separately here, each with its own taxable
   // amount and tax amount, or ZATCA's schematron rejects the VAT breakdown as
   // inconsistent with the line totals.
-  const taxGroups = new Map<string, { rate: number; code: string; taxableAmount: number; taxAmount: number }>();
+  const taxGroups = new Map<string, { rate: number; code: string; taxableAmount: number; taxAmount: number; exemptionReasonCode?: string; exemptionReason?: string }>();
   for (const item of data.items) {
     const code = item.taxCategoryCode || 'S';
-    const key = `${code}|${item.vatRate}`;
+    // Exemption reason is part of the grouping key, not just the code+rate — two Exempt
+    // slabs at the same 0% rate but with genuinely different legal reasons (e.g. real
+    // estate vs. financial services) must not be silently merged into one TaxSubtotal.
+    const key = `${code}|${item.vatRate}|${item.exemptionReasonCode || ''}`;
     const existing = taxGroups.get(key);
     if (existing) {
       existing.taxableAmount = round2(existing.taxableAmount + item.subtotal);
       existing.taxAmount = round2(existing.taxAmount + item.vatAmount);
     } else {
-      taxGroups.set(key, { rate: item.vatRate, code, taxableAmount: item.subtotal, taxAmount: item.vatAmount });
+      taxGroups.set(key, { rate: item.vatRate, code, taxableAmount: item.subtotal, taxAmount: item.vatAmount, exemptionReasonCode: item.exemptionReasonCode, exemptionReason: item.exemptionReason });
     }
   }
+  // TaxExemptionReasonCode/TaxExemptionReason only emitted when actually configured (see
+  // the ZatcaInvoiceData.items comment above for why there's no fabricated default) —
+  // required by ZATCA for 'E'/'Z' categories (BR-KSA-23 and related) once set.
   const taxSubtotalsXml = Array.from(taxGroups.values()).map(group => `    <cac:TaxSubtotal>
       <cbc:TaxableAmount currencyID="${data.currency}">${group.taxableAmount.toFixed(2)}</cbc:TaxableAmount>
       <cbc:TaxAmount currencyID="${data.currency}">${group.taxAmount.toFixed(2)}</cbc:TaxAmount>
       <cac:TaxCategory>
         <cbc:ID>${group.code}</cbc:ID>
         <cbc:Percent>${group.rate.toFixed(2)}</cbc:Percent>
+        ${group.exemptionReasonCode ? `<cbc:TaxExemptionReasonCode>${escapeXml(group.exemptionReasonCode)}</cbc:TaxExemptionReasonCode>` : ''}
+        ${group.exemptionReason ? `<cbc:TaxExemptionReason>${escapeXml(group.exemptionReason)}</cbc:TaxExemptionReason>` : ''}
         <cac:TaxScheme>
           <cbc:ID>VAT</cbc:ID>
         </cac:TaxScheme>
@@ -127,8 +172,13 @@ export function generateZatcaUblXml(data: ZatcaInvoiceData): GeneratedZatcaDocum
   const itemsXml = data.items.map((item, idx) => `
     <cac:InvoiceLine>
       <cbc:ID>${idx + 1}</cbc:ID>
-      <cbc:InvoicedQuantity unitCode="PCE">${item.quantity}</cbc:InvoicedQuantity>
+      <cbc:InvoicedQuantity unitCode="${escapeXml(item.unitCode || 'PCE')}">${item.quantity}</cbc:InvoicedQuantity>
       <cbc:LineExtensionAmount currencyID="${data.currency}">${item.subtotal.toFixed(2)}</cbc:LineExtensionAmount>
+      ${item.lineDiscountAmount && item.lineDiscountAmount > 0 ? `<cac:AllowanceCharge>
+        <cbc:ChargeIndicator>false</cbc:ChargeIndicator>
+        <cbc:AllowanceChargeReason>Discount</cbc:AllowanceChargeReason>
+        <cbc:Amount currencyID="${data.currency}">${item.lineDiscountAmount.toFixed(2)}</cbc:Amount>
+      </cac:AllowanceCharge>` : ''}
       <cac:TaxTotal>
         <cbc:TaxAmount currencyID="${data.currency}">${item.vatAmount.toFixed(2)}</cbc:TaxAmount>
         <cbc:RoundingAmount currencyID="${data.currency}">${item.totalAmount.toFixed(2)}</cbc:RoundingAmount>
@@ -138,6 +188,8 @@ export function generateZatcaUblXml(data: ZatcaInvoiceData): GeneratedZatcaDocum
         <cac:ClassifiedTaxCategory>
           <cbc:ID>${item.taxCategoryCode || 'S'}</cbc:ID>
           <cbc:Percent>${item.vatRate}</cbc:Percent>
+          ${item.exemptionReasonCode ? `<cbc:TaxExemptionReasonCode>${escapeXml(item.exemptionReasonCode)}</cbc:TaxExemptionReasonCode>` : ''}
+          ${item.exemptionReason ? `<cbc:TaxExemptionReason>${escapeXml(item.exemptionReason)}</cbc:TaxExemptionReason>` : ''}
           <cac:TaxScheme>
             <cbc:ID>VAT</cbc:ID>
           </cac:TaxScheme>
@@ -201,7 +253,7 @@ export function generateZatcaUblXml(data: ZatcaInvoiceData): GeneratedZatcaDocum
   ${signaturePlaceholder}<cac:AccountingSupplierParty>
     <cac:Party>
       <cac:PartyIdentification>
-        <cbc:ID schemeID="CRN">${escapeXml(data.seller.crNumber || '1010000000')}</cbc:ID>
+        <cbc:ID schemeID="CRN">${escapeXml(sellerCrNumber)}</cbc:ID>
       </cac:PartyIdentification>
       <cac:PostalAddress>
         <cbc:StreetName>${escapeXml(data.seller.street || 'King Fahd Road')}</cbc:StreetName>
@@ -224,29 +276,44 @@ export function generateZatcaUblXml(data: ZatcaInvoiceData): GeneratedZatcaDocum
       </cac:PartyLegalEntity>
     </cac:Party>
   </cac:AccountingSupplierParty>
-  ${data.buyer ? `<cac:AccountingCustomerParty>
+  <cac:AccountingCustomerParty>${data.buyer ? (() => {
+    // ZATCA's schematron (BR-KSA-63) only requires the buyer's full address when the
+    // invoice type's `name` attribute matches Standard/B2B ("0100000") — confirmed by
+    // reading the rule directly (Data/Rules/Schematrons/...ZATCA_E-invoice_Validation_
+    // Rules.xsl): it's gated on `boolean(//*[matches(@name, '01\d{5}')])`, which never
+    // matches Simplified/B2C ("0200000"). For B2B, validateBuyerFields already enforces
+    // real address data at customer-creation time, so these fields are always genuinely
+    // present by the time an invoice is built. For B2C, they're usually absent — this
+    // used to fabricate a placeholder address ('Main Street', building '5678', etc.)
+    // regardless, submitting a fake address on a real customer's e-invoice record even
+    // though ZATCA never actually requires or checks one for B2C. `cac:PostalAddress` is
+    // minOccurs="0" on PartyType (confirmed against the UBL XSD), so it's safe to omit
+    // entirely rather than invent data nobody provided.
+    const hasAnyAddress = Boolean(data.buyer!.street || data.buyer!.buildingNumber || data.buyer!.district || data.buyer!.city || data.buyer!.postalCode);
+    return `
     <cac:Party>
-      <cac:PostalAddress>
-        <cbc:StreetName>${escapeXml(data.buyer.street || 'Main Street')}</cbc:StreetName>
-        <cbc:BuildingNumber>${data.buyer.buildingNumber || '5678'}</cbc:BuildingNumber>
-        <cbc:CitySubdivisionName>${escapeXml(data.buyer.district || 'Olaya')}</cbc:CitySubdivisionName>
-        <cbc:CityName>${escapeXml(data.buyer.city || 'Riyadh')}</cbc:CityName>
-        <cbc:PostalZone>${data.buyer.postalCode || '11564'}</cbc:PostalZone>
+      ${hasAnyAddress ? `<cac:PostalAddress>
+        ${data.buyer!.street ? `<cbc:StreetName>${escapeXml(data.buyer!.street)}</cbc:StreetName>` : ''}
+        ${data.buyer!.buildingNumber ? `<cbc:BuildingNumber>${escapeXml(data.buyer!.buildingNumber)}</cbc:BuildingNumber>` : ''}
+        ${data.buyer!.district ? `<cbc:CitySubdivisionName>${escapeXml(data.buyer!.district)}</cbc:CitySubdivisionName>` : ''}
+        ${data.buyer!.city ? `<cbc:CityName>${escapeXml(data.buyer!.city)}</cbc:CityName>` : ''}
+        ${data.buyer!.postalCode ? `<cbc:PostalZone>${escapeXml(data.buyer!.postalCode)}</cbc:PostalZone>` : ''}
         <cac:Country>
-          <cbc:IdentificationCode>${data.buyer.countryCode || 'SA'}</cbc:IdentificationCode>
+          <cbc:IdentificationCode>${data.buyer!.countryCode || 'SA'}</cbc:IdentificationCode>
         </cac:Country>
-      </cac:PostalAddress>
-      ${data.buyer.tin ? `<cac:PartyTaxScheme>
-        <cbc:CompanyID>${escapeXml(data.buyer.tin)}</cbc:CompanyID>
+      </cac:PostalAddress>` : ''}
+      ${data.buyer!.tin ? `<cac:PartyTaxScheme>
+        <cbc:CompanyID>${escapeXml(data.buyer!.tin)}</cbc:CompanyID>
         <cac:TaxScheme>
           <cbc:ID>VAT</cbc:ID>
         </cac:TaxScheme>
       </cac:PartyTaxScheme>` : ''}
       <cac:PartyLegalEntity>
-        <cbc:RegistrationName>${escapeXml(data.buyer.name)}</cbc:RegistrationName>
+        <cbc:RegistrationName>${escapeXml(data.buyer!.name)}</cbc:RegistrationName>
       </cac:PartyLegalEntity>
-    </cac:Party>
-  </cac:AccountingCustomerParty>` : ''}
+    </cac:Party>`;
+  })() : ''}
+  </cac:AccountingCustomerParty>
   <cac:Delivery>
     <cbc:ActualDeliveryDate>${data.supplyDate || data.issueDate}</cbc:ActualDeliveryDate>
   </cac:Delivery>

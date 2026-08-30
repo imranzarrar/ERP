@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { der, OID, nameContent } from './asn1.js';
+import { ZATCA_EGS_APP_NAME, ZATCA_EGS_APP_VERSION } from './appIdentity.js';
 
 export interface ZatcaCsrParams {
   cn: string; // Common Name (e.g. Solution Name / App Name)
@@ -47,7 +48,7 @@ export function generateZatcaKeyPair(): { privateKeyPem: string; publicKeyPem: s
   */
 export function generateZatcaCsr(params: ZatcaCsrParams, privateKeyPem: string): string {
   const sanitizedVat = (params.vatNumber || '300000000000003').padEnd(15, '0');
-  const sanitizedSerial = params.serialNumber || `1-ERP|2-2.0|3-${crypto.randomUUID()}`;
+  const sanitizedSerial = params.serialNumber || `1-${ZATCA_EGS_APP_NAME}|2-${ZATCA_EGS_APP_VERSION}|3-${crypto.randomUUID()}`;
   const countryCode = params.countryName || 'SA';
   const organizationUnit = params.organizationUnitName || 'HeadOffice';
   const organization = params.organizationName || 'Company';

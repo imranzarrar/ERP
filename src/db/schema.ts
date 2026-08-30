@@ -11,6 +11,11 @@ export const companies = pgTable('companies', {
   customHeader: text('custom_header').notNull(),
   customFooter: text('custom_footer').notNull(),
   vatNumber: text('vat_number'),
+  // General, print-facing Commercial Registration number — deliberately separate from
+  // zatcaEnvironmentConfigs.crNumber (per-environment, technical, and for Sandbox can hold
+  // ZATCA's own shared fake test CR — see the sandbox sample-key adoption in
+  // server/routes/zatca.ts). Same reasoning this table already applies to vatNumber above.
+  crNumber: text('cr_number'),
   themeId: text('theme_id'),
   currency: text('currency').default('SAR'),
   portalTitle: text('portal_title'),
@@ -93,6 +98,12 @@ export const users = pgTable('users', {
   uid: text('uid'),
   username: text('username').notNull(),
   password: text('password'),
+  // Nullable at the DB level so existing accounts and every test fixture that inserts a
+  // user row directly (bypassing the real create-user route) keep working unchanged —
+  // "mandatory" is enforced at the application layer instead: POST/PATCH /api/users (the
+  // real account-creation path) requires it. See BACKLOG.md for the forgot-password
+  // feature this exists for — a reset link only ever gets sent when this is set.
+  email: text('email'),
   role: text('role').notNull(),
   // Every user (including super-admins) is assigned one company — for a super-admin
   // this is just their initial/default selection; isSuperAdmin is what actually grants
@@ -104,6 +115,7 @@ export const users = pgTable('users', {
   isDeleted: integer('is_deleted').default(0),
 }, (table) => ({
   companyIdIdx: index('users_company_id_idx').on(table.companyId),
+  emailIdx: index('users_email_idx').on(table.email),
 }));
 
 // Many-to-many: a user can hold multiple roles at once. Effective permissions are the
@@ -164,6 +176,15 @@ export const taxSlabs = pgTable('tax_slabs', {
   // default per company and drifted out of sync across forms. Same partial-unique-
   // index pattern as bankAccounts.isDefault: at most one default per company.
   isDefault: boolean('is_default').default(false),
+  // ZATCA requires a TaxExemptionReasonCode/TaxExemptionReason on any Exempt ('E') or
+  // Zero-rated ('Z') tax category (BR-KSA-23 and related) — the specific VATEX-SA-xx code
+  // is a real legal classification (financial services, real estate, exports, etc. each
+  // have a different one under Saudi VAT law) that genuinely varies per company and can't
+  // be safely guessed here; both nullable so an unconfigured slab keeps today's behavior
+  // (the existing BR-KSA-23 warning, not a fabricated/incorrect code) until an admin sets
+  // the real reason for their specific exempt/zero-rated items.
+  exemptionReasonCode: text('exemption_reason_code'),
+  exemptionReason: text('exemption_reason'),
 }, (table) => ({
   companyIdIdx: index('tax_slabs_company_id_idx').on(table.companyId),
   unique_default_tax_slab: uniqueIndex('unique_default_tax_slab').on(table.companyId).where(sql`is_default = true`),
@@ -176,6 +197,7 @@ export const productCategories = pgTable('product_categories', {
   purchaseGlGroup: text('purchase_gl_group'), // e.g. '1200 - Inventory Asset' (Asset/Clearing)
   salesGlGroup: text('sales_gl_group'),       // e.g. '4000 - Product Sales' (Revenue)
   cogsGlGroup: text('cogs_gl_group'),         // e.g. '5000 - Cost of Goods Sold' (Expense)
+  isActive: boolean('is_active').default(true),
   companyId: uuid('company_id').notNull().references(() => companies.id),
 }, (table) => ({
   parentCategoryFk: index('product_categories_parent_idx').on(table.parentCategoryId),
@@ -210,6 +232,16 @@ export const productsServices = pgTable('products_services', {
   minLevel: decimal('min_level', { precision: 12, scale: 3 }),
   maxLevel: decimal('max_level', { precision: 12, scale: 3 }),
   reorderLeadTime: text('reorder_lead_time'),
+  isActive: boolean('is_active').default(true),
+  // Weighted rolling averages for on-hand stock valuation. averageCost updates on every
+  // GRN receipt (PO-linked or DSD); averageSalePrice updates on every invoice/POS sale
+  // line. Both are true quantity-weighted averages, not a rebuilt-from-history figure —
+  // each update folds the new transaction into the running total using the paired
+  // total-quantity counters below, so no historical replay is ever needed.
+  averageCost: decimal('average_cost', { precision: 12, scale: 4 }).default('0'),
+  averageSalePrice: decimal('average_sale_price', { precision: 12, scale: 4 }).default('0'),
+  totalQuantityPurchased: decimal('total_quantity_purchased', { precision: 14, scale: 3 }).default('0'),
+  totalQuantitySold: decimal('total_quantity_sold', { precision: 14, scale: 3 }).default('0'),
   companyId: uuid('company_id').notNull().references(() => companies.id),
 }, (table) => ({
   companyIdIdx: index('products_services_company_id_idx').on(table.companyId),
@@ -223,6 +255,7 @@ export const customers = pgTable('customers', {
   address: text('address').notNull(),
   taxRegNumber: text('tax_reg_number'),
   isSystem: boolean('is_system').default(false),
+  isActive: boolean('is_active').default(true),
   companyId: uuid('company_id').notNull().references(() => companies.id),
   // ZATCA Buyer Fields
   buyerType: text('buyer_type').default('B2B'),
@@ -233,6 +266,10 @@ export const customers = pgTable('customers', {
   city: text('city'),
   postalCode: text('postal_code'),
   countryCode: text('country_code').default('SA'),
+  // General print-facing Commercial Registration number — not a ZATCA buyer-identification
+  // field (that's only mandatory when a B2B buyer lacks a VAT number, a separate, deferred
+  // gap — see BACKLOG.md), just what shows on the printed invoice/quotation alongside VAT.
+  crNumber: text('cr_number'),
 }, (table) => ({
   companyIdIdx: index('customers_company_id_idx').on(table.companyId),
 }));
@@ -246,6 +283,7 @@ export const vendors = pgTable('vendors', {
   taxRegNumber: text('tax_reg_number'),
   isSystem: boolean('is_system').default(false),
   apGlAccount: text('ap_gl_account'), // e.g., '2100 - Accounts Payable'
+  isActive: boolean('is_active').default(true),
   companyId: uuid('company_id').notNull().references(() => companies.id),
   // ZATCA Address Fields
   buyerType: text('buyer_type').default('B2B'),
@@ -256,6 +294,9 @@ export const vendors = pgTable('vendors', {
   city: text('city'),
   postalCode: text('postal_code'),
   countryCode: text('country_code').default('SA'),
+  // General print-facing Commercial Registration number — see the matching field on
+  // customers; this form is shared between the two, so both need it.
+  crNumber: text('cr_number'),
 }, (table) => ({
   companyIdIdx: index('vendors_company_id_idx').on(table.companyId),
 }));
@@ -300,6 +341,12 @@ export const quotations = pgTable('quotations', {
   createdAt: timestamp('created_at').notNull(),
   discountPercentage: decimal('discount_percentage', { precision: 5, scale: 2 }),
   companyId: uuid('company_id').notNull().references(() => companies.id),
+  // Dedicated cancel flag, deliberately separate from `status` (which tracks the
+  // document's phase: Draft/Sent/Accepted/Converted). Cancellation is orthogonal to
+  // phase - a quotation shows as "Cancelled" whenever this is true, regardless of what
+  // phase it was in when cancelled, instead of overloading `status` with a value that
+  // collides with the phase flow.
+  isCancelled: boolean('is_cancelled').default(false),
 }, (table) => ({
   companyIdIdx: index('quotations_company_id_idx').on(table.companyId),
 }));
@@ -311,6 +358,13 @@ export const quotationItems = pgTable('quotation_items', {
   unitCost: decimal('unit_cost', { precision: 12, scale: 2 }).notNull(),
   quantity: decimal('quantity', { precision: 10, scale: 2 }).notNull(),
   discountAmount: decimal('discount_amount', { precision: 12, scale: 2 }),
+  // Carried through to the invoice's own unit column on quotation->invoice conversion —
+  // see invoiceItems.unit's comment for why this exists.
+  unit: text('unit'),
+  // Nullable: a line is only linked back to the catalog when it was actually selected via
+  // ItemCatalogSearch, not free-typed. See invoiceItems.productId's comment for why this
+  // exists and how it's used (average sale price).
+  productId: uuid('product_id').references(() => productsServices.id),
 });
 
 export const posShifts = pgTable('pos_shifts', {
@@ -373,6 +427,27 @@ export const invoices = pgTable('invoices', {
   companyIdIdx: index('invoices_company_id_idx').on(table.companyId),
 }));
 
+// Tracks the tip of each company's ZATCA ICV/PIH chain, independently per environment
+// (sandbox/simulation/production are entirely separate ZATCA backends — see CLAUDE.md's
+// ZATCA section and BACKLOG.md — with zero shared submission history between them).
+// Deliberately its own small table rather than an `environment` column scanned/sorted on
+// `invoices` for every reservation: a point lookup on `(companyId, environment)` stays
+// O(1) regardless of how large a tenant's invoice history grows, which matters for this
+// app's stated SaaS-scale, thousands-of-concurrent-tenants priority. No `documentType`
+// dimension — Invoice/CreditNote/DebitNote for one company share a single continuous ICV
+// sequence, exactly as ZATCA's chain-integrity model requires (see processInvoiceZatca's
+// own comment on this).
+export const zatcaChainState = pgTable('zatca_chain_state', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  environment: text('environment').notNull(), // 'sandbox' | 'simulation' | 'production'
+  currentIcv: integer('current_icv').notNull().default(0),
+  currentHash: text('current_hash'),
+  updatedAt: timestamp('updated_at').notNull(),
+}, (table) => ({
+  companyEnvIdx: uniqueIndex('zatca_chain_state_company_env_idx').on(table.companyId, table.environment),
+}));
+
 export const invoiceItems = pgTable('invoice_items', {
   id: uuid('id').primaryKey(),
   invoiceId: uuid('invoice_id').references(() => invoices.id).notNull(),
@@ -386,6 +461,21 @@ export const invoiceItems = pgTable('invoice_items', {
   // silently re-taxed every line at the header rate instead — this column is what makes
   // that fix real rather than cosmetic (per-line rate has somewhere to actually live).
   taxSlabId: uuid('tax_slab_id').references(() => taxSlabs.id),
+  // ZATCA UBL unit-of-measure code (UN/ECE Recommendation 20, e.g. 'PCE'/'KGM'/'MTR') for
+  // this specific line — previously nonexistent, so the XML builder hardcoded 'PCE' for
+  // every invoice regardless of what was actually sold. Nullable: normalizeZatcaUnitCode()
+  // (src/zatcaUnitCodes.ts) falls back to 'PCE' for legacy rows created before this column
+  // existed, so it's safe to add without a backfill.
+  unit: text('unit'),
+  // Nullable: only set when this line was actually selected via ItemCatalogSearch, not
+  // free-typed (this app's invoice/quotation lines are description-first by design, no
+  // hard product link — see BACKLOG.md's "ProductService.type classification cleanup"
+  // history for other places this same free-typed-vs-catalog tension shows up). When
+  // present, the invoice-creation routes fold this line's unitCost into the product's
+  // averageSalePrice (a quantity-weighted rolling average, same mechanism as GRN receipts
+  // fold into averageCost — see that column's comment). A free-typed line with no
+  // productId simply never contributes to the average; it doesn't error or block the sale.
+  productId: uuid('product_id').references(() => productsServices.id),
 });
 
 export const expenses = pgTable('expenses', {
@@ -512,6 +602,22 @@ export const posHeldInvoices = pgTable('pos_held_invoices', {
   companyIdIdx: index('pos_held_inv_company_id_idx').on(table.companyId),
 }));
 
+// Forgot-password reset links. Only the SHA-256 hash of the raw token is ever stored —
+// the raw token exists only in the emailed URL and briefly in memory server-side while
+// issuing/verifying it, so a DB read alone can never be used to forge a working reset
+// link. Single-use (usedAt) and short-lived (expiresAt) by design.
+export const passwordResetTokens = pgTable('password_reset_tokens', {
+  id: uuid('id').primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  tokenHash: text('token_hash').notNull(),
+  expiresAt: timestamp('expires_at', { mode: 'date' }).notNull(),
+  usedAt: timestamp('used_at', { mode: 'date' }),
+  createdAt: timestamp('created_at', { mode: 'date' }).defaultNow(),
+}, (table) => ({
+  tokenHashIdx: index('password_reset_tokens_hash_idx').on(table.tokenHash),
+  userIdIdx: index('password_reset_tokens_user_id_idx').on(table.userId),
+}));
+
 // Owned by the `connect-pg-simple` session-store library, not app-generated —
 // intentionally excluded from the UUID migration.
 export const user_sessions = pgTable('user_sessions', {
@@ -562,6 +668,7 @@ export const unitsOfMeasure = pgTable('units_of_measure', {
   id: uuid('id').primaryKey(),
   name: text('name').notNull(), // e.g., 'Piece', 'Box'
   code: text('code').notNull(), // e.g., 'Pcs', 'Box'
+  isActive: boolean('is_active').default(true),
   companyId: uuid('company_id').notNull().references(() => companies.id),
 });
 
@@ -641,6 +748,12 @@ export const goodsReceiptNotes = pgTable('goods_receipt_notes', {
   isDsd: boolean('is_dsd').default(false).notNull(), // Flag for Direct Shop Delivery
   receivedBy: text('received_by').notNull(), // User ID or Name (loosely typed by design) — stays text
   notes: text('notes'),
+  isReversed: boolean('is_reversed').default(false).notNull(), // Correction path for a wrong-quantity/wrong-batch receipt
+  // Set once this GRN is referenced by a real (non-cancelled) Purchase Bill — the 3-way
+  // match control (PO -> GRN -> Bill): a receipt can only be billed once, and a bill's
+  // totals are computed server-side directly from the GRN it references rather than
+  // re-entered by hand, so PO/GRN/Bill can never independently drift from each other.
+  isBilled: boolean('is_billed').default(false).notNull(),
   companyId: uuid('company_id').notNull().references(() => companies.id),
 });
 
@@ -666,7 +779,9 @@ export const purchaseBills = pgTable('purchase_bills', {
   subTotal: decimal('sub_total', { precision: 12, scale: 2 }).notNull(),
   taxTotal: decimal('tax_total', { precision: 12, scale: 2 }).notNull(),
   grandTotal: decimal('grand_total', { precision: 12, scale: 2 }).notNull(),
-  status: text('status').default('Unpaid').notNull(), // 'Unpaid', 'Partially Paid', 'Paid'
+  status: text('status').default('Unpaid').notNull(), // 'Unpaid', 'Partially Paid', 'Paid', 'Cancelled'
+  amountPaid: decimal('amount_paid', { precision: 12, scale: 2 }).default('0').notNull(),
+  bankId: uuid('bank_id').references(() => bankAccounts.id),
   companyId: uuid('company_id').notNull().references(() => companies.id),
 });
 
@@ -679,6 +794,7 @@ export const purchaseReturns = pgTable('purchase_returns', {
   warehouseId: uuid('warehouse_id').notNull().references(() => warehouses.id),
   date: timestamp('date').notNull(),
   notes: text('notes'),
+  status: text('status').default('Active').notNull(), // 'Active', 'Cancelled'
   companyId: uuid('company_id').notNull().references(() => companies.id),
 });
 
@@ -696,7 +812,7 @@ export const physicalStockTakes = pgTable('physical_stock_takes', {
   referenceNumber: text('reference_number').notNull(),
   warehouseId: uuid('warehouse_id').notNull().references(() => warehouses.id),
   date: timestamp('date').notNull(),
-  status: text('status').default('Draft').notNull(), // 'Draft', 'Completed' (Adjustments Posted)
+  status: text('status').default('Draft').notNull(), // 'Draft', 'Completed' (Adjustments Posted), 'Cancelled'
   performedBy: text('performed_by').notNull(), // User ID or Name (loosely typed by design) — stays text
   notes: text('notes'),
   companyId: uuid('company_id').notNull().references(() => companies.id),

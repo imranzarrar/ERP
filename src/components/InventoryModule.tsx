@@ -1,53 +1,78 @@
 import React from 'react';
 import { useTranslation, usePermissions } from '../hooks';
 import { DatabaseState, generateId, getDefaultTaxSlabId } from '../dbStore';
-import { 
-  Warehouse, 
-  PurchaseRequisition, 
+import {
+  Warehouse,
+  PurchaseRequisition,
   PurchaseRequisitionItem,
-  PurchaseOrder, 
+  PurchaseOrder,
   PurchaseOrderItem,
-  GoodsReceiptNote, 
+  GoodsReceiptNote,
   GoodsReceiptNoteItem,
   InventoryStock,
   ProductService,
-  Vendor
+  Vendor,
+  PurchaseBill,
+  PurchaseReturn,
+  PhysicalStockTake
 } from '../types';
-import { 
-  Plus, 
-  Search, 
-  Building2, 
-  FileText, 
-  ClipboardCheck, 
-  Boxes, 
-  AlertCircle, 
-  Calendar, 
-  User, 
-  Eye, 
-  CheckCircle2, 
-  XCircle, 
-  TrendingUp, 
-  DollarSign, 
-  Layers, 
+import {
+  Plus,
+  Search,
+  Building2,
+  FileText,
+  ClipboardCheck,
+  Boxes,
+  AlertCircle,
+  Calendar,
+  User,
+  Eye,
+  CheckCircle2,
+  XCircle,
+  TrendingUp,
+  DollarSign,
+  Layers,
   FileCheck,
-  PackageCheck
+  PackageCheck,
+  Receipt,
+  Undo2,
+  ClipboardList
 } from 'lucide-react';
 
 interface InventoryModuleProps {
   db: DatabaseState;
-  onUpdateDb: (updated: any) => void;
+  // setDb-only local state update (App.tsx's handleUpdateDbLocal) — no /api/migrate POST.
+  // Every handler in this file already calls a real REST route (warehouses, PR/PO/GRN,
+  // stock adjustments) and only reaches this afterward to reflect that success in local
+  // state (see PosModule.tsx's comment on its own onUpdateDbLocal for a real incident the
+  // full-blob sync this used to sit alongside caused elsewhere). Deliberately a
+  // function-updater only, not a raw DatabaseState — see App.tsx's handleUpdateDbLocal
+  // comment for the incident this prevents at compile time.
+  onUpdateDbLocal: (updater: (prev: DatabaseState) => DatabaseState) => void;
+  // Real GET /api/state refetch (App.tsx's triggerDbRefresh) — used after actions whose
+  // full effect isn't a single record's own fields (GRN reversal, Return cancellation,
+  // Stock Take finalization all mutate inventoryStocks quantities server-side that this
+  // component has no reliable way to re-derive locally), so the on-hand quantity shown
+  // doesn't stay stale until an unrelated later reload happens to pick it up.
+  onRefreshDb?: () => Promise<void>;
+  // Opens the shared print/preview overlay (App.tsx's printDoc state) — used to
+  // auto-open a printable payment receipt right after a Purchase Bill disbursement.
+  onPrintDoc?: (type: 'PaymentReceipt', data: any) => void;
   currentUser: any;
-  defaultTab?: 'stock' | 'pr' | 'po' | 'grn' | 'warehouses';
+  defaultTab?: 'stock' | 'pr' | 'po' | 'grn' | 'warehouses' | 'bills' | 'returns' | 'stocktakes';
 }
 
-export default function InventoryModule({ 
-  db, 
-  onUpdateDb, 
+export default function InventoryModule({
+  db,
+  onUpdateDbLocal,
+  onRefreshDb,
+  onPrintDoc,
   currentUser,
-  defaultTab = 'stock' 
+  defaultTab = 'stock'
 }: InventoryModuleProps) {
   const { t } = useTranslation(db);
   const { can } = usePermissions(currentUser);
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.isSuperAdmin === true;
   const companyId = db.selectedCompanyId;
 
   // Currency is derived from the active company's real configuration (matches the
@@ -83,14 +108,18 @@ export default function InventoryModule({
   const [isSubmittingAdjustment, setIsSubmittingAdjustment] = React.useState(false);
 
   // State
-  const [activeSubTab, setActiveSubTab] = React.useState<'stock' | 'pr' | 'po' | 'grn' | 'warehouses'>(defaultTab);
-  
+  const [activeSubTab, setActiveSubTab] = React.useState<'stock' | 'pr' | 'po' | 'grn' | 'warehouses' | 'bills' | 'returns' | 'stocktakes'>(defaultTab);
+
   // Lists from state filtered by current company
   const warehouses = (db.warehouses || []).filter(w => w.companyId === companyId);
   const purchaseRequisitions = (db.purchaseRequisitions || []).filter(pr => pr.companyId === companyId);
   const purchaseOrders = (db.purchaseOrders || []).filter(po => po.companyId === companyId);
   const goodsReceiptNotes = (db.goodsReceiptNotes || []).filter(grn => grn.companyId === companyId);
   const inventoryStocks = (db.inventoryStocks || []).filter(s => s.companyId === companyId);
+  const purchaseBills = (db.purchaseBills || []).filter((b: PurchaseBill) => b.companyId === companyId);
+  const purchaseReturns = (db.purchaseReturns || []).filter((r: PurchaseReturn) => r.companyId === companyId);
+  const physicalStockTakes = (db.physicalStockTakes || []).filter((s: PhysicalStockTake) => s.companyId === companyId);
+  const banks = (db.banks || []).filter((b: any) => b.isActive && b.companyId === companyId);
   const products = (db.products || []).filter(p => p.companyId === companyId);
   const vendors = (db.vendors || []).filter(v => v.companyId === companyId);
 
@@ -102,13 +131,24 @@ export default function InventoryModule({
   const [viewingPr, setViewingPr] = React.useState<PurchaseRequisition | null>(null);
   const [viewingPo, setViewingPo] = React.useState<PurchaseOrder | null>(null);
   const [viewingGrn, setViewingGrn] = React.useState<GoodsReceiptNote | null>(null);
+  const [viewingBill, setViewingBill] = React.useState<PurchaseBill | null>(null);
+  const [viewingReturn, setViewingReturn] = React.useState<PurchaseReturn | null>(null);
+  const [viewingStockTake, setViewingStockTake] = React.useState<PhysicalStockTake | null>(null);
 
   // Creation Modals
   const [isCreatingPr, setIsCreatingPr] = React.useState(false);
+  const [editingPrId, setEditingPrId] = React.useState<string | null>(null);
   const [isCreatingPo, setIsCreatingPo] = React.useState(false);
   const [isCreatingGrn, setIsCreatingGrn] = React.useState(false);
   const [isCreatingWarehouse, setIsCreatingWarehouse] = React.useState(false);
   const [isAdjustingStock, setIsAdjustingStock] = React.useState(false);
+  const [isCreatingBill, setIsCreatingBill] = React.useState(false);
+  const [isCreatingReturn, setIsCreatingReturn] = React.useState(false);
+  const [isCreatingStockTake, setIsCreatingStockTake] = React.useState(false);
+  const [isPayingBill, setIsPayingBill] = React.useState<PurchaseBill | null>(null);
+  const [isSubmittingBill, setIsSubmittingBill] = React.useState(false);
+  const [isSubmittingReturn, setIsSubmittingReturn] = React.useState(false);
+  const [isSubmittingStockTake, setIsSubmittingStockTake] = React.useState(false);
 
   // PR Form State
   const [prForm, setPrForm] = React.useState({
@@ -154,6 +194,29 @@ export default function InventoryModule({
     reason: ''
   });
 
+  // Purchase Bill Form State — references one or more un-billed GRNs (the 3-way match);
+  // totals are always computed server-side from those GRNs, never entered here.
+  const [billForm, setBillForm] = React.useState({ grnIds: [] as string[], dueDate: '', bankId: '' });
+  const [payBillForm, setPayBillForm] = React.useState({ date: '', amount: '', bankId: '' });
+
+  // Purchase Return (Debit Note) Form State
+  const [returnForm, setReturnForm] = React.useState({
+    grnId: '',
+    notes: '',
+    items: [] as Array<{ productId: string; quantityReturned: number; batchNumber: string }>
+  });
+  const [newReturnItem, setNewReturnItem] = React.useState({ productId: '', quantityReturned: 1, batchNumber: '' });
+
+  // Physical Stock Take Form State — systemQuantity is always snapshotted server-side,
+  // never entered here; this only collects what was physically counted.
+  const [stockTakeForm, setStockTakeForm] = React.useState({
+    warehouseId: warehouses[0]?.id || '',
+    performedBy: currentUser?.username || '',
+    notes: '',
+    items: [] as Array<{ productId: string; physicalQuantity: number; batchNumber: string }>
+  });
+  const [newStockTakeItem, setNewStockTakeItem] = React.useState({ productId: '', physicalQuantity: 0, batchNumber: '' });
+
   // Automatically update activeSubTab if defaultTab changes
   React.useEffect(() => {
     setActiveSubTab(defaultTab);
@@ -170,6 +233,7 @@ export default function InventoryModule({
   // Close active forms when companyId changes
   React.useEffect(() => {
     setIsCreatingPr(false);
+    setEditingPrId(null);
     setViewingPr(null);
     setIsCreatingPo(false);
     setViewingPo(null);
@@ -177,17 +241,28 @@ export default function InventoryModule({
     setViewingGrn(null);
     setIsCreatingWarehouse(false);
     setIsAdjustingStock(false);
+    setIsCreatingBill(false);
+    setViewingBill(null);
+    setIsPayingBill(null);
+    setIsCreatingReturn(false);
+    setViewingReturn(null);
+    setIsCreatingStockTake(false);
+    setViewingStockTake(null);
   }, [companyId]);
 
   const isFormOrDetailOpen = !!(
-    isCreatingPr || viewingPr || 
-    isCreatingPo || viewingPo || 
-    isCreatingGrn || viewingGrn || 
-    isCreatingWarehouse || isAdjustingStock
+    isCreatingPr || viewingPr ||
+    isCreatingPo || viewingPo ||
+    isCreatingGrn || viewingGrn ||
+    isCreatingWarehouse || isAdjustingStock ||
+    isCreatingBill || viewingBill || isPayingBill ||
+    isCreatingReturn || viewingReturn ||
+    isCreatingStockTake || viewingStockTake
   );
 
-  // Handle Warehouse Creation
-  const handleCreateWarehouse = (e: React.FormEvent) => {
+  // Handle Warehouse Creation — goes through the real backend route (POST /api/warehouses)
+  // instead of being pushed straight into local state with zero server persistence.
+  const handleCreateWarehouse = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!warehouseForm.name || !warehouseForm.code || isSubmittingWarehouse) return;
     setIsSubmittingWarehouse(true);
@@ -201,7 +276,17 @@ export default function InventoryModule({
         companyId
       };
 
-      onUpdateDb(prev => ({
+      const res = await fetch('/api/warehouses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newWh)
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error || t('Failed to register warehouse.'));
+      }
+
+      onUpdateDbLocal(prev => ({
         ...prev,
         warehouses: [...(prev.warehouses || []), newWh]
       }));
@@ -234,18 +319,19 @@ export default function InventoryModule({
     }));
   };
 
-  // Create PR — goes through a real backend route (POST /api/inventory/purchase-requisitions)
-  // whose PR number is generated by a per-company `SELECT ... FOR UPDATE` counter
-  // (server/lib/businessLogic.ts's getAndIncrementCounter), instead of the previous
-  // `array.length + 1001` client-side guess, which two concurrent submissions could
-  // both compute identically and thus duplicate.
+  // Create OR edit a PR — goes through the real backend routes (POST for a new PR, PUT
+  // for editing an existing Pending one). PR numbers are generated by a per-company
+  // `SELECT ... FOR UPDATE` counter (server/lib/businessLogic.ts's getAndIncrementCounter),
+  // instead of the previous `array.length + 1001` client-side guess, which two concurrent
+  // submissions could both compute identically and thus duplicate.
   const handleCreatePr = async (e: React.FormEvent) => {
     e.preventDefault();
     if (prForm.items.length === 0 || isSubmittingPr) return;
     setIsSubmittingPr(true);
     try {
-      const res = await fetch('/api/inventory/purchase-requisitions', {
-        method: 'POST',
+      const isEdit = !!editingPrId;
+      const res = await fetch(isEdit ? `/api/inventory/purchase-requisitions/${editingPrId}` : '/api/inventory/purchase-requisitions', {
+        method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           prData: {
@@ -259,16 +345,20 @@ export default function InventoryModule({
       if (!res.ok) {
         throw new Error(payload.error || t('Failed to submit purchase requisition.'));
       }
-      const newPr: PurchaseRequisition = payload.purchaseRequisition;
+      const savedPr: PurchaseRequisition = payload.purchaseRequisition;
 
-      onUpdateDb(prev => ({
+      onUpdateDbLocal(prev => ({
         ...prev,
-        purchaseRequisitions: [...(prev.purchaseRequisitions || []), newPr]
+        purchaseRequisitions: isEdit
+          ? (prev.purchaseRequisitions || []).map(pr => pr.id === savedPr.id ? savedPr : pr)
+          : [...(prev.purchaseRequisitions || []), savedPr]
       }));
 
-      triggerSuccess(t('Purchase requisition submitted successfully.'));
+      triggerSuccess(isEdit ? t('Purchase requisition updated successfully.') : t('Purchase requisition submitted successfully.'));
       setPrForm({ requestedBy: currentUser?.username || '', notes: '', items: [] });
+      setEditingPrId(null);
       setIsCreatingPr(false);
+      setViewingPr(null);
     } catch (err: any) {
       triggerError(err?.message || t('Failed to submit purchase requisition.'));
     } finally {
@@ -276,10 +366,55 @@ export default function InventoryModule({
     }
   };
 
-  // Approve / Reject PR (For Admins / Supervisors)
-  const handlePrStatus = (prId: string, status: 'Approved' | 'Rejected') => {
+  const handleStartEditPr = (pr: PurchaseRequisition) => {
+    setEditingPrId(pr.id);
+    setPrForm({
+      requestedBy: pr.requestedBy,
+      notes: pr.notes || '',
+      items: (pr.items || []).map(item => ({ productId: item.productId, quantity: Number(item.quantity), purpose: item.purpose || '' }))
+    });
+    setViewingPr(null);
+    setIsCreatingPr(true);
+  };
+
+  // Withdraw a Pending PR — the submitter's own action (inventory.pr), separate from the
+  // approve/reject flow below which requires inventory.approve.
+  const handleWithdrawPr = async (prId: string) => {
+    if (!window.confirm(t('Withdraw this purchase requisition? This cannot be undone.'))) return;
     try {
-      onUpdateDb(prev => ({
+      const res = await fetch(`/api/inventory/purchase-requisitions/${prId}/withdraw`, { method: 'PATCH' });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error || t('Failed to withdraw purchase requisition.'));
+      }
+      const updatedPr: PurchaseRequisition = payload.purchaseRequisition;
+      onUpdateDbLocal(prev => ({
+        ...prev,
+        purchaseRequisitions: (prev.purchaseRequisitions || []).map(pr => pr.id === updatedPr.id ? { ...pr, ...updatedPr } : pr)
+      }));
+      triggerSuccess(t('Purchase requisition withdrawn.'));
+      setViewingPr(null);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to withdraw purchase requisition.'));
+    }
+  };
+
+  // Approve / Reject PR (For Admins / Supervisors) — goes through the real backend route
+  // (PATCH /api/inventory/purchase-requisitions/:id/status) instead of a local-only status
+  // flip that never reached the server.
+  const handlePrStatus = async (prId: string, status: 'Approved' | 'Rejected') => {
+    try {
+      const res = await fetch(`/api/inventory/purchase-requisitions/${prId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error || t('Failed to update requisition status.'));
+      }
+
+      onUpdateDbLocal(prev => ({
         ...prev,
         purchaseRequisitions: (prev.purchaseRequisitions || []).map(pr =>
           pr.id === prId ? { ...pr, status } : pr
@@ -357,7 +492,7 @@ export default function InventoryModule({
       }
       const newPo: PurchaseOrder = payload.purchaseOrder;
 
-      onUpdateDb(prev => ({
+      onUpdateDbLocal(prev => ({
         ...prev,
         purchaseOrders: [...(prev.purchaseOrders || []), newPo],
         purchaseRequisitions: poForm.requisitionId
@@ -377,10 +512,21 @@ export default function InventoryModule({
     }
   };
 
-  // Cancel PO
-  const handleCancelPo = (poId: string) => {
+  // Cancel PO — goes through the real backend route (PATCH
+  // /api/inventory/purchase-orders/:id/cancel) instead of a local-only status flip that
+  // never reached the server.
+  const handleCancelPo = async (poId: string) => {
     try {
-      onUpdateDb(prev => ({
+      const res = await fetch(`/api/inventory/purchase-orders/${poId}/cancel`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error || t('Failed to cancel purchase order.'));
+      }
+
+      onUpdateDbLocal(prev => ({
         ...prev,
         purchaseOrders: (prev.purchaseOrders || []).map(po =>
           po.id === poId ? { ...po, status: 'Cancelled' as const } : po
@@ -495,7 +641,7 @@ export default function InventoryModule({
       };
       const updatedPo: { id: string; status: PurchaseOrder['status'] } | null = payload.updatedPurchaseOrder;
 
-      onUpdateDb(prev => {
+      onUpdateDbLocal(prev => {
         const currentStocks = [...(prev.inventoryStocks || [])];
         (newGrn.items || []).forEach(item => {
           const match = currentStocks.find(s =>
@@ -550,34 +696,69 @@ export default function InventoryModule({
     }
   };
 
-  // Handle Manual Stock Adjustment
-  const handleStockAdjustment = (e: React.FormEvent) => {
+  // Reverse a GRN — correction path for a wrong-quantity/wrong-batch receipt. Reverts the
+  // stock movement and the linked PO's fulfillment status server-side; refreshes local
+  // stock/PO state to match rather than trying to re-derive the reversal client-side.
+  const handleReverseGrn = async (grnId: string) => {
+    if (!window.confirm(t('Reverse this goods receipt? This will roll back the stock it added and cannot be undone.'))) return;
+    try {
+      const res = await fetch(`/api/inventory/goods-receipt-notes/${grnId}/reverse`, { method: 'POST' });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error || t('Failed to reverse goods receipt.'));
+      }
+      const updatedPo: { id: string; status: PurchaseOrder['status'] } | null = payload.updatedPurchaseOrder;
+      onUpdateDbLocal(prev => ({
+        ...prev,
+        goodsReceiptNotes: (prev.goodsReceiptNotes || []).map(g => g.id === grnId ? { ...g, isReversed: true } : g),
+        purchaseOrders: updatedPo
+          ? (prev.purchaseOrders || []).map(po => po.id === updatedPo.id ? { ...po, status: updatedPo.status } : po)
+          : prev.purchaseOrders
+      }));
+      // The GRN/PO status flip above is instant; the actual stock quantity this reversal
+      // rolled back is only known server-side, so refresh to pick it up rather than
+      // leaving the on-hand figure stale until an unrelated later reload.
+      if (onRefreshDb) await onRefreshDb();
+      triggerSuccess(t('Goods receipt reversed successfully.'));
+      setViewingGrn(null);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to reverse goods receipt.'));
+    }
+  };
+
+  // Handle Manual Stock Adjustment — goes through the real backend route (POST
+  // /api/inventory/stock-adjustments), which reuses the GRN route's exact
+  // lock-then-increment-or-insert math (clamped at 0), instead of mutating local state only.
+  const handleStockAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adjustmentForm.productId || !adjustmentForm.warehouseId || isSubmittingAdjustment) return;
     setIsSubmittingAdjustment(true);
     try {
-      onUpdateDb(prev => {
+      const res = await fetch('/api/inventory/stock-adjustments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: adjustmentForm.productId,
+          warehouseId: adjustmentForm.warehouseId,
+          quantity: adjustmentForm.quantity,
+          batchNumber: adjustmentForm.batchNumber || undefined,
+          reason: adjustmentForm.reason
+        })
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error || t('Failed to apply stock adjustment.'));
+      }
+      const updatedStock: InventoryStock = payload.inventoryStock;
+
+      onUpdateDbLocal(prev => {
         const currentStocks = [...(prev.inventoryStocks || [])];
-        const match = currentStocks.find(s =>
-          s.productId === adjustmentForm.productId &&
-          s.warehouseId === adjustmentForm.warehouseId &&
-          s.batchNumber === (adjustmentForm.batchNumber || undefined) &&
-          s.companyId === companyId
-        );
-
-        if (match) {
-          match.quantity = Math.max(0, Number(match.quantity) + Number(adjustmentForm.quantity));
-        } else if (adjustmentForm.quantity > 0) {
-          currentStocks.push({
-            id: generateId(),
-            productId: adjustmentForm.productId,
-            warehouseId: adjustmentForm.warehouseId,
-            batchNumber: adjustmentForm.batchNumber || undefined,
-            quantity: adjustmentForm.quantity,
-            companyId
-          });
+        const idx = currentStocks.findIndex(s => s.id === updatedStock.id);
+        if (idx >= 0) {
+          currentStocks[idx] = updatedStock;
+        } else {
+          currentStocks.push(updatedStock);
         }
-
         return { ...prev, inventoryStocks: currentStocks };
       });
 
@@ -588,6 +769,231 @@ export default function InventoryModule({
       triggerError(err?.message || t('Failed to apply stock adjustment.'));
     } finally {
       setIsSubmittingAdjustment(false);
+    }
+  };
+
+  // GRNs eligible to be billed: not already billed, not reversed, in this company.
+  const billableGrns = goodsReceiptNotes.filter(g => !g.isBilled && !g.isReversed);
+
+  const toggleBillGrn = (grnId: string) => {
+    setBillForm(prev => ({
+      ...prev,
+      grnIds: prev.grnIds.includes(grnId) ? prev.grnIds.filter(id => id !== grnId) : [...prev.grnIds, grnId]
+    }));
+  };
+
+  // Create a Purchase Bill — the 3-way match: totals are computed server-side from the
+  // referenced GRN(s), never sent from here.
+  const handleCreateBill = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (billForm.grnIds.length === 0 || isSubmittingBill) return;
+    setIsSubmittingBill(true);
+    try {
+      const res = await fetch('/api/inventory/purchase-bills', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ billData: { grnIds: billForm.grnIds, dueDate: billForm.dueDate || undefined, bankId: billForm.bankId || undefined } })
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || t('Failed to create purchase bill.'));
+
+      const newBill: PurchaseBill = payload.purchaseBill;
+      onUpdateDbLocal(prev => ({
+        ...prev,
+        purchaseBills: [...(prev.purchaseBills || []), newBill],
+        goodsReceiptNotes: (prev.goodsReceiptNotes || []).map((g: GoodsReceiptNote) => billForm.grnIds.includes(g.id) ? { ...g, isBilled: true } : g)
+      }));
+      triggerSuccess(t('Purchase bill created successfully.'));
+      setBillForm({ grnIds: [], dueDate: '', bankId: '' });
+      setIsCreatingBill(false);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to create purchase bill.'));
+    } finally {
+      setIsSubmittingBill(false);
+    }
+  };
+
+  const handlePayBill = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isPayingBill || isSubmittingBill) return;
+    setIsSubmittingBill(true);
+    try {
+      const res = await fetch(`/api/inventory/purchase-bills/${isPayingBill.id}/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: payBillForm.date, bankId: payBillForm.bankId, amount: payBillForm.amount ? Number(payBillForm.amount) : undefined })
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || t('Failed to record bill payment.'));
+      // Mirror the server's own computed amountPaid/status directly — same pattern as
+      // every other create/update handler in this file — instead of re-deriving that
+      // arithmetic client-side, which could silently drift from the server's actual logic.
+      const updatedBill: PurchaseBill = payload.purchaseBill;
+      onUpdateDbLocal(prev => ({
+        ...prev,
+        purchaseBills: (prev.purchaseBills || []).map((b: PurchaseBill) => b.id === updatedBill.id ? updatedBill : b)
+      }));
+      triggerSuccess(t('Payment recorded successfully.'));
+      // Auto-open the printable receipt right away — proof of disbursement on the spot.
+      if (payload.voucher && onPrintDoc) {
+        const voucherBank = db.banks.find(b => b.id === payload.voucher.bankId);
+        onPrintDoc('PaymentReceipt', { ...payload.voucher, bankData: voucherBank });
+      }
+      setIsPayingBill(null);
+      setPayBillForm({ date: '', amount: '', bankId: '' });
+      setViewingBill(null);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to record bill payment.'));
+    } finally {
+      setIsSubmittingBill(false);
+    }
+  };
+
+  const handleCancelBill = async (bill: PurchaseBill) => {
+    if (!window.confirm(t('Cancel this purchase bill? This releases its referenced receipts so they can be re-billed.'))) return;
+    try {
+      const res = await fetch(`/api/inventory/purchase-bills/${bill.id}/cancel`, { method: 'PATCH' });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || t('Failed to cancel purchase bill.'));
+      const grnIds = bill.grnIds.split(',').filter(Boolean);
+      onUpdateDbLocal(prev => ({
+        ...prev,
+        purchaseBills: (prev.purchaseBills || []).map((b: PurchaseBill) => b.id === bill.id ? { ...b, status: 'Cancelled' } : b),
+        goodsReceiptNotes: (prev.goodsReceiptNotes || []).map((g: GoodsReceiptNote) => grnIds.includes(g.id) ? { ...g, isBilled: false } : g)
+      }));
+      triggerSuccess(t('Purchase bill cancelled.'));
+      setViewingBill(null);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to cancel purchase bill.'));
+    }
+  };
+
+  // Handle Purchase Return (Debit Note) item actions
+  const addReturnItem = () => {
+    if (!newReturnItem.productId || newReturnItem.quantityReturned <= 0) return;
+    setReturnForm(prev => ({ ...prev, items: [...prev.items, { ...newReturnItem }] }));
+    setNewReturnItem({ productId: '', quantityReturned: 1, batchNumber: '' });
+  };
+  const removeReturnItem = (index: number) => {
+    setReturnForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }));
+  };
+
+  const handleCreateReturn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!returnForm.grnId || returnForm.items.length === 0 || isSubmittingReturn) return;
+    setIsSubmittingReturn(true);
+    try {
+      const res = await fetch('/api/inventory/purchase-returns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ returnData: { grnId: returnForm.grnId, notes: returnForm.notes, items: returnForm.items } })
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || t('Failed to create purchase return.'));
+
+      const newReturn: PurchaseReturn = payload.purchaseReturn;
+      onUpdateDbLocal(prev => ({ ...prev, purchaseReturns: [...(prev.purchaseReturns || []), newReturn] }));
+      triggerSuccess(t('Purchase return recorded successfully.'));
+      setReturnForm({ grnId: '', notes: '', items: [] });
+      setIsCreatingReturn(false);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to create purchase return.'));
+    } finally {
+      setIsSubmittingReturn(false);
+    }
+  };
+
+  const handleCancelReturn = async (returnId: string) => {
+    if (!window.confirm(t('Cancel this purchase return? This will restore the stock it removed.'))) return;
+    try {
+      const res = await fetch(`/api/inventory/purchase-returns/${returnId}/cancel`, { method: 'PATCH' });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || t('Failed to cancel purchase return.'));
+      // Status updates immediately; the exact restored stock quantity is only known
+      // server-side, so refresh to pick it up rather than leaving the on-hand figure
+      // stale until an unrelated later reload.
+      onUpdateDbLocal(prev => ({
+        ...prev,
+        purchaseReturns: (prev.purchaseReturns || []).map((r: PurchaseReturn) => r.id === returnId ? { ...r, status: 'Cancelled' } : r)
+      }));
+      if (onRefreshDb) await onRefreshDb();
+      triggerSuccess(t('Purchase return cancelled.'));
+      setViewingReturn(null);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to cancel purchase return.'));
+    }
+  };
+
+  // Handle Stock Take item actions
+  const addStockTakeItem = () => {
+    if (!newStockTakeItem.productId) return;
+    setStockTakeForm(prev => ({ ...prev, items: [...prev.items, { ...newStockTakeItem }] }));
+    setNewStockTakeItem({ productId: '', physicalQuantity: 0, batchNumber: '' });
+  };
+  const removeStockTakeItem = (index: number) => {
+    setStockTakeForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }));
+  };
+
+  const handleCreateStockTake = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stockTakeForm.warehouseId || stockTakeForm.items.length === 0 || isSubmittingStockTake) return;
+    setIsSubmittingStockTake(true);
+    try {
+      const res = await fetch('/api/inventory/stock-takes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stockTakeData: stockTakeForm })
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || t('Failed to start stock take.'));
+
+      const newStockTake: PhysicalStockTake = payload.stockTake;
+      onUpdateDbLocal(prev => ({ ...prev, physicalStockTakes: [...(prev.physicalStockTakes || []), newStockTake] }));
+      triggerSuccess(t('Stock take started successfully.'));
+      setStockTakeForm({ warehouseId: warehouses[0]?.id || '', performedBy: currentUser?.username || '', notes: '', items: [] });
+      setIsCreatingStockTake(false);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to start stock take.'));
+    } finally {
+      setIsSubmittingStockTake(false);
+    }
+  };
+
+  const handleFinalizeStockTake = async (stockTakeId: string) => {
+    if (!window.confirm(t('Finalize this stock take? This will post stock adjustments for every counted line and cannot be undone.'))) return;
+    try {
+      const res = await fetch(`/api/inventory/stock-takes/${stockTakeId}/finalize`, { method: 'POST' });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || t('Failed to finalize stock take.'));
+      // Status updates immediately; the exact posted stock quantities are only known
+      // server-side, so refresh to pick them up rather than leaving the on-hand figures
+      // stale until an unrelated later reload.
+      onUpdateDbLocal(prev => ({
+        ...prev,
+        physicalStockTakes: (prev.physicalStockTakes || []).map((s: PhysicalStockTake) => s.id === stockTakeId ? { ...s, status: 'Completed' } : s)
+      }));
+      if (onRefreshDb) await onRefreshDb();
+      triggerSuccess(t('Stock take finalized and adjustments posted.'));
+      setViewingStockTake(null);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to finalize stock take.'));
+    }
+  };
+
+  const handleCancelStockTake = async (stockTakeId: string) => {
+    if (!window.confirm(t('Cancel this stock take? This count will be discarded.'))) return;
+    try {
+      const res = await fetch(`/api/inventory/stock-takes/${stockTakeId}/cancel`, { method: 'PATCH' });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || t('Failed to cancel stock take.'));
+      onUpdateDbLocal(prev => ({
+        ...prev,
+        physicalStockTakes: (prev.physicalStockTakes || []).map((s: PhysicalStockTake) => s.id === stockTakeId ? { ...s, status: 'Cancelled' } : s)
+      }));
+      triggerSuccess(t('Stock take cancelled.'));
+      setViewingStockTake(null);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to cancel stock take.'));
     }
   };
 
@@ -615,11 +1021,17 @@ export default function InventoryModule({
             {activeSubTab === 'po' && <ClipboardCheck className="h-7 w-7 text-indigo-600" />}
             {activeSubTab === 'grn' && <PackageCheck className="h-7 w-7 text-indigo-600" />}
             {activeSubTab === 'warehouses' && <Building2 className="h-7 w-7 text-indigo-600" />}
+            {activeSubTab === 'bills' && <Receipt className="h-7 w-7 text-indigo-600" />}
+            {activeSubTab === 'returns' && <Undo2 className="h-7 w-7 text-indigo-600" />}
+            {activeSubTab === 'stocktakes' && <ClipboardList className="h-7 w-7 text-indigo-600" />}
             {activeSubTab === 'stock' && t('Stock Registry')}
             {activeSubTab === 'pr' && t('Purchase Requisitions')}
             {activeSubTab === 'po' && t('Purchase Orders')}
             {activeSubTab === 'grn' && t('Goods Receipt (GRN)')}
             {activeSubTab === 'warehouses' && t('Physical Warehouses')}
+            {activeSubTab === 'bills' && t('Purchase Bills')}
+            {activeSubTab === 'returns' && t('Purchase Returns')}
+            {activeSubTab === 'stocktakes' && t('Physical Stock Takes')}
           </h1>
           <p className="text-sm text-gray-500 mt-1">
             {activeSubTab === 'stock' && t('Monitor physical inventory levels, serial numbers, batches, and locations in real-time.')}
@@ -627,6 +1039,9 @@ export default function InventoryModule({
             {activeSubTab === 'po' && t('Issue official commercial documents to external vendors for materials and service procurements.')}
             {activeSubTab === 'grn' && t('Record receipts of ordered goods at warehouse docks, check counts, and automatically update stocks.')}
             {activeSubTab === 'warehouses' && t('Setup and govern multiple physical storage locations, distribution centers, and shop floors.')}
+            {activeSubTab === 'bills' && t('Record vendor invoices against received goods — totals are always computed from the linked receipt, never entered by hand.')}
+            {activeSubTab === 'returns' && t('Send goods back to a vendor against a prior receipt and record the resulting debit note.')}
+            {activeSubTab === 'stocktakes' && t('Count physical stock and reconcile it against system quantities.')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -675,6 +1090,33 @@ export default function InventoryModule({
                 >
                   <Plus className="h-4 w-4" />
                   {t('Create Warehouse')}
+                </button>
+              )}
+              {activeSubTab === 'bills' && can('purchaseBills.create') && (
+                <button
+                  onClick={() => setIsCreatingBill(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 text-sm shadow-sm transition"
+                >
+                  <Plus className="h-4 w-4" />
+                  {t('New Purchase Bill')}
+                </button>
+              )}
+              {activeSubTab === 'returns' && can('purchaseReturns.create') && (
+                <button
+                  onClick={() => setIsCreatingReturn(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 text-sm shadow-sm transition"
+                >
+                  <Plus className="h-4 w-4" />
+                  {t('New Purchase Return')}
+                </button>
+              )}
+              {activeSubTab === 'stocktakes' && can('stockTakes.create') && (
+                <button
+                  onClick={() => setIsCreatingStockTake(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 text-sm shadow-sm transition"
+                >
+                  <Plus className="h-4 w-4" />
+                  {t('New Stock Take')}
                 </button>
               )}
             </>
@@ -815,10 +1257,10 @@ export default function InventoryModule({
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
                           pr.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' :
                           pr.status === 'Pending' ? 'bg-amber-50 text-amber-700' :
-                          pr.status === 'Closed' ? 'bg-gray-100 text-gray-700' :
+                          (pr.status === 'Closed' || pr.status === 'Cancelled') ? 'bg-gray-100 text-gray-700' :
                           'bg-rose-50 text-rose-700'
                         }`}>
-                          {pr.status}
+                          {t(pr.status)}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
@@ -882,7 +1324,7 @@ export default function InventoryModule({
                             po.status === 'Sent' ? 'bg-indigo-50 text-indigo-700' :
                             'bg-gray-100 text-gray-700'
                           }`}>
-                            {po.status}
+                            {t(po.status)}
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
@@ -1016,6 +1458,183 @@ export default function InventoryModule({
         </div>
       )}
 
+      {/* SUB-TAB: PURCHASE BILLS */}
+      {activeSubTab === 'bills' && !isFormOrDetailOpen && (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Bill Number')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Vendor')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Grand Total')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Paid')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Status')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">{t('Actions')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {purchaseBills
+                  .filter(b => b.billNumber.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map(b => {
+                    const vend = vendors.find(v => v.id === b.vendorId);
+                    return (
+                      <tr key={b.id} className="hover:bg-gray-50/50 transition">
+                        <td className="px-6 py-4 font-semibold text-indigo-700">{b.billNumber}</td>
+                        <td className="px-6 py-4 text-sm text-gray-800">{vend?.name || t('Unknown Vendor')}</td>
+                        <td className="px-6 py-4 text-sm font-semibold text-gray-900">{b.grandTotal.toFixed(2)} {currency}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{b.amountPaid.toFixed(2)} {currency}</td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
+                            b.status === 'Paid' ? 'bg-emerald-50 text-emerald-700' :
+                            b.status === 'Partially Paid' ? 'bg-amber-50 text-amber-700' :
+                            b.status === 'Cancelled' ? 'bg-gray-100 text-gray-500' :
+                            'bg-indigo-50 text-indigo-700'
+                          }`}>
+                            {t(b.status)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button onClick={() => setViewingBill(b)} className="p-1 text-gray-400 hover:text-indigo-600 transition">
+                            <Eye className="h-5 w-5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                {purchaseBills.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                      <div className="flex flex-col items-center gap-2">
+                        <Receipt className="h-10 w-10 text-gray-300" />
+                        <p className="text-sm font-medium">{t('No purchase bills recorded yet.')}</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-TAB: PURCHASE RETURNS (DEBIT NOTES) */}
+      {activeSubTab === 'returns' && !isFormOrDetailOpen && (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Return Number')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Vendor')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Linked GRN')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Date')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Status')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">{t('Actions')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {purchaseReturns
+                  .filter(r => r.returnNumber.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map(r => {
+                    const vend = vendors.find(v => v.id === r.vendorId);
+                    const grn = goodsReceiptNotes.find(g => g.id === r.grnId);
+                    return (
+                      <tr key={r.id} className="hover:bg-gray-50/50 transition">
+                        <td className="px-6 py-4 font-semibold text-indigo-700">{r.returnNumber}</td>
+                        <td className="px-6 py-4 text-sm text-gray-800">{vend?.name || t('Unknown Vendor')}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{grn?.grnNumber || '-'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{new Date(r.date).toLocaleDateString()}</td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
+                            r.status === 'Active' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {t(r.status)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button onClick={() => setViewingReturn(r)} className="p-1 text-gray-400 hover:text-indigo-600 transition">
+                            <Eye className="h-5 w-5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                {purchaseReturns.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                      <div className="flex flex-col items-center gap-2">
+                        <Undo2 className="h-10 w-10 text-gray-300" />
+                        <p className="text-sm font-medium">{t('No purchase returns recorded yet.')}</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* SUB-TAB: PHYSICAL STOCK TAKES */}
+      {activeSubTab === 'stocktakes' && !isFormOrDetailOpen && (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Reference')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Warehouse')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Performed By')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Date')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Status')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">{t('Actions')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {physicalStockTakes
+                  .filter(s => s.referenceNumber.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map(s => {
+                    const wh = warehouses.find(w => w.id === s.warehouseId);
+                    return (
+                      <tr key={s.id} className="hover:bg-gray-50/50 transition">
+                        <td className="px-6 py-4 font-semibold text-indigo-700">{s.referenceNumber}</td>
+                        <td className="px-6 py-4 text-sm text-gray-800">{wh?.name || t('Unknown Warehouse')}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{s.performedBy}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{new Date(s.date).toLocaleDateString()}</td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
+                            s.status === 'Completed' ? 'bg-emerald-50 text-emerald-700' :
+                            s.status === 'Cancelled' ? 'bg-gray-100 text-gray-500' :
+                            'bg-amber-50 text-amber-700'
+                          }`}>
+                            {t(s.status)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button onClick={() => setViewingStockTake(s)} className="p-1 text-gray-400 hover:text-indigo-600 transition">
+                            <Eye className="h-5 w-5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                {physicalStockTakes.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                      <div className="flex flex-col items-center gap-2">
+                        <ClipboardList className="h-10 w-10 text-gray-300" />
+                        <p className="text-sm font-medium">{t('No stock takes recorded yet.')}</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* ----------------- MODALS & VIEWS ----------------- */}
 
       {/* PR VIEW DETAIL PANEL */}
@@ -1077,13 +1696,31 @@ export default function InventoryModule({
               </div>
             </div>
             <div className="p-6 border-t border-gray-200 flex justify-between bg-gray-50">
-              <button
-                onClick={() => setViewingPr(null)}
-                className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
-              >
-                {t('Close')}
-              </button>
-              {viewingPr.status === 'Pending' && currentUser.role === 'admin' && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setViewingPr(null)}
+                  className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
+                >
+                  {t('Close')}
+                </button>
+                {viewingPr.status === 'Pending' && can('inventory.pr') && (
+                  <>
+                    <button
+                      onClick={() => handleStartEditPr(viewingPr)}
+                      className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
+                    >
+                      {t('Edit')}
+                    </button>
+                    <button
+                      onClick={() => handleWithdrawPr(viewingPr.id)}
+                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition"
+                    >
+                      {t('Withdraw')}
+                    </button>
+                  </>
+                )}
+              </div>
+              {viewingPr.status === 'Pending' && can('inventory.approve') && (
                 <div className="flex gap-2">
                   <button
                     onClick={() => handlePrStatus(viewingPr.id, 'Rejected')}
@@ -1207,11 +1844,16 @@ export default function InventoryModule({
           <div className="overflow-hidden flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <div>
-                <h3 className="text-lg font-bold text-gray-900">{t('Goods Receipt Note Details')}</h3>
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  {t('Goods Receipt Note Details')}
+                  {viewingGrn.isReversed && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide bg-rose-50 text-rose-700">{t('Reversed')}</span>
+                  )}
+                </h3>
                 <span className="text-sm font-semibold text-indigo-700 font-mono mt-0.5 inline-block">{viewingGrn.grnNumber}</span>
               </div>
-              <button 
-                onClick={() => setViewingGrn(null)} 
+              <button
+                onClick={() => setViewingGrn(null)}
                 className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition"
               >
                 {t('Back to List')}
@@ -1318,13 +1960,21 @@ export default function InventoryModule({
                 </div>
               </div>
             </div>
-            <div className="p-6 border-t border-gray-200 flex justify-end bg-gray-50">
+            <div className="p-6 border-t border-gray-200 flex justify-between bg-gray-50">
               <button
                 onClick={() => setViewingGrn(null)}
                 className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
               >
                 {t('Close')}
               </button>
+              {!viewingGrn.isReversed && can('inventory.grn') && (
+                <button
+                  onClick={() => handleReverseGrn(viewingGrn.id)}
+                  className="px-4 py-2 bg-rose-50 text-rose-700 rounded-lg text-sm font-medium hover:bg-rose-100 transition"
+                >
+                  {t('Reverse Receipt')}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1335,9 +1985,9 @@ export default function InventoryModule({
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
           <div className="overflow-hidden flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-              <h3 className="text-lg font-bold text-gray-900">{t('Create Purchase Requisition (PR)')}</h3>
-              <button 
-                onClick={() => setIsCreatingPr(false)} 
+              <h3 className="text-lg font-bold text-gray-900">{editingPrId ? t('Edit Purchase Requisition (PR)') : t('Create Purchase Requisition (PR)')}</h3>
+              <button
+                onClick={() => { setIsCreatingPr(false); setEditingPrId(null); setPrForm({ requestedBy: currentUser?.username || '', notes: '', items: [] }); }}
                 className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition"
               >
                 {t('Back to List')}
@@ -1461,7 +2111,7 @@ export default function InventoryModule({
               <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
                 <button
                   type="button"
-                  onClick={() => setIsCreatingPr(false)}
+                  onClick={() => { setIsCreatingPr(false); setEditingPrId(null); setPrForm({ requestedBy: currentUser?.username || '', notes: '', items: [] }); }}
                   className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
                 >
                   {t('Cancel')}
@@ -1471,7 +2121,7 @@ export default function InventoryModule({
                   disabled={prForm.items.length === 0 || isSubmittingPr}
                   className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
-                  {isSubmittingPr ? t('Submitting...') : t('Submit Requisition')}
+                  {isSubmittingPr ? t('Submitting...') : (editingPrId ? t('Save Changes') : t('Submit Requisition'))}
                 </button>
               </div>
             </form>
@@ -2201,6 +2851,519 @@ export default function InventoryModule({
                   className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   {isSubmittingAdjustment ? t('Applying...') : t('Apply Adjustment')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* PURCHASE BILL VIEW DETAIL PANEL */}
+      {viewingBill && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
+          <div className="overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">{t('Purchase Bill Details')}</h3>
+                <span className="text-sm font-semibold text-indigo-700 font-mono mt-0.5 inline-block">{viewingBill.billNumber}</span>
+              </div>
+              <button onClick={() => setViewingBill(null)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition">
+                {t('Back to List')}
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-500">{t('Vendor:')}</span>
+                  <p className="font-semibold text-gray-900 mt-0.5">{vendors.find(v => v.id === viewingBill.vendorId)?.name || t('Unknown Vendor')}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500">{t('Due Date:')}</span>
+                  <p className="font-semibold text-gray-900 mt-0.5">{viewingBill.dueDate ? new Date(viewingBill.dueDate).toLocaleDateString() : '-'}</p>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-gray-500">{t('Referenced Receipts (GRN):')}</span>
+                  <p className="font-semibold text-gray-900 mt-0.5 font-mono">
+                    {viewingBill.grnIds.split(',').filter(Boolean).map(id => goodsReceiptNotes.find(g => g.id === id)?.grnNumber || id).join(', ')}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-col items-end gap-1.5 text-sm font-semibold text-gray-700 border-t border-gray-100 pt-4">
+                <div>{t('Subtotal (excl. tax):')} &nbsp;<span className="font-bold text-gray-900">{viewingBill.subTotal.toFixed(2)} {currency}</span></div>
+                <div>{t('VAT Total:')} &nbsp;<span className="font-bold text-gray-900">{viewingBill.taxTotal.toFixed(2)} {currency}</span></div>
+                <div className="text-lg font-bold text-indigo-700">{t('Grand Total:')} &nbsp;<span>{viewingBill.grandTotal.toFixed(2)} {currency}</span></div>
+                <div className="text-emerald-700">{t('Paid:')} &nbsp;<span className="font-bold">{viewingBill.amountPaid.toFixed(2)} {currency}</span></div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-200 flex justify-between bg-gray-50">
+              <button onClick={() => setViewingBill(null)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition">
+                {t('Close')}
+              </button>
+              <div className="flex gap-2">
+                {viewingBill.status === 'Unpaid' && can('purchaseBills.delete') && (
+                  <button onClick={() => handleCancelBill(viewingBill)} className="px-4 py-2 bg-rose-50 text-rose-700 rounded-lg text-sm font-medium hover:bg-rose-100 transition">
+                    {t('Cancel Bill')}
+                  </button>
+                )}
+                {(viewingBill.status === 'Unpaid' || viewingBill.status === 'Partially Paid') && can('purchaseBills.update') && (
+                  <button
+                    onClick={() => { setIsPayingBill(viewingBill); setPayBillForm({ date: new Date().toISOString().split('T')[0], amount: '', bankId: viewingBill.bankId || db.banks.find(b => b.isDefault)?.id || '' }); }}
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition"
+                  >
+                    {t('Record Payment')}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PAY BILL MODAL */}
+      {isPayingBill && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex justify-center items-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl p-6 w-full max-w-sm my-auto">
+            <h3 className="font-bold text-sm text-slate-900 mb-1">{t('Record Bill Payment')}</h3>
+            <p className="text-xs text-slate-400 mb-4">
+              {isPayingBill.billNumber} — {t('Remaining:')} {(isPayingBill.grandTotal - isPayingBill.amountPaid).toFixed(2)} {currency}
+            </p>
+            <form onSubmit={handlePayBill} className="space-y-4 text-xs">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Payment Date')}</label>
+                <input type="date" required value={payBillForm.date} onChange={(e) => setPayBillForm({ ...payBillForm, date: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Disbursement Bank')}</label>
+                {isAdmin ? (
+                  <select required value={payBillForm.bankId} onChange={(e) => setPayBillForm({ ...payBillForm, bankId: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                    {db.banks.filter(b => b.isActive).map(b => (
+                      <option key={b.id} value={b.id}>{b.bankName}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-500 font-semibold">
+                    {db.banks.find(b => b.id === payBillForm.bankId)?.bankName || t('Default Bank')}
+                  </div>
+                )}
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Amount')} ({currency}) — {t('leave blank to pay in full')}</label>
+                <input type="number" step="0.01" min="0" value={payBillForm.amount} onChange={(e) => setPayBillForm({ ...payBillForm, amount: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setIsPayingBill(null)} className="px-3 py-1.5 bg-slate-100 text-slate-500 rounded-lg text-xs font-semibold hover:bg-slate-200 transition">
+                  {t('Cancel')}
+                </button>
+                <button type="submit" disabled={isSubmittingBill} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition shadow-sm disabled:opacity-60">
+                  {isSubmittingBill ? t('Saving...') : t('Record Payment')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE PURCHASE BILL PANEL */}
+      {isCreatingBill && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
+          <div className="overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+              <h3 className="text-lg font-bold text-gray-900">{t('New Purchase Bill')}</h3>
+              <button onClick={() => { setIsCreatingBill(false); setBillForm({ grnIds: [], dueDate: '', bankId: '' }); }} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition">
+                {t('Back to List')}
+              </button>
+            </div>
+            <form onSubmit={handleCreateBill} className="flex-1 flex flex-col">
+              <div className="p-6 space-y-4">
+                <p className="text-xs text-gray-500">{t('Select one or more un-billed receipts from the same vendor. Totals are computed automatically from what was actually received.')}</p>
+                <div className="border border-gray-100 rounded-lg overflow-hidden max-h-72 overflow-y-auto">
+                  {billableGrns.length === 0 ? (
+                    <div className="p-6 text-center text-gray-400 text-xs">{t('No un-billed receipts available.')}</div>
+                  ) : (
+                    billableGrns.map(g => {
+                      const vend = vendors.find(v => v.id === g.vendorId);
+                      const checked = billForm.grnIds.includes(g.id);
+                      return (
+                        <label key={g.id} className={`flex items-center justify-between px-4 py-2.5 text-xs border-b border-gray-50 last:border-b-0 cursor-pointer ${checked ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                          <span className="flex items-center gap-2">
+                            <input type="checkbox" checked={checked} onChange={() => toggleBillGrn(g.id)} className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                            <span className="font-semibold text-gray-900">{g.grnNumber}</span>
+                          </span>
+                          <span className="text-gray-500">{vend?.name || t('Unknown Vendor')} • {new Date(g.date).toLocaleDateString()}</span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{t('Due Date')}</label>
+                    <input type="date" value={billForm.dueDate} onChange={(e) => setBillForm({ ...billForm, dueDate: e.target.value })}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{t('Payment Bank Account')}</label>
+                    <select value={billForm.bankId} onChange={(e) => setBillForm({ ...billForm, bankId: e.target.value })}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                      <option value="">{t('Select bank')}</option>
+                      {banks.map(b => <option key={b.id} value={b.id}>{b.bankName}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
+                <button type="button" onClick={() => { setIsCreatingBill(false); setBillForm({ grnIds: [], dueDate: '', bankId: '' }); }} className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition">
+                  {t('Cancel')}
+                </button>
+                <button type="submit" disabled={billForm.grnIds.length === 0 || isSubmittingBill} className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed">
+                  {isSubmittingBill ? t('Creating...') : t('Create Bill')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* PURCHASE RETURN VIEW DETAIL PANEL */}
+      {viewingReturn && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
+          <div className="overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">{t('Purchase Return Details')}</h3>
+                <span className="text-sm font-semibold text-indigo-700 font-mono mt-0.5 inline-block">{viewingReturn.returnNumber}</span>
+              </div>
+              <button onClick={() => setViewingReturn(null)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition">
+                {t('Back to List')}
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-500">{t('Vendor:')}</span>
+                  <p className="font-semibold text-gray-900 mt-0.5">{vendors.find(v => v.id === viewingReturn.vendorId)?.name || t('Unknown Vendor')}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500">{t('Linked GRN:')}</span>
+                  <p className="font-semibold text-gray-900 mt-0.5 font-mono">{goodsReceiptNotes.find(g => g.id === viewingReturn.grnId)?.grnNumber || '-'}</p>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-gray-500">{t('Notes:')}</span>
+                  <p className="text-gray-700 mt-0.5 bg-gray-50 p-2.5 rounded border border-gray-100">{viewingReturn.notes || '-'}</p>
+                </div>
+              </div>
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">{t('Returned Items')}</h4>
+                <div className="border border-gray-100 rounded-lg overflow-hidden">
+                  <table className="w-full text-left">
+                    <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                      <tr>
+                        <th className="px-4 py-2">{t('Product')}</th>
+                        <th className="px-4 py-2 text-right">{t('Qty Returned')}</th>
+                        <th className="px-4 py-2">{t('Batch')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-sm divide-y divide-gray-100">
+                      {(viewingReturn.items || []).map((item, idx) => {
+                        const prod = products.find(p => p.id === item.productId);
+                        return (
+                          <tr key={idx}>
+                            <td className="px-4 py-2 font-medium text-gray-900">{prod?.name || t('Unknown Product')}</td>
+                            <td className="px-4 py-2 text-right font-bold text-rose-600">{item.quantityReturned}</td>
+                            <td className="px-4 py-2 text-gray-600 text-xs font-mono">{item.batchNumber || '-'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-200 flex justify-between bg-gray-50">
+              <button onClick={() => setViewingReturn(null)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition">
+                {t('Close')}
+              </button>
+              {viewingReturn.status === 'Active' && can('purchaseReturns.delete') && (
+                <button onClick={() => handleCancelReturn(viewingReturn.id)} className="px-4 py-2 bg-rose-50 text-rose-700 rounded-lg text-sm font-medium hover:bg-rose-100 transition">
+                  {t('Cancel Return')}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE PURCHASE RETURN PANEL */}
+      {isCreatingReturn && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
+          <div className="overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+              <h3 className="text-lg font-bold text-gray-900">{t('New Purchase Return')}</h3>
+              <button onClick={() => { setIsCreatingReturn(false); setReturnForm({ grnId: '', notes: '', items: [] }); }} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition">
+                {t('Back to List')}
+              </button>
+            </div>
+            <form onSubmit={handleCreateReturn} className="flex-1 flex flex-col">
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{t('Goods Receipt Note')}</label>
+                    <select required value={returnForm.grnId} onChange={(e) => setReturnForm({ ...returnForm, grnId: e.target.value })}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                      <option value="">{t('Select receipt')}</option>
+                      {goodsReceiptNotes.filter(g => !g.isReversed).map(g => <option key={g.id} value={g.id}>{g.grnNumber}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{t('Notes')}</label>
+                    <input type="text" value={returnForm.notes} onChange={(e) => setReturnForm({ ...returnForm, notes: e.target.value })}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-100 pt-4">
+                  <h4 className="text-xs font-bold text-gray-700 uppercase mb-2">{t('Returned Items')}</h4>
+                  <div className="grid grid-cols-12 gap-2 items-end mb-3">
+                    <div className="col-span-6 space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase">{t('Product')}</label>
+                      <select value={newReturnItem.productId} onChange={(e) => setNewReturnItem({ ...newReturnItem, productId: e.target.value })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs">
+                        <option value="">{t('Select product')}</option>
+                        {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="col-span-3 space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase">{t('Quantity')}</label>
+                      <input type="number" min="0.001" step="0.001" value={newReturnItem.quantityReturned}
+                        onChange={(e) => setNewReturnItem({ ...newReturnItem, quantityReturned: parseFloat(e.target.value) || 0 })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs" />
+                    </div>
+                    <div className="col-span-2 space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase">{t('Batch')}</label>
+                      <input type="text" value={newReturnItem.batchNumber} onChange={(e) => setNewReturnItem({ ...newReturnItem, batchNumber: e.target.value })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs" />
+                    </div>
+                    <div className="col-span-1">
+                      <button type="button" onClick={addReturnItem} className="w-full p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+                        <Plus className="h-4 w-4 mx-auto" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="border border-gray-100 rounded-lg overflow-hidden">
+                    <table className="w-full text-left text-xs">
+                      <tbody className="divide-y divide-gray-100">
+                        {returnForm.items.map((item, idx) => {
+                          const prod = products.find(p => p.id === item.productId);
+                          return (
+                            <tr key={idx}>
+                              <td className="px-3 py-2 font-medium text-gray-900">{prod?.name}</td>
+                              <td className="px-3 py-2 text-right">{item.quantityReturned}</td>
+                              <td className="px-3 py-2 text-gray-500 font-mono">{item.batchNumber || '-'}</td>
+                              <td className="px-3 py-2 text-right">
+                                <button type="button" onClick={() => removeReturnItem(idx)} className="text-rose-500 hover:text-rose-700">
+                                  <XCircle className="h-4 w-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {returnForm.items.length === 0 && (
+                          <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400">{t('No items added yet.')}</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
+                <button type="button" onClick={() => { setIsCreatingReturn(false); setReturnForm({ grnId: '', notes: '', items: [] }); }} className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition">
+                  {t('Cancel')}
+                </button>
+                <button type="submit" disabled={!returnForm.grnId || returnForm.items.length === 0 || isSubmittingReturn} className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed">
+                  {isSubmittingReturn ? t('Recording...') : t('Record Return')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* PHYSICAL STOCK TAKE VIEW DETAIL PANEL */}
+      {viewingStockTake && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
+          <div className="overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">{t('Stock Take Details')}</h3>
+                <span className="text-sm font-semibold text-indigo-700 font-mono mt-0.5 inline-block">{viewingStockTake.referenceNumber}</span>
+              </div>
+              <button onClick={() => setViewingStockTake(null)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition">
+                {t('Back to List')}
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-500">{t('Warehouse:')}</span>
+                  <p className="font-semibold text-gray-900 mt-0.5">{warehouses.find(w => w.id === viewingStockTake.warehouseId)?.name || t('Unknown Warehouse')}</p>
+                </div>
+                <div>
+                  <span className="text-gray-500">{t('Performed By:')}</span>
+                  <p className="font-semibold text-gray-900 mt-0.5">{viewingStockTake.performedBy}</p>
+                </div>
+              </div>
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">{t('Counted Items')}</h4>
+                <div className="border border-gray-100 rounded-lg overflow-hidden">
+                  <table className="w-full text-left">
+                    <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                      <tr>
+                        <th className="px-4 py-2">{t('Product')}</th>
+                        <th className="px-4 py-2 text-right">{t('System Qty')}</th>
+                        <th className="px-4 py-2 text-right">{t('Physical Qty')}</th>
+                        <th className="px-4 py-2 text-right">{t('Variance')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-sm divide-y divide-gray-100">
+                      {(viewingStockTake.items || []).map((item, idx) => {
+                        const prod = products.find(p => p.id === item.productId);
+                        return (
+                          <tr key={idx}>
+                            <td className="px-4 py-2 font-medium text-gray-900">{prod?.name || t('Unknown Product')}</td>
+                            <td className="px-4 py-2 text-right text-gray-600">{item.systemQuantity}</td>
+                            <td className="px-4 py-2 text-right font-bold text-gray-900">{item.physicalQuantity}</td>
+                            <td className={`px-4 py-2 text-right font-bold ${item.variance > 0 ? 'text-emerald-600' : item.variance < 0 ? 'text-rose-600' : 'text-gray-400'}`}>
+                              {item.variance > 0 ? '+' : ''}{item.variance}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-200 flex justify-between bg-gray-50">
+              <button onClick={() => setViewingStockTake(null)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition">
+                {t('Close')}
+              </button>
+              {viewingStockTake.status === 'Draft' && (
+                <div className="flex gap-2">
+                  {can('stockTakes.delete') && (
+                    <button onClick={() => handleCancelStockTake(viewingStockTake.id)} className="px-4 py-2 bg-rose-50 text-rose-700 rounded-lg text-sm font-medium hover:bg-rose-100 transition">
+                      {t('Cancel')}
+                    </button>
+                  )}
+                  {can('stockTakes.update') && (
+                    <button onClick={() => handleFinalizeStockTake(viewingStockTake.id)} className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition">
+                      {t('Finalize & Post Adjustments')}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE STOCK TAKE PANEL */}
+      {isCreatingStockTake && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
+          <div className="overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+              <h3 className="text-lg font-bold text-gray-900">{t('New Stock Take')}</h3>
+              <button
+                onClick={() => { setIsCreatingStockTake(false); setStockTakeForm({ warehouseId: warehouses[0]?.id || '', performedBy: currentUser?.username || '', notes: '', items: [] }); }}
+                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition"
+              >
+                {t('Back to List')}
+              </button>
+            </div>
+            <form onSubmit={handleCreateStockTake} className="flex-1 flex flex-col">
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{t('Warehouse')}</label>
+                    <select required value={stockTakeForm.warehouseId} onChange={(e) => setStockTakeForm({ ...stockTakeForm, warehouseId: e.target.value })}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                      {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{t('Performed By')}</label>
+                    <input type="text" required value={stockTakeForm.performedBy} onChange={(e) => setStockTakeForm({ ...stockTakeForm, performedBy: e.target.value })}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-100 pt-4">
+                  <h4 className="text-xs font-bold text-gray-700 uppercase mb-2">{t('Counted Items')}</h4>
+                  <p className="text-[10px] text-gray-400 mb-2">{t('The current system quantity is snapshotted automatically when you add an item — you only enter what was physically counted.')}</p>
+                  <div className="grid grid-cols-12 gap-2 items-end mb-3">
+                    <div className="col-span-6 space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase">{t('Product')}</label>
+                      <select value={newStockTakeItem.productId} onChange={(e) => setNewStockTakeItem({ ...newStockTakeItem, productId: e.target.value })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs">
+                        <option value="">{t('Select product')}</option>
+                        {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="col-span-3 space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase">{t('Physical Qty')}</label>
+                      <input type="number" min="0" step="0.001" value={newStockTakeItem.physicalQuantity}
+                        onChange={(e) => setNewStockTakeItem({ ...newStockTakeItem, physicalQuantity: parseFloat(e.target.value) || 0 })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs" />
+                    </div>
+                    <div className="col-span-2 space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase">{t('Batch')}</label>
+                      <input type="text" value={newStockTakeItem.batchNumber} onChange={(e) => setNewStockTakeItem({ ...newStockTakeItem, batchNumber: e.target.value })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs" />
+                    </div>
+                    <div className="col-span-1">
+                      <button type="button" onClick={addStockTakeItem} className="w-full p-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+                        <Plus className="h-4 w-4 mx-auto" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="border border-gray-100 rounded-lg overflow-hidden">
+                    <table className="w-full text-left text-xs">
+                      <tbody className="divide-y divide-gray-100">
+                        {stockTakeForm.items.map((item, idx) => {
+                          const prod = products.find(p => p.id === item.productId);
+                          return (
+                            <tr key={idx}>
+                              <td className="px-3 py-2 font-medium text-gray-900">{prod?.name}</td>
+                              <td className="px-3 py-2 text-right">{item.physicalQuantity}</td>
+                              <td className="px-3 py-2 text-gray-500 font-mono">{item.batchNumber || '-'}</td>
+                              <td className="px-3 py-2 text-right">
+                                <button type="button" onClick={() => removeStockTakeItem(idx)} className="text-rose-500 hover:text-rose-700">
+                                  <XCircle className="h-4 w-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {stockTakeForm.items.length === 0 && (
+                          <tr><td colSpan={4} className="px-3 py-4 text-center text-gray-400">{t('No items counted yet.')}</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
+                <button
+                  type="button"
+                  onClick={() => { setIsCreatingStockTake(false); setStockTakeForm({ warehouseId: warehouses[0]?.id || '', performedBy: currentUser?.username || '', notes: '', items: [] }); }}
+                  className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
+                >
+                  {t('Cancel')}
+                </button>
+                <button type="submit" disabled={!stockTakeForm.warehouseId || stockTakeForm.items.length === 0 || isSubmittingStockTake} className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed">
+                  {isSubmittingStockTake ? t('Starting...') : t('Start Stock Take')}
                 </button>
               </div>
             </form>

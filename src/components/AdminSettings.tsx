@@ -1,7 +1,8 @@
 import React from 'react';
-import { useTranslation } from '../hooks';
-import { DatabaseState, saveDatabase, openNewMonth, closeMonth, SEED_BANKS, SEED_TAX_SLABS, SEED_TEMPLATES, getBankBalance, checkRecurringPreconditions, calculateMonthPnL, SEED_USERS, saveInvestor, saveCapitalInvestment, generateId } from '../dbStore';
+import { useTranslation, translateMonthLabel, usePermissions } from '../hooks';
+import { DatabaseState, saveDatabase, openNewMonth, closeMonth, SEED_BANKS, SEED_TAX_SLABS, SEED_TEMPLATES, getBankBalance, checkRecurringPreconditions, calculateMonthPnL, SEED_USERS, generateId } from '../dbStore';
 import { CompanySetup, BankAccount, TaxSlab, DocumentTemplate, FiscalMonth, User, UserRole, Investor, Customer, Vendor, Role } from '../types';
+import { PermissionNode, buildPermissionTree, allPermissionNodeIds } from '../permissionSchema';
 import { THEME_PROFILES, applyTheme } from '../theme';
 import {
  Building,
@@ -39,7 +40,7 @@ import {
  ShieldCheck,
  Shield} from 'lucide-react';
 import { ensureCompatibleImage } from '../imageUtils';
-import { DEFAULT_DOCUMENT_LAYOUT } from '../documentTemplateDefaults';
+import { DEFAULT_DOCUMENT_LAYOUT, DETAILED_TAX_INVOICE_LAYOUT, COL_SPAN_MD, COL_SPAN_PRINT } from '../documentTemplateDefaults';
 import { XMLParser } from 'fast-xml-parser';
 import DocumentRenderer from './DocumentRenderer';
 import ZatcaOnboardingWizard from './ZatcaOnboardingWizard';
@@ -84,150 +85,6 @@ const TEMPLATE_PREVIEW_SAMPLE_INVOICE = {
     accountNumber: 'SA8000000000012345678901'
   }
 };
-
-interface PermissionNode {
-  id: string;
-  label: string;
-  permissionPath?: string;
-  children?: PermissionNode[];
-}
-
-const permissionTreeSchema: PermissionNode[] = [
-  {
-    id: 'all',
-    label: 'All Permissions',
-    children: [
-      {
-        id: 'modules.pos',
-        label: 'POS',
-        children: [
-          { id: 'modules.pos.access', label: 'Main POS Access', permissionPath: 'pos.access.enabled' },
-          { id: 'modules.pos.terminal', label: 'Terminal Counter Access', permissionPath: 'pos.terminal.enabled' },
-          { id: 'modules.pos.shifts', label: 'Shifts & Z-Reports Management', permissionPath: 'pos.shifts.enabled' },
-          { id: 'modules.pos.history', label: 'POS Sales History Access', permissionPath: 'pos.history.enabled' },
-          { id: 'modules.pos.return', label: 'Allow POS Refunds & Returns', permissionPath: 'pos.return.enabled' },
-          { id: 'modules.pos.cancel', label: 'Allow POS Order Cancellations', permissionPath: 'pos.cancel.enabled' },
-          { id: 'modules.pos.discount', label: 'Allow POS Custom Discounts', permissionPath: 'pos.discount.enabled' }
-        ]
-      },
-      {
-        id: 'modules.sales',
-        label: 'Sales & Receivable',
-        children: [
-          {
-            id: 'modules.sales.quotation',
-            label: 'Quotation Book Access',
-            children: [
-              { id: 'modules.sales.quotation.view', label: 'View Quotation Book', permissionPath: 'quotation.view.enabled' },
-              { id: 'modules.sales.quotation.create', label: 'Create Quotations', permissionPath: 'quotation.create.enabled' },
-            ]
-          },
-          {
-            id: 'modules.sales.invoice',
-            label: 'Sales Invoices Access',
-            children: [
-              { id: 'modules.sales.invoice.view', label: 'View Sales Invoices', permissionPath: 'invoice.view.enabled' },
-              { id: 'modules.sales.invoice.create', label: 'Create Sales Invoices', permissionPath: 'invoice.create.enabled' },
-            ]
-          }
-        ]
-      },
-      {
-        id: 'modules.procurements',
-        label: 'Procurements',
-        children: [
-          {
-            id: 'modules.procurements.expense',
-            label: 'Expense & Vouchers Module',
-            children: [
-              { id: 'modules.procurements.expense.view', label: 'View Expenses', permissionPath: 'expense.view.enabled' },
-              { id: 'modules.procurements.expense.create', label: 'Create Expenses', permissionPath: 'expense.create.enabled' },
-            ]
-          }
-        ]
-      },
-      {
-        id: 'modules.inventory',
-        label: 'Inventory & Procurement',
-        children: [
-          { id: 'modules.inventory.access', label: 'Inventory Module Access', permissionPath: 'inventory.access.enabled' },
-          { id: 'modules.inventory.pr', label: 'Purchase Requisitions (PR) Access', permissionPath: 'inventory.pr.enabled' },
-          { id: 'modules.inventory.po', label: 'Purchase Orders (PO) Access', permissionPath: 'inventory.po.enabled' },
-          { id: 'modules.inventory.grn', label: 'Goods Received Notes (GRN) Access', permissionPath: 'inventory.grn.enabled' },
-          { id: 'modules.inventory.stock', label: 'Stock Registry & Adjustments Access', permissionPath: 'inventory.stock.enabled' }
-        ]
-      },
-      {
-        id: 'modules.master_registries',
-        label: 'Master Registries',
-        children: [
-          {
-            id: 'directories.customers',
-            label: 'Customer Directory Access',
-            children: [
-              { id: 'directories.customers.view', label: 'View Customers CRM', permissionPath: 'customers.view.enabled' },
-              { id: 'directories.customers.edit', label: 'Edit Customers CRM', permissionPath: 'customers.edit.enabled' },
-            ]
-          },
-          {
-            id: 'directories.vendors',
-            label: 'Vendor Directory Access',
-            children: [
-              { id: 'directories.vendors.view', label: 'View Vendors Directory', permissionPath: 'vendors.view.enabled' },
-              { id: 'directories.vendors.edit', label: 'Edit Vendors Directory', permissionPath: 'vendors.edit.enabled' },
-            ]
-          },
-          {
-            id: 'directories.products',
-            label: 'Products & Inventory Access',
-            children: [
-              { id: 'directories.products.view', label: 'View Products & Pricing', permissionPath: 'products.view.enabled' },
-              { id: 'directories.products.edit', label: 'Edit Products & Stock', permissionPath: 'products.edit.enabled' },
-            ]
-          }
-        ]
-      },
-      {
-        id: 'modules.reports',
-        label: 'Financial Reports',
-        children: [
-          { id: 'modules.reports.access', label: 'Financial Reports Access', permissionPath: 'reports.access.enabled' }
-        ]
-      },
-      {
-        id: 'modules.financial_config',
-        label: 'Financial Configuration',
-        children: [
-          { id: 'modules.financial_config.investors', label: 'Investors & Capital Access', permissionPath: 'investors.access.enabled' },
-          { id: 'modules.financial_config.fiscal_months', label: 'Fiscal Month Close/Open Access', permissionPath: 'fiscalMonths.access.enabled' },
-          {
-            id: 'modules.financial_config.banks',
-            label: 'Bank Accounts Access',
-            children: [
-              { id: 'modules.financial_config.banks.view', label: 'View Bank Accounts', permissionPath: 'banks.view.enabled' },
-              { id: 'modules.financial_config.banks.edit', label: 'Edit Bank Accounts & Transfers', permissionPath: 'banks.edit.enabled' },
-            ]
-          },
-          {
-            id: 'modules.financial_config.tax_slabs',
-            label: 'Tax Slabs Access',
-            children: [
-              { id: 'modules.financial_config.tax_slabs.view', label: 'View Tax Slabs', permissionPath: 'taxSlabs.view.enabled' },
-              { id: 'modules.financial_config.tax_slabs.edit', label: 'Edit Tax Slabs', permissionPath: 'taxSlabs.edit.enabled' },
-            ]
-          }
-        ]
-      },
-      {
-        id: 'modules.settings',
-        label: 'Settings & Companies',
-        children: [
-          { id: 'void_cancel.cancel', label: 'Document Cancellation', permissionPath: 'cancel.access.enabled' }
-        ]
-      }
-    ]
-  }
-];
 
 const getNestedValue = (obj: any, path: string): boolean => {
   if (!obj) return false;
@@ -298,9 +155,6 @@ const toggleNodeRecursively = (node: PermissionNode, checked: boolean, currentPe
   const recurse = (n: PermissionNode) => {
     if (n.permissionPath) {
       updated = setNestedValue(updated, n.permissionPath, checked);
-      if (n.permissionPath === 'cancel.access.enabled') {
-        updated.cancel = checked;
-      }
     }
     if (n.children) {
       n.children.forEach(recurse);
@@ -314,13 +168,13 @@ const toggleNodeRecursively = (node: PermissionNode, checked: boolean, currentPe
 // Reusable cascading permission-tree editor. Used by the Roles editor (a role's own
 // `permissions` JSON) — the single place permissions are now configured, since users are
 // assigned roles rather than having permissions edited directly.
-function PermissionTree({ permissions, onChange }: { permissions: any; onChange: (updated: any) => void }) {
-  const [expandedNodes, setExpandedNodes] = React.useState<Record<string, boolean>>({
-    all: true,
-    modules: true,
-    directories: true,
-    void_cancel: true
-  });
+const PERMISSION_TREE: PermissionNode[] = buildPermissionTree();
+const PERMISSION_TREE_ALL_NODE_IDS: Record<string, boolean> = Object.fromEntries(
+  allPermissionNodeIds(PERMISSION_TREE).map(id => [id, true])
+);
+
+function PermissionTree({ permissions, onChange, t }: { permissions: any; onChange: (updated: any) => void; t: (key: string) => string }) {
+  const [expandedNodes, setExpandedNodes] = React.useState<Record<string, boolean>>(PERMISSION_TREE_ALL_NODE_IDS);
 
   const handleToggle = (node: PermissionNode, checked: boolean) => {
     onChange(toggleNodeRecursively(node, checked, permissions || {}));
@@ -380,7 +234,7 @@ function PermissionTree({ permissions, onChange }: { permissions: any; onChange:
             ) : (
               <span className="text-[12px] filter grayscale shrink-0">⚙️</span>
             )}
-            {node.label}
+            {t(node.label)}
           </span>
         </div>
 
@@ -399,19 +253,19 @@ function PermissionTree({ permissions, onChange }: { permissions: any; onChange:
     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60 space-y-3">
       <div className="flex items-center justify-between border-b border-slate-200 pb-2">
         <div>
-          <p className="text-[10px] font-extrabold text-slate-800 uppercase tracking-wider">Permissions Tree</p>
-          <p className="text-[9px] text-slate-500">Configure cascading module & directory usecases</p>
+          <p className="text-[10px] font-extrabold text-slate-800 uppercase tracking-wider">{t('Permissions Tree')}</p>
+          <p className="text-[9px] text-slate-500">{t('Configure cascading module & directory usecases')}</p>
         </div>
         <button
           type="button"
-          onClick={() => setExpandedNodes({ all: true, modules: true, directories: true, void_cancel: true })}
+          onClick={() => setExpandedNodes(PERMISSION_TREE_ALL_NODE_IDS)}
           className="text-[9px] font-bold text-indigo-600 hover:text-indigo-800 uppercase cursor-pointer"
         >
-          Expand All
+          {t('Expand All')}
         </button>
       </div>
       <div className="pt-1 px-1 space-y-1">
-        {permissionTreeSchema.map((node) => (
+        {PERMISSION_TREE.map((node) => (
           <TreeNode key={node.id} node={node} depth={0} />
         ))}
       </div>
@@ -419,17 +273,46 @@ function PermissionTree({ permissions, onChange }: { permissions: any; onChange:
   );
 }
 
-const CATEGORY_GROUPS = [
+interface SettingsSubTab {
+  id: string;
+  label: string;
+  icon: any;
+  superAdminOnly?: boolean;
+  adminOnly?: boolean;
+  requiredPermission?: string | string[];
+}
+
+// Each sub-tab declares exactly one of:
+//   - superAdminOnly: true       -> visible only to a real super-admin
+//   - adminOnly: true            -> visible only at company-admin tier or above; no
+//                                    delegable permission exists for this tab on purpose
+//                                    (see the permission-crud-model skill for which areas
+//                                    are deliberately kept off the Role system entirely -
+//                                    ZATCA config, Role definition, the Companies
+//                                    directory, Translations, and Database Backup/Sync,
+//                                    none of which are safe or requested to delegate.
+//                                    Company Profile used to be on this list too but is
+//                                    now delegable via companyProfile.read/update — see
+//                                    that leaf's own comment in permissionSchema.ts for
+//                                    why zatcaEnabled specifically stays excluded even
+//                                    though it's saved through the same endpoint)
+//   - requiredPermission: '...' or [...] -> visible to an admin, OR to any non-admin
+//                                    actor whose Role grants at least one of the listed
+//                                    leaves (checked via can()/canAny() below)
+// A sub-tab with NONE of these three markers is a bug, not an oversight - isTabVisible()
+// fails closed (admin-only) for anything undeclared, so forgetting to mark a new tab
+// never accidentally opens it to everyone.
+const CATEGORY_GROUPS: { id: string; label: string; icon: any; subTabs: SettingsSubTab[] }[] = [
   {
     id: 'org',
     label: 'Organization & Setup',
     icon: Building,
     subTabs: [
       { id: 'companies', label: 'Companies Directory', icon: Building, superAdminOnly: true },
-      { id: 'company', label: 'Company Profile', icon: Settings },
-      { id: 'zatca', label: 'ZATCA Phase 2 E-Invoicing', icon: ShieldCheck },
-      { id: 'banks', label: 'Bank Accounts', icon: Wallet },
-      { id: 'taxes', label: 'Tax Slabs', icon: Percent },
+      { id: 'company', label: 'Company Profile', icon: Settings, requiredPermission: 'companyProfile.read' },
+      { id: 'zatca', label: 'ZATCA Phase 2 E-Invoicing', icon: ShieldCheck, adminOnly: true },
+      { id: 'banks', label: 'Bank Accounts', icon: Wallet, requiredPermission: 'banks.read' },
+      { id: 'taxes', label: 'Tax Slabs', icon: Percent, requiredPermission: 'taxSlabs.read' },
     ]
   },
   {
@@ -437,8 +320,12 @@ const CATEGORY_GROUPS = [
     label: 'Operations & Config',
     icon: Sliders,
     subTabs: [
-      { id: 'templates', label: 'Document Templates', icon: FileSpreadsheet },
-      { id: 'pos', label: 'POS Terminal Settings', icon: ShoppingCart },
+      { id: 'templates', label: 'Document Templates', icon: FileSpreadsheet, requiredPermission: 'templates.read' },
+      // POS Terminal Settings edits company.posSettings via the same admin-tier-only
+      // route as Company Profile (PATCH /companies/:id/settings) - no companySettings
+      // permission was built (deliberately dropped, see BACKLOG item 61), so this stays
+      // admin-only too.
+      { id: 'pos', label: 'POS Terminal Settings', icon: ShoppingCart, adminOnly: true },
       { id: 'translations', label: 'Translations', icon: Languages, superAdminOnly: true },
     ]
   },
@@ -447,8 +334,10 @@ const CATEGORY_GROUPS = [
     label: 'Governance & Staff',
     icon: UserCheck,
     subTabs: [
-      { id: 'users', label: 'Staff Permissions', icon: UserCheck },
-      { id: 'roles', label: 'Roles', icon: Shield },
+      { id: 'users', label: 'Staff Permissions', icon: UserCheck, requiredPermission: 'users.read' },
+      // Role *definition* stays admin-only on purpose - the "who sets the boundaries"
+      // layer shouldn't be delegable to something the boundaries apply to.
+      { id: 'roles', label: 'Roles', icon: Shield, adminOnly: true },
     ]
   },
   {
@@ -456,8 +345,8 @@ const CATEGORY_GROUPS = [
     label: 'Fiscal & Capital',
     icon: Calendar,
     subTabs: [
-      { id: 'months', label: 'Month Opening / Closing', icon: Calendar },
-      { id: 'equity', label: 'Capital & Equity', icon: Coins },
+      { id: 'months', label: 'Month Opening / Closing', icon: Calendar, requiredPermission: ['fiscalMonths.open', 'fiscalMonths.close'] },
+      { id: 'equity', label: 'Capital & Equity', icon: Coins, requiredPermission: 'investors.access' },
     ]
   },
   {
@@ -465,21 +354,99 @@ const CATEGORY_GROUPS = [
     label: 'System & Backup',
     icon: Database,
     subTabs: [
-      { id: 'database', label: 'Database Backup & Sync', icon: Database },
+      // Export/import/force-push/audit-purge live here - dangerous whole-tenant-data
+      // operations, never proposed for delegation.
+      { id: 'database', label: 'Database Backup & Sync', icon: Database, adminOnly: true },
     ]
   }
 ];
 
+// Classic Sidebar layout only — Sleek Hub doesn't use per-tab icon colors (it colors
+// the whole button on active state instead), but Classic Sidebar's icons were always
+// individually colored, so this preserves that look now that it renders from
+// CATEGORY_GROUPS instead of its own hardcoded copy.
+const CLASSIC_SIDEBAR_ICON_COLOR: Record<string, string> = {
+  companies: 'text-indigo-500',
+  company: 'text-amber-500',
+  zatca: 'text-sky-500',
+  banks: 'text-blue-500',
+  taxes: 'text-violet-500',
+  templates: 'text-emerald-500',
+  pos: 'text-pink-500',
+  translations: 'text-fuchsia-500',
+  users: 'text-slate-500',
+  roles: 'text-cyan-500',
+  months: 'text-orange-500',
+  equity: 'text-amber-500',
+  database: 'text-emerald-500',
+};
+
 interface AdminSettingsProps {
  db: DatabaseState;
- onUpdateDb: (db: DatabaseState) => void;
+ // setDb-only local state update (App.tsx's handleUpdateDbLocal) — no /api/migrate POST.
+ // Used where a real route already persisted the change (or nothing needed persisting at
+ // all, e.g. a pure company-view switch) and the call was only reflecting that in local
+ // state. Force Publish to Cloud and Import Database (file/pasted) below call
+ // /api/migrate directly with a full backup blob instead — that's deliberate for both:
+ // they're explicit, rare, admin-initiated whole-database operations where "overwrite the
+ // server with what I have" is the actual intent, not an accident, and there's no
+ // sensible per-record route to migrate a backup restore to. Deliberately a
+ // function-updater only, not a raw DatabaseState — see App.tsx's handleUpdateDbLocal
+ // comment for the incident this prevents at compile time.
+ onUpdateDbLocal: (updater: (prev: DatabaseState) => DatabaseState) => void;
  onRefreshDb?: () => Promise<void>;
  defaultTab?: 'company' | 'banks' | 'taxes' | 'templates' | 'months' | 'users' | 'roles' | 'equity' | 'companies' | 'database' | 'zatca';
 }
 
-export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab }: AdminSettingsProps) {
+export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaultTab }: AdminSettingsProps) {
  const { t } = useTranslation(db);
- const [activeTab, setActiveTab] = React.useState<'company' | 'banks' | 'taxes' | 'templates' | 'months' | 'users' | 'roles' | 'equity' | 'companies' | 'database' | 'translations' | 'pos' | 'zatca'>(defaultTab || 'company');
+ const isAdmin = db.currentUser?.role === 'admin' || db.currentUser?.isSuperAdmin === true;
+ const { can } = usePermissions(db.currentUser);
+ const canAny = (key: string | string[]): boolean => Array.isArray(key) ? key.some(k => can(k)) : can(key);
+ // Per-module CRUD grants for the six tabs newly reachable by non-admin actors via
+ // requiredPermission (see CATEGORY_GROUPS above). can() already resolves true for any
+ // admin/super-admin internally, so these are safe to use uniformly for both tiers.
+ const canCreateBanks = can('banks.create');
+ const canUpdateBanks = can('banks.update');
+ const canDeleteBanks = can('banks.delete');
+ const canTransferBanks = can('banks.transfer');
+ const canCreateTaxSlabs = can('taxSlabs.create');
+ const canUpdateTaxSlabs = can('taxSlabs.update');
+ const canCreateTemplates = can('templates.create');
+ const canUpdateTemplates = can('templates.update');
+ const canDeleteTemplates = can('templates.delete');
+ const canCreateUsers = can('users.create');
+ const canUpdateUsers = can('users.update');
+ const canDeleteUsers = can('users.delete');
+ const canOpenFiscalMonths = can('fiscalMonths.open');
+ const canCloseFiscalMonths = can('fiscalMonths.close');
+ // No separate canAccessInvestors const / per-button gate: the Capital & Equity tab's
+ // CATEGORY_GROUPS entry already requires investors.access to render at all (isAdmin ||
+ // can('investors.access') via isTabVisible), and every mutating route this tab's forms
+ // call (POST /transactions/investors, its contribution-recording counterpart) checks
+ // that exact same single flag server-side — so tab-level visibility already is the
+ // correct, non-redundant gate for every action inside it.
+ // See CATEGORY_GROUPS' header comment for what each marker means. Fails closed:
+ // a sub-tab with none of the three markers is treated as admin-only, never as open to
+ // everyone - forgetting to mark a new tab can only make it too restrictive, not too open.
+ const isTabVisible = (st: SettingsSubTab): boolean => {
+   if (st.superAdminOnly) return !!db.currentUser?.isSuperAdmin;
+   if (st.adminOnly) return isAdmin;
+   if (st.requiredPermission) return canAny(st.requiredPermission);
+   return isAdmin;
+ };
+ const firstVisibleTabId = (): string => {
+   for (const cat of CATEGORY_GROUPS) {
+     const found = cat.subTabs.find(st => isTabVisible(st));
+     if (found) return found.id;
+   }
+   return 'company';
+ };
+ const [activeTab, setActiveTab] = React.useState<'company' | 'banks' | 'taxes' | 'templates' | 'months' | 'users' | 'roles' | 'equity' | 'companies' | 'database' | 'translations' | 'pos' | 'zatca'>(() => {
+   const requested = CATEGORY_GROUPS.flatMap(c => c.subTabs).find(s => s.id === defaultTab);
+   if (requested && isTabVisible(requested)) return defaultTab as any;
+   return firstVisibleTabId() as any;
+ });
  const [useSleekLayout, setUseSleekLayout] = React.useState<boolean>(true);
  const activeCatGroup = CATEGORY_GROUPS.find(cat => cat.subTabs.some(st => st.id === activeTab)) || CATEGORY_GROUPS[0];
  const [previewTemplate, setPreviewTemplate] = React.useState<DocumentTemplate | null>(null);
@@ -502,11 +469,10 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
       if (Array.isArray(data)) {
         setFiscalMonths(data);
         // Sync back to db.months if needed
-        const otherMonths = (db.months || []).filter(m => m.companyId !== db.selectedCompanyId);
-        onUpdateDb({
-          ...db,
-          months: [...otherMonths, ...data]
-        });
+        onUpdateDbLocal(prev => ({
+          ...prev,
+          months: [...(prev.months || []).filter(m => m.companyId !== db.selectedCompanyId), ...data]
+        }));
       } else {
         console.warn("Received non-array data for fiscal months in AdminSettings:", data);
       }
@@ -537,7 +503,6 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  // Success/Error notifications
  const [successMsg, setSuccessMsg] = React.useState<string | null>(null);
  const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
- const [isConfirmingTruncate, setIsConfirmingTruncate] = React.useState(false);
 
  const triggerSuccess = (msg: string) => {
  setSuccessMsg(msg);
@@ -553,7 +518,14 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
  const [transFilterModule, setTransFilterModule] = React.useState<string>('All');
  const [transSearchQuery, setTransSearchQuery] = React.useState<string>('');
- const [isTranslating, setIsTranslating] = React.useState<boolean>(false);
+ // Edits are explicit, single-record transactions (Create/Update/Delete), not a
+ // per-keystroke or whole-array sync — see BACKLOG.md. That means the list can read
+ // db.translations directly instead of keeping its own local mirror: nothing here
+ // writes until a modal's Save button is clicked, and a successful write always
+ // refetches via onRefreshDb before the modal closes.
+ const [translationModal, setTranslationModal] = React.useState<{ mode: 'add' | 'edit'; id?: string; key: string; en: string; ar: string; ur: string } | null>(null);
+ const [isSavingTranslation, setIsSavingTranslation] = React.useState(false);
+ const [deletingTranslationId, setDeletingTranslationId] = React.useState<string | null>(null);
 
  // Database backup and portability state
  const [copied, setCopied] = React.useState(false);
@@ -821,58 +793,6 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
     }
   };
 
- const handleTruncateTransactions = async () => {
- const activeCompanyIdId = db.selectedCompanyId;
- const activeCompanyIdName = db.companies?.find(c => c.id === activeCompanyIdId)?.name || 'Selected Company';
- 
- try {
- const updated: DatabaseState = {
- ...db,
- quotations: (db.quotations || []).filter(q => q.companyId !== activeCompanyIdId),
- invoices: (db.invoices || []).filter(i => i.companyId !== activeCompanyIdId),
- expenses: (db.expenses || []).filter(e => e.companyId !== activeCompanyIdId),
- recurringPostings: (db.recurringPostings || []).filter(p => p.companyId !== activeCompanyIdId),
- vouchers: (db.vouchers || []).filter(v => v.companyId !== activeCompanyIdId),
- };
-
- if (updated.companies) {
- updated.companies = updated.companies.map(c => {
- if (c.id === activeCompanyIdId) {
- return {
- ...c,
- counters: {
- quotation: 1001,
- invoice: 1001,
- expense: 1001,
- voucher: 1001
- }
- };
- }
- return c;
- });
- }
- 
- if (updated.companySetup && updated.companySetup.id === activeCompanyIdId) {
- updated.companySetup = {
- ...updated.companySetup,
- counters: {
- quotation: 1001,
- invoice: 1001,
- expense: 1001,
- voucher: 1001
- }
- };
- }
-
- 
- onUpdateDb(updated);
-  
- triggerSuccess(`All transaction data for ${activeCompanyIdName} has been successfully truncated and synchronized!`);
- } catch (err: any) {
- triggerError(`Failed to truncate transaction data: ${err.message}`);
- }
- };
-
  // ----------------------------------------
  // SUB-TAB: COMPANIES MANAGEMENT (SUPER-ADMIN ONLY)
  // ----------------------------------------
@@ -966,6 +886,9 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  companyId: finalizedCompany.id
  };
 
+ // B2C: ZATCA only requires a name for these (see validateBuyerFields) — these system
+ // placeholder records have no real VAT/address to give, so they must be B2C, not the
+ // schema's B2B default, or the real /api/customers /api/vendors routes reject them.
  const newCustomer: Customer = {
  id: generateId(),
  name: 'Walk-in Customer',
@@ -973,6 +896,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  email: '-',
  address: '-',
  isSystem: true,
+ buyerType: 'B2C',
  companyId: finalizedCompany.id
  };
 
@@ -983,6 +907,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  email: '-',
  address: '-',
  isSystem: true,
+ buyerType: 'B2C',
  companyId: finalizedCompany.id
  };
 
@@ -1015,17 +940,37 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  ];
 
  // Create the company row itself via the real, dedicated, super-admin-gated route —
- // not the generic blob-sync path below. That path always echoes back the caller's
- // ENTIRE current in-memory state (every table, not just what changed) on every save
- // anywhere in the app, which is exactly what let an already-open stale browser tab
- // silently RESURRECT companies that had been deliberately deleted, just by saving
- // something unrelated (confirmed live, twice). migrateData.ts's companies handling is
- // now update-only specifically to close that hole — it will no longer create a new
- // company row at all, so this explicit call is the only way a company actually gets
- // created going forward. The rest of this organization's starter setup (bank/
- // customer/vendor/template/fiscal months) still goes through the existing onUpdateDb
- // blob sync below — narrowing every one of those to its own dedicated route too is a
- // larger effort, tracked separately, not part of closing this specific hole.
+ // not the generic blob-sync path. That path always echoes back the caller's ENTIRE
+ // current in-memory state (every table, not just what changed) on every save anywhere
+ // in the app, which is exactly what let an already-open stale browser tab silently
+ // RESURRECT companies that had been deliberately deleted, just by saving something
+ // unrelated (confirmed live, twice). migrateData.ts's companies handling is now
+ // update-only specifically to close that hole. The rest of this organization's
+ // starter setup (bank/customer/vendor/template/fiscal month) now goes through its own
+ // dedicated real route too, same reasoning — each call explicitly targets the brand-
+ // new company via `companyId` in the body (this admin's own req.targetCompanyId is
+ // whatever company they're currently viewing, not the one just created; the auth
+ // middleware honors an explicit companyId in the body for super-admins only, which is
+ // exactly who this form is gated to).
+ const createResource = async (path: string, payload: any, label: string): Promise<boolean> => {
+ try {
+ const res = await fetch(path, {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ ...payload, companyId: finalizedCompany.id }),
+ });
+ if (!res.ok) {
+ const body = await res.json().catch(() => ({}));
+ triggerError(body.error || `Failed to create starter ${label} for the new organization.`);
+ return false;
+ }
+ return true;
+ } catch {
+ triggerError(`Failed to create starter ${label} — check your connection and try again.`);
+ return false;
+ }
+ };
+
  try {
  const res = await fetch('/api/companies', {
  method: 'POST',
@@ -1042,20 +987,26 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  return;
  }
 
- // Merge into the global database
- const updatedDb: DatabaseState = {
- ...db,
- companies: [...(db.companies || []), finalizedCompany],
- banks: [...db.banks, newBank],
- customers: [...db.customers, newCustomer],
- vendors: [...db.vendors, newVendor],
- templates: [...db.templates, newTemplate],
- months: [...db.months, ...newMonths]
- };
+ if (!(await createResource('/api/banks', newBank, 'bank account'))) return;
+ if (!(await createResource('/api/customers', newCustomer, 'customer'))) return;
+ if (!(await createResource('/api/vendors', newVendor, 'vendor'))) return;
+ if (!(await createResource('/api/templates', newTemplate, 'document template'))) return;
+ for (const month of newMonths) {
+ if (!(await createResource('/api/transactions/months', month, 'fiscal month'))) return;
+ }
 
- // Save and update
-
- onUpdateDb(updatedDb);
+ // Merge into local state only — everything above is already persisted via its own
+ // real route, so no further blob sync is needed here.
+ // Save and update — every table above was already persisted via its own real route.
+ onUpdateDbLocal(prev => ({
+ ...prev,
+ companies: [...(prev.companies || []), finalizedCompany],
+ banks: [...prev.banks, newBank],
+ customers: [...prev.customers, newCustomer],
+ vendors: [...prev.vendors, newVendor],
+ templates: [...prev.templates, newTemplate],
+ months: [...prev.months, ...newMonths]
+ }));
  triggerSuccess(`Organization "${finalizedCompany.name}" registered successfully with standard operational defaults!`);
 
  // Reset form
@@ -1084,53 +1035,26 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  });
  };
 
- const handleToggleCompanyInventory = (companyId: string, enabled: boolean) => {
-   const updatedCompanies = (db.companies || []).map(c => {
-     if (c.id === companyId) {
-       return {
-         ...c,
-         isInventoryModuleEnabled: enabled,
-         inventorySettings: c.inventorySettings || { prOptionality: 'OPTIONAL', isDsdAllowed: true }
-       };
-     }
-     return c;
-   });
-
-   let updatedCompanySetup = db.companySetup;
-   if (db.selectedCompanyId === companyId) {
-     updatedCompanySetup = {
-       ...db.companySetup,
-       isInventoryModuleEnabled: enabled,
-       inventorySettings: db.companySetup?.inventorySettings || { prOptionality: 'OPTIONAL', isDsdAllowed: true }
-     };
-   }
-
-   const updatedDb = {
-     ...db,
-     companies: updatedCompanies,
-     companySetup: updatedCompanySetup
-   };
-
-   onUpdateDb(updatedDb);
-   triggerSuccess(`Successfully ${enabled ? 'enabled' : 'disabled'} Inventory & Procurement Module for organization.`);
- };
-
  // Master on/off switch for ZATCA Phase 2 submission — Super-Admin manual override,
  // for cases like temporarily pausing ZATCA during a data migration. Auto-enabled
  // separately by the server once a company's Sandbox onboarding completes
  // (server/routes/zatca.ts request-production-csid).
- const handleToggleZatcaEnabled = (companyId: string, enabled: boolean) => {
-   const updatedCompanies = (db.companies || []).map(c =>
-     c.id === companyId ? { ...c, zatcaEnabled: enabled } : c
-   );
-
-   let updatedCompanySetup = db.companySetup;
-   if (db.selectedCompanyId === companyId) {
-     updatedCompanySetup = { ...db.companySetup, zatcaEnabled: enabled };
+ const handleToggleZatcaEnabled = async (companyId: string, enabled: boolean) => {
+   try {
+     const res = await fetch(`/api/companies/${companyId}/settings`, {
+       method: 'PATCH',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ zatcaEnabled: enabled })
+     });
+     const data = await res.json().catch(() => ({}));
+     if (!res.ok || data.error) {
+       return triggerError(data.error || 'Failed to update ZATCA integration setting.');
+     }
+     triggerSuccess(`Successfully ${enabled ? 'enabled' : 'disabled'} ZATCA integration for organization.`);
+     if (onRefreshDb) await onRefreshDb();
+   } catch (err: any) {
+     triggerError(err.message || 'Failed to update ZATCA integration setting.');
    }
-
-   onUpdateDb({ ...db, companies: updatedCompanies, companySetup: updatedCompanySetup });
-   triggerSuccess(`Successfully ${enabled ? 'enabled' : 'disabled'} ZATCA integration for organization.`);
  };
 
  // ----------------------------------------
@@ -1182,20 +1106,68 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  }
  };
 
- const handleCompanySave = (e: React.FormEvent) => {
+ const handleCompanySave = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!companyForm.name.trim()) return triggerError('Company name is required.');
- 
+
  // Process the logo to ensure if it is BMP base64 or raw base64, it is converted to highly compatible PNG base64
  const finalLogoUrl = ensureCompatibleImage(companyForm.logoUrl);
 
  const updatedForm = { ...companyForm, logoUrl: finalLogoUrl };
- const updatedCompanies = db.companies?.map(c => c.id === updatedForm.id ? updatedForm : c) || [updatedForm];
- const updated = { ...db, companySetup: updatedForm, companies: updatedCompanies };
- setCompanyForm(updatedForm); // Update local form state with processed/optimized base64
- 
- onUpdateDb(updated);
- triggerSuccess('Company global configuration updated successfully.');
+
+ try {
+   const res = await fetch(`/api/companies/${updatedForm.id}/settings`, {
+     method: 'PATCH',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify({
+       name: updatedForm.name,
+       address: updatedForm.address,
+       phone: updatedForm.phone,
+       email: updatedForm.email,
+       logoUrl: updatedForm.logoUrl,
+       customHeader: updatedForm.customHeader,
+       customFooter: updatedForm.customFooter,
+       vatNumber: updatedForm.vatNumber,
+       crNumber: updatedForm.crNumber,
+       themeId: updatedForm.themeId,
+       currency: updatedForm.currency,
+       portalTitle: updatedForm.portalTitle,
+       portalSubtitle: updatedForm.portalSubtitle,
+     })
+   });
+   const data = await res.json().catch(() => ({}));
+   if (!res.ok || data.error) {
+     return triggerError(data.error || 'Failed to update company configuration.');
+   }
+   setCompanyForm(updatedForm); // Update local form state with processed/optimized base64
+   triggerSuccess('Company global configuration updated successfully.');
+   if (onRefreshDb) await onRefreshDb();
+ } catch (err: any) {
+   triggerError(err.message || 'Failed to update company configuration.');
+ }
+ };
+
+ // POS Configuration tab toggles pass a plain updated-company object (not a form event) on
+ // every change — calling handleCompanySave(newComp) crashed on its unconditional
+ // e.preventDefault(), and handleCompanySave also reads from companyForm state rather than
+ // its argument, so it wouldn't have persisted posSettings anyway. Dedicated handler instead
+ // of overloading handleCompanySave's signature, which the real Company Setup form's
+ // onSubmit still relies on being a plain (e: React.FormEvent) function.
+ const handlePosSettingsChange = async (companyId: string, posSettings: any) => {
+ try {
+   const res = await fetch(`/api/companies/${companyId}/settings`, {
+     method: 'PATCH',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify({ posSettings })
+   });
+   const data = await res.json().catch(() => ({}));
+   if (!res.ok || data.error) {
+     return triggerError(data.error || 'Failed to update POS configuration.');
+   }
+   if (onRefreshDb) await onRefreshDb();
+ } catch (err: any) {
+   triggerError(err.message || 'Failed to update POS configuration.');
+ }
  };
 
  // ----------------------------------------
@@ -1219,65 +1191,52 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  date: new Date().toISOString().split('T')[0]
  });
 
- const handleAddBank = (e: React.FormEvent) => {
+ const handleAddBank = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!bankForm.bankName.trim()) return triggerError('Bank name is required.');
  if (!bankForm.accountNumber.trim()) return triggerError('Account number is required.');
  if (!bankForm.accountTitle.trim()) return triggerError('Account title is required.');
 
- let newBanks = [...db.banks];
+ try {
+   if (editingBankId) {
+     const res = await fetch(`/api/banks/${editingBankId}`, {
+       method: 'PATCH',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({
+         bankName: bankForm.bankName,
+         accountTitle: bankForm.accountTitle,
+         accountNumber: bankForm.accountNumber,
+         openingBalance: bankForm.openingBalance,
+         isDefault: bankForm.isDefault
+       })
+     });
+     const data = await res.json().catch(() => ({}));
+     if (!res.ok || data.error) return triggerError(data.error || 'Failed to update bank.');
+     triggerSuccess(`Bank "${bankForm.bankName}" updated successfully.`);
+     setEditingBankId(null);
+   } else {
+     // If this will be the company's only active bank, it becomes the default
+     // regardless of the form checkbox — mirrors the previous client-only behavior.
+     const activeBankCount = db.banks.filter(b => b.isActive).length;
+     const newBank: BankAccount = {
+       ...bankForm,
+       id: generateId(),
+       companyId: db.selectedCompanyId,
+       isDefault: bankForm.isDefault || activeBankCount === 0
+     };
+     const res = await fetch('/api/banks', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify(newBank)
+     });
+     const data = await res.json().catch(() => ({}));
+     if (!res.ok || data.error) return triggerError(data.error || 'Failed to add bank.');
+     triggerSuccess(`Bank "${newBank.bankName}" added successfully.`);
+   }
 
- if (editingBankId) {
- newBanks = newBanks.map(b => {
- if (b.id === editingBankId) {
- return {
- ...b,
- bankName: bankForm.bankName,
- accountTitle: bankForm.accountTitle,
- accountNumber: bankForm.accountNumber,
- openingBalance: bankForm.openingBalance,
- isDefault: bankForm.isDefault
- };
- }
- return b;
- });
-
- if (bankForm.isDefault) {
- newBanks.forEach(b => {
- if (b.id !== editingBankId) {
- b.isDefault = false;
- }
- });
- }
-
- const updated = { ...db, banks: newBanks };
- 
- onUpdateDb(updated);
- triggerSuccess(`Bank "${bankForm.bankName}" updated successfully.`);
- setEditingBankId(null);
- } else {
- const newBank: BankAccount = {
- ...bankForm,
- id: generateId(),
- companyId: db.selectedCompanyId
- };
-
- if (newBank.isDefault) {
- // Unset previous defaults
- newBanks.forEach(b => b.isDefault = false);
- }
- newBanks.push(newBank);
-
- // If this is the only active bank, make it default
- const activeBanks = newBanks.filter(b => b.isActive);
- if (activeBanks.length === 1) {
- newBanks.forEach(b => b.isDefault = (b.id === activeBanks[0].id));
- }
-
- const updated = { ...db, banks: newBanks };
- 
- onUpdateDb(updated);
- triggerSuccess(`Bank "${newBank.bankName}" added successfully.`);
+   if (onRefreshDb) await onRefreshDb();
+ } catch (err: any) {
+   triggerError(err.message || 'An error occurred while saving the bank.');
  }
 
  setBankForm({
@@ -1290,35 +1249,34 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  });
  };
 
- const handleSetDefaultBank = (bankId: string) => {
- const newBanks = db.banks.map(b => ({
- ...b,
- isDefault: b.id === bankId
- }));
- const updated = { ...db, banks: newBanks };
- 
- onUpdateDb(updated);
- triggerSuccess('Default bank updated successfully.');
+ const handleSetDefaultBank = async (bankId: string) => {
+ try {
+   const res = await fetch(`/api/banks/${bankId}/set-default`, { method: 'PATCH' });
+   const data = await res.json().catch(() => ({}));
+   if (!res.ok || data.error) return triggerError(data.error || 'Failed to update default bank.');
+   triggerSuccess('Default bank updated successfully.');
+   if (onRefreshDb) await onRefreshDb();
+ } catch (err: any) {
+   triggerError(err.message || 'Failed to update default bank.');
+ }
  };
 
- const handleToggleBankActive = (bankId: string) => {
+ const handleToggleBankActive = async (bankId: string) => {
  const bank = db.banks.find(b => b.id === bankId);
  if (!bank) return;
  if (bank.isDefault && bank.isActive) {
  return triggerError('Cannot deactivate the Default Bank. Set another bank as default first.');
  }
 
- const newBanks = db.banks.map(b => {
- if (b.id === bankId) {
- return { ...b, isActive: !b.isActive };
+ try {
+   const res = await fetch(`/api/banks/${bankId}/toggle-active`, { method: 'PATCH' });
+   const data = await res.json().catch(() => ({}));
+   if (!res.ok || data.error) return triggerError(data.error || 'Failed to toggle bank active status.');
+   triggerSuccess('Bank active status toggled.');
+   if (onRefreshDb) await onRefreshDb();
+ } catch (err: any) {
+   triggerError(err.message || 'Failed to toggle bank active status.');
  }
- return b;
- });
-
- const updated = { ...db, banks: newBanks };
- 
- onUpdateDb(updated);
- triggerSuccess('Bank active status toggled.');
  };
 
  const handleInterBankTransfer = async (e: React.FormEvent) => {
@@ -1376,7 +1334,40 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  // definition, so they're excluded from the unset-other-defaults sweep below.
  const companyTaxSlabs = db.taxSlabs.filter(t => t.companyId === db.selectedCompanyId);
 
- const handleAddTax = (e: React.FormEvent) => {
+ // Inline editor for a 0%-rate slab's ZATCA exemption reason (BR-KSA-23 and related) —
+ // a real VATEX-SA-xx legal classification that varies per company, so there's no
+ // sensible default to pre-fill; deliberately a small inline editor rather than a full
+ // edit form, since name/percentage editing is out of scope for this specific fix.
+ const [editingExemptionId, setEditingExemptionId] = React.useState<string | null>(null);
+ const [exemptionForm, setExemptionForm] = React.useState({ code: '', reason: '' });
+ const handleSaveExemptionReason = async (slabId: string) => {
+ // POST /api/tax-slabs is a full-row upsert (drizzle's onConflictDoUpdate uses the same
+ // object for both the INSERT and UPDATE branches) — name/percentage have no DB-level
+ // default, so a partial {id, exemptionReasonCode, exemptionReason} payload fails with a
+ // NOT NULL violation even though the row already exists. Every other caller of this
+ // route (handleAddTax) already sends the full slab; this must too.
+ const slab = db.taxSlabs.find(t => t.id === slabId);
+ if (!slab) return triggerError('Tax slab not found.');
+ try {
+ const res = await fetch('/api/tax-slabs', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ ...slab, exemptionReasonCode: exemptionForm.code.trim() || null, exemptionReason: exemptionForm.reason.trim() || null })
+ });
+ const data = await res.json().catch(() => ({}));
+ if (!res.ok || data.error) return triggerError(data.error || 'Failed to save exemption reason.');
+ onUpdateDbLocal(prev => ({
+ ...prev,
+ taxSlabs: prev.taxSlabs.map(t => t.id === slabId ? { ...t, exemptionReasonCode: exemptionForm.code.trim() || null, exemptionReason: exemptionForm.reason.trim() || null } : t)
+ }));
+ triggerSuccess('ZATCA exemption reason saved.');
+ setEditingExemptionId(null);
+ } catch (err: any) {
+ triggerError(err.message || 'Failed to save exemption reason.');
+ }
+ };
+
+ const handleAddTax = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!taxForm.name.trim()) return triggerError('Tax slab name is required.');
  const pct = parseFloat(taxForm.percentage);
@@ -1394,50 +1385,35 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  isDefault: taxForm.isDefault || companyTaxSlabs.length === 0
  };
 
- let updatedSlabs = db.taxSlabs;
- if (newSlab.isDefault) {
- updatedSlabs = updatedSlabs.map(t => t.companyId === db.selectedCompanyId ? { ...t, isDefault: false } : t);
+ try {
+   const res = await fetch('/api/tax-slabs', {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify(newSlab)
+   });
+   const data = await res.json().catch(() => ({}));
+   if (!res.ok || data.error) return triggerError(data.error || 'Failed to add tax slab.');
+   triggerSuccess(`Tax slab "${newSlab.name}" added successfully.${newSlab.isDefault ? ' Set as default.' : ''}`);
+   setTaxForm({ name: '', percentage: '', isDefault: false });
+   if (onRefreshDb) await onRefreshDb();
+ } catch (err: any) {
+   triggerError(err.message || 'Failed to add tax slab.');
  }
- updatedSlabs = [...updatedSlabs, newSlab];
-
- const updated = { ...db, taxSlabs: updatedSlabs };
-
- onUpdateDb(updated);
- triggerSuccess(`Tax slab "${newSlab.name}" added successfully.${newSlab.isDefault ? ' Set as default.' : ''}`);
- setTaxForm({ name: '', percentage: '', isDefault: false });
  };
 
- const handleSetDefaultTaxSlab = (taxSlabId: string) => {
- const target = db.taxSlabs.find(t => t.id === taxSlabId);
- if (!target) return;
-
- let updatedSlabs: TaxSlab[];
- if (target.companyId === db.selectedCompanyId) {
- // Already this company's own row — just flip which one is default.
- updatedSlabs = db.taxSlabs.map(t => ({
- ...t,
- isDefault: t.companyId === db.selectedCompanyId ? t.id === taxSlabId : t.isDefault
- }));
- } else {
- // A shared/legacy row (companyId null) — flipping isDefault directly on it would
- // make it "the default" for every OTHER company that also falls back to the same
- // shared row, not just this one, defeating the whole point of a per-company
- // default. Clone it into a real company-owned row instead (same name/rate),
- // marked default, leaving the shared row itself untouched for everyone else.
- const clone: TaxSlab = {
- id: generateId(),
- name: target.name,
- percentage: target.percentage,
- companyId: db.selectedCompanyId,
- isDefault: true
- };
- updatedSlabs = [
- ...db.taxSlabs.map(t => t.companyId === db.selectedCompanyId ? { ...t, isDefault: false } : t),
- clone
- ];
+ const handleSetDefaultTaxSlab = async (taxSlabId: string) => {
+ // Server decides whether this is already the company's own row (just flips the
+ // default) or a shared/legacy row (clones it into a company-owned default) — same
+ // logic previously duplicated here client-side, see PATCH /api/tax-slabs/:id/set-default.
+ try {
+   const res = await fetch(`/api/tax-slabs/${taxSlabId}/set-default`, { method: 'PATCH' });
+   const data = await res.json().catch(() => ({}));
+   if (!res.ok || data.error) return triggerError(data.error || 'Failed to update default tax slab.');
+   triggerSuccess('Default tax slab updated. New documents will pre-fill this rate.');
+   if (onRefreshDb) await onRefreshDb();
+ } catch (err: any) {
+   triggerError(err.message || 'Failed to update default tax slab.');
  }
- onUpdateDb({ ...db, taxSlabs: updatedSlabs });
- triggerSuccess('Default tax slab updated. New documents will pre-fill this rate.');
  };
 
  // ----------------------------------------
@@ -1446,15 +1422,25 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  const [tmplForm, setTmplForm] = React.useState({
  name: '',
  language: 'English' as 'English' | 'Arabic' | 'Urdu',
- pageSize: '8.27in x 11.69in (A4)'
+ pageSize: '8.27in x 11.69in (A4)',
+ // Starting layout only — both presets go through the exact same DocumentRenderer/
+ // Canvas Designer path afterward, an admin can freely edit either one's blocks once
+ // created. 'detailed' seeds the itemized-address/per-line-tax-columns layout that
+ // matches the traditional GCC tax-invoice format (see documentTemplateDefaults.ts's
+ // DETAILED_TAX_INVOICE_LAYOUT for the reasoning).
+ preset: 'standard' as 'standard' | 'detailed'
  });
 
- const handleAddTemplate = (e: React.FormEvent) => {
+ const handleAddTemplate = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!tmplForm.name.trim()) return triggerError('Template name is required.');
 
- const newTmpl: DocumentTemplate = {
- id: generateId(),
+ // id/companyId are assigned server-side (POST /api/templates) — a template with no
+ // layoutJson doesn't render blank, it silently falls back to DocumentRenderer.tsx's OWN
+ // no-layout default, which a newly created template's designer would show as ITS OWN
+ // starting point anyway. Seeding it here means what an admin sees before ever opening
+ // the Canvas Designer already matches what they'd see after opening it and hitting Save.
+ const newTmpl = {
  name: tmplForm.name,
  language: tmplForm.language,
  pageSize: tmplForm.pageSize,
@@ -1463,77 +1449,110 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  printFooter: true,
  printLogo: true,
  printQrCode: true,
- companyId: db.selectedCompanyId || undefined,
- // Previously omitted — a template with no layoutJson doesn't render blank, it
- // silently falls back to DocumentRenderer.tsx's OWN no-layout default, which a
- // newly created template's designer would show as ITS OWN starting point anyway.
- // Seeding it here means what an admin sees before ever opening the Canvas
- // Designer already matches what they'd see after opening it and hitting Save.
- layoutJson: JSON.stringify(DEFAULT_DOCUMENT_LAYOUT),
+ layoutJson: JSON.stringify(tmplForm.preset === 'detailed' ? DETAILED_TAX_INVOICE_LAYOUT : DEFAULT_DOCUMENT_LAYOUT),
+ // The detailed preset's blocks already shrink their own internal spacing via
+ // compact:true (see DETAILED_TAX_INVOICE_LAYOUT) — pairing that with a tight
+ // row-to-row grid gap (vs. the 24px 'normal' default) is what actually makes the
+ // header narrow enough for a real 20-line-item invoice to fit on one page.
+ ...(tmplForm.preset === 'detailed' ? { gridGapY: 'tight' } : {}),
  };
 
- const updated = { ...db, templates: [...db.templates, newTmpl] };
- 
- onUpdateDb(updated);
- triggerSuccess(`Template "${newTmpl.name}" registered. Activate it below.`);
- setTmplForm({ name: '', language: 'English', pageSize: '8.27in x 11.69in (A4)' });
+ try {
+   const resp = await fetch('/api/templates', {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify(newTmpl)
+   });
+   const result = await resp.json().catch(() => ({}));
+   if (!resp.ok) {
+     return triggerError(result.error || 'Failed to register template.');
+   }
+   if (onRefreshDb) await onRefreshDb();
+   triggerSuccess(`Template "${newTmpl.name}" registered. Activate it below.`);
+   setTmplForm({ name: '', language: 'English', pageSize: '8.27in x 11.69in (A4)', preset: 'standard' });
+ } catch (err: any) {
+   triggerError('Failed to register template: ' + err.message);
+ }
  };
 
- const handleActivateTemplate = (tmplId: string) => {
+ const handleActivateTemplate = async (tmplId: string) => {
+ try {
+   const resp = await fetch(`/api/templates/${tmplId}`, {
+     method: 'PATCH',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify({ isActive: true })
+   });
+   const result = await resp.json().catch(() => ({}));
+   if (!resp.ok) {
+     return triggerError(result.error || t('Failed to activate template.'));
+   }
+   if (onRefreshDb) await onRefreshDb();
+   triggerSuccess(t('Document layout template activated.'));
+ } catch (err: any) {
+   triggerError(t('Failed to activate template:') + ' ' + err.message);
+ }
+ };
+
+ // DELETE /api/templates/:id already existed server-side with no UI ever calling it — the
+ // only way to retire a template was activating a different one, leaving unwanted
+ // templates to accumulate forever. Confirms harder when deleting the currently-active
+ // template, since that leaves its (companyId, language) pair with no active template
+ // until another one is explicitly activated (DocumentRenderer falls back to the built-in
+ // default layout in the meantime, so nothing breaks, but it's a real behavior change).
+ const handleDeleteTemplate = async (tmpl: any) => {
+   const warning = tmpl.isActive
+     ? `"${tmpl.name}" ${t('is the ACTIVE template for')} ${tmpl.language} ${t('documents. Deleting it means')} ${tmpl.language} ${t('documents print with the built-in default layout until you activate another template. Delete anyway?')}`
+     : `${t('Delete template')} "${tmpl.name}"? ${t('This cannot be undone.')}`;
+   if (!window.confirm(warning)) return;
+   try {
+     const resp = await fetch(`/api/templates/${tmpl.id}`, { method: 'DELETE' });
+     const result = await resp.json().catch(() => ({}));
+     if (!resp.ok) {
+       return triggerError(result.error || t('Failed to delete template.'));
+     }
+     if (onRefreshDb) await onRefreshDb();
+     triggerSuccess(t('Template deleted.'));
+   } catch (err: any) {
+     triggerError(t('Failed to delete template:') + ' ' + err.message);
+   }
+ };
+
+ const handleToggleOption = async (tmplId: string, option: 'printHeader' | 'printFooter' | 'printLogo' | 'printQrCode') => {
  const targetTmpl = db.templates.find(t => t.id === tmplId);
- if (!targetTmpl) return;
-
- const targetCompanyId = targetTmpl.companyId || db.selectedCompanyId;
- const targetLanguage = targetTmpl.language;
-
- const newTemplates = db.templates.map(t => {
- if (t.id === tmplId) {
- return { ...t, isActive: true, companyId: targetCompanyId };
+ const newVal = targetTmpl ? (targetTmpl[option] !== false ? false : true) : true;
+ try {
+   const resp = await fetch(`/api/templates/${tmplId}`, {
+     method: 'PATCH',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify({ [option]: newVal })
+   });
+   const result = await resp.json().catch(() => ({}));
+   if (!resp.ok) {
+     return triggerError(result.error || 'Failed to update print preference.');
+   }
+   if (onRefreshDb) await onRefreshDb();
+   triggerSuccess('Template print preference updated.');
+ } catch (err: any) {
+   triggerError('Failed to update print preference: ' + err.message);
  }
- const isSameCompany = (t.companyId || db.selectedCompanyId) === targetCompanyId;
- const isSameLanguage = t.language === targetLanguage;
- if (isSameCompany && isSameLanguage) {
- return { ...t, isActive: false };
- }
- return t;
- });
- const updated = { ...db, templates: newTemplates };
- 
- onUpdateDb(updated);
- triggerSuccess('Document layout template activated.');
- };
-
- const handleToggleOption = (tmplId: string, option: 'printHeader' | 'printFooter' | 'printLogo' | 'printQrCode') => {
- const updatedTemplates = db.templates.map(t => {
- if (t.id === tmplId) {
- return {
- ...t,
- companyId: t.companyId || db.selectedCompanyId,
- [option]: t[option] !== false ? false : true
- };
- }
- return t;
- });
- const updated = { ...db, templates: updatedTemplates };
- 
- onUpdateDb(updated);
- triggerSuccess('Template print preference updated.');
   };
 
- const handleUpdateTemplateProperty = (tmplId: string, propKey: string, val: any) => {
-   const updatedTemplates = db.templates.map(t => {
-     if (t.id === tmplId) {
-       return {
-         ...t,
-         companyId: t.companyId || db.selectedCompanyId,
-         [propKey]: val
-       };
+ const handleUpdateTemplateProperty = async (tmplId: string, propKey: string, val: any) => {
+   try {
+     const resp = await fetch(`/api/templates/${tmplId}`, {
+       method: 'PATCH',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ [propKey]: val })
+     });
+     const result = await resp.json().catch(() => ({}));
+     if (!resp.ok) {
+       return triggerError(result.error || 'Failed to update template option.');
      }
-     return t;
-   });
-   const updated = { ...db, templates: updatedTemplates };
-   onUpdateDb(updated);
-   triggerSuccess('Template option updated.');
+     if (onRefreshDb) await onRefreshDb();
+     triggerSuccess('Template option updated.');
+   } catch (err: any) {
+     triggerError('Failed to update template option: ' + err.message);
+   }
  };
 
   // ----------------------------------------
@@ -1545,6 +1564,11 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
   const DEFAULT_LAYOUT = DEFAULT_DOCUMENT_LAYOUT;
 
   const [designingTemplateId, setDesigningTemplateId] = React.useState<string | null>(null);
+  // Snapshot of canvasBlocks as loaded, so Cancel/navigate-away can detect real unsaved
+  // edits instead of silently discarding them — block-level edits (width, props, reorder,
+  // add/hide) only ever mutate local state until "Save Layout Configuration" is clicked,
+  // unlike Global Row Gap/Font Family which PATCH the server immediately on change.
+  const [canvasBlocksSnapshot, setCanvasBlocksSnapshot] = React.useState<string>('[]');
   const [canvasBlocks, setCanvasBlocks] = React.useState<any[]>([]);
   const [selectedBlockId, setSelectedBlockId] = React.useState<string | null>(null);
   const [draggedBlockId, setDraggedBlockId] = React.useState<string | null>(null);
@@ -1591,31 +1615,44 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
       blocks = JSON.parse(JSON.stringify(DEFAULT_LAYOUT));
     }
     setCanvasBlocks(blocks);
+    setCanvasBlocksSnapshot(JSON.stringify(blocks));
     setSelectedBlockId(null);
   };
 
-  const handleSaveCanvasLayout = () => {
+  const hasUnsavedCanvasChanges = JSON.stringify(canvasBlocks) !== canvasBlocksSnapshot;
+
+  const handleCancelCanvasDesigner = () => {
+    if (hasUnsavedCanvasChanges && !window.confirm(t('You have unsaved layout changes (width, order, block properties) that will be lost. Discard them?'))) {
+      return;
+    }
+    setDesigningTemplateId(null);
+  };
+
+  const handleSaveCanvasLayout = async () => {
     if (!designingTemplateId) return;
-    const updatedTemplates = db.templates.map(t => {
-      if (t.id === designingTemplateId) {
-        return {
-          ...t,
-          layoutJson: JSON.stringify(canvasBlocks)
-        };
+    try {
+      const resp = await fetch(`/api/templates/${designingTemplateId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ layoutJson: JSON.stringify(canvasBlocks) })
+      });
+      const result = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        return triggerError(result.error || 'Failed to save canvas layout.');
       }
-      return t;
-    });
-    const updated = { ...db, templates: updatedTemplates };
-    onUpdateDb(updated);
-    triggerSuccess('Canvas layout configuration saved successfully.');
+      if (onRefreshDb) await onRefreshDb();
+    } catch (err: any) {
+      return triggerError('Failed to save canvas layout: ' + err.message);
+    }
+    triggerSuccess(t('Canvas layout configuration saved successfully.'));
     setDesigningTemplateId(null);
   };
 
   const handleResetLayout = () => {
-    if (window.confirm('Are you sure you want to reset this canvas layout to the ZATCA default?')) {
+    if (window.confirm(t('Are you sure you want to reset this canvas layout to the ZATCA default?'))) {
       setCanvasBlocks(JSON.parse(JSON.stringify(DEFAULT_LAYOUT)));
       setSelectedBlockId(null);
-      triggerSuccess('Layout reset to default. Save to persist.');
+      triggerSuccess(t('Layout reset to default. Save to persist.'));
     }
   };
 
@@ -1648,11 +1685,45 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
     setCanvasBlocks(prev => prev.map(b => b.id === blockId ? { ...b, w: width } : b));
   };
 
+  // Keyboard-accessible reordering alternative to the canvas's HTML5 drag-and-drop
+  // (handleCanvasDragStart/Over/Drop above) — a keyboard-only admin previously had no
+  // way to reorder blocks at all. Moves relative to the neighboring VISIBLE block, not
+  // just the adjacent array entry — canvasBlocks also holds hidden (visible: false)
+  // blocks interleaved with visible ones, so a naive adjacent-index swap could silently
+  // no-op (swapping past a hidden block) or reorder two blocks that aren't actually
+  // next to each other on the rendered canvas.
+  const handleMoveBlock = (blockId: string, direction: 'up' | 'down') => {
+    setCanvasBlocks(prev => {
+      const visibleIds = prev.filter(b => b.visible !== false).map(b => b.id);
+      const posInVisible = visibleIds.indexOf(blockId);
+      if (posInVisible === -1) return prev;
+      const neighborId = direction === 'up' ? visibleIds[posInVisible - 1] : visibleIds[posInVisible + 1];
+      if (!neighborId) return prev; // already first/last visible block
+      const updated = [...prev];
+      const blockIdx = updated.findIndex(b => b.id === blockId);
+      const neighborIdx = updated.findIndex(b => b.id === neighborId);
+      [updated[blockIdx], updated[neighborIdx]] = [updated[neighborIdx], updated[blockIdx]];
+      return updated;
+    });
+  };
+
   const handleToggleBlockVisibility = (blockId: string, visible: boolean) => {
     setCanvasBlocks(prev => prev.map(b => b.id === blockId ? { ...b, visible } : b));
     if (!visible && selectedBlockId === blockId) {
       setSelectedBlockId(null);
     }
+  };
+
+  // "Hide" (handleToggleBlockVisibility) only ever sets visible:false — a custom block
+  // (id starts with 'custom_field_', created via handleAddCustomBlock) could never actually
+  // be removed from the array, so hidden ones accumulate in layoutJson forever across an
+  // admin's editing history. Default DEFAULT_LAYOUT blocks stay hide-only (they're the
+  // standard set, meant to be re-showable), but a custom block's whole reason for existing
+  // is gone once it's unwanted, so it gets a real removal instead.
+  const handleRemoveCustomBlock = (blockId: string) => {
+    if (!window.confirm(t('Permanently remove this custom block? This cannot be undone (unlike Hide, which keeps it available to re-add).'))) return;
+    setCanvasBlocks(prev => prev.filter(b => b.id !== blockId));
+    if (selectedBlockId === blockId) setSelectedBlockId(null);
   };
 
   const handleUpdateBlockProp = (blockId: string, propKey: string, val: any) => {
@@ -1702,7 +1773,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  }
  }
  triggerSuccess(`Fiscal Month "${monthForm.year}-${monthForm.month}" opened successfully.`);
- onUpdateDb(result.db);
+ onUpdateDbLocal(() => result.db);
  await fetchMonths();
  } catch (err) {
  triggerError('Failed to save to database.');
@@ -1743,7 +1814,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  }
  triggerSuccess(`Fiscal Month "${isClosingMonth.id}" has been permanently closed and locked.`);
  setIsClosingMonth(null);
- onUpdateDb(result.db);
+ onUpdateDbLocal(() => result.db);
  await fetchMonths();
  } catch (err) {
  triggerError('Failed to update closed month in database. The month has NOT been closed.');
@@ -1761,29 +1832,30 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
  const [userForm, setUserForm] = React.useState({
  username: '',
+ email: '',
  password: '',
  role: 'user' as UserRole,
  companyId: db.selectedCompanyId,
  roleIds: [] as string[],
   });
 
-  // --- Roles state (company-scoped) ---
-  const [roles, setRoles] = React.useState<Role[]>([]);
-  const fetchRoles = async () => {
-    if (!db.selectedCompanyId) return;
-    try {
-      const resp = await fetch(`/api/roles?companyId=${db.selectedCompanyId}`);
-      if (!resp.ok) return;
-      const data = await resp.json();
-      if (Array.isArray(data)) setRoles(data);
-    } catch (e) {
-      console.error('Failed to fetch roles:', e);
-    }
-  };
+  // The "Assigned Company" field above was a one-time useState initializer that never
+  // tracked the active-company selector after mount — a super-admin who opened this tab
+  // on one company, then switched companies via the top-nav selector without this
+  // component remounting, would still have userForm.companyId silently pointing at the
+  // OLD company. Since the submit payload prefers userForm.companyId over
+  // db.selectedCompanyId (`userForm.companyId || db.selectedCompanyId`), the new user
+  // (and any role assignment, which is itself company-scoped server-side) silently landed
+  // in the wrong company with zero error anywhere — confirmed live. Resyncing here matches
+  // the same pattern already used for `roles` just below.
   React.useEffect(() => {
-    fetchRoles();
+    setUserForm(prev => ({ ...prev, companyId: db.selectedCompanyId }));
   }, [db.selectedCompanyId]);
 
+  // Roles render straight from the shared `db.roles` (populated by `/api/state`,
+  // refreshed via `onRefreshDb`) — this used to be a separately-fetched local copy that
+  // only refetched on company switch, so a role created/updated elsewhere never appeared
+  // here without a hard page reload.
   const [isAddingRole, setIsAddingRole] = React.useState(false);
   const [editingRole, setEditingRole] = React.useState<Role | null>(null);
   const [confirmDeleteRoleId, setConfirmDeleteRoleId] = React.useState<string | null>(null);
@@ -1815,7 +1887,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
       setIsAddingRole(false);
       setEditingRole(null);
       setRoleForm({ id: null, name: '', permissions: {} });
-      await fetchRoles();
+      if (onRefreshDb) await onRefreshDb();
     } catch (err: any) {
       triggerError('Failed to save role: ' + err.message);
     }
@@ -1830,7 +1902,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
       }
       triggerSuccess('Role removed.');
       setConfirmDeleteRoleId(null);
-      await fetchRoles();
+      if (onRefreshDb) await onRefreshDb();
     } catch (err: any) {
       triggerError('Failed to delete role: ' + err.message);
     }
@@ -1839,6 +1911,13 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  const handleAddUser = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!userForm.username.trim()) return triggerError('Username is required.');
+ // Mandatory — this is what the "Forgot password?" flow keys off (see server.ts's
+ // POST /api/auth/forgot-password): an account with no email on file can never receive
+ // a reset link, so every account created/edited here must have one.
+ const cleanEmail = userForm.email.trim();
+ if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+ return triggerError('A valid email address is required.');
+ }
 
  const isUserAdmin = userForm.role === 'admin';
 
@@ -1853,39 +1932,35 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
  if (editingUser) {
  // Update existing user
- const updatedUsers = db.users.map(u => {
- if (u.id === editingUser.id) {
  savedUser = {
- ...u,
+ ...editingUser,
  username: userForm.username.trim(),
+ email: cleanEmail,
  password: assignedPassword,
  role: userForm.role,
  companyId: userForm.companyId || db.selectedCompanyId,
   roleIds: userForm.roleIds,
  } as any;
- return savedUser;
- }
- return u;
- });
 
- const updated = { ...db, users: updatedUsers };
- 
- // Keep currentUser in sync if editing self
- if (db.currentUser && editingUser.id === db.currentUser.id && savedUser) {
- updated.currentUser = savedUser;
- }
- 
  try {
- if (savedUser) {
  const res = await fetch('/api/users', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(savedUser) });
- if (!res.ok) {
  const body = await res.json().catch(() => ({}));
+ if (!res.ok) {
  triggerError(body.error || 'Failed to save user — the server rejected this change.');
  return;
  }
- }
- onUpdateDb(updated);
+ // POST /api/users already persisted the record — refetch from the server instead
+ // of hand-merging a client-side copy through the full-blob /api/migrate sync.
+ await onRefreshDb?.();
+ if (body.droppedRoles?.length) {
+ // A requested role belongs to a different company than this user and was NOT
+ // assigned — the save itself still succeeded, but this must be loud, not a silent
+ // {success:true} (see server/routes/users.ts) — a user left with fewer roles than
+ // intended is a real access gap, not a cosmetic detail.
+ triggerError('Account updated, but not all roles were assigned: ' + body.droppedRoles.map((d: any) => d.reason).join(' '));
+ } else {
  triggerSuccess('Account details updated successfully.');
+ }
  setEditingUser(null);
  } catch (err) {
  triggerError('Failed to save to database');
@@ -1896,6 +1971,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  const newUser = {
  id: generateId(),
  username: userForm.username.trim(),
+ email: cleanEmail,
  password: assignedPassword,
  role: userForm.role,
  companyId: userForm.companyId || db.selectedCompanyId,
@@ -1903,17 +1979,22 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  uiLanguage: 'en',
   roleIds: userForm.roleIds,
  };
- 
+
  try {
  const res = await fetch('/api/users', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(newUser) });
- if (!res.ok) {
  const body = await res.json().catch(() => ({}));
+ if (!res.ok) {
  triggerError(body.error || 'Failed to create user — the server rejected this request.');
  return;
  }
- const updated = { ...db, users: [...db.users, newUser as any] };
- onUpdateDb(updated);
+ await onRefreshDb?.();
+ if (body.droppedRoles?.length) {
+ // See the matching comment in the edit-user branch above — a dropped role means
+ // this account has fewer permissions than what was actually requested.
+ triggerError('Account created, but not all roles were assigned: ' + body.droppedRoles.map((d: any) => d.reason).join(' '));
+ } else {
  triggerSuccess('Account created successfully.');
+ }
  } catch (err) {
  triggerError('Failed to save to database');
  return;
@@ -1923,42 +2004,50 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  setIsAddingUser(false);
  setUserForm({
  username: '',
+ email: '',
  password: '',
  role: 'user',
  companyId: db.selectedCompanyId,
  roleIds: [],
   });
  };
- const handleToggleUserActive = (userId: string) => {
+ const handleToggleUserActive = async (userId: string) => {
  if (db.currentUser && userId === db.currentUser.id) {
- return triggerError('You cannot deactivate your own active session!');
+ return triggerError(t('You cannot deactivate your own active session!'));
  }
  const targetUser = db.users.find(u => u.id === userId);
  if (targetUser?.isSuperAdmin) {
- return triggerError('Super Admin accounts cannot be deactivated!');
+ return triggerError(t('Super Admin accounts cannot be deactivated!'));
  }
- const updatedUsers = db.users.map(u => {
- if (u.id === userId) {
- const newStatus = u.isActive !== false ? false : true;
- triggerSuccess(`User "${u.username}" is now ${newStatus ? 'active' : 'deactivated'}.`);
- return { ...u, isActive: newStatus };
- }
- return u;
+ const newStatus = targetUser?.isActive !== false ? false : true;
+
+ try {
+ const res = await fetch(`/api/users/${userId}/active`, {
+ method: 'PATCH',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ isActive: newStatus })
  });
- const updated = { ...db, users: updatedUsers };
- 
- onUpdateDb(updated);
+ if (!res.ok) {
+ const body = await res.json().catch(() => ({}));
+ triggerError(body.error || t('Failed to update user status — the server rejected this request.'));
+ return;
+ }
+ await onRefreshDb?.();
+ triggerSuccess(`${t('User')} "${targetUser?.username}" ${newStatus ? t('is now active.') : t('is now deactivated.')}`);
+ } catch (err) {
+ triggerError(t('Failed to update user status — check your connection and try again.'));
+ }
  };
 
  const handleDeleteUser = (userId: string) => {
-  if (!window.confirm('Are you sure you want to delete this user?')) return;
+  if (!window.confirm(t('Are you sure you want to delete this user?'))) return;
   if (db.currentUser && userId === db.currentUser.id) {
- return triggerError('You cannot delete your own active session!');
+ return triggerError(t('You cannot delete your own active session!'));
  }
  const userToDelete = db.users.find(u => u.id === userId);
  if (!userToDelete) return;
  if (userToDelete.isSuperAdmin) {
- return triggerError('Super Admin accounts cannot be deleted!');
+ return triggerError(t('Super Admin accounts cannot be deleted!'));
  }
 
  setConfirmDeleteUserId(userId);
@@ -1980,21 +2069,20 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  const res = await fetch(`/api/users/${confirmDeleteUserId}`, { method: 'DELETE' });
  if (!res.ok) {
  const body = await res.json().catch(() => ({}));
- triggerError(body.error || 'Failed to delete user — the server rejected this request.');
+ triggerError(body.error || t('Failed to delete user — the server rejected this request.'));
  setConfirmDeleteUserId(null);
  return;
  }
  } catch (err) {
- triggerError('Failed to delete user — check your connection and try again.');
+ triggerError(t('Failed to delete user — check your connection and try again.'));
  setConfirmDeleteUserId(null);
  return;
  }
 
- const updatedUsers = db.users.map(u => u.id === confirmDeleteUserId ? { ...u, isDeleted: 1 } : u);
- const updated = { ...db, users: updatedUsers };
-
- onUpdateDb(updated);
- triggerSuccess(`User "${userToDelete.username}" has been deleted.`);
+ // DELETE /api/users/:id already persisted isDeleted:1 server-side — refetch instead
+ // of hand-setting the flag locally and pushing the whole db blob through /api/migrate.
+ await onRefreshDb?.();
+ triggerSuccess(`${t('User')} "${userToDelete.username}" ${t('has been deleted.')}`);
  setConfirmDeleteUserId(null);
  };
 
@@ -2019,66 +2107,82 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  description: ''
  });
 
- const handleAddInvestor = (e: React.FormEvent) => {
+ const handleAddInvestor = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!investorForm.name.trim()) return triggerError('Investor name is required.');
- 
+
  const pct = parseFloat(investorForm.equityPercentage) || 0;
  if (pct < 0 || pct > 100) return triggerError('Equity percentage must be between 0 and 100.');
 
  const profitPct = investorForm.profitPercentage !== '' ? parseFloat(investorForm.profitPercentage) : pct;
  if (isNaN(profitPct) || profitPct < 0 || profitPct > 100) return triggerError('Profit percentage must be between 0 and 100.');
 
- const newInvsData: Omit<Investor, 'id' | 'capitalContributed' | 'createdAt'> = {
+ // id/capitalContributed/createdAt were previously generated inside dbStore.ts's
+ // saveInvestor — that function is no longer called (it only ran locally, never
+ // persisted server-side), so the same defaults are generated here before POSTing.
+ const newInvestor: Omit<Investor, 'companyId'> & { companyId: string } = {
+ id: generateId(),
  name: investorForm.name.trim(),
  email: investorForm.email.trim(),
  phone: investorForm.phone.trim(),
  equityPercentage: pct,
  profitPercentage: profitPct,
+ capitalContributed: 0,
  isActive: true,
  notes: investorForm.notes.trim() || undefined,
+ createdAt: new Date().toISOString(),
  companyId: db.selectedCompanyId
  };
 
- const result = saveInvestor(db, newInvsData);
- if (result.error) {
- triggerError(result.error);
- } else {
- triggerSuccess(`Investor "${newInvsData.name}" registered successfully.`);
- onUpdateDb(result.db);
- setInvestorForm({
- name: '',
- email: '',
- phone: '',
- equityPercentage: '',
- profitPercentage: '',
- notes: '',
- companyId: db.selectedCompanyId
- });
+ try {
+   const res = await fetch('/api/transactions/investors', {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+     body: JSON.stringify(newInvestor)
+   });
+   const data = await res.json().catch(() => ({}));
+   if (!res.ok || data.error) return triggerError(data.error || 'Failed to register investor.');
+   triggerSuccess(`Investor "${newInvestor.name}" registered successfully.`);
+   setInvestorForm({
+     name: '',
+     email: '',
+     phone: '',
+     equityPercentage: '',
+     profitPercentage: '',
+     notes: '',
+     companyId: db.selectedCompanyId
+   });
+   if (onRefreshDb) await onRefreshDb();
+ } catch (err: any) {
+   triggerError(err.message || 'Failed to register investor.');
  }
  };
 
- const handleAddInvestment = (e: React.FormEvent) => {
+ const handleAddInvestment = async (e: React.FormEvent) => {
  e.preventDefault();
  const amountNum = parseFloat(investmentForm.amount);
  if (isNaN(amountNum) || amountNum <= 0) return triggerError('Please enter a valid contribution amount.');
  if (!investmentForm.investorId) return triggerError('Please select an investor.');
  if (!investmentForm.bankId) return triggerError('Please select a target bank account.');
 
- const result = saveCapitalInvestment(
- db,
- investmentForm.investorId,
- investmentForm.bankId,
- amountNum,
- investmentForm.date,
- investmentForm.description || 'Equity capital injection'
- );
-
- if (result.error) {
- triggerError(result.error);
- } else {
+ try {
+ const res = await fetch(`/api/transactions/investors/${investmentForm.investorId}/investment`, {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({
+ bankId: investmentForm.bankId,
+ amount: amountNum,
+ date: investmentForm.date,
+ description: investmentForm.description || 'Equity capital injection'
+ })
+ });
+ if (!res.ok) {
+ const body = await res.json().catch(() => ({}));
+ triggerError(body.error || 'Failed to record investment — the server rejected this request.');
+ return;
+ }
  triggerSuccess(`Successfully recorded investment of ${currencySymbol} ${amountNum.toFixed(2)}.`);
- onUpdateDb(result.db);
+ await onRefreshDb?.();
  setInvestmentForm({
  investorId: '',
  bankId: '',
@@ -2086,6 +2190,8 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  date: new Date().toISOString().split('T')[0],
  description: ''
  });
+ } catch (err) {
+ triggerError('Failed to record investment — check your connection and try again.');
  }
  };
 
@@ -2160,15 +2266,15 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
     <div className="border-b border-slate-200/80 bg-slate-50/90 p-3.5 px-6 space-y-3">
       {/* Category Level Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-        {CATEGORY_GROUPS.map((cat) => {
+        {CATEGORY_GROUPS.filter(cat => cat.subTabs.some(st => isTabVisible(st))).map((cat) => {
           const isCatActive = cat.subTabs.some(st => st.id === activeTab);
           const IconComp = cat.icon;
-          
+
           return (
             <button
               key={cat.id}
               onClick={() => {
-                const available = cat.subTabs.find(st => !st.superAdminOnly || db.currentUser?.isSuperAdmin);
+                const available = cat.subTabs.find(st => isTabVisible(st));
                 if (available) setActiveTab(available.id as any);
               }}
               className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2.5 shrink-0 transition-all cursor-pointer border ${
@@ -2187,7 +2293,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
       {/* Sub-Tabs Bar for Active Category */}
       <div className="flex items-center gap-2 pt-2 border-t border-slate-200/60 flex-wrap">
         {activeCatGroup?.subTabs
-          .filter(st => !st.superAdminOnly || db.currentUser?.isSuperAdmin)
+          .filter(st => isTabVisible(st))
           .map(st => {
             const isSubActive = activeTab === st.id;
             const SubIcon = st.icon;
@@ -2203,11 +2309,6 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
               >
                 <SubIcon className={`w-3.5 h-3.5 ${isSubActive ? 'text-indigo-400' : 'text-slate-400'}`} />
                 <span>{t(st.label)}</span>
-                {st.id === 'company' && (
-                  <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${db.companySetup?.isInventoryModuleEnabled ? 'bg-emerald-500/20 text-emerald-600' : 'bg-slate-200 text-slate-500'}`}>
-                    {db.companySetup?.isInventoryModuleEnabled ? 'ON' : 'OFF'}
-                  </span>
-                )}
               </button>
             );
           })}
@@ -2219,67 +2320,40 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
     {/* Sidebar Nav */}
     {!useSleekLayout && (
       <div className="bg-slate-50/50 border-e border-slate-200/80 p-5 space-y-6">
-        {/* GLOBAL SETTINGS */}
-        <div className="space-y-1.5">
-          <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest px-3 mb-2">Global Settings</p>
-          {db.currentUser?.isSuperAdmin && (
-            <button onClick={() => setActiveTab('companies')} className={`w-full text-start px-3.5 py-2.5 text-xs font-bold rounded-2xl flex items-center gap-2.5 transition-all duration-150 ${activeTab === 'companies' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10' : 'text-slate-600 hover:bg-slate-100/60'}`}>
-              <Building className="w-4 h-4 shrink-0 text-indigo-500" /> Manage Companies
-            </button>
-          )}
-          <button onClick={() => setActiveTab('company')} className={`w-full text-start px-3.5 py-2.5 text-xs font-bold rounded-2xl flex items-center justify-between transition-all duration-150 ${activeTab === 'company' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10' : 'text-slate-600 hover:bg-slate-100/60'}`}>
-            <span className="flex items-center gap-2.5">
-              <Settings className="w-4 h-4 shrink-0 text-amber-500" /> Company Setup
-            </span>
-            <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider ${db.companySetup?.isInventoryModuleEnabled ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-500/10 text-slate-400'}`}>
-              {db.companySetup?.isInventoryModuleEnabled ? '📦 ON' : 'OFF'}
-            </span>
-          </button>
-          <button onClick={() => setActiveTab('users')} className={`w-full text-start px-3.5 py-2.5 text-xs font-bold rounded-2xl flex items-center gap-2.5 transition-all duration-150 ${activeTab === 'users' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10' : 'text-slate-600 hover:bg-slate-100/60'}`}>
-            <UserCheck className="w-4 h-4 shrink-0" /> Staff Permissions
-          </button>
-          <button onClick={() => setActiveTab('database')} className={`w-full text-start px-3.5 py-2.5 text-xs font-bold rounded-2xl flex items-center gap-2.5 transition-all duration-150 ${activeTab === 'database' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10' : 'text-slate-600 hover:bg-slate-100/60'}`}>
-            <Database className="w-4 h-4 shrink-0 text-emerald-500" /> Database Backup & Sync
-          </button>
-          {db.currentUser?.isSuperAdmin && (
-            <button onClick={() => setActiveTab('translations')} className={`w-full text-start px-3.5 py-2.5 text-xs font-bold rounded-2xl flex items-center gap-2.5 transition-all duration-150 ${activeTab === 'translations' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10' : 'text-slate-600 hover:bg-slate-100/60'}`}>
-              <Languages className="w-4 h-4 shrink-0 text-fuchsia-500" /> Translations
-            </button>
-          )}
-        </div>
-
-        {/* FINANCE MODULE */}
-        <div className="space-y-1.5">
-          <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest px-3 mb-2">Finance Module</p>
-          <button onClick={() => setActiveTab('banks')} className={`w-full text-start px-3.5 py-2.5 text-xs font-bold rounded-2xl flex items-center gap-2.5 transition-all duration-150 ${activeTab === 'banks' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10' : 'text-slate-600 hover:bg-slate-100/60'}`}>
-            <Wallet className="w-4 h-4 shrink-0 text-blue-500" /> Bank Accounts
-          </button>
-          <button onClick={() => setActiveTab('taxes')} className={`w-full text-start px-3.5 py-2.5 text-xs font-bold rounded-2xl flex items-center gap-2.5 transition-all duration-150 ${activeTab === 'taxes' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10' : 'text-slate-600 hover:bg-slate-100/60'}`}>
-            <Percent className="w-4 h-4 shrink-0 text-violet-500" /> Tax Slabs
-          </button>
-          <button onClick={() => setActiveTab('months')} className={`w-full text-start px-3.5 py-2.5 text-xs font-bold rounded-2xl flex items-center gap-2.5 transition-all duration-150 ${activeTab === 'months' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10' : 'text-slate-600 hover:bg-slate-100/60'}`}>
-            <Calendar className="w-4 h-4 shrink-0 text-orange-500" /> Month Opening / Closing
-          </button>
-          <button onClick={() => setActiveTab('equity')} className={`w-full text-start px-3.5 py-2.5 text-xs font-bold rounded-2xl flex items-center gap-2.5 transition-all duration-150 ${activeTab === 'equity' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10' : 'text-slate-600 hover:bg-slate-100/60'}`}>
-            <Coins className="w-4 h-4 shrink-0 text-amber-500" /> Capital & Equity
-          </button>
-        </div>
-
-        {/* SALES MODULE */}
-        <div className="space-y-1.5">
-          <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest px-3 mb-2">Sales Module</p>
-          <button onClick={() => setActiveTab('templates')} className={`w-full text-start px-3.5 py-2.5 text-xs font-bold rounded-2xl flex items-center gap-2.5 transition-all duration-150 ${activeTab === 'templates' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10' : 'text-slate-600 hover:bg-slate-100/60'}`}>
-            <FileSpreadsheet className="w-4 h-4 shrink-0 text-emerald-500" /> Document Templates
-          </button>
-        </div>
-
-        {/* POS MODULE */}
-        <div className="space-y-1.5">
-          <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest px-3 mb-2">POS Module</p>
-          <button onClick={() => setActiveTab('pos')} className={`w-full text-start px-3.5 py-2.5 text-xs font-bold rounded-2xl flex items-center gap-2.5 transition-all duration-150 ${activeTab === 'pos' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10' : 'text-slate-600 hover:bg-slate-100/60'}`}>
-            <ShoppingCart className="w-4 h-4 shrink-0 text-pink-500" /> POS Settings
-          </button>
-        </div>
+        {/* Renders from the SAME CATEGORY_GROUPS source of truth the Sleek Hub layout
+            uses above, instead of a second hand-maintained copy of every tab's id/
+            label/grouping — that duplication is exactly how this layout ended up with
+            zero t() translation wiring (every label here was a raw hardcoded string)
+            AND silently missing two entire tabs ('zatca' and 'roles' had no button in
+            this layout at all, so a Classic-Sidebar admin had no way to reach ZATCA
+            settings or Roles/RBAC unless activeTab already happened to be on one of
+            them from elsewhere). One source of truth now — this layout can't drift
+            from Sleek Hub's tab list again. */}
+        {CATEGORY_GROUPS.map(cat => {
+          const visibleSubTabs = cat.subTabs.filter(st => isTabVisible(st));
+          if (visibleSubTabs.length === 0) return null;
+          return (
+            <div key={cat.id} className="space-y-1.5">
+              <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest px-3 mb-2">{t(cat.label)}</p>
+              {visibleSubTabs.map(st => {
+                const SubIcon = st.icon;
+                const isActive = activeTab === st.id;
+                return (
+                  <button
+                    key={st.id}
+                    onClick={() => setActiveTab(st.id as any)}
+                    className={`w-full text-start px-3.5 py-2.5 text-xs font-bold rounded-2xl flex items-center justify-between transition-all duration-150 ${isActive ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/10' : 'text-slate-600 hover:bg-slate-100/60'}`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <SubIcon className={`w-4 h-4 shrink-0 ${isActive ? '' : CLASSIC_SIDEBAR_ICON_COLOR[st.id] || 'text-slate-400'}`} />
+                      {t(st.label)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
     )}
 
@@ -2288,7 +2362,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  
  {/* TAB: ZATCA E-INVOICING PHASE 2 */}
  {activeTab === 'zatca' && (
-   <ZatcaOnboardingWizard db={db} onUpdateDb={onUpdateDb} />
+   <ZatcaOnboardingWizard db={db} />
  )}
 
  {/* TAB: COMPANIES */}
@@ -2361,25 +2435,6 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
  <div className="flex items-center justify-between border-t border-slate-100/50 pt-1.5 mt-1.5">
    <span className="text-slate-400 flex items-center gap-1">
-     <span>📦</span> Inventory Module:
-   </span>
-   <div className="flex items-center gap-2">
-     <span className={`font-mono text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${company.isInventoryModuleEnabled ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-400'}`}>
-       {company.isInventoryModuleEnabled ? 'Enabled' : 'Disabled'}
-     </span>
-     <label className="relative inline-flex items-center cursor-pointer scale-75 origin-right">
-       <input 
-         type="checkbox" 
-         checked={company.isInventoryModuleEnabled || false} 
-         onChange={(e) => handleToggleCompanyInventory(company.id, e.target.checked)}
-         className="sr-only peer" 
-       />
-       <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
-     </label>
-   </div>
- </div>
- <div className="flex items-center justify-between border-t border-slate-100/50 pt-1.5 mt-1.5">
-   <span className="text-slate-400 flex items-center gap-1">
      <span>🛡️</span> ZATCA Integration:
    </span>
    <div className="flex items-center gap-2">
@@ -2415,10 +2470,13 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  ) : (
  <button
  onClick={() => {
- const updatedDb = { ...db, selectedCompanyId: company.id!, companySetup: company };
+ // Purely a local "which company am I viewing" switch — same as the sidebar/header
+ // company switchers in App.tsx (Phase 0 fix) — nothing changed that needs
+ // persisting, so no sync at all, not even the local-only variant's setState-only
+ // effect needs to be framed as a "sync."
  applyTheme(company.themeId || 'classic-executive');
- 
- onUpdateDb(updatedDb);
+
+ onUpdateDbLocal(prev => ({ ...prev, selectedCompanyId: company.id!, companySetup: company }));
  triggerSuccess(`Switched active workspace to "${company.name}"`);
  }}
  className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 :text-indigo-300 transition-colors"
@@ -2513,63 +2571,50 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
 
  <div className="p-3.5 rounded-2xl bg-slate-100/50 border border-slate-200/60 space-y-3">
-   <div className="flex items-center justify-between">
-     <div className="space-y-0.5">
-       <span className="text-[11px] font-bold text-slate-700">Enable Inventory & Procurement</span>
-       <p className="text-[9px] text-slate-400">Activate stock registries, PO, GRN workflows.</p>
-     </div>
-     <label className="relative inline-flex items-center cursor-pointer">
-       <input 
-         type="checkbox" 
-         checked={newCompany.isInventoryModuleEnabled || false} 
-         onChange={(e) => setNewCompany({ ...newCompany, isInventoryModuleEnabled: e.target.checked })}
-         className="sr-only peer" 
-       />
-       <div className="w-8 h-4.5 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-indigo-600"></div>
-     </label>
+   <div className="space-y-0.5">
+     <span className="text-[11px] font-bold text-slate-700">Inventory & Procurement</span>
+     <p className="text-[9px] text-slate-400">Stock registries, PO, and GRN workflows are always available — access is controlled per-role in Roles, not by a company switch.</p>
    </div>
 
-   {newCompany.isInventoryModuleEnabled && (
-     <div className="space-y-2 pt-2 border-t border-slate-200/60">
-       <div className="space-y-1">
-         <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">PR Workflow</label>
-         <select
-           value={newCompany.inventorySettings?.prOptionality || 'OPTIONAL'}
+   <div className="space-y-2 pt-2 border-t border-slate-200/60">
+     <div className="space-y-1">
+       <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">PR Workflow</label>
+       <select
+         value={newCompany.inventorySettings?.prOptionality || 'OPTIONAL'}
+         onChange={(e) => setNewCompany({
+           ...newCompany,
+           inventorySettings: {
+             prOptionality: e.target.value as any,
+             isDsdAllowed: newCompany.inventorySettings?.isDsdAllowed ?? true
+           }
+         })}
+         className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-[11px] text-slate-800 focus:outline-none"
+       >
+         <option value="MANDATORY">Mandatory PR</option>
+         <option value="OPTIONAL">Optional PR</option>
+         <option value="BYPASSED">Bypassed PR</option>
+       </select>
+     </div>
+
+     <div className="flex items-center justify-between mt-1">
+       <span className="text-[10px] text-slate-500 font-medium">Allow Direct Shop Delivery (DSD)</span>
+       <label className="relative inline-flex items-center cursor-pointer scale-90">
+         <input
+           type="checkbox"
+           checked={newCompany.inventorySettings?.isDsdAllowed ?? true}
            onChange={(e) => setNewCompany({
              ...newCompany,
              inventorySettings: {
-               prOptionality: e.target.value as any,
-               isDsdAllowed: newCompany.inventorySettings?.isDsdAllowed ?? true
+               prOptionality: newCompany.inventorySettings?.prOptionality || 'OPTIONAL',
+               isDsdAllowed: e.target.checked
              }
            })}
-           className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-[11px] text-slate-800 focus:outline-none"
-         >
-           <option value="MANDATORY">Mandatory PR</option>
-           <option value="OPTIONAL">Optional PR</option>
-           <option value="BYPASSED">Bypassed PR</option>
-         </select>
-       </div>
-
-       <div className="flex items-center justify-between mt-1">
-         <span className="text-[10px] text-slate-500 font-medium">Allow Direct Shop Delivery (DSD)</span>
-         <label className="relative inline-flex items-center cursor-pointer scale-90">
-           <input 
-             type="checkbox" 
-             checked={newCompany.inventorySettings?.isDsdAllowed ?? true} 
-             onChange={(e) => setNewCompany({
-               ...newCompany,
-               inventorySettings: {
-                 prOptionality: newCompany.inventorySettings?.prOptionality || 'OPTIONAL',
-                 isDsdAllowed: e.target.checked
-               }
-             })}
-             className="sr-only peer" 
-           />
-           <div className="w-8 h-4.5 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-indigo-600"></div>
-         </label>
-       </div>
+           className="sr-only peer"
+         />
+         <div className="w-8 h-4.5 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-indigo-600"></div>
+       </label>
      </div>
-   )}
+   </div>
  </div>
 
  <div className="space-y-1.5 border-t border-slate-200 pt-3">
@@ -2633,9 +2678,9 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
               <div className="space-y-4">
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input type="checkbox" checked={(db.companies?.find(c => c.id === (db.selectedCompanyId))!).posSettings?.autoPrint ?? true} onChange={e => {
-                    const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId);
-                    const newComp = {...activeCompany, posSettings: {...(activeCompany.posSettings || {}), autoPrint: e.target.checked, maxImageSizeKB: activeCompany.posSettings?.maxImageSizeKB || 500}};
-                    handleCompanySave(newComp);
+                    const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId)!;
+                    const newPosSettings = {...(activeCompany.posSettings || {}), autoPrint: e.target.checked, maxImageSizeKB: activeCompany.posSettings?.maxImageSizeKB || 500};
+                    handlePosSettingsChange(activeCompany.id, newPosSettings);
                   }} className="w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
                   <div>
                     <div className="text-sm font-bold text-slate-800">Auto-Print Receipts</div>
@@ -2646,9 +2691,9 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 <div>
                   <label className="block text-sm font-bold text-slate-800 mb-2">Max POS Product Image Size (KB)</label>
                   <input type="number" min="100" max="5000" value={(db.companies?.find(c => c.id === (db.selectedCompanyId))!).posSettings?.maxImageSizeKB || 500} onChange={e => {
-                    const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId);
-                    const newComp = {...activeCompany, posSettings: {...(activeCompany.posSettings || {}), maxImageSizeKB: parseInt(e.target.value) || 500, autoPrint: activeCompany.posSettings?.autoPrint ?? true}};
-                    handleCompanySave(newComp);
+                    const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId)!;
+                    const newPosSettings = {...(activeCompany.posSettings || {}), maxImageSizeKB: parseInt(e.target.value) || 500, autoPrint: activeCompany.posSettings?.autoPrint ?? true};
+                    handlePosSettingsChange(activeCompany.id, newPosSettings);
                   }} className="w-full max-w-xs bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-600" />
                   <p className="text-xs text-slate-500 mt-1">Recommended: 500KB to keep the database small.</p>
                 </div>
@@ -2656,9 +2701,9 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 <div>
                   <label className="block text-sm font-bold text-slate-800 mb-2">Max Image Dimensions (pixels)</label>
                   <input type="number" min="100" max="2000" value={(db.companies?.find(c => c.id === (db.selectedCompanyId))!).posSettings?.maxImageDimensions || 800} onChange={e => {
-                    const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId);
-                    const newComp = {...activeCompany, posSettings: {...(activeCompany.posSettings || {}), maxImageDimensions: parseInt(e.target.value) || 800, autoPrint: activeCompany.posSettings?.autoPrint ?? true, maxImageSizeKB: activeCompany.posSettings?.maxImageSizeKB || 500}};
-                    handleCompanySave(newComp);
+                    const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId)!;
+                    const newPosSettings = {...(activeCompany.posSettings || {}), maxImageDimensions: parseInt(e.target.value) || 800, autoPrint: activeCompany.posSettings?.autoPrint ?? true, maxImageSizeKB: activeCompany.posSettings?.maxImageSizeKB || 500};
+                    handlePosSettingsChange(activeCompany.id, newPosSettings);
                   }} className="w-full max-w-xs bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-600" />
                   <p className="text-xs text-slate-500 mt-1">Images larger than this (width/height) will be resized automatically.</p>
                 </div>
@@ -2810,6 +2855,17 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
 
  <div className="space-y-1.5">
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Commercial Registration Number (CR)</label>
+ <input
+ type="text"
+ placeholder="e.g. 1010000000"
+ value={companyForm.crNumber || ''}
+ onChange={(e) => setCompanyForm({ ...companyForm, crNumber: e.target.value })}
+ className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-2xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"
+ />
+ </div>
+
+ <div className="space-y-1.5">
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ERP Currency Symbol / Code</label>
  <input
  type="text"
@@ -2864,74 +2920,56 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
  <div className="col-span-2 border-t border-slate-100 pt-4 space-y-4">
    <div>
-     <h4 className="text-xs font-extrabold text-slate-800 tracking-tight uppercase">Enterprise Inventory & Purchasing Module (Optional)</h4>
-     <p className="text-[10px] text-slate-400 mt-0.5">Enable multi-warehouse, batch controls, and complete purchase procurement workflows (PR, PO, GRN, Bills, Stock Take, Debit Notes).</p>
+     <h4 className="text-xs font-extrabold text-slate-800 tracking-tight uppercase">Inventory & Purchasing Workflow</h4>
+     <p className="text-[10px] text-slate-400 mt-0.5">Stock registries, PR, PO, and GRN are always available to any role granted the matching permission in Roles — these settings only control the PR/PO/GRN workflow itself, not whether the module appears.</p>
    </div>
-   
+
    <div className="p-4 rounded-2xl bg-slate-50/50 border border-slate-100 space-y-4">
-     <div className="flex items-center justify-between">
-       <div className="space-y-0.5">
-         <span className="text-xs font-bold text-slate-800">Activate Inventory Module</span>
-         <p className="text-[10px] text-slate-400">Unlock stock registries, reorder alerts, and procurement tracking across the portal.</p>
+     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+       <div className="space-y-1.5">
+         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Purchase Requisition Workflow</label>
+         <select
+           value={companyForm.inventorySettings?.prOptionality || 'OPTIONAL'}
+           onChange={(e) => setCompanyForm({
+             ...companyForm,
+             inventorySettings: {
+               prOptionality: e.target.value as any,
+               isDsdAllowed: companyForm.inventorySettings?.isDsdAllowed ?? true
+             }
+           })}
+           className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-2xl px-3 py-2 text-xs text-slate-800 focus:outline-none transition-all duration-150"
+         >
+           <option value="MANDATORY">Mandatory PR (Requires Approval before PO)</option>
+           <option value="OPTIONAL">Optional PR (Can create PO standalone or from PR)</option>
+           <option value="BYPASSED">Bypassed PR (Disable PR, PO is the entry point)</option>
+         </select>
+         <p className="text-[9px] text-slate-400">Controls whether Purchase Requisitions must precede official Purchase Orders.</p>
        </div>
-       <label className="relative inline-flex items-center cursor-pointer">
-         <input 
-           type="checkbox" 
-           checked={companyForm.isInventoryModuleEnabled || false} 
-           onChange={(e) => setCompanyForm({ ...companyForm, isInventoryModuleEnabled: e.target.checked })}
-           className="sr-only peer" 
-         />
-         <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
-       </label>
-     </div>
 
-     {companyForm.isInventoryModuleEnabled && (
-       <div className="border-t border-slate-100 pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-         <div className="space-y-1.5">
-           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Purchase Requisition Workflow</label>
-           <select
-             value={companyForm.inventorySettings?.prOptionality || 'OPTIONAL'}
-             onChange={(e) => setCompanyForm({
-               ...companyForm,
-               inventorySettings: {
-                 prOptionality: e.target.value as any,
-                 isDsdAllowed: companyForm.inventorySettings?.isDsdAllowed ?? true
-               }
-             })}
-             className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-2xl px-3 py-2 text-xs text-slate-800 focus:outline-none transition-all duration-150"
-           >
-             <option value="MANDATORY">Mandatory PR (Requires Approval before PO)</option>
-             <option value="OPTIONAL">Optional PR (Can create PO standalone or from PR)</option>
-             <option value="BYPASSED">Bypassed PR (Disable PR, PO is the entry point)</option>
-           </select>
-           <p className="text-[9px] text-slate-400">Controls whether Purchase Requisitions must precede official Purchase Orders.</p>
-         </div>
-
-         <div className="space-y-1.5 flex flex-col justify-between">
-           <div className="flex items-center justify-between mt-1">
-             <div className="space-y-0.5">
-               <span className="text-[11px] font-bold text-slate-700">Allow Direct Shop Delivery (DSD)</span>
-               <p className="text-[9px] text-slate-400">Permit suppliers to receive goods directly (GRN) without requiring a pre-approved PO.</p>
-             </div>
-             <label className="relative inline-flex items-center cursor-pointer">
-               <input 
-                 type="checkbox" 
-                 checked={companyForm.inventorySettings?.isDsdAllowed ?? true} 
-                 onChange={(e) => setCompanyForm({
-                   ...companyForm,
-                   inventorySettings: {
-                     prOptionality: companyForm.inventorySettings?.prOptionality || 'OPTIONAL',
-                     isDsdAllowed: e.target.checked
-                   }
-                 })}
-                 className="sr-only peer" 
-               />
-               <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
-             </label>
+       <div className="space-y-1.5 flex flex-col justify-between">
+         <div className="flex items-center justify-between mt-1">
+           <div className="space-y-0.5">
+             <span className="text-[11px] font-bold text-slate-700">Allow Direct Shop Delivery (DSD)</span>
+             <p className="text-[9px] text-slate-400">Permit suppliers to receive goods directly (GRN) without requiring a pre-approved PO.</p>
            </div>
+           <label className="relative inline-flex items-center cursor-pointer">
+             <input
+               type="checkbox"
+               checked={companyForm.inventorySettings?.isDsdAllowed ?? true}
+               onChange={(e) => setCompanyForm({
+                 ...companyForm,
+                 inventorySettings: {
+                   prOptionality: companyForm.inventorySettings?.prOptionality || 'OPTIONAL',
+                   isDsdAllowed: e.target.checked
+                 }
+               })}
+               className="sr-only peer"
+             />
+             <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+           </label>
          </div>
        </div>
-     )}
+     </div>
    </div>
  </div>
 
@@ -3020,32 +3058,34 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <div className="flex justify-between items-start">
  <div>
  <p className="font-bold text-xs text-slate-900">{b.bankName}</p>
- <p className="text-[10px] text-slate-400 mt-0.5">Account Title: {b.accountTitle}</p>
- <p className="text-[10px] text-slate-400 font-mono mt-0.5">No: {b.accountNumber}</p>
+ <p className="text-[10px] text-slate-400 mt-0.5">{t('Account Title:')} {b.accountTitle}</p>
+ <p className="text-[10px] text-slate-400 font-mono mt-0.5">{t('No:')} {b.accountNumber}</p>
  </div>
  <div className="flex gap-1.5">
  {b.isDefault && (
  <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 font-bold rounded text-[9px] uppercase">
- Default
+ {t('Default')}
  </span>
  )}
  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${b.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-400'}`}>
- {b.isActive ? 'Active' : 'Inactive'}
+ {b.isActive ? t('Active') : t('Inactive')}
  </span>
  </div>
  </div>
 
  <div className="mt-3">
- <span className="text-[10px] text-slate-400 uppercase font-semibold">Running Balance</span>
+ <span className="text-[10px] text-slate-400 uppercase font-semibold">{t('Running Balance')}</span>
  <p className={`text-base font-black ${balance < 0 ? 'text-rose-600' : 'text-slate-800'}`}>
  {currencySymbol} {balance.toFixed(2)}
- {balance < 0 && <span className="text-[9px] text-rose-500 font-semibold ms-1.5 uppercase tracking-wide">Negative</span>}
+ {balance < 0 && <span className="text-[9px] text-rose-500 font-semibold ms-1.5 uppercase tracking-wide">{t('Negative')}</span>}
  </p>
  </div>
  </div>
 
  {/* Actions */}
  <div className="mt-4 pt-3 border-t border-slate-100/60 flex justify-end gap-2 items-center">
+ {canUpdateBanks && (
+ <>
  <button
  type="button"
  onClick={() => {
@@ -3064,26 +3104,30 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  }}
  className="text-[10px] font-bold text-slate-500 hover:text-indigo-600 transition"
  >
- Edit
+ {t('Edit')}
  </button>
  <span className="text-slate-200 text-xs font-light">|</span>
- {!b.isDefault && b.isActive && (
+ </>
+ )}
+ {canUpdateBanks && !b.isDefault && b.isActive && (
  <>
  <button
  onClick={() => handleSetDefaultBank(b.id)}
  className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800"
  >
- Set Default
+ {t('Set Default')}
  </button>
  <span className="text-slate-200 text-xs font-light">|</span>
  </>
  )}
+ {canDeleteBanks && (
  <button
  onClick={() => handleToggleBankActive(b.id)}
  className={`text-[10px] font-bold ${b.isActive ? 'text-rose-500 hover:text-rose-700' : 'text-emerald-500 hover:text-emerald-700'}`}
  >
- {b.isActive ? 'Deactivate' : 'Activate'}
+ {b.isActive ? t('Deactivate') : t('Activate')}
  </button>
+ )}
  </div>
  </div>
  );
@@ -3092,46 +3136,47 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
 
  {/* Add Bank Form */}
+ {(editingBankId ? canUpdateBanks : canCreateBanks) && (
  <div id="bank-form-section" className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3">
- {editingBankId ? 'Edit Bank Account Details' : 'Add New Bank Account'}
+ {editingBankId ? t('Edit Bank Account Details') : t('Add New Bank Account')}
  </h4>
  <form onSubmit={handleAddBank} className="grid grid-cols-2 gap-3.5">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Bank Name</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Bank Name')}</label>
  <input
  type="text"
  required
- placeholder="e.g. Riyad Bank, Al Rajhi"
+ placeholder={t('e.g. Riyad Bank, Al Rajhi')}
  value={bankForm.bankName}
  onChange={(e) => setBankForm({ ...bankForm, bankName: e.target.value })}
  className="w-full bg-white border border-slate-200 rounded-2xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
  />
  </div>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Account Title</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Account Title')}</label>
  <input
  type="text"
  required
- placeholder="e.g. CNC Woodcraft LLC"
+ placeholder={t('e.g. CNC Woodcraft LLC')}
  value={bankForm.accountTitle}
  onChange={(e) => setBankForm({ ...bankForm, accountTitle: e.target.value })}
  className="w-full bg-white border border-slate-200 rounded-2xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
  />
  </div>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Account Number / IBAN</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Account Number / IBAN')}</label>
  <input
  type="text"
  required
- placeholder="SA..."
+ placeholder={t('SA...')}
  value={bankForm.accountNumber}
  onChange={(e) => setBankForm({ ...bankForm, accountNumber: e.target.value })}
  className="w-full bg-white border border-slate-200 rounded-2xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
  />
  </div>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Opening Balance</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Opening Balance')}</label>
  <input
  type="number"
  required
@@ -3149,7 +3194,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  onChange={(e) => setBankForm({ ...bankForm, isDefault: e.target.checked })}
  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
  />
- <span>Set as Global Default Bank</span>
+ <span>{t('Set as Global Default Bank')}</span>
  </label>
  </div>
  <div className="col-span-2 flex justify-end gap-2">
@@ -3169,7 +3214,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  }}
  className="bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-2xl px-3.5 py-1.5 text-xs font-bold transition shadow-sm"
  >
- Cancel Edit
+ {t('Cancel Edit')}
  </button>
  )}
  <button
@@ -3178,55 +3223,57 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  >
  {editingBankId ? (
  <>
- <Check className="w-3.5 h-3.5" /> Save Changes
+ <Check className="w-3.5 h-3.5" /> {t('Save Changes')}
  </>
  ) : (
  <>
- <Plus className="w-3.5 h-3.5" /> Add Account
+ <Plus className="w-3.5 h-3.5" /> {t('Add Account')}
  </>
  )}
  </button>
  </div>
  </form>
  </div>
+ )}
 
  {/* Inter-bank cash transfer */}
+ {canTransferBanks && (
  <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
  <div className="flex items-center gap-1.5 mb-3">
  <ArrowRightLeft className="w-4 h-4 text-slate-500" />
- <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Inter-Bank Funds Transfer</h4>
+ <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">{t('Inter-Bank Funds Transfer')}</h4>
  </div>
  <form onSubmit={handleInterBankTransfer} className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">From Account</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('From Account')}</label>
  <select
  required
  value={transferForm.sourceBankId}
  onChange={(e) => setTransferForm({ ...transferForm, sourceBankId: e.target.value })}
  className="w-full bg-white border border-slate-200 rounded-2xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
  >
- <option value="">Select source bank</option>
+ <option value="">{t('Select source bank')}</option>
  {db.banks.filter(b => b.isActive && (!b.companyId || b.companyId === db.selectedCompanyId)).map(b => (
  <option key={b.id} value={b.id}>{b.bankName} ({currencySymbol} {getBankBalance(db, b.id).toFixed(2)})</option>
  ))}
  </select>
  </div>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">To Account</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('To Account')}</label>
  <select
  required
  value={transferForm.destBankId}
  onChange={(e) => setTransferForm({ ...transferForm, destBankId: e.target.value })}
  className="w-full bg-white border border-slate-200 rounded-2xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
  >
- <option value="">Select dest bank</option>
+ <option value="">{t('Select dest bank')}</option>
  {db.banks.filter(b => b.isActive && (!b.companyId || b.companyId === db.selectedCompanyId)).map(b => (
  <option key={b.id} value={b.id}>{b.bankName} ({currencySymbol} {getBankBalance(db, b.id).toFixed(2)})</option>
  ))}
  </select>
  </div>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Amount ({currencySymbol})</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Amount')} ({currencySymbol})</label>
  <input
  type="number"
  required
@@ -3238,7 +3285,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  />
  </div>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Transfer Date</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Transfer Date')}</label>
  <input
  type="date"
  required
@@ -3248,10 +3295,10 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  />
  </div>
  <div className="md:col-span-3 space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Reason / Memo</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Reason / Memo')}</label>
  <input
  type="text"
- placeholder="e.g. Funding operations, balancing reserves"
+ placeholder={t('e.g. Funding operations, balancing reserves')}
  value={transferForm.description}
  onChange={(e) => setTransferForm({ ...transferForm, description: e.target.value })}
  className="w-full bg-white border border-slate-200 rounded-2xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -3262,11 +3309,12 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  type="submit"
  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl py-2 text-xs font-bold flex items-center justify-center gap-1 shadow-sm"
  >
- <ArrowRightLeft className="w-3.5 h-3.5" /> Transfer Funds
+ <ArrowRightLeft className="w-3.5 h-3.5" /> {t('Transfer Funds')}
  </button>
  </div>
  </form>
  </div>
+ )}
  </div>
  )}
 
@@ -3275,7 +3323,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <div className="space-y-6">
  <div>
  <h3 className="text-sm font-bold text-slate-900">{t('Tax Slab Configuration')}</h3>
- <p className="text-[11px] text-slate-400">Define percentages for document taxes. Standard values 0% and 15% are configured by default.</p>
+ <p className="text-[11px] text-slate-400">{t('Define percentages for document taxes. Standard values 0% and 15% are configured by default.')}</p>
  </div>
 
  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -3284,9 +3332,9 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <table className="w-full text-xs">
  <thead>
  <tr className="bg-slate-50 text-slate-500">
- <th className="p-3 text-start">Tax Description</th>
- <th className="p-3 text-end">Percentage Value</th>
- <th className="p-3 text-center">Default</th>
+ <th className="p-3 text-start">{t('Tax Description')}</th>
+ <th className="p-3 text-end">{t('Percentage Value')}</th>
+ <th className="p-3 text-center">{t('Default')}</th>
  </tr>
  </thead>
  <tbody>
@@ -3294,52 +3342,112 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
      rows) — this must filter to the active company, or every company sees and
      can toggle the default on every OTHER company's tax slabs too. */}
  {companyTaxSlabs.map((ts, idx) => (
- <tr key={ts.id} className="border-b border-slate-100">
+ <React.Fragment key={ts.id}>
+ <tr className={ts.percentage === 0 ? '' : 'border-b border-slate-100'}>
  <td className="p-3 font-semibold text-slate-800">{ts.name}</td>
  <td className="p-3 text-end font-mono font-bold text-indigo-600">{ts.percentage}%</td>
  <td className="p-3 text-center">
  {ts.isDefault ? (
  <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
- ⭐ Default
+ ⭐ {t('Default')}
  </span>
  ) : (
  // Shown for both this company's own slabs AND shared/legacy ones (companyId
  // null) — picking a shared one clones it into a company-owned default rather
  // than mutating the shared row (see handleSetDefaultTaxSlab), so every
  // company can independently pick its own default from the same starting list.
+ // Gated on taxSlabs.update (not .create) because PATCH /tax-slabs/:id/set-default
+ // checks taxSlabs.update server-side — matching the real route, not the label.
+ canUpdateTaxSlabs && (
  <button
  type="button"
  onClick={() => handleSetDefaultTaxSlab(ts.id)}
  className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline"
  >
- Set Default
+ {t('Set Default')}
  </button>
+ )
  )}
  </td>
  </tr>
+ {/* ZATCA requires a TaxExemptionReasonCode/Reason on any 0%-rate line whose slab
+     name contains "exempt" (server/lib/zatca/processInvoice.ts's resolveTaxCategoryCode
+     — 0% + name doesn't say "exempt" resolves to Zero-rated 'Z' instead, which has the
+     same requirement but isn't this UI's scope right now). No safe default exists (a
+     real VATEX-SA-xx legal classification varies per company), so this is an explicit,
+     optional admin action rather than something auto-filled. */}
+ {ts.percentage === 0 && canUpdateTaxSlabs && (
+ <tr className="border-b border-slate-100 bg-amber-50/40">
+ <td colSpan={3} className="px-3 pb-3">
+ {editingExemptionId === ts.id ? (
+ <div className="space-y-1.5 pt-1">
+ <div className="grid grid-cols-2 gap-1.5">
+ <input
+ type="text"
+ placeholder={t('VATEX-SA-xx code')}
+ value={exemptionForm.code}
+ onChange={e => setExemptionForm({ ...exemptionForm, code: e.target.value })}
+ className="text-[10px] border border-slate-200 rounded-lg px-2 py-1"
+ />
+ <input
+ type="text"
+ placeholder={t('Reason text')}
+ value={exemptionForm.reason}
+ onChange={e => setExemptionForm({ ...exemptionForm, reason: e.target.value })}
+ className="text-[10px] border border-slate-200 rounded-lg px-2 py-1"
+ />
+ </div>
+ <div className="flex gap-2">
+ <button type="button" onClick={() => handleSaveExemptionReason(ts.id)} className="text-[10px] font-bold text-emerald-700 hover:underline">{t('Save')}</button>
+ <button type="button" onClick={() => setEditingExemptionId(null)} className="text-[10px] font-bold text-slate-400 hover:underline">{t('Cancel')}</button>
+ </div>
+ </div>
+ ) : (
+ <div className="flex items-center justify-between">
+ <span className="text-[10px] text-amber-700">
+ {ts.exemptionReasonCode
+ ? <>{t('ZATCA Exemption Reason')}: <span className="font-mono font-bold">{ts.exemptionReasonCode}</span> — {ts.exemptionReason}</>
+ : t('No ZATCA exemption reason set — invoices using this slab will carry the BR-KSA-23 sandbox warning.')}
+ </span>
+ <button
+ type="button"
+ onClick={() => { setEditingExemptionId(ts.id); setExemptionForm({ code: ts.exemptionReasonCode || '', reason: ts.exemptionReason || '' }); }}
+ className="text-[10px] font-bold text-indigo-600 hover:underline shrink-0 ms-2"
+ >
+ {ts.exemptionReasonCode ? t('Edit') : t('Set Reason')}
+ </button>
+ </div>
+ )}
+ </td>
+ </tr>
+ )}
+ </React.Fragment>
  ))}
  </tbody>
  </table>
  </div>
 
- {/* Add Slab form */}
+ {/* Add Slab form — a new row, gated on taxSlabs.create. POST /tax-slabs now
+     branches create-vs-update by whether the submitted id already exists (see
+     server/routes/masterEntities.ts), matching every other CRUD module. */}
+ {canCreateTaxSlabs && (
  <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col justify-between">
  <div>
- <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3">Add Custom Tax Slab</h4>
+ <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3">{t('Add Custom Tax Slab')}</h4>
  <form onSubmit={handleAddTax} className="space-y-4">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Slab Title</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Slab Title')}</label>
  <input
  type="text"
  required
- placeholder="e.g. VAT (15%), Regional (5%)"
+ placeholder={t('e.g. VAT (15%), Regional (5%)')}
  value={taxForm.name}
  onChange={(e) => setTaxForm({ ...taxForm, name: e.target.value })}
  className="w-full bg-white border border-slate-200 rounded-2xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
  />
  </div>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Tax Percentage (%)</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Tax Percentage (%)')}</label>
  <input
  type="number"
  required
@@ -3357,19 +3465,20 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  onChange={(e) => setTaxForm({ ...taxForm, isDefault: e.target.checked })}
  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5"
  />
- <span>Set as default for this company{companyTaxSlabs.length === 0 ? ' (automatic — first slab)' : ''}</span>
+ <span>{t('Set as default for this company')}{companyTaxSlabs.length === 0 ? ` (${t('automatic — first slab')})` : ''}</span>
  </label>
  <div className="flex justify-end pt-1">
  <button
  type="submit"
  className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl px-4 py-1.5 text-xs font-bold flex items-center gap-1 shadow-sm"
  >
- <Plus className="w-3.5 h-3.5" /> Save Slab
+ <Plus className="w-3.5 h-3.5" /> {t('Save Slab')}
  </button>
  </div>
  </form>
  </div>
  </div>
+ )}
  </div>
  </div>
  )}
@@ -3386,6 +3495,24 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
      const activeBlocks = canvasBlocks.filter(b => b.visible !== false);
      const selectedBlock = canvasBlocks.find(b => b.id === selectedBlockId);
 
+     // Advisory-only row composition — the real renderer's CSS grid (grid-cols-12 +
+     // col-span-N) always wraps correctly on its own, so a row can never actually
+     // overflow/break; this purely simulates that same greedy wrap so an admin can see
+     // WHY a row looks uneven (e.g. a block landing alone on its own row because the
+     // remaining space in the row above wasn't enough for it) instead of guessing.
+     // Deliberately not a pass/fail warning — a row summing to less than 12 is often a
+     // perfectly intentional design (e.g. one block centered alone), not a mistake.
+     const canvasRows: { blocks: typeof activeBlocks; total: number }[] = [];
+     for (const block of activeBlocks) {
+      const currentRow = canvasRows[canvasRows.length - 1];
+      if (currentRow && currentRow.total + block.w <= 12) {
+       currentRow.blocks.push(block);
+       currentRow.total += block.w;
+      } else {
+       canvasRows.push({ blocks: [block], total: block.w });
+      }
+     }
+
      return (
       <div className="space-y-6">
        {/* Designer Header */}
@@ -3393,16 +3520,23 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
         <div>
          <div className="flex items-center gap-2">
           <span className="text-xl">🎨</span>
-          <h3 className="text-sm font-extrabold text-slate-900">Canvas Layout Designer: {tmpl.name}</h3>
+          <h3 className="text-sm font-extrabold text-slate-900">{t('Canvas Layout Designer:')} {tmpl.name}</h3>
           <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase ${
            (tmpl.language === 'Arabic' || tmpl.language === 'Urdu') ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'
           }`}>
            {tmpl.language}
           </span>
          </div>
-         <p className="text-[11px] text-slate-500 mt-1">Drag-and-drop elements to reorder. Adjust width spans. Configure properties to secure complete bilingual ZATCA compliance.</p>
+         <p className="text-[11px] text-slate-500 mt-1">{t('Drag-and-drop elements to reorder. Adjust width spans. Configure properties to secure complete bilingual ZATCA compliance.')}</p>
+         {/* Global Row Gap/Font Family below save to the server immediately on change;
+             everything here (width, order, block properties, add/hide) stays local until
+             "Save Layout Configuration" is clicked — surfaced explicitly since the two
+             behave differently with no other visual cue. */}
+         <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1 mt-2 inline-block">
+          ⚠️ {t('Layout changes below (position, width, block settings) only save when you click')} <strong>{t('Save Layout Configuration')}</strong>. {t('Global Row Gap/Font Family (right panel) save immediately.')}
+         </p>
         </div>
-        <div className="flex gap-2 text-xs self-stretch md:self-auto justify-end">
+        <div className="flex gap-2 text-xs self-stretch md:self-auto justify-end items-start">
          <button
           type="button"
           onClick={() => {
@@ -3414,28 +3548,31 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
           }}
           className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl font-bold transition flex items-center gap-1.5 shadow-sm"
          >
-          👁️ Live Print Preview
+          👁️ {t('Live Print Preview')}
          </button>
          <button
           type="button"
           onClick={handleResetLayout}
           className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold transition flex items-center gap-1"
          >
-          🔄 Reset Default ZATCA
+          🔄 {t('Reset Default ZATCA')}
          </button>
          <button
           type="button"
-          onClick={() => setDesigningTemplateId(null)}
+          onClick={handleCancelCanvasDesigner}
           className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl font-bold transition"
          >
-          Cancel
+          {t('Cancel')}
          </button>
          <button
           type="button"
           onClick={handleSaveCanvasLayout}
-          className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow transition flex items-center gap-1.5"
+          className={`px-4 py-1.5 rounded-xl font-bold shadow transition flex items-center gap-1.5 ${
+           hasUnsavedCanvasChanges ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-slate-200 text-slate-500'
+          }`}
          >
-          💾 Save Layout Configuration
+          💾 {t('Save Layout Configuration')}
+          {hasUnsavedCanvasChanges && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" title={t('Unsaved changes')} />}
          </button>
         </div>
        </div>
@@ -3448,18 +3585,18 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
          {selectedBlock ? (
           <div className="p-4 bg-white border border-indigo-200 shadow-sm rounded-2xl space-y-4 animate-fadeIn">
            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-            <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">Configure Block</span>
-            <button 
+            <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">{t('Configure Block')}</span>
+            <button
              type="button"
              onClick={() => setSelectedBlockId(null)}
              className="text-[10px] text-slate-400 hover:text-slate-600"
             >
-             ✕ Close
+             ✕ {t('Close')}
             </button>
            </div>
            <div>
             <h4 className="text-xs font-extrabold text-slate-800">{selectedBlock.title}</h4>
-            <p className="text-[9px] text-slate-400 mt-0.5">Block Key: {selectedBlock.id}</p>
+            <p className="text-[9px] text-slate-400 mt-0.5">{t('Block Key:')} {selectedBlock.id}</p>
            </div>
 
            {/* Customize Option Fields */}
@@ -3467,8 +3604,8 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
             {/* Width Buttons */}
             <div className="space-y-1">
              <div className="flex justify-between items-center">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Grid Column Span ({selectedBlock.w}/12)</label>
-              <span className="text-[9px] font-mono text-indigo-600 font-bold">{Math.round((selectedBlock.w / 12) * 100)}% Width</span>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t('Grid Column Span')} ({selectedBlock.w}/12)</label>
+              <span className="text-[9px] font-mono text-indigo-600 font-bold">{Math.round((selectedBlock.w / 12) * 100)}% {t('Width')}</span>
              </div>
              <div className="grid grid-cols-6 gap-1">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(width => (
@@ -3481,7 +3618,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                   ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                   : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                 }`}
-                title={`Span ${width} of 12 columns`}
+                title={`${t('Span')} ${width} ${t('of 12 columns')}`}
                >
                 {width}
                </button>
@@ -3495,12 +3632,12 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 rather than shown as a control that visibly does nothing. */}
             {selectedBlock.id !== 'items_table' && (
              <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Horizontal Alignment</label>
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t('Horizontal Alignment')}</label>
               <div className="grid grid-cols-3 gap-1">
                {[
-                { id: 'left', label: 'Left ⬅️' },
-                { id: 'center', label: 'Center ↔️' },
-                { id: 'right', label: 'Right ➡️' }
+                { id: 'left', label: `${t('Left')} ⬅️` },
+                { id: 'center', label: `${t('Center')} ↔️` },
+                { id: 'right', label: `${t('Right')} ➡️` }
                ].map(item => (
                 <button
                  key={item.id}
@@ -3522,7 +3659,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
             {/* Block specific properties */}
             {selectedBlock.id === 'company_details' && (
              <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200/80">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Seller Header Fields</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Seller Header Fields')}</span>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
                 type="checkbox"
@@ -3530,7 +3667,16 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'isBilingual', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Bilingual Seller Name</span>
+               <span>{t('Bilingual Seller Name')}</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+               <input
+                type="checkbox"
+                checked={selectedBlock.props?.compact === true}
+                onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'compact', e.target.checked)}
+                className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
+               />
+               <span>{t('Compact / Narrow Layout')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3539,7 +3685,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showVat', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Show Tax / VAT Reg #</span>
+               <span>{t('Show Tax / VAT Reg #')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3548,7 +3694,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showAddress', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Show Address</span>
+               <span>{t('Show Address')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3557,7 +3703,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showContact', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Show Phone & Email</span>
+               <span>{t('Show Phone & Email')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3566,14 +3712,14 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showBank', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Show IBAN / Bank Details</span>
+               <span>{t('Show IBAN / Bank Details')}</span>
               </label>
              </div>
             )}
 
             {selectedBlock.id === 'doc_details' && (
              <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200/80">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Document Header Fields</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Document Header Fields')}</span>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
                 type="checkbox"
@@ -3581,7 +3727,16 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'isBilingual', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Bilingual Document Titles</span>
+               <span>{t('Bilingual Document Titles')}</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+               <input
+                type="checkbox"
+                checked={selectedBlock.props?.compact === true}
+                onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'compact', e.target.checked)}
+                className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
+               />
+               <span>{t('Compact / Narrow Layout')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3590,7 +3745,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showDocNumber', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Document Number</span>
+               <span>{t('Document Number')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3599,7 +3754,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showDate', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Issue Date</span>
+               <span>{t('Issue Date')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3608,7 +3763,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showDueDate', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Due / Payment Date</span>
+               <span>{t('Due / Payment Date')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3617,7 +3772,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showPaymentStatus', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Payment Status Badge</span>
+               <span>{t('Payment Status Badge')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3626,7 +3781,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showOriginQ', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Origin Quotation Reference</span>
+               <span>{t('Origin Quotation Reference')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3635,14 +3790,14 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showCreatedBy', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Created By User</span>
+               <span>{t('Created By User')}</span>
               </label>
              </div>
             )}
 
             {selectedBlock.id === 'customer_info' && (
              <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200/80">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Customer Header Fields</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Customer Header Fields')}</span>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
                 type="checkbox"
@@ -3650,7 +3805,16 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'isBilingual', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Bilingual Client Label</span>
+               <span>{t('Bilingual Client Label')}</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+               <input
+                type="checkbox"
+                checked={selectedBlock.props?.compact === true}
+                onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'compact', e.target.checked)}
+                className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
+               />
+               <span>{t('Compact / Narrow Layout')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3659,7 +3823,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showName', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Customer / Vendor Name</span>
+               <span>{t('Customer / Vendor Name')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3668,7 +3832,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showAddress', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Show Physical Address</span>
+               <span>{t('Show Physical Address')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3677,7 +3841,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showContact', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Show Phone & Email</span>
+               <span>{t('Show Phone & Email')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3686,18 +3850,18 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showVatNumber', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Show Customer VAT / TRN #</span>
+               <span>{t('Show Customer VAT / TRN #')}</span>
               </label>
               <div className="space-y-1 pt-1">
-               <span className="text-[10px] font-bold text-slate-400 block uppercase">Box Frame Style</span>
+               <span className="text-[10px] font-bold text-slate-400 block uppercase">{t('Box Frame Style')}</span>
                <select
                 value={selectedBlock.props?.borderStyle || 'solid'}
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'borderStyle', e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
                >
-                <option value="solid">Solid Card</option>
-                <option value="dashed">Dashed Box</option>
-                <option value="none">Flat (No border)</option>
+                <option value="solid">{t('Solid Card')}</option>
+                <option value="dashed">{t('Dashed Box')}</option>
+                <option value="none">{t('Flat (No border)')}</option>
                </select>
               </div>
              </div>
@@ -3705,7 +3869,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
             {selectedBlock.id === 'items_table' && (
              <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200/80">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Details Table Columns Selection</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Details Table Columns Selection')}</span>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
                 type="checkbox"
@@ -3713,7 +3877,16 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'isBilingual', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Bilingual Headings</span>
+               <span>{t('Bilingual Headings')}</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+               <input
+                type="checkbox"
+                checked={selectedBlock.props?.compact === true}
+                onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'compact', e.target.checked)}
+                className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
+               />
+               <span>{t('Compact Rows (smaller padding & font)')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3722,7 +3895,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showSNo', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>S.No Column</span>
+               <span>{t('S.No Column')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3731,7 +3904,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showItemCode', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Item SKU / Code</span>
+               <span>{t('Item SKU / Code')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3740,7 +3913,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showDescription', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Item Description</span>
+               <span>{t('Item Description')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3749,7 +3922,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showQty', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Quantity Column</span>
+               <span>{t('Quantity Column')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3758,7 +3931,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showUnitCost', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Unit Cost / Rate Column</span>
+               <span>{t('Unit Cost / Rate Column')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3767,7 +3940,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showDiscount', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Row Discounts</span>
+               <span>{t('Row Discounts')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3776,17 +3949,17 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showTotal', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Line Total Column</span>
+               <span>{t('Line Total Column')}</span>
               </label>
               <div className="space-y-1 pt-1">
-               <span className="text-[10px] font-bold text-slate-400 block uppercase">Table Row Style</span>
+               <span className="text-[10px] font-bold text-slate-400 block uppercase">{t('Table Row Style')}</span>
                <select
                 value={selectedBlock.props?.borderStyle || 'stripe'}
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'borderStyle', e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
                >
-                <option value="classic">Classic Underlines</option>
-                <option value="stripe">Striped Alternating Rows</option>
+                <option value="classic">{t('Classic Underlines')}</option>
+                <option value="stripe">{t('Striped Alternating Rows')}</option>
                </select>
               </div>
              </div>
@@ -3794,42 +3967,42 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
             {selectedBlock.type === 'custom_field' || selectedBlock.id.startsWith('custom_field_') ? (
              <div className="space-y-2.5 bg-indigo-50/50 p-2.5 rounded-xl border border-indigo-200/80">
-              <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">Custom Field Config</span>
+              <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">{t('Custom Field Config')}</span>
               <div className="space-y-1">
-               <label className="text-[10px] font-bold text-slate-500 block uppercase">Dynamic Field Binding</label>
+               <label className="text-[10px] font-bold text-slate-500 block uppercase">{t('Dynamic Field Binding')}</label>
                <select
                 value={selectedBlock.props?.fieldBinding || 'none'}
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'fieldBinding', e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none font-semibold"
                >
-                <option value="none">Static Text / Custom Label</option>
-                <option value="docNumber">Document Number (INV/Q/EXP)</option>
-                <option value="docDate">Document Date</option>
-                <option value="dueDate">Payment / Due Date</option>
-                <option value="paymentStatus">Payment Status (Paid/Pending)</option>
-                <option value="paymentMethod">Payment Method / Bank</option>
-                <option value="originQuotation">Origin Quotation Link</option>
-                <option value="customerName">Customer / Vendor Name</option>
-                <option value="customerVat">Customer TRN / Tax Number</option>
-                <option value="customerPhone">Customer Phone</option>
-                <option value="customerAddress">Customer Address</option>
-                <option value="companyVat">Seller Tax / TRN</option>
-                <option value="companyBank">Seller IBAN / Bank</option>
-                <option value="createdBy">Created By User</option>
+                <option value="none">{t('Static Text / Custom Label')}</option>
+                <option value="docNumber">{t('Document Number (INV/Q/EXP)')}</option>
+                <option value="docDate">{t('Document Date')}</option>
+                <option value="dueDate">{t('Payment / Due Date')}</option>
+                <option value="paymentStatus">{t('Payment Status (Paid/Pending)')}</option>
+                <option value="paymentMethod">{t('Payment Method / Bank')}</option>
+                <option value="originQuotation">{t('Origin Quotation Link')}</option>
+                <option value="customerName">{t('Customer / Vendor Name')}</option>
+                <option value="customerVat">{t('Customer TRN / Tax Number')}</option>
+                <option value="customerPhone">{t('Customer Phone')}</option>
+                <option value="customerAddress">{t('Customer Address')}</option>
+                <option value="companyVat">{t('Seller Tax / TRN')}</option>
+                <option value="companyBank">{t('Seller IBAN / Bank')}</option>
+                <option value="createdBy">{t('Created By User')}</option>
                </select>
               </div>
               <div className="space-y-1">
-               <label className="text-[10px] font-bold text-slate-500 block uppercase">English Label</label>
+               <label className="text-[10px] font-bold text-slate-500 block uppercase">{t('English Label')}</label>
                <input
                 type="text"
                 value={selectedBlock.props?.labelEn || ''}
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'labelEn', e.target.value)}
-                placeholder="e.g. Reference PO #"
+                placeholder={t('e.g. Reference PO #')}
                 className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
                />
               </div>
               <div className="space-y-1">
-               <label className="text-[10px] font-bold text-slate-500 block uppercase">Arabic Label (Optional)</label>
+               <label className="text-[10px] font-bold text-slate-500 block uppercase">{t('Arabic Label (Optional)')}</label>
                <input
                 type="text"
                 value={selectedBlock.props?.labelAr || ''}
@@ -3840,16 +4013,41 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
               </div>
               {selectedBlock.props?.fieldBinding === 'none' && (
                <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 block uppercase">Static Content Value</label>
+                <label className="text-[10px] font-bold text-slate-500 block uppercase">{t('Static Content Value')}</label>
                 <textarea
                  value={selectedBlock.props?.staticText || ''}
                  onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'staticText', e.target.value)}
-                 placeholder="Enter fixed note or details..."
+                 placeholder={t('Enter fixed note or details...')}
                  rows={2}
                  className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
                 />
                </div>
               )}
+              {/* The real renderer (DocumentRenderer.tsx) already respects isBilingual
+                  for custom_field — only shows the Arabic label when it's not explicitly
+                  false — but this panel never exposed a control to set it, so it was
+                  always effectively stuck on whenever an Arabic label was filled in. */}
+              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+               <input
+                type="checkbox"
+                checked={selectedBlock.props?.isBilingual !== false}
+                onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'isBilingual', e.target.checked)}
+                className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
+               />
+               <span>{t('Show Arabic Label')}</span>
+              </label>
+              <div className="space-y-1 pt-1">
+               <span className="text-[10px] font-bold text-slate-400 block uppercase">{t('Box Frame Style')}</span>
+               <select
+                value={selectedBlock.props?.borderStyle || 'solid'}
+                onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'borderStyle', e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
+               >
+                <option value="solid">{t('Solid Card')}</option>
+                <option value="dashed">{t('Dashed Box')}</option>
+                <option value="none">{t('Flat (No border)')}</option>
+               </select>
+              </div>
              </div>
             ) : null}
 
@@ -3862,18 +4060,27 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'isBilingual', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Bilingual ZATCA verification text</span>
+               <span>{t('Bilingual ZATCA verification text')}</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+               <input
+                type="checkbox"
+                checked={selectedBlock.props?.compact === true}
+                onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'compact', e.target.checked)}
+                className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
+               />
+               <span>{t('Compact / Narrow Layout')}</span>
               </label>
               <div className="space-y-1">
-               <span className="text-[10px] font-bold text-slate-400 block uppercase">QR Sizing</span>
+               <span className="text-[10px] font-bold text-slate-400 block uppercase">{t('QR Sizing')}</span>
                <select
                 value={selectedBlock.props?.size || 'medium'}
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'size', e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
                >
-                <option value="small">Small (40px)</option>
-                <option value="medium">Medium (80px)</option>
-                <option value="large">Large (110px)</option>
+                <option value="small">{t('Small (40px)')}</option>
+                <option value="medium">{t('Medium (80px)')}</option>
+                <option value="large">{t('Large (110px)')}</option>
                </select>
               </div>
              </div>
@@ -3881,7 +4088,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
             {selectedBlock.id === 'totals_summary' && (
              <div className="space-y-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200/80">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Totals Breakdown Fields</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Totals Breakdown Fields')}</span>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
                 type="checkbox"
@@ -3889,7 +4096,16 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'isBilingual', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Bilingual Calculations Description</span>
+               <span>{t('Bilingual Calculations Description')}</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+               <input
+                type="checkbox"
+                checked={selectedBlock.props?.compact === true}
+                onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'compact', e.target.checked)}
+                className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
+               />
+               <span>{t('Compact / Narrow Layout')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3898,7 +4114,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showSubtotal', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Show Subtotal</span>
+               <span>{t('Show Subtotal')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3907,7 +4123,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showDiscount', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Show Total Discount</span>
+               <span>{t('Show Total Discount')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3916,7 +4132,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showVat', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Show VAT 15%</span>
+               <span>{t('Show VAT 15%')}</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
                <input
@@ -3925,19 +4141,19 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'showGrandTotal', e.target.checked)}
                 className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
                />
-               <span>Show Grand Total</span>
+               <span>{t('Show Grand Total')}</span>
               </label>
               <div className="space-y-1 pt-1">
-               <span className="text-[10px] font-bold text-slate-400 block uppercase">Accent Highlights</span>
+               <span className="text-[10px] font-bold text-slate-400 block uppercase">{t('Accent Highlights')}</span>
                <select
                 value={selectedBlock.props?.accentColor || 'indigo'}
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'accentColor', e.target.value)}
                 className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
                >
-                <option value="indigo">Classic Indigo</option>
-                <option value="emerald">Compliance Emerald</option>
-                <option value="slate">Monochrome Slate</option>
-                <option value="amber">Warm Amber</option>
+                <option value="indigo">{t('Classic Indigo')}</option>
+                <option value="emerald">{t('Compliance Emerald')}</option>
+                <option value="slate">{t('Monochrome Slate')}</option>
+                <option value="amber">{t('Warm Amber')}</option>
                </select>
               </div>
              </div>
@@ -3952,98 +4168,133 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'isBilingual', e.target.checked)}
                className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
               />
-              <span>Bilingual Arabic Label Hint</span>
+              <span>{t('Bilingual Arabic Label Hint')}</span>
+             </label>
+            )}
+            {/* custom_footer has no vertical-space problem worth a toggle (it's a single
+                optional line at the very bottom of the page, not competing with the
+                items table for room) — compact is offered only for the two blocks that
+                actually sit in the header/footer rows squeezed by a long items table. */}
+            {(selectedBlock.id === 'custom_header' || selectedBlock.id === 'notes') && (
+             <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+              <input
+               type="checkbox"
+               checked={selectedBlock.props?.compact === true}
+               onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'compact', e.target.checked)}
+               className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
+              />
+              <span>{t('Compact / Narrow Layout')}</span>
              </label>
             )}
            </div>
 
             {/* Divider */}
             <div className="border-t border-slate-100 pt-3 space-y-3">
-             <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider block">Block Style & Spacing</span>
-             
+             <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider block">{t('Block Style & Spacing')}</span>
+
              {/* Font Sizing */}
              <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-400 block uppercase">Font Size</label>
+              <label className="text-[10px] font-bold text-slate-400 block uppercase">{t('Font Size')}</label>
               <select
                value={selectedBlock.props?.fontSize || 'xs'}
                onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'fontSize', e.target.value)}
                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
               >
-               <option value="xs">Extra Small (xs)</option>
-               <option value="sm">Small (sm)</option>
-               <option value="base">Medium (base)</option>
-               <option value="lg">Large (lg)</option>
-               <option value="xl">Extra Large (xl)</option>
+               <option value="xs">{t('Extra Small (xs)')}</option>
+               <option value="sm">{t('Small (sm)')}</option>
+               <option value="base">{t('Medium (base)')}</option>
+               <option value="lg">{t('Large (lg)')}</option>
+               <option value="xl">{t('Extra Large (xl)')}</option>
               </select>
              </div>
 
              {/* Font Weight */}
              <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-400 block uppercase">Font Weight</label>
+              <label className="text-[10px] font-bold text-slate-400 block uppercase">{t('Font Weight')}</label>
               <select
                value={selectedBlock.props?.fontWeight || 'normal'}
                onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'fontWeight', e.target.value)}
                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
               >
-               <option value="normal">Normal</option>
-               <option value="medium">Medium</option>
-               <option value="semibold">Semi-Bold</option>
-               <option value="bold">Bold</option>
-               <option value="extrabold">Extra-Bold</option>
+               <option value="normal">{t('Normal')}</option>
+               <option value="medium">{t('Medium')}</option>
+               <option value="semibold">{t('Semi-Bold')}</option>
+               <option value="bold">{t('Bold')}</option>
+               <option value="extrabold">{t('Extra-Bold')}</option>
               </select>
              </div>
 
              {/* Font Family */}
              <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-400 block uppercase">Font Family</label>
+              <label className="text-[10px] font-bold text-slate-400 block uppercase">{t('Font Family')}</label>
               <select
                value={selectedBlock.props?.fontFamily || 'sans'}
                onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'fontFamily', e.target.value)}
                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
               >
-               <option value="sans">Modern Sans-Serif (Inter)</option>
-               <option value="serif">Traditional Serif (Lora)</option>
-               <option value="display">Bold Display (Space Grotesk)</option>
-               <option value="mono">Technical Mono (JetBrains Mono)</option>
+               <option value="sans">{t('Modern Sans-Serif (Inter)')}</option>
+               <option value="serif">{t('Traditional Serif (Lora)')}</option>
+               <option value="display">{t('Bold Display (Space Grotesk)')}</option>
+               <option value="mono">{t('Technical Mono (JetBrains Mono)')}</option>
               </select>
              </div>
 
              {/* Vertical Spacing */}
              <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
-               <label className="text-[10px] font-bold text-slate-400 block uppercase">Margin Top</label>
+               <label className="text-[10px] font-bold text-slate-400 block uppercase">{t('Margin Top')}</label>
                <select
                 value={selectedBlock.props?.mt !== undefined ? selectedBlock.props?.mt : '4'}
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'mt', e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
                >
-                <option value="0">None (0px)</option>
-                <option value="1">Extra Tight (4px)</option>
-                <option value="2">Tight (8px)</option>
-                <option value="3">Compact (12px)</option>
-                <option value="4">Normal (16px)</option>
-                <option value="6">Spacious (24px)</option>
-                <option value="8">Loose (32px)</option>
-                <option value="12">Extra Loose (48px)</option>
+                <option value="0">{t('None (0px)')}</option>
+                <option value="1">{t('Extra Tight (4px)')}</option>
+                <option value="2">{t('Tight (8px)')}</option>
+                <option value="3">{t('Compact (12px)')}</option>
+                <option value="4">{t('Normal (16px)')}</option>
+                <option value="6">{t('Spacious (24px)')}</option>
+                <option value="8">{t('Loose (32px)')}</option>
+                <option value="12">{t('Extra Loose (48px)')}</option>
                </select>
               </div>
               <div className="space-y-1">
-               <label className="text-[10px] font-bold text-slate-400 block uppercase">Margin Bottom</label>
+               <label className="text-[10px] font-bold text-slate-400 block uppercase">{t('Margin Bottom')}</label>
                <select
                 value={selectedBlock.props?.mb !== undefined ? selectedBlock.props?.mb : '4'}
                 onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'mb', e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
                >
-                <option value="0">None (0px)</option>
-                <option value="1">Extra Tight (4px)</option>
-                <option value="2">Tight (8px)</option>
-                <option value="3">Compact (12px)</option>
-                <option value="4">Normal (16px)</option>
-                <option value="6">Spacious (24px)</option>
-                <option value="8">Loose (32px)</option>
-                <option value="12">Extra Loose (48px)</option>
+                <option value="0">{t('None (0px)')}</option>
+                <option value="1">{t('Extra Tight (4px)')}</option>
+                <option value="2">{t('Tight (8px)')}</option>
+                <option value="3">{t('Compact (12px)')}</option>
+                <option value="4">{t('Normal (16px)')}</option>
+                <option value="6">{t('Spacious (24px)')}</option>
+                <option value="8">{t('Loose (32px)')}</option>
+                <option value="12">{t('Extra Loose (48px)')}</option>
                </select>
               </div>
+             </div>
+
+             {/* Padding — the real renderer (DocumentRenderer.tsx's getBlockStyle) has
+                 always supported this via block.props?.p, applied as an outer inline
+                 style on every block type, but no control ever exposed it; it could only
+                 ever be set by hand-editing layoutJson. */}
+             <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 block uppercase">{t('Padding')}</label>
+              <select
+               value={selectedBlock.props?.p !== undefined ? selectedBlock.props?.p : '0'}
+               onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'p', e.target.value)}
+               className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
+              >
+               <option value="0">{t('None (0px)')}</option>
+               <option value="1">{t('Extra Tight (4px)')}</option>
+               <option value="2">{t('Tight (8px)')}</option>
+               <option value="3">{t('Compact (12px)')}</option>
+               <option value="4">{t('Normal (16px)')}</option>
+               <option value="6">{t('Spacious (24px)')}</option>
+              </select>
              </div>
             </div>
           </div>
@@ -4051,47 +4302,47 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
           <div className="space-y-4">
             <div className="p-4 bg-white border border-indigo-200 shadow-sm rounded-2xl space-y-4">
              <div className="pb-2 border-b border-slate-100 flex items-center justify-between">
-              <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">Global Document Style</span>
-              <span className="text-[9px] font-bold bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-full uppercase">Template</span>
+              <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">{t('Global Document Style')}</span>
+              <span className="text-[9px] font-bold bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-full uppercase">{t('Template')}</span>
              </div>
-             
+
              {/* Global Row Gap */}
              <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-400 block uppercase">Global Row Gap</label>
+              <label className="text-[10px] font-bold text-slate-400 block uppercase">{t('Global Row Gap')}</label>
               <select
                value={tmpl.gridGapY || 'normal'}
                onChange={(e) => handleUpdateTemplateProperty(tmpl.id, 'gridGapY', e.target.value)}
                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
               >
-               <option value="tight">High Density (8px Gap)</option>
-               <option value="compact">Compact (12px Gap)</option>
-               <option value="normal">Normal (24px Gap) - Default</option>
-               <option value="loose">Spacious (40px Gap)</option>
+               <option value="tight">{t('High Density (8px Gap)')}</option>
+               <option value="compact">{t('Compact (12px Gap)')}</option>
+               <option value="normal">{t('Normal (24px Gap) - Default')}</option>
+               <option value="loose">{t('Spacious (40px Gap)')}</option>
               </select>
              </div>
 
              {/* Global Font Family */}
              <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-400 block uppercase">Global Font Family</label>
+              <label className="text-[10px] font-bold text-slate-400 block uppercase">{t('Global Font Family')}</label>
               <select
                value={tmpl.globalFontFamily || 'sans'}
                onChange={(e) => handleUpdateTemplateProperty(tmpl.id, 'globalFontFamily', e.target.value)}
                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
               >
-               <option value="sans">Modern Sans-Serif (Inter) — recommended for invoices</option>
-               <option value="serif">Traditional Serif (Lora)</option>
-               <option value="display">Bold Display (Space Grotesk)</option>
-               <option value="mono">Technical Mono (JetBrains Mono)</option>
+               <option value="sans">{t('Modern Sans-Serif (Inter) — recommended for invoices')}</option>
+               <option value="serif">{t('Traditional Serif (Lora)')}</option>
+               <option value="display">{t('Bold Display (Space Grotesk)')}</option>
+               <option value="mono">{t('Technical Mono (JetBrains Mono)')}</option>
               </select>
               <p className="text-[9px] text-slate-400">
-               Arabic/Urdu documents always render in Cairo (the app's Arabic-script pairing) for legible glyph rendering, regardless of this choice — none of the options above have real Arabic coverage.
+               {t("Arabic/Urdu documents always render in Cairo (the app's Arabic-script pairing) for legible glyph rendering, regardless of this choice — none of the options above have real Arabic coverage.")}
               </p>
              </div>
             </div>
 
             <div className="p-4 bg-slate-50 border border-dashed border-slate-200 text-slate-400 rounded-2xl text-center py-6">
              <span className="text-xl block">👈</span>
-             <span className="text-[11px] font-bold block mt-1">Select any grid block on the canvas to customize element-specific styling.</span>
+             <span className="text-[11px] font-bold block mt-1">{t('Select any grid block on the canvas to customize element-specific styling.')}</span>
             </div>
           </div>
          )}
@@ -4099,39 +4350,51 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
          {/* Available Blocks Library */}
          <div className="p-4 bg-slate-100/60 border border-slate-200 rounded-2xl space-y-3">
           <div className="flex justify-between items-center">
-           <span className="text-xs font-bold text-slate-700 block uppercase tracking-wider">Block Library</span>
+           <span className="text-xs font-bold text-slate-700 block uppercase tracking-wider">{t('Block Library')}</span>
            <button
             type="button"
             onClick={() => handleAddCustomBlock('none', 'Custom Field')}
             className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded-lg transition shadow-sm flex items-center gap-1"
            >
-            <span>+ Custom Block</span>
+            <span>+ {t('Custom Block')}</span>
            </button>
           </div>
-          <p className="text-[10px] text-slate-400">Click (+) to return items back into grid or add custom fields.</p>
+          <p className="text-[10px] text-slate-400">{t('Click (+) to return items back into grid or add custom fields.')}</p>
           {availableBlocks.length === 0 ? (
-           <p className="text-[10px] text-slate-400 italic text-center py-2 bg-white rounded-xl border border-dashed border-slate-150">All default blocks are on stage! Use (+ Custom Block) to add more.</p>
+           <p className="text-[10px] text-slate-400 italic text-center py-2 bg-white rounded-xl border border-dashed border-slate-150">{t('All default blocks are on stage! Use (+ Custom Block) to add more.')}</p>
           ) : (
            <div className="space-y-2">
             {availableBlocks.map(block => (
-             <div 
+             <div
               key={block.id}
               className="bg-white p-3 border border-slate-200 rounded-xl shadow-sm flex justify-between items-center hover:border-indigo-300 transition"
              >
               <div>
                <span className="text-[11px] font-bold text-slate-700 block leading-tight">{block.title}</span>
                <span className="text-[8px] font-semibold text-slate-400 font-mono bg-slate-100 px-1 py-0.5 rounded uppercase mt-0.5 inline-block">
-                Key: {block.id}
+                {t('Key:')} {block.id}
                </span>
               </div>
-              <button
-               type="button"
-               onClick={() => handleToggleBlockVisibility(block.id, true)}
-               className="w-6 h-6 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-extrabold rounded-lg flex items-center justify-center transition"
-               title="Add to canvas"
-              >
-               +
-              </button>
+              <div className="flex items-center gap-1.5">
+               <button
+                type="button"
+                onClick={() => handleToggleBlockVisibility(block.id, true)}
+                className="w-6 h-6 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-extrabold rounded-lg flex items-center justify-center transition"
+                title={t('Add to canvas')}
+               >
+                +
+               </button>
+               {String(block.id).startsWith('custom_field_') && (
+                <button
+                 type="button"
+                 onClick={() => handleRemoveCustomBlock(block.id)}
+                 className="w-6 h-6 bg-rose-50 hover:bg-rose-100 text-rose-500 rounded-lg flex items-center justify-center transition"
+                 title={t('Permanently remove this custom block')}
+                >
+                 🗑️
+                </button>
+               )}
+              </div>
              </div>
             ))}
            </div>
@@ -4141,8 +4404,28 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
         {/* Center Canvas Layout Workspace */}
         <div className="lg:col-span-3 space-y-4">
-         <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block text-center">Interactive 12-Column Grid Stage</span>
-         
+         <span className="text-xs font-bold text-slate-400 uppercase tracking-widest block text-center">{t('Interactive 12-Column Grid Stage')}</span>
+
+         {/* Row composition summary — see canvasRows comment above for why this is
+             advisory (how the row will wrap) rather than a pass/fail validation. */}
+         {canvasRows.length > 0 && (
+          <div className="max-w-[850px] mx-auto flex flex-wrap gap-1.5 justify-center">
+           {canvasRows.map((row, rowIdx) => (
+            <span
+             key={rowIdx}
+             title={row.blocks.map(b => b.title).join(' + ')}
+             className={`text-[9px] font-bold px-2 py-1 rounded-full border ${
+              row.total === 12
+               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+               : 'bg-amber-50 text-amber-700 border-amber-200'
+             }`}
+            >
+             {t('Row')} {rowIdx + 1} • {row.total}/12
+            </span>
+           ))}
+          </div>
+         )}
+
          {/* The actual live-manipulated paper template.
              - Font: mirrors DocumentRenderer.tsx's getGlobalFontClass mapping exactly, so
                this canvas actually shows the font the template will print with (sans/
@@ -4161,9 +4444,11 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
            'font-sans'
          }`}>
           <div className="grid grid-cols-12 gap-x-4 gap-y-6 items-start">
-           {activeBlocks.map((block) => {
+           {activeBlocks.map((block, blockIdx) => {
             const isSelected = block.id === selectedBlockId;
-            const blockColClass = `col-span-12 md:col-span-${block.w}`;
+            const blockColClass = `col-span-12 ${COL_SPAN_MD[block.w] || COL_SPAN_MD[12]} ${COL_SPAN_PRINT[block.w] || COL_SPAN_PRINT[12]}`;
+            const isFirstVisible = blockIdx === 0;
+            const isLastVisible = blockIdx === activeBlocks.length - 1;
 
             return (
              <div
@@ -4184,13 +4469,33 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
              >
               {/* Block Design Overlay Actions */}
               <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition duration-150 z-20 bg-white/95 border border-slate-100 p-1 rounded-lg shadow-sm">
+               {/* Keyboard-accessible reordering — real <button>s, so Tab + Enter/Space
+                   work natively, unlike the drag handle below (pointer-only). */}
+               <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleMoveBlock(block.id, 'up'); }}
+                disabled={isFirstVisible}
+                className="text-slate-500 hover:text-indigo-600 disabled:opacity-25 disabled:cursor-not-allowed p-0.5 rounded text-[10px]"
+                title={t('Move block up')}
+               >
+                ↑
+               </button>
+               <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleMoveBlock(block.id, 'down'); }}
+                disabled={isLastVisible}
+                className="text-slate-500 hover:text-indigo-600 disabled:opacity-25 disabled:cursor-not-allowed p-0.5 rounded text-[10px]"
+                title={t('Move block down')}
+               >
+                ↓
+               </button>
                {/* Drag handle */}
-               <div className="cursor-grab text-[11px] text-slate-400 hover:text-slate-700 px-1 font-semibold" title="Drag to reorder">
+               <div className="cursor-grab text-[11px] text-slate-400 hover:text-slate-700 px-1 font-semibold" title={t('Drag to reorder')}>
                 ☰
                </div>
                {/* Width badge */}
                <span className="text-[8px] font-bold text-slate-400 bg-slate-100 px-1 rounded uppercase tracking-wider">
-                {block.w}/12 cols
+                {block.w}/12 {t('cols')}
                </span>
                {/* Settings Button */}
                <button
@@ -4200,7 +4505,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                  setSelectedBlockId(block.id);
                 }}
                 className="text-slate-500 hover:text-indigo-600 p-0.5 rounded text-[10px]"
-                title="Block Settings"
+                title={t('Block Settings')}
                >
                 ⚙️
                </button>
@@ -4212,7 +4517,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                  handleToggleBlockVisibility(block.id, false);
                 }}
                 className="text-slate-400 hover:text-rose-600 p-0.5 rounded text-[10px]"
-                title="Remove block"
+                title={t('Remove block')}
                >
                 🗑️
                </button>
@@ -4403,8 +4708,8 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
            while iterating on a design. */}
        <div className="space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
-         <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Live Preview — Exactly What Will Print</span>
-         <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full uppercase">Real renderer, not a mockup</span>
+         <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('Live Preview — Exactly What Will Print')}</span>
+         <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full uppercase">{t('Real renderer, not a mockup')}</span>
         </div>
         <div className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-100/50" style={{ maxHeight: '75vh', overflowY: 'auto' }}>
          <DocumentRenderer
@@ -4426,7 +4731,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
     <div className="space-y-6">
      <div>
       <h3 className="text-sm font-bold text-slate-900">{t('Document Template Engine')}</h3>
-      <p className="text-[11px] text-slate-400">Create layouts for Quotations and Invoices. Only ONE template is active globally at a time.</p>
+      <p className="text-[11px] text-slate-400">{t('Create layouts for Quotations and Invoices. Only ONE template is active globally at a time.')}</p>
      </div>
 
      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -4448,48 +4753,52 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
            {tmpl.language}
           </span>
          </div>
-         <p className="text-[10px] text-slate-400 mt-2">Page Size: {tmpl.pageSize}</p>
-         <p className="text-[10px] text-slate-400 mt-1">Direction: {tmpl.language === 'Arabic' ? 'RTL (Arabic)' : tmpl.language === 'Urdu' ? 'RTL (Urdu)' : 'LTR (English)'}</p>
-         
+         <p className="text-[10px] text-slate-400 mt-2">{t('Page Size:')} {tmpl.pageSize}</p>
+         <p className="text-[10px] text-slate-400 mt-1">{t('Direction:')} {tmpl.language === 'Arabic' ? t('RTL (Arabic)') : tmpl.language === 'Urdu' ? t('RTL (Urdu)') : t('LTR (English)')}</p>
+
          {/* Print Settings Checks */}
          <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
-          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Quick Print Toggles</span>
+          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">{t('Quick Print Toggles')}</span>
           <div className="grid grid-cols-2 gap-x-2 gap-y-1">
            <label className="flex items-center gap-1.5 text-[10px] text-slate-600 cursor-pointer select-none">
             <input
              type="checkbox"
              checked={tmpl.printHeader !== false}
+             disabled={!canUpdateTemplates}
              onChange={() => handleToggleOption(tmpl.id, 'printHeader')}
-             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3 h-3"
+             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3 h-3 disabled:opacity-50 disabled:cursor-not-allowed"
             />
-            <span>Print Header</span>
+            <span>{t('Print Header')}</span>
            </label>
            <label className="flex items-center gap-1.5 text-[10px] text-slate-600 cursor-pointer select-none">
             <input
              type="checkbox"
              checked={tmpl.printFooter !== false}
+             disabled={!canUpdateTemplates}
              onChange={() => handleToggleOption(tmpl.id, 'printFooter')}
-             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3 h-3"
+             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3 h-3 disabled:opacity-50 disabled:cursor-not-allowed"
             />
-            <span>Print Footer</span>
+            <span>{t('Print Footer')}</span>
            </label>
            <label className="flex items-center gap-1.5 text-[10px] text-slate-600 cursor-pointer select-none">
             <input
              type="checkbox"
              checked={tmpl.printLogo !== false}
+             disabled={!canUpdateTemplates}
              onChange={() => handleToggleOption(tmpl.id, 'printLogo')}
-             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3 h-3"
+             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3 h-3 disabled:opacity-50 disabled:cursor-not-allowed"
             />
-            <span>Print Logo</span>
+            <span>{t('Print Logo')}</span>
            </label>
            <label className="flex items-center gap-1.5 text-[10px] text-slate-600 cursor-pointer select-none">
             <input
              type="checkbox"
              checked={tmpl.printQrCode !== false}
+             disabled={!canUpdateTemplates}
              onChange={() => handleToggleOption(tmpl.id, 'printQrCode')}
-             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3 h-3"
+             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3 h-3 disabled:opacity-50 disabled:cursor-not-allowed"
             />
-            <span>Print QR Code</span>
+            <span>{t('Print QR Code')}</span>
            </label>
           </div>
          </div>
@@ -4497,46 +4806,63 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
         <div className="mt-4 pt-3 border-t border-slate-100/60 flex justify-between items-center">
          <div className="flex gap-1.5">
-          <button
-           type="button"
-           onClick={() => handleOpenCanvasDesigner(tmpl)}
-           className="text-[10px] font-bold text-slate-600 hover:text-indigo-600 transition flex items-center gap-1 bg-slate-50 hover:bg-indigo-50 px-2.5 py-1 rounded-lg"
-          >
-           ⚙️ Design
-          </button>
+          {canUpdateTemplates && (
+           <button
+            type="button"
+            onClick={() => handleOpenCanvasDesigner(tmpl)}
+            className="text-[10px] font-bold text-slate-600 hover:text-indigo-600 transition flex items-center gap-1 bg-slate-50 hover:bg-indigo-50 px-2.5 py-1 rounded-lg"
+           >
+            ⚙️ {t('Design')}
+           </button>
+          )}
           <button
            type="button"
            onClick={() => setPreviewTemplate(tmpl)}
            className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg"
           >
-           👁️ Preview
+           👁️ {t('Preview')}
           </button>
          </div>
-         {!tmpl.isActive ? (
-          <button
-           type="button"
-           onClick={() => handleActivateTemplate(tmpl.id)}
-           className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800"
-          >
-           Set Active
-          </button>
-         ) : (
-          <span className="text-[10px] font-bold text-indigo-600">
-           ⭐ Active Default
-          </span>
-         )}
+         <div className="flex items-center gap-2">
+          {!tmpl.isActive ? (
+           canUpdateTemplates && (
+            <button
+             type="button"
+             onClick={() => handleActivateTemplate(tmpl.id)}
+             className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800"
+            >
+             {t('Set Active')}
+            </button>
+           )
+          ) : (
+           <span className="text-[10px] font-bold text-indigo-600">
+            ⭐ {t('Active Default')}
+           </span>
+          )}
+          {canDeleteTemplates && (
+           <button
+            type="button"
+            onClick={() => handleDeleteTemplate(tmpl)}
+            title={t('Delete template')}
+            className="text-[10px] font-bold text-rose-500 hover:text-rose-700 transition px-1.5 py-1 rounded-lg hover:bg-rose-50"
+           >
+            🗑️
+           </button>
+          )}
+         </div>
         </div>
        </div>
       ))}
 
       {/* Add Template Card */}
+      {canCreateTemplates && (
       <div className="p-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 flex flex-col justify-between">
-       <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">Create Template</h4>
+       <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">{t('Create Template')}</h4>
        <form onSubmit={handleAddTemplate} className="space-y-2 text-xs">
         <input
          type="text"
          required
-         placeholder="Template Title"
+         placeholder={t('Template Title')}
          value={tmplForm.name}
          onChange={(e) => setTmplForm({ ...tmplForm, name: e.target.value })}
          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -4546,25 +4872,44 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
          onChange={(e) => setTmplForm({ ...tmplForm, language: e.target.value as any })}
          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-800 focus:outline-none"
         >
-         <option value="English">English (LTR)</option>
-         <option value="Arabic">Arabic (RTL)</option>
-         <option value="Urdu">Urdu (RTL)</option>
+         <option value="English">{t('English (LTR)')}</option>
+         <option value="Arabic">{t('Arabic (RTL)')}</option>
+         <option value="Urdu">{t('Urdu (RTL)')}</option>
         </select>
-        <input
-         type="text"
-         placeholder="Size: e.g. 4in x 6in, 8in x 11in"
+        <select
          value={tmplForm.pageSize}
          onChange={(e) => setTmplForm({ ...tmplForm, pageSize: e.target.value })}
          className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-800 focus:outline-none"
-        />
+        >
+         {/* Only these two page sizes are actually honored by DocumentRenderer.tsx's print
+             pipeline (A4 @page geometry vs. the 4in x 6in thermal-receipt branch, which also
+             drives font-size/padding/logo-size scaling) — this used to be free text inviting
+             values like "8in x 11in" that silently fell through to the generic A4 branch. */}
+         <option value="8.27in x 11.69in (A4)">{t('A4 (8.27in x 11.69in)')}</option>
+         <option value="4in x 6in">{t('Thermal Receipt (4in x 6in)')}</option>
+        </select>
+        {/* Starting point only — the Canvas Designer opens on whichever preset was
+            picked, and every block/prop is still freely editable from there afterward.
+            Only affects invoice/quotation printouts (itemized buyer address, per-line
+            tax columns); expense/voucher templates render through a separate code path
+            unaffected by this choice. */}
+        <select
+         value={tmplForm.preset}
+         onChange={(e) => setTmplForm({ ...tmplForm, preset: e.target.value as any })}
+         className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-800 focus:outline-none"
+        >
+         <option value="standard">{t('Standard Layout')}</option>
+         <option value="detailed">{t('Detailed Tax Invoice')}</option>
+        </select>
         <button
          type="submit"
          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg py-1.5 font-bold text-xs shadow-sm mt-1"
         >
-         Create
+         {t('Create')}
         </button>
        </form>
       </div>
+      )}
      </div>
     </div>
    )}
@@ -4592,7 +4937,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <div>
  <h3 className="text-sm font-bold text-slate-900">{t('Fiscal Calendar Management')}</h3>
  <p className="text-[11px] text-slate-400">
- Multiple fiscal periods may be open concurrently ({companyOpenMonthsSorted.length} open now). Transactions dated within any open month are accepted. Months close oldest-first — the server enforces both the concurrency cap and the close order and will reject an action here with a clear message if it doesn't qualify.
+ {t('Multiple fiscal periods may be open concurrently')} ({companyOpenMonthsSorted.length} {t('open now')}). {t('Transactions dated within any open month are accepted. Months close oldest-first — the server enforces both the concurrency cap and the close order and will reject an action here with a clear message if it doesn\'t qualify.')}
  </p>
  </div>
 
@@ -4602,9 +4947,9 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <table className="w-full text-xs">
  <thead>
  <tr className="bg-slate-50 text-slate-500">
- <th className="p-3 text-start">Fiscal Month</th>
- <th className="p-3 text-center">Status</th>
- <th className="p-3 text-end">Actions</th>
+ <th className="p-3 text-start">{t('Fiscal Month')}</th>
+ <th className="p-3 text-center">{t('Status')}</th>
+ <th className="p-3 text-end">{t('Actions')}</th>
  </tr>
  </thead>
  <tbody>
@@ -4613,28 +4958,30 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  return (
  <tr key={m.id} className="border-b border-slate-100">
  <td className="p-3 font-semibold text-slate-800">
- {m.name} <span className="text-[10px] text-slate-400 font-mono ms-1">({m.id})</span>
+ {translateMonthLabel(m.name, t)} <span className="text-[10px] text-slate-400 font-mono ms-1">({m.id})</span>
  {isOldestOpen && (
- <span className="ms-1.5 px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase bg-amber-100 text-amber-700" title="Oldest open month — the server currently allows closing this one.">Oldest open</span>
+ <span className="ms-1.5 px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase bg-amber-100 text-amber-700" title={t('Oldest open month — the server currently allows closing this one.')}>{t('Oldest open')}</span>
  )}
  </td>
  <td className="p-3 text-center">
  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
  m.status === 'Open' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-400'
  }`}>
- {m.status === 'Open' ? '🔓 Open' : '🔒 Closed'}
+ {m.status === 'Open' ? `🔓 ${t('Open')}` : `🔒 ${t('Closed')}`}
  </span>
  </td>
  <td className="p-3 text-end">
  {m.status === 'Open' ? (
+ canCloseFiscalMonths && (
  <button
  onClick={() => handleInitiateClose(m)}
  className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg font-bold text-[10px] transition"
  >
- Close & Lock Month
+ {t('Close & Lock Month')}
  </button>
+ )
  ) : (
- <span className="text-[10px] text-slate-400 font-medium">Locked ({m.closedOption === 'paid_only' ? 'Paid' : 'Accrual'})</span>
+ <span className="text-[10px] text-slate-400 font-medium">{t('Locked')} ({m.closedOption === 'paid_only' ? t('Paid') : t('Accrual')})</span>
  )}
  </td>
  </tr>
@@ -4645,14 +4992,15 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
 
  {/* Open New Month form */}
+ {canOpenFiscalMonths && (
  <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
- <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3">Open New Month</h4>
+ <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3">{t('Open New Month')}</h4>
  <form onSubmit={handleOpenMonth} className="space-y-4">
  <p className="text-[11px] text-slate-400">
- {companyOpenMonthsSorted.length} month(s) currently open. The server allows up to 3 concurrently open and will reject this if the cap is already reached.
+ {companyOpenMonthsSorted.length} {t('month(s) currently open. The server allows up to 3 concurrently open and will reject this if the cap is already reached.')}
  </p>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Year</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Year')}</label>
  <input
  type="text"
  required
@@ -4662,34 +5010,35 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  />
  </div>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Month (MM)</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Month (MM)')}</label>
  <select
  value={monthForm.month}
  onChange={(e) => setMonthForm({ ...monthForm, month: e.target.value })}
  className="w-full bg-white border border-slate-200 rounded-2xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none"
  >
- <option value="01">January (01)</option>
- <option value="02">February (02)</option>
- <option value="03">March (03)</option>
- <option value="04">April (04)</option>
- <option value="05">May (05)</option>
- <option value="06">June (06)</option>
- <option value="07">July (07)</option>
- <option value="08">August (08)</option>
- <option value="09">September (09)</option>
- <option value="10">October (10)</option>
- <option value="11">November (11)</option>
- <option value="12">December (12)</option>
+ <option value="01">{t('January')} (01)</option>
+ <option value="02">{t('February')} (02)</option>
+ <option value="03">{t('March')} (03)</option>
+ <option value="04">{t('April')} (04)</option>
+ <option value="05">{t('May')} (05)</option>
+ <option value="06">{t('June')} (06)</option>
+ <option value="07">{t('July')} (07)</option>
+ <option value="08">{t('August')} (08)</option>
+ <option value="09">{t('September')} (09)</option>
+ <option value="10">{t('October')} (10)</option>
+ <option value="11">{t('November')} (11)</option>
+ <option value="12">{t('December')} (12)</option>
  </select>
  </div>
  <button
  type="submit"
  className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-2xl py-2 font-bold text-xs transition shadow-sm"
  >
- Create Fiscal Period
+ {t('Create Fiscal Period')}
  </button>
  </form>
  </div>
+ )}
  </div>
  </div>
  );
@@ -4702,18 +5051,18 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
  <div>
  <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wide">{t('Staff Accounts & RBAC Permissions')}</h3>
- <p className="text-[11px] text-slate-500 mt-0.5">Provision user accounts, assign corporate boundaries, and manage dynamic roles and access restrictions.</p>
+ <p className="text-[11px] text-slate-500 mt-0.5">{t('Provision user accounts, assign corporate boundaries, and manage dynamic roles and access restrictions.')}</p>
  </div>
- 
+
  {db.currentUser?.isSuperAdmin ? (
  <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-2xl border border-slate-200">
- <span className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Filter Directory:</span>
+ <span className="text-[10px] font-bold text-slate-500 uppercase shrink-0">{t('Filter Directory:')}</span>
  <select
  value={userCompanyFilter}
  onChange={(e) => setUserCompanyFilter(e.target.value)}
  className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
  >
- <option value="all">All Organizations</option>
+ <option value="all">{t('All Organizations')}</option>
  {db.companies?.map(comp => (
  <option key={comp.id} value={comp.id}>{comp.name}</option>
  ))}
@@ -4721,7 +5070,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
  ) : (
  <div className="px-3 py-1.5 bg-slate-100 rounded-2xl border border-slate-200/40 text-[10px] font-extrabold text-indigo-700 uppercase flex items-center gap-1">
- 🏢 BOUNDED TO: {db.companySetup?.name || 'Current Organization'}
+ 🏢 {t('BOUNDED TO:')} {db.companySetup?.name || t('Current Organization')}
  </div>
  )}
  </div>
@@ -4729,17 +5078,17 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  {/* Stats Row */}
  <div className="grid grid-cols-3 gap-4">
  <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
- <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Users</span>
+ <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t('Total Users')}</span>
  <p className="text-base font-black text-slate-800 mt-1">{db.users.filter(u => u.isDeleted !== 1).length}</p>
  </div>
  <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
- <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Accounts</span>
+ <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t('Active Accounts')}</span>
  <p className="text-base font-black text-emerald-600 mt-1">
  {db.users.filter(u => u.isDeleted !== 1 && u.isActive !== false).length}
  </p>
  </div>
  <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
- <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Deactivated</span>
+ <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t('Deactivated')}</span>
  <p className="text-base font-black text-slate-400 mt-1">
  {db.users.filter(u => u.isDeleted !== 1 && u.isActive === false).length}
  </p>
@@ -4748,8 +5097,11 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
  {/* Main side-by-side management layout */}
  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
- 
- {/* COLUMN 1: ALWAYS-VISIBLE ACCOUNT CREATION FORM (Left) */}
+
+ {/* COLUMN 1: ACCOUNT CREATION/EDIT FORM (Left) — gated per-mode: create needs
+     users.create, editing an existing account needs users.update. A viewer with
+     only users.read (directory-view-only) never sees this column at all. */}
+ {(editingUser ? canUpdateUsers : canCreateUsers) && (
  <div ref={formRef} className="lg:col-span-5 bg-white border border-slate-200/60 rounded-2xl p-5 shadow-sm space-y-4">
  <div className="flex justify-between items-start">
  <div>
@@ -4757,17 +5109,17 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  {editingUser ? (
  <>
  <Edit2 className="w-4 h-4 text-amber-600" />
- Update User Account
+ {t('Update User Account')}
  </>
  ) : (
  <>
  <Plus className="w-4 h-4 text-indigo-600" />
- Provision New Account
+ {t('Provision New Account')}
  </>
  )}
  </h4>
  <p className="text-[10px] text-slate-400 mt-0.5">
- {editingUser ? 'Modify active credentials and permissions.' : 'Create a login and assign operational limits.'}
+ {editingUser ? t('Modify active credentials and permissions.') : t('Create a login and assign operational limits.')}
  </p>
  </div>
  {editingUser && (
@@ -4777,6 +5129,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  setEditingUser(null);
  setUserForm({
  username: '',
+ email: '',
  password: '',
  role: 'user',
  companyId: db.selectedCompanyId,
@@ -4785,18 +5138,18 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  }}
  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[9px] font-bold uppercase transition"
  >
- Cancel Edit
+ {t('Cancel Edit')}
  </button>
  )}
  </div>
 
  <form onSubmit={handleAddUser} className="space-y-4">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Account Username</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Account Username')}</label>
  <input
  type="text"
  required
- placeholder="e.g. Accountant Sarah, Sales Tariq"
+ placeholder={t('e.g. Accountant Sarah, Sales Tariq')}
  value={userForm.username}
  onChange={(e) => setUserForm({ ...userForm, username: e.target.value })}
  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-semibold"
@@ -4805,12 +5158,27 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
  <div className="space-y-1">
  <div className="flex items-center justify-between">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Account Password</label>
- {!editingUser && <span className="text-[8px] text-slate-400 font-mono">Defaults to 123456</span>}
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Account Email')}</label>
+ <span className="text-[8px] text-slate-400 font-mono">{t('Required — used for password reset')}</span>
+ </div>
+ <input
+ type="email"
+ required
+ placeholder={t('e.g. sarah@company.com')}
+ value={userForm.email}
+ onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+ className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-semibold"
+ />
+ </div>
+
+ <div className="space-y-1">
+ <div className="flex items-center justify-between">
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Account Password')}</label>
+ {!editingUser && <span className="text-[8px] text-slate-400 font-mono">{t('Defaults to 123456')}</span>}
  </div>
  <input
  type="text"
- placeholder="e.g. 123456, Tariq@ERP"
+ placeholder={t('e.g. 123456, Tariq@ERP')}
  value={userForm.password}
  onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-semibold"
@@ -4819,19 +5187,23 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
  <div className="grid grid-cols-2 gap-3">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Account Role</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Account Role')}</label>
  <select
  value={userForm.role}
  onChange={(e) => setUserForm({ ...userForm, role: e.target.value as UserRole })}
  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-2xl px-2.5 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold cursor-pointer"
  >
- <option value="user">Staff Member</option>
- <option value="admin">Company Admin</option>
+ <option value="user">{t('Staff Member')}</option>
+ {/* Hidden for a delegated (non-admin-tier) actor: POST /api/users forces role
+     to 'user' unconditionally for anyone here only via users.create/update, not
+     real admin tier (see server/routes/users.ts) — showing this option to them
+     would promise an escalation the server silently refuses. */}
+ {isAdmin && <option value="admin">{t('Company Admin')}</option>}
  </select>
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Assigned Company</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Assigned Company')}</label>
  {db.currentUser?.isSuperAdmin ? (
  <select
  value={userForm.companyId}
@@ -4844,7 +5216,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </select>
  ) : (
  <div className="w-full bg-slate-100 border border-slate-200 rounded-2xl px-3 py-2 text-xs text-slate-500 font-bold overflow-hidden text-ellipsis whitespace-nowrap">
- 🏢 {db.companySetup?.name || 'Scoped Company'}
+ 🏢 {db.companySetup?.name || t('Scoped Company')}
  </div>
  )}
  </div>
@@ -4852,21 +5224,21 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
  {userForm.role === 'admin' ? (
  <div className="p-3 bg-rose-50 border border-rose-100 rounded-2xl text-[10px] text-rose-800 space-y-1">
- <p className="font-extrabold flex items-center gap-1">⭐ Administrator Access</p>
+ <p className="font-extrabold flex items-center gap-1">⭐ {t('Administrator Access')}</p>
  <p className="leading-relaxed text-slate-500">
- Company Administrators have unrestricted power to create documents, update setups, and open/close fiscal periods strictly for their assigned company.
+ {t('Company Administrators have unrestricted power to create documents, update setups, and open/close fiscal periods strictly for their assigned company.')}
  </p>
  </div>
  ) : (
  <div className="space-y-1">
-   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Assigned Roles</label>
-   {roles.length === 0 ? (
+   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Assigned Roles')}</label>
+   {db.roles.length === 0 ? (
      <div className="p-3 bg-amber-50 border border-amber-100 rounded-2xl text-[10px] text-amber-800 leading-relaxed">
-       No Roles exist yet for this company. Create one in the <strong>Roles</strong> tab before provisioning staff accounts.
+       {t('No Roles exist yet for this company. Create one in the')} <strong>{t('Roles')}</strong> {t('tab before provisioning staff accounts.')}
      </div>
    ) : (
      <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-3 space-y-1.5 max-h-48 overflow-y-auto">
-       {roles.map(r => (
+       {db.roles.map(r => (
          <label key={r.id} className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer hover:text-indigo-600 transition">
            <input
              type="checkbox"
@@ -4887,7 +5259,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
      </div>
    )}
    <p className="text-[9px] text-slate-400 leading-relaxed pt-0.5">
-     A user with multiple roles gets the union of every assigned role's permissions — a page granted by more than one role just renders once.
+     {t("A user with multiple roles gets the union of every assigned role's permissions — a page granted by more than one role just renders once.")}
    </p>
  </div>
  )}
@@ -4896,16 +5268,17 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  type="submit"
  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl py-2 font-bold text-xs transition shadow-sm cursor-pointer mt-2"
  >
- {editingUser ? 'Update User Account Details' : 'Provision User Account'}
+ {editingUser ? t('Update User Account Details') : t('Provision User Account')}
  </button>
  </form>
  </div>
+ )}
 
  {/* COLUMN 2: ACTIVE STAFF DIRECTORY (Right) - High Density Card Layout to eliminate empty space */}
  <div className="lg:col-span-7 space-y-4">
  <div className="bg-white border border-slate-200/60 rounded-2xl p-5 shadow-sm">
  <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-4">
- Active Staff & Admins Directory
+ {t('Active Staff & Admins Directory')}
  </h4>
 
  <div className="space-y-3.5">
@@ -4914,9 +5287,9 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  .filter(u => userCompanyFilter === 'all' || u.companyId === userCompanyFilter)
  .map(u => {
  const userCompanyObj = db.companies?.find(c => c.id === u.companyId);
- const organizationName = u.isSuperAdmin 
- ? 'All Companies (Super)' 
- : (userCompanyObj?.name || u.companyId || 'Default Organization');
+ const organizationName = u.isSuperAdmin
+ ? t('All Companies (Super)')
+ : (userCompanyObj?.name || u.companyId || t('Default Organization'));
  
  const isActive = u.isActive !== false;
 
@@ -4951,22 +5324,27 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  ? 'bg-rose-100 text-rose-700'
  : 'bg-indigo-50 text-indigo-700'
  }`}>
- {u.isSuperAdmin ? 'Super Admin' : u.role === 'admin' ? 'Company Admin' : 'Staff'}
+ {u.isSuperAdmin ? t('Super Admin') : u.role === 'admin' ? t('Company Admin') : t('Staff')}
  </span>
  </h5>
- <span className="text-[9px] text-slate-400 font-mono mt-0.5 block">Account ID: {u.id}</span>
+ <span className="text-[9px] text-slate-400 font-mono mt-0.5 block">{t('Account ID:')} {u.id}</span>
+ <span className={`text-[9px] font-mono mt-0.5 block ${u.email ? 'text-slate-400' : 'text-amber-600 font-bold'}`}>
+ {u.email || t('No email on file — password reset unavailable')}
+ </span>
  </div>
  </div>
 
  {/* Actions (Toggle Status & Delete) */}
  <div className="flex items-center gap-1.5">
  {/* Edit details and password button */}
+ {canUpdateUsers && (
  <button
  type="button"
  onClick={() => {
  setEditingUser(u); formRef.current?.scrollIntoView({ behavior: 'smooth' });
  setUserForm({
  username: u.username,
+ email: u.email || '',
  password: u.password || '123456',
  role: u.role,
  companyId: u.companyId || db.selectedCompanyId,
@@ -4974,12 +5352,14 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
                         });
  }}
  className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-all cursor-pointer"
- title="Edit details & password"
+ title={t('Edit details & password')}
  >
  <Edit2 className="w-3.5 h-3.5" />
  </button>
+ )}
 
  {/* Toggle Button */}
+ {canDeleteUsers && (
  <button
  type="button"
  onClick={() => handleToggleUserActive(u.id)}
@@ -4989,28 +5369,31 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
  : 'bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-200'
  } disabled:opacity-50 disabled:cursor-not-allowed`}
- title={u.id === db.currentUser?.id ? 'You cannot suspend yourself' : 'Toggle status'}
+ title={u.id === db.currentUser?.id ? t('You cannot suspend yourself') : t('Toggle status')}
  >
  <span className={`w-1 h-1 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
- {isActive ? 'Active' : 'Disabled'}
+ {isActive ? t('Active') : t('Disabled')}
  </button>
+ )}
 
  {/* Delete button */}
+ {canDeleteUsers && (
  <button
  type="button"
  onClick={() => handleDeleteUser(u.id)}
  disabled={u.id === db.currentUser?.id}
  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all cursor-pointer disabled:opacity-30"
- title={u.id === db.currentUser?.id ? 'Active session' : 'Remove account'}
+ title={u.id === db.currentUser?.id ? t('Active session') : t('Remove account')}
  >
  <Trash2 className="w-3.5 h-3.5" />
  </button>
+ )}
  </div>
  </div>
 
  {/* Card Middle Row: Scoped Organization */}
  <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-slate-150/40 text-[10px] text-slate-600">
- <span className="font-bold text-slate-400 uppercase text-[9px]">Assigned Company:</span>
+ <span className="font-bold text-slate-400 uppercase text-[9px]">{t('Assigned Company:')}</span>
  <span className="font-extrabold text-slate-900 flex items-center gap-1">
  🏢 {organizationName}
  </span>
@@ -5018,21 +5401,21 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
  {/* Card Middle Row 2: Credentials & Access */}
  <div className="flex items-center gap-1.5 bg-white p-2 rounded-lg border border-slate-150/40 text-[10px] text-slate-600">
- <span className="font-bold text-slate-400 uppercase text-[9px]">Sign-in Credentials:</span>
+ <span className="font-bold text-slate-400 uppercase text-[9px]">{t('Sign-in Credentials:')}</span>
  <span className="font-extrabold text-slate-900 flex items-center gap-1 font-mono text-[9px] bg-slate-50 px-1 py-0.5 rounded border border-slate-100">
  <Key className="w-3 h-3 text-slate-400" />
- Password: {u.password || '123456'}
+ {t('Password:')} {u.password || '123456'}
  </span>
  </div>
 
  {/* Card Bottom Row: Assigned roles */}
  <div className="pt-2 border-t border-slate-100 flex flex-wrap gap-1 items-center">
- <span className="text-[9px] font-bold text-slate-400 uppercase me-1">RBAC Scope:</span>
+ <span className="text-[9px] font-bold text-slate-400 uppercase me-1">{t('RBAC Scope:')}</span>
  {u.role === 'admin' || u.isSuperAdmin ? (
- <span className="px-1.5 py-0.5 bg-rose-50 text-rose-700 text-[8px] font-bold uppercase rounded">Full Authority</span>
+ <span className="px-1.5 py-0.5 bg-rose-50 text-rose-700 text-[8px] font-bold uppercase rounded">{t('Full Authority')}</span>
  ) : (() => {
  const assignedRoleIds = new Set((db.userRoles || []).filter(ur => ur.userId === u.id).map(ur => ur.roleId));
- const assignedRoles = roles.filter(r => assignedRoleIds.has(r.id));
+ const assignedRoles = db.roles.filter(r => assignedRoleIds.has(r.id));
  return assignedRoles.length > 0 ? (
  <>
  {assignedRoles.map(r => (
@@ -5040,7 +5423,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  ))}
  </>
  ) : (
- <span className="px-1.5 py-0.5 bg-rose-50 text-rose-700 text-[8px] font-bold uppercase rounded">No Role Assigned</span>
+ <span className="px-1.5 py-0.5 bg-rose-50 text-rose-700 text-[8px] font-bold uppercase rounded">{t('No Role Assigned')}</span>
  );
  })()}
  </div>
@@ -5059,9 +5442,9 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  {activeTab === 'roles' && (
  <div className="space-y-6 animate-fade-in">
  <div>
- <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Roles</h3>
+ <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">{t('Roles')}</h3>
  <p className="text-[11px] text-slate-400 mt-0.5">
- Define reusable, company-scoped permission sets. Assign one or more roles to a staff account instead of configuring permissions per user — a user's effective access is the union of every role they hold.
+ {t("Define reusable, company-scoped permission sets. Assign one or more roles to a staff account instead of configuring permissions per user — a user's effective access is the union of every role they hold.")}
  </p>
  </div>
 
@@ -5078,7 +5461,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <form onSubmit={handleSaveRole} className="bg-white border border-slate-200/60 rounded-2xl p-5 shadow-sm space-y-4">
  <div className="flex items-center justify-between">
  <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">
- {roleForm.id ? 'Edit Role' : 'Create New Role'}
+ {roleForm.id ? t('Edit Role') : t('Create New Role')}
  </h4>
  {roleForm.id && (
  <button
@@ -5086,17 +5469,17 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  onClick={() => { setRoleForm({ id: null, name: '', permissions: {} }); setEditingRole(null); }}
  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[9px] font-bold uppercase transition"
  >
- Cancel Edit
+ {t('Cancel Edit')}
  </button>
  )}
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Role Name</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Role Name')}</label>
  <input
  type="text"
  required
- placeholder="e.g. Sales Rep, Cashier, Procurement Officer"
+ placeholder={t('e.g. Sales Rep, Cashier, Procurement Officer')}
  value={roleForm.name}
  onChange={(e) => setRoleForm(prev => ({ ...prev, name: e.target.value }))}
  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold"
@@ -5106,13 +5489,14 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <PermissionTree
  permissions={roleForm.permissions}
  onChange={(updated) => setRoleForm(prev => ({ ...prev, permissions: updated }))}
+ t={t}
  />
 
  <button
  type="submit"
  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl py-2 font-bold text-xs transition shadow-sm cursor-pointer"
  >
- {roleForm.id ? 'Update Role' : 'Create Role'}
+ {roleForm.id ? t('Update Role') : t('Create Role')}
  </button>
  </form>
  </div>
@@ -5121,40 +5505,40 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <div className="lg:col-span-7 space-y-4">
  <div className="bg-white border border-slate-200/60 rounded-2xl p-5 shadow-sm">
  <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-4">
- Roles for {db.companySetup?.name || 'this company'} ({roles.length})
+ {t('Roles for')} {db.companySetup?.name || t('this company')} ({db.roles.length})
  </h4>
  <div className="space-y-2.5">
- {roles.length === 0 && (
- <p className="text-xs text-slate-400 italic py-6 text-center">No roles created yet.</p>
+ {db.roles.length === 0 && (
+ <p className="text-xs text-slate-400 italic py-6 text-center">{t('No roles created yet.')}</p>
  )}
- {roles.map(r => {
+ {db.roles.map(r => {
  const assignedCount = (db.userRoles || []).filter(ur => ur.roleId === r.id).length;
  return (
  <div key={r.id} className="p-3 bg-slate-50 border border-slate-200/60 rounded-2xl flex items-center justify-between gap-3">
  <div className="min-w-0">
  <p className="text-xs font-bold text-slate-800 truncate">{r.name}</p>
- <p className="text-[10px] text-slate-400">{assignedCount} user{assignedCount === 1 ? '' : 's'} assigned</p>
+ <p className="text-[10px] text-slate-400">{assignedCount} {assignedCount === 1 ? t('user assigned') : t('users assigned')}</p>
  </div>
  <div className="flex items-center gap-1.5 shrink-0">
  <button
  type="button"
  onClick={() => { setEditingRole(r); setRoleForm({ id: r.id, name: r.name, permissions: r.permissions || {} }); }}
  className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all cursor-pointer"
- title="Edit role"
+ title={t('Edit role')}
  >
  <Edit2 className="w-3.5 h-3.5" />
  </button>
  {confirmDeleteRoleId === r.id ? (
  <>
- <button type="button" onClick={() => handleDeleteRole(r.id)} className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-bold transition">Confirm</button>
- <button type="button" onClick={() => setConfirmDeleteRoleId(null)} className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg text-[10px] font-bold transition">Cancel</button>
+ <button type="button" onClick={() => handleDeleteRole(r.id)} className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-bold transition">{t('Confirm')}</button>
+ <button type="button" onClick={() => setConfirmDeleteRoleId(null)} className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg text-[10px] font-bold transition">{t('Cancel')}</button>
  </>
  ) : (
  <button
  type="button"
  onClick={() => setConfirmDeleteRoleId(r.id)}
  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
- title="Delete role"
+ title={t('Delete role')}
  >
  <Trash2 className="w-3.5 h-3.5" />
  </button>
@@ -5175,28 +5559,28 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <div className="space-y-8 animate-fade-in">
  <div>
  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">{t('Investor Equity & Capital Contributions')}</h3>
- <p className="text-[11px] text-slate-400 mt-0.5">Manage capital investors, register equity percentages, and record official cash injections into your corporate bank accounts.</p>
+ <p className="text-[11px] text-slate-400 mt-0.5">{t('Manage capital investors, register equity percentages, and record official cash injections into your corporate bank accounts.')}</p>
  </div>
 
  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
- 
+
  {/* COLUMN 1: LEFT SIDE (Form & Registry) */}
  <div className="lg:col-span-5 space-y-6">
- 
+
  {/* Registration form */}
  <div className="bg-slate-50 border border-slate-100 p-5 rounded-2xl">
  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-1.5">
  <Plus className="w-4 h-4 text-indigo-600" />
- Register New Investor
+ {t('Register New Investor')}
  </h4>
- 
+
  <form onSubmit={handleAddInvestor} className="space-y-3">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Investor Name</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Investor Name')}</label>
  <input
  type="text"
  required
- placeholder="e.g. Abdullah bin Jameel"
+ placeholder={t('e.g. Abdullah bin Jameel')}
  value={investorForm.name}
  onChange={(e) => setInvestorForm({ ...investorForm, name: e.target.value })}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -5204,18 +5588,18 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Assigned Company</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Assigned Company')}</label>
  <div className="w-full bg-slate-100 border border-slate-200 rounded-2xl px-3 py-2 text-xs text-slate-500 font-bold overflow-hidden text-ellipsis whitespace-nowrap">
- 🏢 {db.companySetup?.name || 'Scoped Company'}
+ 🏢 {db.companySetup?.name || t('Scoped Company')}
  </div>
  </div>
 
  <div className="grid grid-cols-2 gap-3">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Contact Phone</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Contact Phone')}</label>
  <input
  type="text"
- placeholder="e.g. +966 50..."
+ placeholder={t('e.g. +966 50...')}
  value={investorForm.phone}
  onChange={(e) => setInvestorForm({ ...investorForm, phone: e.target.value })}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -5223,10 +5607,10 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email Address</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Email Address')}</label>
  <input
  type="email"
- placeholder="e.g. abdullah@invest.sa"
+ placeholder={t('e.g. abdullah@invest.sa')}
  value={investorForm.email}
  onChange={(e) => setInvestorForm({ ...investorForm, email: e.target.value })}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -5236,14 +5620,14 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
  <div className="grid grid-cols-2 gap-3">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Equity Share (%)</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Equity Share (%)')}</label>
  <input
  type="number"
  step="0.01"
  required
  min="0"
  max="100"
- placeholder="e.g. 50"
+ placeholder={t('e.g. 50')}
  value={investorForm.equityPercentage}
  onChange={(e) => setInvestorForm({ ...investorForm, equityPercentage: e.target.value })}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -5251,13 +5635,13 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Profit Share (%)</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Profit Share (%)')}</label>
  <input
  type="number"
  step="0.01"
  min="0"
  max="100"
- placeholder="Defaults to Equity %"
+ placeholder={t('Defaults to Equity %')}
  value={investorForm.profitPercentage}
  onChange={(e) => setInvestorForm({ ...investorForm, profitPercentage: e.target.value })}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -5266,10 +5650,10 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Notes</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Notes')}</label>
  <textarea
  rows={2}
- placeholder="Agreement details, transfer parameters..."
+ placeholder={t('Agreement details, transfer parameters...')}
  value={investorForm.notes}
  onChange={(e) => setInvestorForm({ ...investorForm, notes: e.target.value })}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
@@ -5280,7 +5664,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  type="submit"
  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl py-2 font-bold text-xs transition shadow-sm mt-2"
  >
- Add Investor to Registry
+ {t('Add Investor to Registry')}
  </button>
  </form>
  </div>
@@ -5289,10 +5673,10 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <div className="bg-white border border-slate-200/60 rounded-2xl p-5">
  <div className="flex flex-col gap-2.5 mb-4 pb-2 border-b border-slate-100">
  <div className="flex justify-between items-center">
- <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Investor Shareholding Directory</h4>
+ <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">{t('Investor Shareholding Directory')}</h4>
  </div>
  </div>
- 
+
  {(() => {
  const filteredInvestors = db.investors.filter(inv => {
  return (inv.companyId) === (db.selectedCompanyId);
@@ -5301,7 +5685,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  if (filteredInvestors.length === 0) {
  return (
  <div className="text-center py-6 text-slate-400 text-xs">
- No investors registered for the selected company scope.
+ {t('No investors registered for the selected company scope.')}
  </div>
  );
  }
@@ -5314,7 +5698,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  .filter(v => v.referenceType === 'Equity' && v.referenceId === inv.id)
  .reduce((sum, v) => sum + v.amount, 0);
 
- const assignedCompanyName = db.companies?.find(c => c.id === inv.companyId)?.name || 'Scoped Company';
+ const assignedCompanyName = db.companies?.find(c => c.id === inv.companyId)?.name || t('Scoped Company');
 
  return (
  <div key={inv.id} className="pt-3 first:pt-0">
@@ -5322,9 +5706,9 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <div>
  <span className="font-extrabold text-slate-900 text-xs">{inv.name}</span>
  <div className="text-[10px] text-slate-400 space-x-2 mt-0.5 flex flex-wrap items-center gap-y-1">
- <span>{inv.phone || 'No Phone'}</span>
+ <span>{inv.phone || t('No Phone')}</span>
  <span>•</span>
- <span>{inv.email || 'No Email'}</span>
+ <span>{inv.email || t('No Email')}</span>
  <span>•</span>
  <span className="inline-flex items-center gap-1 font-bold text-slate-600 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded-full text-[9px] uppercase tracking-wide">
  🏢 {assignedCompanyName}
@@ -5333,21 +5717,21 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
  <div className="flex flex-col items-end gap-1">
  <span className="bg-indigo-50 text-indigo-700 font-extrabold text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap">
- {inv.equityPercentage}% Equity
+ {inv.equityPercentage}% {t('Equity')}
  </span>
  <span className="bg-emerald-50 text-emerald-700 font-extrabold text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap">
- {inv.profitPercentage ?? inv.equityPercentage}% Profit
+ {inv.profitPercentage ?? inv.equityPercentage}% {t('Profit')}
  </span>
  </div>
  </div>
- 
+
  <div className="flex justify-between items-center mt-2.5 bg-slate-50/50 p-2 rounded-lg border border-slate-100">
- <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">Total Funded Capital:</span>
+ <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">{t('Total Funded Capital:')}</span>
  <span className="font-bold text-xs text-slate-950">
  {currencySymbol} {currentTotalContributed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
  </span>
  </div>
- 
+
  {inv.notes && (
  <p className="text-[10px] italic text-slate-400 mt-1.5 px-1 bg-slate-50/20 py-0.5 rounded border border-dotted border-slate-100">{inv.notes}</p>
  )}
@@ -5362,30 +5746,30 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
  {/* COLUMN 2: RIGHT SIDE (Contribution form & Logs) */}
  <div className="lg:col-span-7 space-y-6">
- 
+
  {/* Record Contribution Form */}
  <div className="bg-white border border-slate-200/60 p-5 rounded-2xl shadow-sm">
  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-1.5">
  <Coins className="w-4 h-4 text-emerald-500" />
- Record Capital Contribution (Cash Injection)
+ {t('Record Capital Contribution (Cash Injection)')}
  </h4>
 
  {!db.investors || db.investors.length === 0 ? (
  <div className="bg-amber-50 text-amber-800 p-3 rounded-2xl text-xs border border-amber-100 leading-relaxed">
- Please register at least one investor in the Shareholding Directory first before recording capital investments.
+ {t('Please register at least one investor in the Shareholding Directory first before recording capital investments.')}
  </div>
  ) : (
  <form onSubmit={handleAddInvestment} className="space-y-4">
  <div className="grid grid-cols-2 gap-4">
  <div className="space-y-1.5">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Select Investor</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Select Investor')}</label>
  <select
  required
  value={investmentForm.investorId}
  onChange={(e) => setInvestmentForm({ ...investmentForm, investorId: e.target.value })}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 focus:outline-none"
  >
- <option value="">-- Choose Investor --</option>
+ <option value="">{t('-- Choose Investor --')}</option>
  {db.investors.map(inv => (
  <option key={inv.id} value={inv.id}>{inv.name} ({inv.equityPercentage}%)</option>
  ))}
@@ -5393,14 +5777,14 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
 
  <div className="space-y-1.5">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Target Bank Account (Debit Account)</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Target Bank Account (Debit Account)')}</label>
  <select
  required
  value={investmentForm.bankId}
  onChange={(e) => setInvestmentForm({ ...investmentForm, bankId: e.target.value })}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 focus:outline-none"
  >
- <option value="">-- Choose Account --</option>
+ <option value="">{t('-- Choose Account --')}</option>
  {db.banks.filter(b => b.isActive).map(b => (
  <option key={b.id} value={b.id}>{b.bankName} - {b.accountTitle}</option>
  ))}
@@ -5408,13 +5792,13 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
 
  <div className="space-y-1.5">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Injection Amount ({currencySymbol})</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Injection Amount')} ({currencySymbol})</label>
  <input
  type="number"
  step="0.01"
  required
  min="1"
- placeholder="e.g. 50000.00"
+ placeholder={t('e.g. 50000.00')}
  value={investmentForm.amount}
  onChange={(e) => setInvestmentForm({ ...investmentForm, amount: e.target.value })}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 focus:outline-none"
@@ -5422,7 +5806,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
 
  <div className="space-y-1.5">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date Received</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Date Received')}</label>
  <input
  type="date"
  required
@@ -5434,11 +5818,11 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
 
  <div className="space-y-1.5">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Transaction Description / Notes</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Transaction Description / Notes')}</label>
  <input
  type="text"
  required
- placeholder="e.g. Seed investment, round A funding transfer..."
+ placeholder={t('e.g. Seed investment, round A funding transfer...')}
  value={investmentForm.description}
  onChange={(e) => setInvestmentForm({ ...investmentForm, description: e.target.value })}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 focus:outline-none"
@@ -5449,7 +5833,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  type="submit"
  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl py-2.5 font-bold text-xs transition shadow-sm"
  >
- Process Investment (Generate Receipt Voucher)
+ {t('Process Investment (Generate Receipt Voucher)')}
  </button>
  </form>
  )}
@@ -5457,23 +5841,23 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
  {/* Investment Cash Contribution Log */}
  <div className="bg-white border border-slate-200/60 rounded-2xl p-5">
- <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">Investment Contribution Receipt Log</h4>
+ <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4">{t('Investment Contribution Receipt Log')}</h4>
 
  {db.vouchers.filter(v => v.referenceType === 'Equity').length === 0 ? (
  <div className="text-center py-8 text-slate-400 text-xs">
- No capital contributions processed yet.
+ {t('No capital contributions processed yet.')}
  </div>
  ) : (
  <div className="overflow-x-auto">
  <table className="w-full text-start text-xs">
  <thead>
  <tr className="border-b border-slate-100 text-slate-400">
- <th className="py-2 font-bold uppercase text-[9px] tracking-wider">Voucher No</th>
- <th className="py-2 font-bold uppercase text-[9px] tracking-wider">Date</th>
- <th className="py-2 font-bold uppercase text-[9px] tracking-wider">Investor</th>
- <th className="py-2 font-bold uppercase text-[9px] tracking-wider">Bank Account</th>
- <th className="py-2 font-bold uppercase text-[9px] tracking-wider">Description</th>
- <th className="py-2 text-end font-bold uppercase text-[9px] tracking-wider">Amount</th>
+ <th className="py-2 font-bold uppercase text-[9px] tracking-wider">{t('Voucher No')}</th>
+ <th className="py-2 font-bold uppercase text-[9px] tracking-wider">{t('Date')}</th>
+ <th className="py-2 font-bold uppercase text-[9px] tracking-wider">{t('Investor')}</th>
+ <th className="py-2 font-bold uppercase text-[9px] tracking-wider">{t('Bank Account')}</th>
+ <th className="py-2 font-bold uppercase text-[9px] tracking-wider">{t('Description')}</th>
+ <th className="py-2 text-end font-bold uppercase text-[9px] tracking-wider">{t('Amount')}</th>
  </tr>
  </thead>
  <tbody className="divide-y divide-slate-50">
@@ -5487,8 +5871,8 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <tr key={v.id} className="hover:bg-slate-50/50">
  <td className="py-3 font-mono font-bold text-[11px] text-indigo-600">{v.voucherNumber}</td>
  <td className="py-3 text-slate-500 whitespace-nowrap">{v.date}</td>
- <td className="py-3 font-semibold text-slate-900">{investor?.name || 'Unknown'}</td>
- <td className="py-3 text-slate-600 font-medium">{bank?.bankName || 'Unknown Bank'}</td>
+ <td className="py-3 font-semibold text-slate-900">{investor?.name || t('Unknown')}</td>
+ <td className="py-3 text-slate-600 font-medium">{bank?.bankName || t('Unknown Bank')}</td>
  <td className="py-3 text-slate-500 max-w-[180px] truncate" title={v.description}>{v.description}</td>
  <td className="py-3 text-end font-extrabold text-slate-950">
  {currencySymbol} {v.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -5536,53 +5920,82 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
      return 'General';
    };
 
-   const updateTranslationItem = (id: string, updatedFields: Partial<any>) => {
-     const newArr = (db.translations || []).map(item => {
-       if (item.id === id) {
-         return { ...item, ...updatedFields };
-       }
-       return item;
-     });
-     onUpdateDb({ ...db, translations: newArr });
+   const handleOpenAddTranslation = () => {
+     setTranslationModal({ mode: 'add', key: '', en: '', ar: '', ur: '' });
    };
 
-   const handleAutoTranslate = async () => {
-     setIsTranslating(true);
+   const handleOpenEditTranslation = (item: any) => {
+     setTranslationModal({ mode: 'edit', id: item.id, key: item.key, en: item.en || '', ar: item.ar || '', ur: item.ur || '' });
+   };
+
+   // One explicit transaction per action — a Create is one POST, an Update is one PATCH
+   // fired only when Save is clicked (never per keystroke), a Delete is one DELETE. No
+   // bulk/whole-array sync anywhere in this flow.
+   const handleSaveTranslationModal = async (e: React.FormEvent) => {
+     e.preventDefault();
+     if (!translationModal) return;
+     if (!translationModal.key.trim()) {
+       triggerError(t('Translation key is required.'));
+       return;
+     }
+     setIsSavingTranslation(true);
      try {
-       const response = await fetch('/api/translate-all', {
-         method: 'POST',
+       const isEdit = translationModal.mode === 'edit';
+       const res = await fetch(isEdit ? `/api/translations/${translationModal.id}` : '/api/translations', {
+         method: isEdit ? 'PATCH' : 'POST',
          headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({ translations: db.translations })
+         body: JSON.stringify({
+           key: translationModal.key.trim(),
+           en: translationModal.en,
+           ar: translationModal.ar,
+           ur: translationModal.ur,
+         }),
        });
-       if (!response.ok) {
-         throw new Error(await response.text() || 'Failed to auto-translate');
+       const result = await res.json().catch(() => ({}));
+       if (!res.ok) {
+         triggerError(result.error || t('Failed to save translation key.'));
+         return;
        }
-       const data = await response.json();
-       if (data && Array.isArray(data.translations)) {
-         onUpdateDb({ ...db, translations: data.translations });
-         triggerSuccess('Automated dictionary translations populated successfully!');
-       } else {
-         throw new Error('Invalid response structure');
-       }
+       triggerSuccess(isEdit ? t('Translation key updated successfully.') : t('New translation key added successfully.'));
+       setTranslationModal(null);
+       if (onRefreshDb) await onRefreshDb();
      } catch (err: any) {
-       console.error(err);
-       triggerError(`Translation failed: ${err.message}`);
+       triggerError(err?.message || t('Failed to save translation key.'));
      } finally {
-       setIsTranslating(false);
+       setIsSavingTranslation(false);
      }
    };
 
-   const filteredTranslations = (db.translations || []).filter(t => {
+   const handleConfirmDeleteTranslation = async () => {
+     if (!deletingTranslationId) return;
+     try {
+       const res = await fetch(`/api/translations/${deletingTranslationId}`, { method: 'DELETE' });
+       const result = await res.json().catch(() => ({}));
+       if (!res.ok) {
+         triggerError(result.error || t('Failed to delete translation key.'));
+         return;
+       }
+       triggerSuccess(t('Translation key deleted successfully.'));
+       if (onRefreshDb) await onRefreshDb();
+     } catch (err: any) {
+       triggerError(err?.message || t('Failed to delete translation key.'));
+     } finally {
+       setDeletingTranslationId(null);
+     }
+   };
+
+   const allTranslations = db.translations || [];
+   const filteredTranslations = allTranslations.filter((item: any) => {
      const search = transSearchQuery.toLowerCase();
-     const keyMatch = t.key.toLowerCase().includes(search);
-     const enMatch = (t.en || '').toLowerCase().includes(search);
-     const arMatch = (t.ar || '').toLowerCase().includes(search);
-     const urMatch = (t.ur || '').toLowerCase().includes(search);
+     const keyMatch = item.key.toLowerCase().includes(search);
+     const enMatch = (item.en || '').toLowerCase().includes(search);
+     const arMatch = (item.ar || '').toLowerCase().includes(search);
+     const urMatch = (item.ur || '').toLowerCase().includes(search);
      const matchesSearch = !transSearchQuery || keyMatch || enMatch || arMatch || urMatch;
 
      if (!matchesSearch) return false;
      if (transFilterModule === 'All') return true;
-     return getTranslationModule(t.key) === transFilterModule;
+     return getTranslationModule(item.key) === transFilterModule;
    });
 
    const modules = ['All', 'Quotation', 'Invoice', 'Expense', 'POS', 'Reports & KPIs', 'Master Entities', 'Settings & Admin', 'General'];
@@ -5595,31 +6008,15 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
              <Languages className="w-6 h-6 text-indigo-600" />
              {t('UX Translations Dictionary')}
            </h2>
-           <p className="text-sm text-slate-500 font-medium mt-1">Manage global English, Arabic, and Urdu UX translations.</p>
+           <p className="text-sm text-slate-500 font-medium mt-1">{t('Manage global English, Arabic, and Urdu UX translations.')}</p>
          </div>
          <div className="flex items-center gap-3 self-end">
            <button
              type="button"
-             disabled={isTranslating}
-             onClick={handleAutoTranslate}
-             className={`px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all duration-150 ${isTranslating ? 'bg-amber-100 text-amber-700 cursor-not-allowed' : 'bg-amber-500 text-white hover:bg-amber-600'}`}
-           >
-             <Sparkles className={`w-4 h-4 ${isTranslating ? 'animate-spin' : ''}`} />
-             {isTranslating ? 'Translating via Google/Gemini...' : 'Auto-Translate (Google/Gemini)'}
-           </button>
-           <button
-             type="button"
-             onClick={() => {
-                setTransSearchQuery('');
-                setTransFilterModule('All');
-                const newId = generateId();
-                const newArr = [...(db.translations || []), { id: newId, key: 'New Key', en: '', ar: '', ur: '' }];
-                onUpdateDb({ ...db, translations: newArr });
-                triggerSuccess('New translation key added at the bottom of the list! Scroll down to edit.');
-              }}
+             onClick={handleOpenAddTranslation}
              className="bg-indigo-600 text-white px-4 py-2 rounded-2xl text-xs font-bold hover:bg-indigo-700 shadow-sm flex items-center gap-1.5"
            >
-             <Plus className="w-4 h-4 shrink-0" /> Add Translation
+             <Plus className="w-4 h-4 shrink-0" /> {t('Add Translation')}
            </button>
          </div>
        </div>
@@ -5630,26 +6027,26 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
            <input
              type="text"
-             placeholder="Search translation key or values..."
+             placeholder={t('Search translation key or values...')}
              value={transSearchQuery}
              onChange={(e) => setTransSearchQuery(e.target.value)}
              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
            />
          </div>
          <div className="w-full sm:w-1/3 flex items-center gap-2">
-           <label className="text-xs font-bold text-slate-600 shrink-0">Form/Module:</label>
+           <label className="text-xs font-bold text-slate-600 shrink-0">{t('Form/Module:')}</label>
            <select
              value={transFilterModule}
              onChange={(e) => setTransFilterModule(e.target.value)}
              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
            >
              {modules.map(mod => (
-               <option key={mod} value={mod}>{mod === 'All' ? 'All Modules / Forms' : mod}</option>
+               <option key={mod} value={mod}>{mod === 'All' ? t('All Modules / Forms') : t(mod)}</option>
              ))}
            </select>
          </div>
          <div className="w-full sm:w-1/3 text-end text-xs text-slate-500 font-medium sm:ml-auto">
-           Showing <strong className="text-slate-800 font-bold">{filteredTranslations.length}</strong> of <strong className="text-indigo-600 font-bold">{(db.translations || []).length}</strong> keys
+           {t('Showing')} <strong className="text-slate-800 font-bold">{filteredTranslations.length}</strong> {t('of')} <strong className="text-indigo-600 font-bold">{allTranslations.length}</strong> {t('keys')}
          </div>
        </div>
 
@@ -5657,58 +6054,42 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
          <table className="w-full text-start text-xs">
            <thead className="bg-slate-50 border-b border-slate-100 text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
              <tr>
-               <th className="p-3 w-[25%] text-left">UX Key</th>
-               <th className="p-3 w-[25%] text-left">English</th>
-               <th className="p-3 w-[22%] text-left">Arabic (ar)</th>
-               <th className="p-3 w-[22%] text-left">Urdu (ur)</th>
-               <th className="p-3 w-[6%] text-end">Action</th>
+               <th className="p-3 w-[25%] text-left">{t('UX Key')}</th>
+               <th className="p-3 w-[24%] text-left">{t('English')}</th>
+               <th className="p-3 w-[21%] text-left">{t('Arabic (ar)')}</th>
+               <th className="p-3 w-[21%] text-left">{t('Urdu (ur)')}</th>
+               <th className="p-3 w-[9%] text-end">{t('Actions')}</th>
              </tr>
            </thead>
            <tbody>
-             {filteredTranslations.map((t) => (
-               <tr key={t.id} className="border-b border-slate-50 hover:bg-slate-50/50">
-                 <td className="p-2">
-                   <input 
-                     value={t.key} 
-                     onChange={(e) => updateTranslationItem(t.id, { key: e.target.value })} 
-                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-700" 
-                   />
-                   <span className="text-[9px] text-indigo-500 font-mono pl-1 mt-0.5 block">{getTranslationModule(t.key)}</span>
+             {filteredTranslations.map((item: any) => (
+               <tr key={item.id} className="border-b border-slate-50 hover:bg-slate-50/50">
+                 <td className="p-3 align-top">
+                   <span className="font-semibold text-slate-700 break-words">{item.key}</span>
+                   <span className="text-[9px] text-indigo-500 font-mono mt-0.5 block">{getTranslationModule(item.key)}</span>
                  </td>
-                 <td className="p-2">
-                   <input 
-                     value={t.en} 
-                     onChange={(e) => updateTranslationItem(t.id, { en: e.target.value })} 
-                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500" 
-                   />
-                 </td>
-                 <td className="p-2">
-                   <input 
-                     value={t.ar} 
-                     dir="rtl"
-                     onChange={(e) => updateTranslationItem(t.id, { ar: e.target.value })} 
-                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans" 
-                   />
-                 </td>
-                 <td className="p-2">
-                   <input 
-                     value={t.ur}
-                     dir="rtl"
-                     onChange={(e) => updateTranslationItem(t.id, { ur: e.target.value })} 
-                     className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans" 
-                   />
-                 </td>
-                 <td className="p-2 text-end">
-                   <button
-                     type="button"
-                     onClick={() => {
-                       const newArr = db.translations.filter(tr => tr.id !== t.id);
-                       onUpdateDb({ ...db, translations: newArr });
-                     }}
-                     className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                   >
-                     <Trash2 className="w-4 h-4" />
-                   </button>
+                 <td className="p-3 align-top text-slate-600 break-words">{item.en}</td>
+                 <td className="p-3 align-top text-slate-600 break-words" dir="rtl">{item.ar}</td>
+                 <td className="p-3 align-top text-slate-600 break-words" dir="rtl">{item.ur}</td>
+                 <td className="p-3 align-top text-end">
+                   <div className="flex items-center justify-end gap-1">
+                     <button
+                       type="button"
+                       onClick={() => handleOpenEditTranslation(item)}
+                       title={t('Edit')}
+                       className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                     >
+                       <Edit2 className="w-3.5 h-3.5" />
+                     </button>
+                     <button
+                       type="button"
+                       onClick={() => setDeletingTranslationId(item.id)}
+                       title={t('Delete')}
+                       className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                     >
+                       <Trash2 className="w-3.5 h-3.5" />
+                     </button>
+                   </div>
                  </td>
                </tr>
              ))}
@@ -5717,10 +6098,110 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
          {filteredTranslations.length === 0 && (
            <div className="p-12 text-center text-slate-400 font-medium flex flex-col items-center justify-center gap-2">
              <Languages className="w-8 h-8 text-slate-300" />
-             <span>No translations match the selected filter or search.</span>
+             <span>{t('No translations match the selected filter or search.')}</span>
            </div>
          )}
        </div>
+
+       {/* Add/Edit Translation Modal */}
+       {translationModal && (
+         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex justify-center items-center p-4 overflow-y-auto">
+           <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl p-6 w-full max-w-lg my-auto">
+             <h3 className="font-bold text-sm text-slate-900 mb-1">
+               {translationModal.mode === 'edit' ? t('Edit Translation Key') : t('Add New Translation Key')}
+             </h3>
+             <p className="text-xs text-slate-400 mb-4">{t('This is a single, global dictionary shared by every company on the platform.')}</p>
+             <form onSubmit={handleSaveTranslationModal} className="space-y-4 text-xs">
+               <div className="space-y-1">
+                 <label className="text-[10px] font-bold text-slate-400 uppercase">{t('UX Key')}</label>
+                 <input
+                   type="text"
+                   required
+                   value={translationModal.key}
+                   onChange={(e) => setTranslationModal({ ...translationModal, key: e.target.value })}
+                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                 />
+               </div>
+               <div className="space-y-1">
+                 <label className="text-[10px] font-bold text-slate-400 uppercase">{t('English')}</label>
+                 <input
+                   type="text"
+                   value={translationModal.en}
+                   onChange={(e) => setTranslationModal({ ...translationModal, en: e.target.value })}
+                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                 />
+               </div>
+               <div className="space-y-1">
+                 <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Arabic (ar)')}</label>
+                 <input
+                   type="text"
+                   dir="rtl"
+                   value={translationModal.ar}
+                   onChange={(e) => setTranslationModal({ ...translationModal, ar: e.target.value })}
+                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 font-sans focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                 />
+               </div>
+               <div className="space-y-1">
+                 <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Urdu (ur)')}</label>
+                 <input
+                   type="text"
+                   dir="rtl"
+                   value={translationModal.ur}
+                   onChange={(e) => setTranslationModal({ ...translationModal, ur: e.target.value })}
+                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 font-sans focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                 />
+               </div>
+               <div className="flex justify-end gap-2 pt-2">
+                 <button
+                   type="button"
+                   onClick={() => setTranslationModal(null)}
+                   className="px-3 py-1.5 bg-slate-100 text-slate-500 rounded-lg text-xs font-semibold hover:bg-slate-200 transition"
+                 >
+                   {t('Cancel')}
+                 </button>
+                 <button
+                   type="submit"
+                   disabled={isSavingTranslation}
+                   className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                 >
+                   {isSavingTranslation ? t('Saving...') : t('Save')}
+                 </button>
+               </div>
+             </form>
+           </div>
+         </div>
+       )}
+
+       {/* Delete Translation Confirmation Modal */}
+       {deletingTranslationId && (
+         <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex justify-center items-center p-4 overflow-y-auto">
+           <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl p-6 w-full max-w-sm my-auto">
+             <div className="flex items-center gap-2 text-rose-600 mb-2">
+               <AlertTriangle className="w-5 h-5" />
+               <h3 className="text-lg font-bold">{t('Delete Translation Key')}</h3>
+             </div>
+             <p className="text-sm text-slate-600 mb-6 font-medium leading-relaxed">
+               {t('Are you sure you want to delete')} "{allTranslations.find((item: any) => item.id === deletingTranslationId)?.key}"?
+               <br /><br />
+               {t('This removes it from the shared dictionary for every company. Any screen still using this key will show the raw key text until it is re-added.')}
+             </p>
+             <div className="flex justify-end gap-3 mt-6">
+               <button
+                 onClick={() => setDeletingTranslationId(null)}
+                 className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-2xl transition"
+               >
+                 {t('Cancel')}
+               </button>
+               <button
+                 onClick={handleConfirmDeleteTranslation}
+                 className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold rounded-2xl transition shadow-sm"
+               >
+                 {t('Yes, Delete Key')}
+               </button>
+             </div>
+           </div>
+         </div>
+       )}
      </div>
    );
  })()}
@@ -5729,7 +6210,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <div className="space-y-6 animate-fade-in">
  <div>
  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">{t('Database Portability & Backup')}</h3>
- <p className="text-[11px] text-slate-400 mt-0.5">Export, import, or copy your entire database state to easily transfer configurations, profiles, and transactions to other testers or backup slots.</p>
+ <p className="text-[11px] text-slate-400 mt-0.5">{t('Export, import, or copy your entire database state to easily transfer configurations, profiles, and transactions to other testers or backup slots.')}</p>
  </div>
 
  <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 space-y-6">
@@ -5737,17 +6218,17 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  {/* Export Card */}
  <div className="space-y-3">
  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
- <Download className="w-4 h-4 text-indigo-500" /> Export Database
+ <Download className="w-4 h-4 text-indigo-500" /> {t('Export Database')}
  </h4>
  <p className="text-xs text-slate-500 ">
- Generate and download a JSON file containing all companies, users, settings, invoices, and transaction logs. This file can be shared with other users to restore your exact current system setup.
+ {t('Generate and download a JSON file containing all companies, users, settings, invoices, and transaction logs. This file can be shared with other users to restore your exact current system setup.')}
  </p>
  <div className="flex flex-wrap gap-2.5">
  <button
  onClick={handleExportDb}
  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-md shadow-indigo-600/10 animate-fade-in"
  >
- <Download className="w-4 h-4" /> Download PostgreSQL Backup (.sql)
+ <Download className="w-4 h-4" /> {t('Download PostgreSQL Backup (.sql)')}
  </button>
  {db.currentUser?.isSuperAdmin && (
  <button
@@ -5755,20 +6236,20 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  disabled={downloadingZip}
  className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-md shadow-amber-600/10 animate-fade-in disabled:opacity-50 disabled:cursor-not-allowed"
  >
- <Download className="w-4 h-4" /> {downloadingZip ? 'Zipping...' : 'Download Source Code ZIP'}
+ <Download className="w-4 h-4" /> {downloadingZip ? t('Zipping...') : t('Download Source Code ZIP')}
  </button>
  )}
  <button
  onClick={handleCopyToClipboard}
  className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 :bg-slate-700 text-slate-700 rounded-2xl text-xs font-bold transition flex items-center gap-2 cursor-pointer"
  >
- <Copy className="w-4 h-4" /> {copied ? 'Copied to Clipboard!' : 'Copy Database JSON String'}
+ <Copy className="w-4 h-4" /> {copied ? t('Copied to Clipboard!') : t('Copy Database JSON String')}
  </button>
  <button
  onClick={handleForcePushToCloud}
  className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-md shadow-amber-600/10"
  >
- <Upload className="w-4 h-4" /> Force Publish Local to Cloud
+ <Upload className="w-4 h-4" /> {t('Force Publish Local to Cloud')}
  </button>
  </div>
  </div>
@@ -5778,10 +6259,10 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  {/* Import Card */}
  <div className="space-y-3">
  <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
- <Upload className="w-4 h-4 text-indigo-500" /> Import Database Setup
+ <Upload className="w-4 h-4 text-indigo-500" /> {t('Import Database Setup')}
  </h4>
  <p className="text-xs text-slate-500 ">
- Import an existing JSON backup to completely replace the active database setup in this browser. Warning: Importing a backup replaces all current transactions, companies, and user lists.
+ {t('Import an existing JSON backup to completely replace the active database setup in this browser. Warning: Importing a backup replaces all current transactions, companies, and user lists.')}
  </p>
  
  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -5791,11 +6272,11 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <Upload className="w-5 h-5" />
  </div>
  <div>
- <p className="text-xs font-bold text-slate-800 ">Import .json / .xml File</p>
- <p className="text-[10px] text-slate-400 mt-0.5">Select a database backup file to apply immediately</p>
+ <p className="text-xs font-bold text-slate-800 ">{t('Import .json / .xml File')}</p>
+ <p className="text-[10px] text-slate-400 mt-0.5">{t('Select a database backup file to apply immediately')}</p>
  </div>
  <label className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-bold transition cursor-pointer select-none">
- <span>Browse Backup File...</span>
+ <span>{t('Browse Backup File...')}</span>
  <input
  type="file"
  accept=".json,.xml"
@@ -5807,9 +6288,9 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
  {/* Paste area */}
  <div className="border border-slate-200 rounded-2xl p-5 bg-white flex flex-col gap-3">
- <p className="text-xs font-bold text-slate-800 ">Paste Database JSON String</p>
+ <p className="text-xs font-bold text-slate-800 ">{t('Paste Database JSON String')}</p>
  <textarea
- placeholder='Paste raw JSON string here...'
+ placeholder={t('Paste raw JSON string here...')}
  value={pastedJson}
  onChange={(e) => setPastedJson(e.target.value)}
  className="w-full h-24 bg-slate-50 border border-slate-200 rounded-2xl p-2.5 text-[10px] text-slate-800 placeholder-slate-400 font-mono focus:outline-none focus:border-indigo-500"
@@ -5819,29 +6300,9 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  disabled={!pastedJson.trim()}
  className="w-full bg-slate-800 hover:bg-slate-700 disabled:bg-slate-200 :bg-slate-800/50 disabled:text-slate-400 text-white rounded-2xl py-2 text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
  >
- <Check className="w-3.5 h-3.5" /> Apply Pasted Backup
+ <Check className="w-3.5 h-3.5" /> {t('Apply Pasted Backup')}
  </button>
  </div>
- </div>
- </div>
-
- <hr className="border-slate-200/40 " />
-
- {/* Truncate Card */}
- <div className="space-y-3">
- <h4 className="text-xs font-bold text-rose-600 uppercase tracking-wider flex items-center gap-2">
- <AlertTriangle className="w-4 h-4 text-rose-500 animate-pulse" /> Truncate Transactions (Dev/Testing Tool)
- </h4>
- <p className="text-xs text-slate-500 ">
- Immediately wipe and truncate all active transactional data—including all <span className="font-bold">quotations, invoices, expenses, recurring postings, and vouchers</span>—and reset the sequence counters back to 1001. This is highly useful for cleaning up test records before going live or running new test cycles.
- </p>
- <div>
- <button
- onClick={() => setIsConfirmingTruncate(true)}
- className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-2xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-md shadow-rose-600/10"
- >
- <Trash2 className="w-4 h-4" /> Truncate & Reset Transaction Data
- </button>
  </div>
  </div>
 
@@ -5852,17 +6313,17 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
      <div>
        <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-         <Database className="w-4 h-4 text-indigo-500" /> System Audit Trails
+         <Database className="w-4 h-4 text-indigo-500" /> {t('System Audit Trails')}
        </h4>
        <p className="text-xs text-slate-500 mt-1">
-         Monitor and audit actions performed by users across all companies. Includes logins, creations, updates, and deletions.
+         {t('Monitor and audit actions performed by users across all companies. Includes logins, creations, updates, and deletions.')}
        </p>
      </div>
      <button
        onClick={() => setIsConfirmingPurge(true)}
        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-sm"
      >
-       <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Purge Logs (&gt; 1 Year)
+       <Trash2 className="w-3.5 h-3.5 text-rose-400" /> {t('Purge Logs (> 1 Year)')}
      </button>
    </div>
 
@@ -5870,21 +6331,21 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-white p-3 rounded-2xl border border-slate-100">
      <input
        type="text"
-       placeholder="Search by user or details..."
+       placeholder={t('Search by user or details...')}
        value={auditSearch}
        onChange={(e) => setAuditSearch(e.target.value)}
        className="px-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
      />
      <input
        type="text"
-       placeholder="Filter by Action (e.g. LOGIN)"
+       placeholder={t('Filter by Action (e.g. LOGIN)')}
        value={auditActionFilter}
        onChange={(e) => setAuditActionFilter(e.target.value)}
        className="px-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
      />
      <input
        type="text"
-       placeholder="Filter by Entity (e.g. invoice)"
+       placeholder={t('Filter by Entity (e.g. invoice)')}
        value={auditTypeFilter}
        onChange={(e) => setAuditTypeFilter(e.target.value)}
        className="px-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
@@ -5895,7 +6356,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-400 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-indigo-600/10"
      >
        <RefreshCw className={`w-3.5 h-3.5 ${isLoadingAudit ? 'animate-spin' : ''}`} />
-       {isLoadingAudit ? 'Loading...' : 'Fetch Logs'}
+       {isLoadingAudit ? t('Loading...') : t('Fetch Logs')}
      </button>
    </div>
 
@@ -5904,12 +6365,12 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
      <table className="w-full text-start text-xs border-collapse">
        <thead>
          <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-start">
-           <th className="px-4 py-2.5 text-start font-bold">Timestamp</th>
-           <th className="px-4 py-2.5 text-start font-bold">User</th>
-           <th className="px-4 py-2.5 text-start font-bold">Action</th>
-           <th className="px-4 py-2.5 text-start font-bold">Entity Type</th>
-           <th className="px-4 py-2.5 text-start font-bold">IP Address</th>
-           <th className="px-4 py-2.5 text-start font-bold">Details / Metadata</th>
+           <th className="px-4 py-2.5 text-start font-bold">{t('Timestamp')}</th>
+           <th className="px-4 py-2.5 text-start font-bold">{t('User')}</th>
+           <th className="px-4 py-2.5 text-start font-bold">{t('Action')}</th>
+           <th className="px-4 py-2.5 text-start font-bold">{t('Entity Type')}</th>
+           <th className="px-4 py-2.5 text-start font-bold">{t('IP Address')}</th>
+           <th className="px-4 py-2.5 text-start font-bold">{t('Details / Metadata')}</th>
          </tr>
        </thead>
        <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
@@ -5946,7 +6407,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
          ) : (
            <tr>
              <td colSpan={6} className="px-4 py-8 text-center text-slate-400 font-medium">
-               No audit logs found. Click "Fetch Logs" to view or search the audit trail.
+               {t('No audit logs found. Click "Fetch Logs" to view or search the audit trail.')}
              </td>
            </tr>
          )}
@@ -5964,64 +6425,30 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl p-6 w-full max-w-md">
         <div className="flex items-center gap-2 text-amber-600 mb-2">
           <AlertTriangle className="w-5 h-5 animate-pulse" />
-          <h3 className="text-lg font-bold">Purge Old Audit Logs</h3>
+          <h3 className="text-lg font-bold">{t('Purge Old Audit Logs')}</h3>
         </div>
         <p className="text-sm text-slate-600 mb-6 font-medium leading-relaxed">
-          Are you sure you want to purge all system audit logs older than <strong>1 year</strong>?
+          {t('Are you sure you want to purge all system audit logs older than')} <strong>{t('1 year')}</strong>?
           <br /><br />
-          This action will permanently delete historical user logs while safely retaining the most recent 365 days of data to prevent database bloat. This action is irreversible.
+          {t('This action will permanently delete historical user logs while safely retaining the most recent 365 days of data to prevent database bloat. This action is irreversible.')}
         </p>
         <div className="flex justify-end gap-3 mt-6">
           <button
             onClick={() => setIsConfirmingPurge(false)}
             className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-2xl transition cursor-pointer"
           >
-            Cancel
+            {t('Cancel')}
           </button>
           <button
             onClick={handlePurgeAuditLogs}
             className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded-2xl transition shadow-sm cursor-pointer"
           >
-            Yes, Purge Old Logs
+            {t('Yes, Purge Old Logs')}
           </button>
         </div>
       </div>
     </div>
   )}
-
- {/* Truncate Confirmation Modal */}
- {isConfirmingTruncate && (
- <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex justify-center items-center p-4 overflow-y-auto">
- <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl p-6 w-full max-w-lg my-auto">
- <div className="flex items-center gap-2 text-rose-600 mb-2">
- <AlertTriangle className="w-5 h-5" />
- <h3 className="text-lg font-bold">Confirm Truncate Transactions</h3>
- </div>
- <p className="text-sm text-slate-600 mb-6 font-medium leading-relaxed">
- Are you absolutely sure you want to truncate all quotations, invoices, expenses, recurring postings, and vouchers for <strong>{db.companies?.find(c => c.id === (db.selectedCompanyId))?.name || 'Selected Company'}</strong>?
- <br /><br />
- This action is <span className="font-bold text-rose-600">permanent</span> and will synchronize across all environments immediately.
- </p>
- <div className="flex justify-end gap-3 mt-6">
- <button
- onClick={() => setIsConfirmingTruncate(false)}
- className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-2xl transition cursor-pointer"
- >
- Cancel
- </button>
- <button
- onClick={() => {
- setIsConfirmingTruncate(false);
- handleTruncateTransactions();
- }}
- className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold rounded-2xl transition shadow-sm cursor-pointer"
- >
- Yes, Truncate Data
- </button>
- </div>
- </div>
- </div>
- )}
 
  {/* Delete User Confirmation Modal */}
  {confirmDeleteUserId && (
@@ -6029,25 +6456,25 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl p-6 w-full max-w-sm my-auto">
  <div className="flex items-center gap-2 text-rose-600 mb-2">
  <AlertTriangle className="w-5 h-5" />
- <h3 className="text-lg font-bold">Delete User Account</h3>
+ <h3 className="text-lg font-bold">{t('Delete User Account')}</h3>
  </div>
  <p className="text-sm text-slate-600 mb-6 font-medium leading-relaxed">
- Are you sure you want to permanently delete user "{db.users.find(u => u.id === confirmDeleteUserId)?.username}"? 
+ {t('Are you sure you want to permanently delete user')} "{db.users.find(u => u.id === confirmDeleteUserId)?.username}"?
  <br /><br />
- This action cannot be undone.
+ {t('This action cannot be undone.')}
  </p>
  <div className="flex justify-end gap-3 mt-6">
  <button
  onClick={() => setConfirmDeleteUserId(null)}
  className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-2xl transition cursor-pointer"
  >
- Cancel
+ {t('Cancel')}
  </button>
  <button
  onClick={executeDeleteUser}
  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold rounded-2xl transition shadow-sm cursor-pointer"
  >
- Yes, Delete User
+ {t('Yes, Delete User')}
  </button>
  </div>
  </div>
@@ -6060,31 +6487,31 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl p-6 w-full max-w-lg my-auto">
  <div className="flex items-center gap-2 text-rose-600 mb-2">
  <AlertTriangle className="w-5 h-5" />
- <h3 className="font-bold text-base">Close Month & Lock Period: {isClosingMonth.name}</h3>
+ <h3 className="font-bold text-base">{t('Close Month & Lock Period:')} {translateMonthLabel(isClosingMonth.name, t)}</h3>
  </div>
  <p className="text-xs text-slate-500 mb-4">
- Closing a fiscal month is permanent. Once closed, you will not be able to create, edit, or delete any transactions within this period.
+ {t('Closing a fiscal month is permanent. Once closed, you will not be able to create, edit, or delete any transactions within this period.')}
  </p>
 
  {/* P&L calculation results */}
  <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl mb-4 space-y-3">
- <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Month-End P&L Summary Report</h4>
- 
+ <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">{t('Month-End P&L Summary Report')}</h4>
+
  <div className="grid grid-cols-2 gap-4">
  <div className="p-3 bg-white border border-slate-200/60 rounded-2xl text-xs">
- <p className="font-bold text-slate-800">Option A (Paid Basis)</p>
- <p className="text-[10px] text-slate-400 mt-0.5">Based on settled payments only</p>
+ <p className="font-bold text-slate-800">{t('Option A (Paid Basis)')}</p>
+ <p className="text-[10px] text-slate-400 mt-0.5">{t('Based on settled payments only')}</p>
  <div className="mt-2 space-y-1">
  <div className="flex justify-between">
- <span>Total Rev:</span>
+ <span>{t('Total Rev:')}</span>
  <span className="font-medium text-emerald-600">{currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).paid.revenue.toFixed(2)}</span>
  </div>
  <div className="flex justify-between">
- <span>Total Exp:</span>
+ <span>{t('Total Exp:')}</span>
  <span className="font-medium text-rose-600">{currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).paid.expenses.toFixed(2)}</span>
  </div>
  <div className="flex justify-between font-bold border-t border-slate-100 pt-1 mt-1">
- <span>Net P&L:</span>
+ <span>{t('Net P&L:')}</span>
  <span className={calculateMonthPnL(db, isClosingMonth.id).paid.net >= 0 ? 'text-emerald-700' : 'text-rose-700'}>
  {currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).paid.net.toFixed(2)}
  </span>
@@ -6093,19 +6520,19 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  </div>
 
  <div className="p-3 bg-white border border-slate-200/60 rounded-2xl text-xs">
- <p className="font-bold text-slate-800">Option B (Including Pending)</p>
- <p className="text-[10px] text-slate-400 mt-0.5">Includes outstanding receivables/payables</p>
+ <p className="font-bold text-slate-800">{t('Option B (Including Pending)')}</p>
+ <p className="text-[10px] text-slate-400 mt-0.5">{t('Includes outstanding receivables/payables')}</p>
  <div className="mt-2 space-y-1">
  <div className="flex justify-between">
- <span>Total Rev:</span>
+ <span>{t('Total Rev:')}</span>
  <span className="font-medium text-emerald-600">{currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).includingPending.revenue.toFixed(2)}</span>
  </div>
  <div className="flex justify-between">
- <span>Total Exp:</span>
+ <span>{t('Total Exp:')}</span>
  <span className="font-medium text-rose-600">{currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).includingPending.expenses.toFixed(2)}</span>
  </div>
  <div className="flex justify-between font-bold border-t border-slate-100 pt-1 mt-1">
- <span>Net P&L:</span>
+ <span>{t('Net P&L:')}</span>
  <span className={calculateMonthPnL(db, isClosingMonth.id).includingPending.net >= 0 ? 'text-emerald-700' : 'text-rose-700'}>
  {currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).includingPending.net.toFixed(2)}
  </span>
@@ -6117,7 +6544,7 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
 
  {/* Selection */}
  <div className="space-y-2 mb-6">
- <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Select P&L View to Finalize Ledger</label>
+ <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">{t('Select P&L View to Finalize Ledger')}</label>
  <div className="space-y-2">
  <label className="flex items-start gap-2 p-2.5 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-slate-100/40 cursor-pointer">
  <input
@@ -6128,8 +6555,8 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  className="mt-0.5 text-indigo-600"
  />
  <div>
- <p className="text-xs font-bold text-slate-800">Finalize on Option A (Paid Basis)</p>
- <p className="text-[10px] text-slate-500">Net Profit of {currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).paid.net.toFixed(2)} will be permanently archived.</p>
+ <p className="text-xs font-bold text-slate-800">{t('Finalize on Option A (Paid Basis)')}</p>
+ <p className="text-[10px] text-slate-500">{t('Net Profit of')} {currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).paid.net.toFixed(2)} {t('will be permanently archived.')}</p>
  </div>
  </label>
 
@@ -6142,8 +6569,8 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  className="mt-0.5 text-indigo-600"
  />
  <div>
- <p className="text-xs font-bold text-slate-800">Finalize on Option B (Including Pending)</p>
- <p className="text-[10px] text-slate-500">Net Profit of {currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).includingPending.net.toFixed(2)} will be permanently archived.</p>
+ <p className="text-xs font-bold text-slate-800">{t('Finalize on Option B (Including Pending)')}</p>
+ <p className="text-[10px] text-slate-500">{t('Net Profit of')} {currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).includingPending.net.toFixed(2)} {t('will be permanently archived.')}</p>
  </div>
  </label>
  </div>
@@ -6154,13 +6581,13 @@ export default function AdminSettings({ db, onUpdateDb, onRefreshDb, defaultTab 
  onClick={() => setIsClosingMonth(null)}
  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg text-xs font-semibold transition"
  >
- Cancel
+ {t('Cancel')}
  </button>
  <button
  onClick={handleConfirmClose}
  className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
  >
- Permanently Lock Month
+ {t('Permanently Lock Month')}
  </button>
  </div>
  </div>

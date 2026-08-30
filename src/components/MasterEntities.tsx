@@ -4,6 +4,7 @@ import { useTranslation, usePermissions } from '../hooks';
 import { DatabaseState, saveDatabase } from '../dbStore';
 import { generateId } from '../id';
 import { ProductService, Customer, Vendor, User } from '../types';
+import { ZATCA_UNIT_CODES } from '../zatcaUnitCodes';
 import { 
  Plus,
  Trash,
@@ -18,7 +19,13 @@ import {
 
 interface MasterEntitiesProps {
  db: DatabaseState;
- onUpdateDb: (db: DatabaseState) => void;
+ // setDb-only local state update (App.tsx's handleUpdateDbLocal) — no /api/migrate POST.
+ // Every handler in this file already calls a real REST route (customers/vendors/products
+ // CRUD, fetchEntities' GETs) and only reaches this afterward to reflect that success in
+ // local state. Deliberately a function-updater only, not a raw DatabaseState — see
+ // App.tsx's handleUpdateDbLocal comment for the incident this prevents.
+ onUpdateDbLocal: (updater: (prev: DatabaseState) => DatabaseState) => void;
+ onRefreshDb?: () => Promise<void>;
  forceSubTab?: SubTab;
  // 'list' renders the directory table only; 'add' renders the create/edit form only —
  // each is mounted under its own nav tab/permission (e.g. customers vs customers-add).
@@ -31,74 +38,23 @@ interface MasterEntitiesProps {
 
 type SubTab = 'customers' | 'vendors' | 'products' | 'categories' | 'units' | 'warehouses';
 
-export default function MasterEntities({ db, onUpdateDb, forceSubTab, mode, editId, onDone, onEdit, onCreateNew }: MasterEntitiesProps) {
+export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, forceSubTab, mode, editId, onDone, onEdit, onCreateNew }: MasterEntitiesProps) {
  const { t, isRTL, lang } = useTranslation(db);
  const currentUser = db.currentUser;
  const { can } = usePermissions(currentUser);
  const isAdmin = currentUser?.isSuperAdmin || currentUser?.role === 'admin';
   
-  // --- Server-side state ---
-  const [customers, setCustomers] = React.useState<any[]>([]);
-  const [vendors, setVendors] = React.useState<any[]>([]);
-  const [products, setProducts] = React.useState<any[]>([]);
-  const [categories, setCategories] = React.useState<any[]>([]);
-  const [units, setUnits] = React.useState<any[]>([]);
-  const [productWarehouses, setProductWarehouses] = React.useState<any[]>([]);
-  const [warehouses, setWarehouses] = React.useState<any[]>([]);
-
-  const fetchEntities = async () => {
-    if (!db.selectedCompanyId) return;
-    try {
-      const [cRes, vRes, pRes, catRes, uRes, pwRes, whRes] = await Promise.all([
-        fetch(`/api/customers?companyId=${db.selectedCompanyId}`),
-        fetch(`/api/vendors?companyId=${db.selectedCompanyId}`),
-        fetch(`/api/products?companyId=${db.selectedCompanyId}`),
-        fetch(`/api/product-categories?companyId=${db.selectedCompanyId}`),
-        fetch(`/api/units-of-measure?companyId=${db.selectedCompanyId}`),
-        fetch(`/api/product-warehouses?companyId=${db.selectedCompanyId}`),
-        fetch(`/api/warehouses?companyId=${db.selectedCompanyId}`)
-      ]);
-      const [cData, vData, pData, catData, uData, pwData, whData] = await Promise.all([
-        cRes.ok ? cRes.json().catch(() => []) : [],
-        vRes.ok ? vRes.json().catch(() => []) : [],
-        pRes.ok ? pRes.json().catch(() => []) : [],
-        catRes.ok ? catRes.json().catch(() => []) : [],
-        uRes.ok ? uRes.json().catch(() => []) : [],
-        pwRes.ok ? pwRes.json().catch(() => []) : [],
-        whRes.ok ? whRes.json().catch(() => []) : []
-      ]);
-      setCustomers(Array.isArray(cData) ? cData : []);
-      setVendors(Array.isArray(vData) ? vData : []);
-      setProducts(Array.isArray(pData) ? pData : []);
-      setCategories(Array.isArray(catData) ? catData : []);
-      setUnits(Array.isArray(uData) ? uData : []);
-      setProductWarehouses(Array.isArray(pwData) ? pwData : []);
-      setWarehouses(Array.isArray(whData) ? whData : []);
-
-      // Keep parent app in sync with any newly fetched master entities
-      onUpdateDb({
-        ...db,
-        customers: Array.isArray(cData) ? cData : [],
-        vendors: Array.isArray(vData) ? vData : [],
-        products: Array.isArray(pData) ? pData : [],
-        productCategories: Array.isArray(catData) ? catData : [],
-        unitsOfMeasure: Array.isArray(uData) ? uData : [],
-        productWarehouses: Array.isArray(pwData) ? pwData : [],
-        warehouses: Array.isArray(whData) ? whData : []
-      });
-    } catch (e) {
-      console.error("Failed to fetch master entities:", e);
-    }
-  };
-
-  React.useEffect(() => {
-    fetchEntities();
-  }, [db.selectedCompanyId]);
+  // Every list/lookup below reads straight from the shared `db.X` arrays (populated by
+  // `/api/state`, refreshed via `onRefreshDb`) — this module used to run its own parallel
+  // set of 7 GET requests into separate local state on mount/company-switch only, which
+  // meant a record created/updated elsewhere (another session, another module, or this
+  // app's own "Reload View") never appeared here without a hard page reload, and did 7x
+  // the network requests `/api/state` already covers in one call.
  const [subTab, setSubTab] = React.useState<SubTab>(() => {
  if (forceSubTab) return forceSubTab;
- if (can('customers.view')) return 'customers';
- if (can('vendors.view')) return 'vendors';
- if (can('products.view')) return 'products';
+ if (can('customers.read')) return 'customers';
+ if (can('vendors.read')) return 'vendors';
+ if (can('products.read')) return 'products';
  return 'customers';
  });
 
@@ -143,6 +99,10 @@ export default function MasterEntities({ db, onUpdateDb, forceSubTab, mode, edit
  const [zatcaDistrict, setZatcaDistrict] = React.useState('');
  const [zatcaCity, setZatcaCity] = React.useState('');
  const [zatcaPostalCode, setZatcaPostalCode] = React.useState('');
+ // Not a ZATCA field — general Commercial Registration number shown on the printed
+ // document alongside VAT (DocumentRenderer.tsx), separate from the ZATCA buyer-identity
+ // block above.
+ const [entityCrNumber, setEntityCrNumber] = React.useState('');
 
  // Product fields
  const [prodName, setProdName] = React.useState('');
@@ -203,6 +163,7 @@ export default function MasterEntities({ db, onUpdateDb, forceSubTab, mode, edit
  setZatcaDistrict('');
  setZatcaCity('');
  setZatcaPostalCode('');
+ setEntityCrNumber('');
  setProdName('');
  setProdType('Sales');
  setProdPrice('');
@@ -238,34 +199,46 @@ export default function MasterEntities({ db, onUpdateDb, forceSubTab, mode, edit
     setAddPwLeadTime('');
  };
 
- // Check Permissions using the new granular RBAC permissions
- const canViewCustomers = can('customers.view');
- const canEditCustomers = can('customers.edit');
+ // Check Permissions using the new granular create/read/update/delete RBAC leaves
+ const canViewCustomers = can('customers.read');
+ const canCreateCustomers = can('customers.create');
+ const canUpdateCustomers = can('customers.update');
+ const canDeleteCustomers = can('customers.delete');
 
- const canViewVendors = can('vendors.view');
- const canEditVendors = can('vendors.edit');
+ const canViewVendors = can('vendors.read');
+ const canCreateVendors = can('vendors.create');
+ const canUpdateVendors = can('vendors.update');
+ const canDeleteVendors = can('vendors.delete');
 
- const canViewProducts = can('products.view');
- const canEditProducts = can('products.edit');
+ const canViewProducts = can('products.read');
+ const canCreateProducts = can('products.create');
+ const canUpdateProducts = can('products.update');
+ const canDeleteProducts = can('products.delete');
 
- const canViewCategories = can('categories.view');
- const canEditCategories = can('categories.edit');
+ const canViewCategories = can('categories.read');
+ const canCreateCategories = can('categories.create');
+ const canUpdateCategories = can('categories.update');
+ const canDeleteCategories = can('categories.delete');
 
- const canViewUnits = can('units.view');
- const canEditUnits = can('units.edit');
+ const canViewUnits = can('units.read');
+ const canCreateUnits = can('units.create');
+ const canUpdateUnits = can('units.update');
+ const canDeleteUnits = can('units.delete');
 
- const canViewWarehouses = can('warehouses.view');
- const canEditWarehouses = can('warehouses.edit');
+ const canViewWarehouses = can('warehouses.read');
+ const canCreateWarehouses = can('warehouses.create');
+ const canUpdateWarehouses = can('warehouses.update');
+ const canDeleteWarehouses = can('warehouses.delete');
 
-  const companyCustomers = customers;
-  const companyVendors = vendors;
-  const companyProducts = products;
+  const companyCustomers = db.customers;
+  const companyVendors = db.vendors;
+  const companyProducts = db.products;
   const uniqueCategories = Array.from(new Set(companyProducts.map(p => p.category).filter(Boolean))) as string[];
 
  // Handlers - Customers
 const handleSaveCustomer = async (e: React.FormEvent) => {
   e.preventDefault();
-  if (!canEditCustomers) return triggerError('Insufficient permissions to manage customers.');
+  if (!(editingId ? canUpdateCustomers : canCreateCustomers)) return triggerError('Insufficient permissions to manage customers.');
   if (buyerFieldErrors.length > 0) return triggerError(buyerFieldErrors.join(' '));
 
   const customerData = {
@@ -278,6 +251,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
     district: zatcaDistrict || null,
     city: zatcaCity || null,
     postalCode: zatcaPostalCode || null,
+    crNumber: entityCrNumber || null,
     isSystem: false,
     companyId: db.selectedCompanyId
   };
@@ -295,37 +269,38 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
     }
     triggerSuccess(editingId ? 'Customer updated successfully.' : 'Customer added successfully.');
     clearForm();
-    await fetchEntities();
+    if (onRefreshDb) await onRefreshDb();
     onDone();
   } catch (err: any) {
     triggerError('Failed to save customer to database.');
   }
   };
 
- const handleDeleteCustomer = async (id: string) => {
- if (!canEditCustomers) return triggerError('Insufficient permissions.');
+ const handleToggleCustomerActive = async (id: string) => {
+ if (!canDeleteCustomers) return triggerError(t('Insufficient permissions.'));
  const cust = db.customers.find(c => c.id === id);
- if (cust?.isSystem) return triggerError('System customer cannot be deleted.');
- if (!window.confirm('Are you sure you want to delete this customer?')) return;
+ if (cust?.isSystem) return triggerError('System customer cannot be deactivated.');
+ const isActive = cust?.isActive !== false;
+ if (isActive && !window.confirm(t("Deactivate this customer? They'll be hidden from new documents but all their history stays intact. You can reactivate them anytime."))) return;
 
  try {
- const res = await fetch('/api/customers/' + id, { method: 'DELETE' });
+ const res = await fetch(`/api/customers/${id}/toggle-active`, { method: 'PATCH' });
  if (!res.ok) {
  const errData = await res.json().catch(() => ({}));
- return triggerError(errData.error || 'Failed to delete customer.');
+ return triggerError(errData.error || 'Failed to update customer status.');
  }
- const newDb = { ...db, customers: db.customers.filter(c => c.id !== id) };
- onUpdateDb(newDb);
- triggerSuccess('Customer profile removed.');
+ const data = await res.json().catch(() => ({}));
+ triggerSuccess(data.isActive ? 'Customer reactivated.' : 'Customer deactivated.');
+ if (onRefreshDb) await onRefreshDb();
  } catch(err) {
- triggerError('Failed to delete customer.');
+ triggerError('Failed to update customer status.');
  }
  };
 
  // Handlers - Vendors
  const handleSaveVendor = async (e: React.FormEvent) => {
  e.preventDefault();
- if (!canEditVendors) return triggerError('Insufficient permissions to manage vendors.');
+ if (!(editingId ? canUpdateVendors : canCreateVendors)) return triggerError('Insufficient permissions to manage vendors.');
  if (buyerFieldErrors.length > 0) return triggerError(buyerFieldErrors.join(' '));
 
  const zatcaFields = {
@@ -336,6 +311,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
    district: zatcaDistrict || null,
    city: zatcaCity || null,
    postalCode: zatcaPostalCode || null,
+   crNumber: entityCrNumber || null,
  };
 
  const newDb = { ...db };
@@ -371,7 +347,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  return;
  }
  }
- onUpdateDb(newDb);
+ onUpdateDbLocal(() => newDb);
  triggerSuccess(editingId ? 'Vendor updated successfully.' : 'Vendor added successfully.');
  clearForm();
  onDone();
@@ -380,30 +356,31 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  }
  };
 
- const handleDeleteVendor = async (id: string) => {
- if (!canEditVendors) return triggerError('Insufficient permissions.');
+ const handleToggleVendorActive = async (id: string) => {
+ if (!canDeleteVendors) return triggerError(t('Insufficient permissions.'));
  const vend = db.vendors.find(v => v.id === id);
- if (vend?.isSystem) return triggerError('System vendor cannot be deleted.');
- if (!window.confirm('Are you sure you want to delete this vendor?')) return;
+ if (vend?.isSystem) return triggerError('System vendor cannot be deactivated.');
+ const isActive = vend?.isActive !== false;
+ if (isActive && !window.confirm(t("Deactivate this vendor? They'll be hidden from new documents but all their history stays intact. You can reactivate them anytime."))) return;
 
  try {
- const res = await fetch('/api/vendors/' + id, { method: 'DELETE' });
+ const res = await fetch(`/api/vendors/${id}/toggle-active`, { method: 'PATCH' });
  if (!res.ok) {
  const errData = await res.json().catch(() => ({}));
- return triggerError(errData.error || 'Failed to delete vendor.');
+ return triggerError(errData.error || 'Failed to update vendor status.');
  }
- const newDb = { ...db, vendors: db.vendors.filter(v => v.id !== id) };
- onUpdateDb(newDb);
- triggerSuccess('Vendor removed.');
+ const data = await res.json().catch(() => ({}));
+ triggerSuccess(data.isActive ? 'Vendor reactivated.' : 'Vendor deactivated.');
+ if (onRefreshDb) await onRefreshDb();
  } catch(err) {
- triggerError('Failed to delete vendor.');
+ triggerError('Failed to update vendor status.');
  }
  };
 
  // Handlers - Products
  const handleSaveProduct = async (e: React.FormEvent) => {
  e.preventDefault();
- if (!canEditProducts) return triggerError('Only Administrator accounts can edit catalog products.');
+ if (!(editingId ? canUpdateProducts : canCreateProducts)) return triggerError('Only Administrator accounts can edit catalog products.');
  if (!prodName.trim()) return triggerError('Product name is required.');
     if (prodIsPos && !prodCategory.trim()) return triggerError('Category is required when Enable for POS is checked.');
 
@@ -468,10 +445,10 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  return;
  }
  }
- onUpdateDb(newDb);
+ onUpdateDbLocal(() => newDb);
  triggerSuccess(editingId ? 'Product updated successfully.' : 'Product added successfully.');
  clearForm();
- await fetchEntities();
+ if (onRefreshDb) await onRefreshDb();
  onDone();
  } catch(err) {
  triggerError('Failed to save product.');
@@ -479,11 +456,9 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  };
 
 
- const handleRestoreProducts = () => {
- if (!canEditProducts) return triggerError('Admin only.');
- const newDb = { ...db };
- let restoredCount = 0;
- 
+ const handleRestoreProducts = async () => {
+ if (!canCreateProducts) return triggerError('Admin only.');
+
  const existingProductNames = new Set(companyProducts.map(p => p.name.toLowerCase()));
 
  const itemsToCheck: { name: string, price: number, type: 'Sales' }[] = [];
@@ -498,9 +473,10 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  });
  });
 
+ const candidates: typeof db.products = [];
  itemsToCheck.forEach(item => {
  if (!existingProductNames.has(item.name.toLowerCase())) {
- newDb.products.push({
+ candidates.push({
  id: generateId(),
  name: item.name,
  description: 'Restored from existing document',
@@ -510,43 +486,64 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  companyId: db.selectedCompanyId
  });
  existingProductNames.add(item.name.toLowerCase());
- restoredCount++;
  }
  });
 
- if (restoredCount > 0) {
- onUpdateDb(newDb);
- triggerSuccess(`Successfully restored ${restoredCount} products from historical documents.`);
- } else {
+ if (candidates.length === 0) {
  triggerSuccess('No missing products found in active documents.');
+ return;
+ }
+
+ // Each candidate is POSTed individually to the real /api/products route (rather than
+ // pushed straight into local state) so the server persists it — don't assume they all
+ // succeeded; only the ones that actually landed get added to local state.
+ const restored: typeof db.products = [];
+ for (const product of candidates) {
+ try {
+ const res = await fetch('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(product) });
+ if (res.ok) restored.push(product);
+ } catch (err) {
+ // network failure on this one product — keep going, report the shortfall below
+ }
+ }
+
+ if (restored.length > 0) {
+ onUpdateDbLocal(prev => ({ ...prev, products: [...prev.products, ...restored] }));
+ }
+
+ if (restored.length === candidates.length) {
+ triggerSuccess(`Successfully restored ${restored.length} products from historical documents.`);
+ } else if (restored.length > 0) {
+ triggerError(`Restored ${restored.length} of ${candidates.length} products — some failed to save.`);
+ } else {
+ triggerError('Failed to restore products.');
  }
  };
 
-  const handleDeleteProduct = async (id: string) => {
-   if (!canEditProducts) return triggerError('Admin only.');
-   if (!window.confirm('Are you sure you want to delete this product?')) return;
-   
+  const handleToggleProductActive = async (id: string) => {
+   if (!canDeleteProducts) return triggerError(t('Insufficient permissions.'));
+   const prod = db.products.find(p => p.id === id);
+   const isActive = prod?.isActive !== false;
+   if (isActive && !window.confirm(t("Deactivate this product? It'll be hidden from new documents but all its history stays intact. You can reactivate it anytime."))) return;
+
    try {
-     const res = await fetch('/api/products/' + id, { method: 'DELETE' });
+     const res = await fetch(`/api/products/${id}/toggle-active`, { method: 'PATCH' });
      if (!res.ok) {
        const errData = await res.json().catch(() => ({}));
-       return triggerError(errData.error || 'Failed to delete product.');
+       return triggerError(errData.error || 'Failed to update product status.');
      }
-     const newDb = {
-       ...db,
-       products: db.products.filter(p => p.id !== id)
-     };
-     onUpdateDb(newDb);
-     triggerSuccess('Catalog product deleted.');
+     const data = await res.json().catch(() => ({}));
+     triggerSuccess(data.isActive ? 'Product reactivated.' : 'Product deactivated.');
+     if (onRefreshDb) await onRefreshDb();
    } catch (err) {
-     triggerError('Failed to delete product.');
+     triggerError('Failed to update product status.');
    }
   };
 
   // Handlers - Product Categories
   const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canEditCategories) return triggerError('Only Administrators can edit categories.');
+    if (!(editingId ? canUpdateCategories : canCreateCategories)) return triggerError('Only Administrators can edit categories.');
     if (!catName.trim()) return triggerError('Category name is required.');
 
     const catData = {
@@ -571,34 +568,37 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
       }
       triggerSuccess(editingId ? 'Category updated successfully.' : 'Category added successfully.');
       clearForm();
-      await fetchEntities();
+      if (onRefreshDb) await onRefreshDb();
       onDone();
     } catch (err) {
       triggerError('Failed to save category.');
     }
   };
 
-  const handleDeleteCategory = async (id: string) => {
-    if (!canEditCategories) return triggerError('Only Administrators can delete categories.');
-    if (!window.confirm('Are you sure you want to delete this category?')) return;
+  const handleToggleCategoryActive = async (id: string) => {
+    if (!canDeleteCategories) return triggerError(t('Insufficient permissions.'));
+    const cat = db.productCategories.find(c => c.id === id);
+    const isActive = cat?.isActive !== false;
+    if (isActive && !window.confirm(t("Deactivate this category? It'll be hidden from new documents but all its history stays intact. You can reactivate it anytime."))) return;
 
     try {
-      const res = await fetch(`/api/product-categories/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/product-categories/${id}/toggle-active`, { method: 'PATCH' });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        return triggerError(errData.error || 'Failed to delete category.');
+        return triggerError(errData.error || 'Failed to update category status.');
       }
-      triggerSuccess('Category removed.');
-      await fetchEntities();
+      const data = await res.json().catch(() => ({}));
+      triggerSuccess(data.isActive ? 'Category reactivated.' : 'Category deactivated.');
+      if (onRefreshDb) await onRefreshDb();
     } catch (err) {
-      triggerError('Failed to delete category.');
+      triggerError('Failed to update category status.');
     }
   };
 
   // Handlers - Units of Measure
   const handleSaveUnit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canEditUnits) return triggerError('Only Administrators can edit units.');
+    if (!(editingId ? canUpdateUnits : canCreateUnits)) return triggerError('Only Administrators can edit units.');
     if (!unitName.trim()) return triggerError('Unit name is required.');
     if (!unitCode.trim()) return triggerError('Unit code is required.');
 
@@ -621,34 +621,37 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
       }
       triggerSuccess(editingId ? 'Unit updated successfully.' : 'Unit added successfully.');
       clearForm();
-      await fetchEntities();
+      if (onRefreshDb) await onRefreshDb();
       onDone();
     } catch (err) {
       triggerError('Failed to save unit.');
     }
   };
 
-  const handleDeleteUnit = async (id: string) => {
-    if (!canEditUnits) return triggerError('Only Administrators can delete units.');
-    if (!window.confirm('Are you sure you want to delete this unit?')) return;
+  const handleToggleUnitActive = async (id: string) => {
+    if (!canDeleteUnits) return triggerError(t('Insufficient permissions.'));
+    const unit = db.unitsOfMeasure.find(u => u.id === id);
+    const isActive = unit?.isActive !== false;
+    if (isActive && !window.confirm(t("Deactivate this unit of measure? It'll be hidden from new documents but all its history stays intact. You can reactivate it anytime."))) return;
 
     try {
-      const res = await fetch(`/api/units-of-measure/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/units-of-measure/${id}/toggle-active`, { method: 'PATCH' });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        return triggerError(errData.error || 'Failed to delete unit.');
+        return triggerError(errData.error || 'Failed to update unit status.');
       }
-      triggerSuccess('Unit removed.');
-      await fetchEntities();
+      const data = await res.json().catch(() => ({}));
+      triggerSuccess(data.isActive ? 'Unit reactivated.' : 'Unit deactivated.');
+      if (onRefreshDb) await onRefreshDb();
     } catch (err) {
-      triggerError('Failed to delete unit.');
+      triggerError('Failed to update unit status.');
     }
   };
 
   // Handlers - Warehouses
   const handleSaveWarehouse = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canEditWarehouses) return triggerError('Only Administrators can edit warehouses.');
+    if (!(editingId ? canUpdateWarehouses : canCreateWarehouses)) return triggerError('Only Administrators can edit warehouses.');
     if (!whName.trim()) return triggerError('Warehouse name is required.');
     if (!whCode.trim()) return triggerError('Warehouse code is required.');
 
@@ -673,27 +676,30 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
       }
       triggerSuccess(editingId ? 'Warehouse updated successfully.' : 'Warehouse added successfully.');
       clearForm();
-      await fetchEntities();
+      if (onRefreshDb) await onRefreshDb();
       onDone();
     } catch (err) {
       triggerError('Failed to save warehouse.');
     }
   };
 
-  const handleDeleteWarehouse = async (id: string) => {
-    if (!canEditWarehouses) return triggerError('Only Administrators can delete warehouses.');
-    if (!window.confirm('Are you sure you want to delete this warehouse?')) return;
+  const handleToggleWarehouseActive = async (id: string) => {
+    if (!canDeleteWarehouses) return triggerError(t('Insufficient permissions.'));
+    const wh = db.warehouses.find(w => w.id === id);
+    const isActive = wh?.isActive !== false;
+    if (isActive && !window.confirm(t("Deactivate this warehouse? It'll be hidden from new documents but all its history stays intact. You can reactivate it anytime."))) return;
 
     try {
-      const res = await fetch(`/api/warehouses/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/warehouses/${id}/toggle-active`, { method: 'PATCH' });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        return triggerError(errData.error || 'Failed to delete warehouse.');
+        return triggerError(errData.error || 'Failed to update warehouse status.');
       }
-      triggerSuccess('Warehouse removed.');
-      await fetchEntities();
+      const data = await res.json().catch(() => ({}));
+      triggerSuccess(data.isActive ? 'Warehouse reactivated.' : 'Warehouse deactivated.');
+      if (onRefreshDb) await onRefreshDb();
     } catch (err) {
-      triggerError('Failed to delete warehouse.');
+      triggerError('Failed to update warehouse status.');
     }
   };
 
@@ -728,7 +734,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
       setAddPwMin('');
       setAddPwMax('');
       setAddPwLeadTime('');
-      await fetchEntities();
+      if (onRefreshDb) await onRefreshDb();
       
       // Update local view list
       const pwRes = await fetch(`/api/product-warehouses?companyId=${db.selectedCompanyId}`);
@@ -742,7 +748,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
   };
 
   const handleDeleteWarehouseMapping = async (mappingId: string, productId: string) => {
-    if (!window.confirm('Are you sure you want to remove this warehouse location mapping?')) return;
+    if (!window.confirm(t('Are you sure you want to remove this warehouse location mapping?'))) return;
 
     try {
       const res = await fetch(`/api/product-warehouses/${mappingId}`, { method: 'DELETE' });
@@ -751,7 +757,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
         return triggerError(errData.error || 'Failed to delete mapping.');
       }
       triggerSuccess('Warehouse location removed.');
-      await fetchEntities();
+      if (onRefreshDb) await onRefreshDb();
       
       // Update local view list
       const pwRes = await fetch(`/api/product-warehouses?companyId=${db.selectedCompanyId}`);
@@ -785,7 +791,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
      setProdReorderLeadTime(entity.reorderLeadTime || '');
 
      // Load associated warehouse links
-     const associated = productWarehouses.filter((pw: any) => pw.productId === entity.id);
+     const associated = db.productWarehouses.filter((pw: any) => pw.productId === entity.id);
      setActiveProductWarehouses(associated);
    } else if (type === 'categories') {
      setCatName(entity.name);
@@ -814,6 +820,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
      setZatcaDistrict(entity.district || '');
      setZatcaCity(entity.city || '');
      setZatcaPostalCode(entity.postalCode || '');
+     setEntityCrNumber(entity.crNumber || '');
    }
  };
 
@@ -834,23 +841,23 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  // page fetches the same full company directory as the List page on mount).
  React.useEffect(() => {
  if (mode !== 'add' || !editId || !forceSubTab) return;
- const list = forceSubTab === 'customers' ? customers
-   : forceSubTab === 'vendors' ? vendors
-   : forceSubTab === 'products' ? products
-   : forceSubTab === 'categories' ? categories
-   : forceSubTab === 'units' ? units
-   : warehouses;
+ const list = forceSubTab === 'customers' ? db.customers
+   : forceSubTab === 'vendors' ? db.vendors
+   : forceSubTab === 'products' ? db.products
+   : forceSubTab === 'categories' ? db.productCategories
+   : forceSubTab === 'units' ? db.unitsOfMeasure
+   : db.warehouses;
  const entity = list.find((e: any) => e.id === editId);
  if (entity) handleStartEdit(entity, forceSubTab);
- }, [mode, editId, forceSubTab, customers, vendors, products, categories, units, warehouses]);
+ }, [mode, editId, forceSubTab, db.customers, db.vendors, db.products, db.productCategories, db.unitsOfMeasure, db.warehouses]);
 
  if (!canViewCustomers && !canViewVendors && !canViewProducts && !canViewCategories && !canViewUnits && !canViewWarehouses) {
  return (
  <div className="p-12 bg-white border border-slate-200 rounded-2xl text-center shadow-sm max-w-md mx-auto space-y-4">
  <Lock className="w-12 h-12 text-rose-500 mx-auto animate-bounce" />
- <h3 className="font-extrabold text-slate-900 text-base">Access Restricted</h3>
+ <h3 className="font-extrabold text-slate-900 text-base">{t('Access Restricted')}</h3>
  <p className="text-xs text-slate-400 leading-relaxed">
- Your staff profile does not have permission to access any of the Master Directories (Customers, Vendors, Products, Categories, Units, or Warehouses). Please request your administrator to update your access profile.
+ {t('Your staff profile does not have permission to access any of the Master Directories (Customers, Vendors, Products, Categories, Units, or Warehouses). Please request your administrator to update your access profile.')}
  </p>
  </div>
  );
@@ -947,18 +954,18 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <div className="border-b border-slate-100 pb-4 mb-5 space-y-2">
  <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-widest flex items-center gap-1.5">
  <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></span>
- <span>{editingId ? 'Modify Record' : 'Register New Profile'}</span>
+ <span>{editingId ? t('Modify Record') : t('Register New Profile')}</span>
  </h4>
  <div className="flex items-center justify-between">
  <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded uppercase">
- 🏢 Company: {db.companySetup?.name}
+ 🏢 {t('Company:')} {db.companySetup?.name}
  </span>
  <button
  type="button"
  onClick={onDone}
  className="text-slate-500 hover:text-slate-800 text-xs font-semibold px-2.5 py-1 rounded-lg hover:bg-slate-200/60 transition"
  >
- Back to List
+ {t('Back to List')}
  </button>
  </div>
  </div>
@@ -966,20 +973,20 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  {/* Customer / Vendor Forms */}
  {(subTab === 'customers' || subTab === 'vendors') && (
  <form onSubmit={subTab === 'customers' ? handleSaveCustomer : handleSaveVendor} className="space-y-4 text-xs">
- 
- {(!canEditCustomers && subTab === 'customers') || (!canEditVendors && subTab === 'vendors') ? (
+
+ {(!(editingId ? canUpdateCustomers : canCreateCustomers) && subTab === 'customers') || (!(editingId ? canUpdateVendors : canCreateVendors) && subTab === 'vendors') ? (
  <div className="p-4 bg-rose-50 text-rose-700 rounded-xl border border-rose-100 flex items-start gap-2 text-[11px] font-semibold leading-relaxed">
  <Lock className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
- <span>You do not have the required Staff Permissions to create or modify this directory.</span>
+ <span>{t('You do not have the required Staff Permissions to create or modify this directory.')}</span>
  </div>
  ) : (
  <>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Entity Name</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Entity Name')}</label>
  <input
  type="text"
  required
- placeholder="e.g. CNC Woodworks Ltd"
+ placeholder={t('e.g. CNC Woodworks Ltd')}
  value={name}
  onChange={(e) => setName(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"
@@ -987,7 +994,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Email Address</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Email Address')}</label>
  <input
  type="email"
  placeholder="billing@example.com"
@@ -998,7 +1005,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Contact Phone</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Contact Phone')}</label>
  <input
  type="text"
  placeholder="+966 5..."
@@ -1009,10 +1016,10 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Physical Address</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Physical Address')}</label>
  <input
  type="text"
- placeholder="Street, City, Postal Code"
+ placeholder={t('Street, City, Postal Code')}
  value={address}
  onChange={(e) => setAddress(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"
@@ -1020,7 +1027,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">VAT Registration Number</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('VAT Registration Number')}</label>
  <input
  type="text"
  placeholder="e.g. 300123456700003"
@@ -1032,7 +1039,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
 
  <div className="space-y-4 pt-2 border-t border-slate-100">
  <div>
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">ZATCA Invoice Type</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">{t('ZATCA Invoice Type')}</label>
  <div className="flex gap-2">
  {(['B2B', 'B2C'] as const).map(bt => (
  <button
@@ -1043,42 +1050,46 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  buyerType === bt ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
  }`}
  >
- {bt === 'B2B' ? 'B2B — Standard Invoice' : 'B2C — Simplified Invoice'}
+ {bt === 'B2B' ? t('B2B — Standard Invoice') : t('B2C — Simplified Invoice')}
  </button>
  ))}
  </div>
  <p className="text-[10px] text-slate-400 mt-1.5">
  {buyerType === 'B2C'
- ? 'Simplified (B2C): only the name above is required for ZATCA.'
- : 'Standard (B2B): ZATCA requires a full, verifiable buyer identity below.'}
+ ? t('Simplified (B2C): only the name above is required for ZATCA.')
+ : t('Standard (B2B): ZATCA requires a full, verifiable buyer identity below.')}
  </p>
  </div>
 
  {buyerType === 'B2B' && (
  <div className="grid grid-cols-2 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200/60">
  <div className="col-span-2 md:col-span-1 space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ZATCA VAT Number (15 digits)*</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('ZATCA VAT Number (15 digits)*')}</label>
  <input type="text" placeholder="3xxxxxxxxxxxxxx" value={zatcaVatNumber} onChange={(e) => setZatcaVatNumber(e.target.value)} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
  </div>
  <div className="col-span-2 md:col-span-1 space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Building Number*</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Building Number*')}</label>
  <input type="text" placeholder="1234" value={zatcaBuildingNumber} onChange={(e) => setZatcaBuildingNumber(e.target.value)} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
  </div>
  <div className="col-span-2 md:col-span-1 space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Street Name*</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Street Name*')}</label>
  <input type="text" placeholder="King Fahd Road" value={zatcaStreetName} onChange={(e) => setZatcaStreetName(e.target.value)} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
  </div>
  <div className="col-span-2 md:col-span-1 space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">District*</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('District*')}</label>
  <input type="text" placeholder="Olaya" value={zatcaDistrict} onChange={(e) => setZatcaDistrict(e.target.value)} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
  </div>
  <div className="col-span-2 md:col-span-1 space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">City*</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('City*')}</label>
  <input type="text" placeholder="Riyadh" value={zatcaCity} onChange={(e) => setZatcaCity(e.target.value)} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
  </div>
  <div className="col-span-2 md:col-span-1 space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Postal Code (5 digits)*</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Postal Code (5 digits)*')}</label>
  <input type="text" placeholder="12345" value={zatcaPostalCode} onChange={(e) => setZatcaPostalCode(e.target.value)} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
+ </div>
+ <div className="col-span-2 md:col-span-1 space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Commercial Registration Number (Optional)')}</label>
+ <input type="text" placeholder="1010000000" value={entityCrNumber} onChange={(e) => setEntityCrNumber(e.target.value)} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
  </div>
  </div>
  )}
@@ -1097,14 +1108,14 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  onClick={clearForm}
  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all duration-150"
  >
- Cancel
+ {t('Cancel')}
  </button>
  )}
  <button
  type="submit"
  className="flex-1 bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-600/10 text-white rounded-xl py-2.5 font-bold transition-all duration-150 text-center"
  >
- {editingId ? 'Save Changes' : 'Register Profile'}
+ {editingId ? t('Save Changes') : t('Register Profile')}
  </button>
  </div>
  </>
@@ -1115,15 +1126,15 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  {/* Product Form */}
  {subTab === 'products' && (
  <form onSubmit={handleSaveProduct} className="space-y-4 text-xs">
- {!canEditProducts ? (
+ {!(editingId ? canUpdateProducts : canCreateProducts) ? (
  <div className="p-4 bg-rose-50 text-rose-700 rounded-xl border border-rose-100 flex items-start gap-2 text-[11px] font-semibold leading-relaxed">
  <Lock className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
- <span>The catalog is global and read-only for non-admin accounts. Contact an administrator to add tools or services.</span>
+ <span>{t('The catalog is global and read-only for non-admin accounts. Contact an administrator to add tools or services.')}</span>
  </div>
  ) : (
  <>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Product / Service Name</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Product / Service Name')}</label>
  <input
  type="text"
  required
@@ -1135,25 +1146,25 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Product Classification</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Product Classification')}</label>
  <select
  value={prodCatalogType}
  onChange={(e) => setProdCatalogType(e.target.value as any)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
  >
- <option value="item">Physical Item (Stockable & Counted)</option>
- <option value="service">Service Rate (Non-Stockable / Labor)</option>
+ <option value="item">{t('Physical Item (Stockable & Counted)')}</option>
+ <option value="service">{t('Service Rate (Non-Stockable / Labor)')}</option>
  </select>
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">System Category Link</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('System Category Link')}</label>
  <select
  value={prodCategoryId}
  onChange={(e) => {
  const catId = e.target.value;
  setProdCategoryId(catId);
- const selectedCat = categories.find(c => c.id === catId);
+ const selectedCat = db.productCategories.find(c => c.id === catId);
  if (selectedCat) {
  setProdCategory(selectedCat.name); // Keep legacy field in sync
  } else {
@@ -1162,21 +1173,21 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  }}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
  >
- <option value="">-- No Category --</option>
- {categories.map(cat => (
+ <option value="">{t('-- No Category --')}</option>
+ {db.productCategories.map(cat => (
  <option key={cat.id} value={cat.id}>{cat.name}</option>
  ))}
  </select>
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Default Warehouse Branch</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Default Warehouse Branch')}</label>
  <select
  value={prodDefaultWarehouseId}
  onChange={(e) => setProdDefaultWarehouseId(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
  >
- <option value="">-- No Default Warehouse --</option>
+ <option value="">{t('-- No Default Warehouse --')}</option>
  {(db.warehouses || []).map(wh => (
  <option key={wh.id} value={wh.id}>{wh.name}</option>
  ))}
@@ -1185,10 +1196,10 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
 
  {prodCatalogType === 'item' && (
  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/60 space-y-3 mt-2">
- <div className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider">Stock Control & Thresholds</div>
- 
+ <div className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider">{t('Stock Control & Thresholds')}</div>
+
  <div className="space-y-1">
- <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Bin Location / Aisles</label>
+ <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t('Bin Location / Aisles')}</label>
  <input
  type="text"
  placeholder="e.g. Shelf A-3"
@@ -1200,7 +1211,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
 
  <div className="grid grid-cols-2 gap-3">
  <div className="space-y-1">
- <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Min Level</label>
+ <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t('Min Level')}</label>
  <input
  type="number"
  placeholder="0"
@@ -1210,7 +1221,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  />
  </div>
  <div className="space-y-1">
- <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Max Level</label>
+ <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t('Max Level')}</label>
  <input
  type="number"
  placeholder="e.g. 500"
@@ -1222,7 +1233,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Reorder Lead-Time</label>
+ <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t('Reorder Lead-Time')}</label>
  <input
  type="text"
  placeholder="e.g. 3 business days"
@@ -1235,34 +1246,34 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  )}
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Transaction Flow Type</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Transaction Flow Type')}</label>
  <select
  value={prodType}
  onChange={(e) => setProdType(e.target.value as any)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
  >
- <option value="Sales">Sales Earning Flow (Invoicing / POS)</option>
- <option value="Purchase">Purchase Supply Flow (Supplier procurement)</option>
+ <option value="Sales">{t('Sales Earning Flow (Invoicing / POS)')}</option>
+ <option value="Purchase">{t('Purchase Supply Flow (Supplier procurement)')}</option>
  </select>
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Unit of Measure</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Unit of Measure')}</label>
  <select
  value={prodUnit}
  onChange={(e) => setProdUnit(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
  >
- <option value="No">None / Default</option>
- <option value="Lumpsum">Lumpsum</option>
- {units.map(u => (
+ <option value="No">{t('None / Default')}</option>
+ <option value="Lumpsum">{t('Lumpsum')}</option>
+ {db.unitsOfMeasure.map(u => (
  <option key={u.id} value={u.code}>{u.name} ({u.code})</option>
  ))}
  </select>
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Unit Cost / Price ({db.companySetup?.currency || 'SAR'})</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Unit Cost / Price')} ({db.companySetup?.currency || 'SAR'})</label>
  <input
  type="number"
  required
@@ -1277,10 +1288,10 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  {editingId && prodCatalogType === 'item' && (
  <div className="bg-indigo-50/50 p-3.5 rounded-xl border border-indigo-100 space-y-3 mt-2">
  <div className="text-[10px] font-extrabold text-indigo-700 uppercase tracking-wider flex items-center gap-1">
- <MapPin className="w-3.5 h-3.5" /> Warehouse Extension
+ <MapPin className="w-3.5 h-3.5" /> {t('Warehouse Extension')}
  </div>
  <p className="text-[10px] text-slate-500 leading-relaxed">
- Link this product to multiple warehouse branches with branch-specific thresholds.
+ {t('Link this product to multiple warehouse branches with branch-specific thresholds.')}
  </p>
 
  {activeProductWarehouses.length > 0 && (
@@ -1290,11 +1301,11 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  return (
  <div key={pw.id} className="p-2 flex items-center justify-between text-[11px]">
  <div className="space-y-0.5">
- <div className="font-bold text-slate-700">{wh ? wh.name : 'Unknown Branch'}</div>
+ <div className="font-bold text-slate-700">{wh ? wh.name : t('Unknown Branch')}</div>
  <div className="text-[10px] text-slate-400 flex flex-wrap gap-x-2">
- {pw.binLocation && <span>Bin: {pw.binLocation}</span>}
- {pw.minLevel && <span>Min: {pw.minLevel}</span>}
- {pw.maxLevel && <span>Max: {pw.maxLevel}</span>}
+ {pw.binLocation && <span>{t('Bin:')} {pw.binLocation}</span>}
+ {pw.minLevel && <span>{t('Min:')} {pw.minLevel}</span>}
+ {pw.maxLevel && <span>{t('Max:')} {pw.maxLevel}</span>}
  </div>
  </div>
  <button
@@ -1311,15 +1322,15 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  )}
 
  <div className="bg-white p-2.5 rounded-lg border border-indigo-100/80 space-y-2">
- <div className="font-bold text-indigo-700 text-[10px] uppercase">Link Another Warehouse Branch</div>
- 
+ <div className="font-bold text-indigo-700 text-[10px] uppercase">{t('Link Another Warehouse Branch')}</div>
+
  <div className="space-y-1">
  <select
  value={addPwWarehouseId}
  onChange={(e) => setAddPwWarehouseId(e.target.value)}
  className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none"
  >
- <option value="">-- Choose Branch --</option>
+ <option value="">{t('-- Choose Branch --')}</option>
  {(db.warehouses || []).filter(wh => wh.id !== prodDefaultWarehouseId && !activeProductWarehouses.some(pw => pw.warehouseId === wh.id)).map(wh => (
  <option key={wh.id} value={wh.id}>{wh.name}</option>
  ))}
@@ -1328,19 +1339,19 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
 
  <div className="grid grid-cols-2 gap-2">
  <div className="space-y-0.5">
- <label className="text-[9px] font-bold text-slate-400">Bin Location</label>
+ <label className="text-[9px] font-bold text-slate-400">{t('Bin Location')}</label>
  <input type="text" placeholder="e.g. Row B" value={addPwBin} onChange={(e) => setAddPwBin(e.target.value)} className="w-full bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs" />
  </div>
  <div className="space-y-0.5">
- <label className="text-[9px] font-bold text-slate-400">Lead Time</label>
+ <label className="text-[9px] font-bold text-slate-400">{t('Lead Time')}</label>
  <input type="text" placeholder="e.g. 2 days" value={addPwLeadTime} onChange={(e) => setAddPwLeadTime(e.target.value)} className="w-full bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs" />
  </div>
  <div className="space-y-0.5">
- <label className="text-[9px] font-bold text-slate-400">Min Stock</label>
+ <label className="text-[9px] font-bold text-slate-400">{t('Min Stock')}</label>
  <input type="number" placeholder="0" value={addPwMin} onChange={(e) => setAddPwMin(e.target.value)} className="w-full bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs" />
  </div>
  <div className="space-y-0.5">
- <label className="text-[9px] font-bold text-slate-400">Max Stock</label>
+ <label className="text-[9px] font-bold text-slate-400">{t('Max Stock')}</label>
  <input type="number" placeholder="500" value={addPwMax} onChange={(e) => setAddPwMax(e.target.value)} className="w-full bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs" />
  </div>
  </div>
@@ -1350,7 +1361,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  onClick={() => handleAddWarehouseMapping(editingId)}
  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1 rounded text-[10px] uppercase transition"
  >
- Add Location Link
+ {t('Add Location Link')}
  </button>
  </div>
  </div>
@@ -1359,46 +1370,46 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <div className="space-y-4 pt-2 border-t border-slate-100">
                   <div className="flex items-center gap-2">
                     <input type="checkbox" checked={prodIsPos} onChange={(e) => setProdIsPos(e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" />
-                    <span className="font-bold text-slate-700 text-xs">Enable in POS Module</span>
+                    <span className="font-bold text-slate-700 text-xs">{t('Enable in POS Module')}</span>
                   </div>
-                  
+
                     <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200/60">
                       <div className="col-span-2 md:col-span-1 space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Category</label>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Category')}</label>
                         <input list="category-options" type="text" placeholder="e.g. Beverages" value={prodCategory} onChange={(e) => setProdCategory(e.target.value)} required={prodIsPos} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
                         <datalist id="category-options">
                           {uniqueCategories.map((cat, idx) => <option key={idx} value={cat} />)}
                         </datalist>
                       </div>
                       <div className="col-span-2 md:col-span-1 space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Barcode</label>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Barcode')}</label>
                         <input type="text" placeholder="Scan or type" value={prodBarcode} onChange={(e) => setProdBarcode(e.target.value)} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
                       </div>
                       <div className="col-span-2 md:col-span-1 space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">SKU</label>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('SKU')}</label>
                         <input type="text" placeholder="Stock Keeping Unit" value={prodSku} onChange={(e) => setProdSku(e.target.value)} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
                       </div>
                       <div className="col-span-2 space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Product Image (Base64)</label>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Product Image (Base64)')}</label>
                         <input type="file" accept="image/*" onChange={(e) => {
                           const file = e.target.files?.[0];
                           if(!file) return;
                           const activeComp = db.companies.find(c => c.id === db.selectedCompanyId);
                           const maxSizeKB = activeComp.posSettings?.maxImageSizeKB || 500;
                           const maxDim = activeComp.posSettings?.maxImageDimensions || 800;
-                          
+
                           if (file.size > maxSizeKB * 1024) {
-                            alert(`File too large! Maximum allowed size is ${maxSizeKB}KB.`);
+                            alert(`${t('File too large! Maximum allowed size is')} ${maxSizeKB}KB.`);
                             e.target.value = '';
                             return;
                           }
-                          
+
                           const reader = new FileReader();
                           reader.onload = (event) => {
                             const img = new Image();
                             img.onload = () => {
                               if (img.width > maxDim || img.height > maxDim) {
-                                alert(`Image dimensions too large! Max allowed is ${maxDim}x${maxDim}px.`);
+                                alert(`${t('Image dimensions too large! Max allowed is')} ${maxDim}x${maxDim}px.`);
                                 return;
                               }
                               setProdImage(event.target?.result as string);
@@ -1407,7 +1418,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
                           };
                           reader.readAsDataURL(file);
                         }} className="w-full text-xs text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
-                        {prodImage && <img src={prodImage} alt="Preview" className="w-16 h-16 object-cover rounded-lg border border-slate-200 mt-2 shadow-sm" />}
+                        {prodImage && <img src={prodImage} alt={t('Preview')} className="w-16 h-16 object-cover rounded-lg border border-slate-200 mt-2 shadow-sm" />}
                       </div>
                     </div>
                 </div>
@@ -1418,14 +1429,14 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  onClick={clearForm}
  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all duration-150"
  >
- Cancel
+ {t('Cancel')}
  </button>
  )}
  <button
  type="submit"
  className="flex-1 bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-600/10 text-white rounded-xl py-2.5 font-bold transition-all duration-150 text-center"
  >
- {editingId ? 'Save Product' : 'Add to Inventory'}
+ {editingId ? t('Save Product') : t('Add to Inventory')}
  </button>
  </div>
  </>
@@ -1436,15 +1447,15 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  {/* Product Category Form */}
  {subTab === 'categories' && (
  <form onSubmit={handleSaveCategory} className="space-y-4 text-xs">
- {!canEditCategories ? (
+ {!(editingId ? canUpdateCategories : canCreateCategories) ? (
  <div className="p-4 bg-rose-50 text-rose-700 rounded-xl border border-rose-100 flex items-start gap-2 text-[11px] font-semibold leading-relaxed">
  <Lock className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
- <span>You do not have permissions to manage categories.</span>
+ <span>{t('You do not have permissions to manage categories.')}</span>
  </div>
  ) : (
  <>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Category Name</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Category Name')}</label>
  <input
  type="text"
  required
@@ -1456,24 +1467,24 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Parent Category (Optional)</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Parent Category (Optional)')}</label>
  <select
  value={catParentId}
  onChange={(e) => setCatParentId(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
  >
- <option value="">-- No Parent (Top Level) --</option>
- {categories.filter(c => c.id !== editingId).map(c => (
+ <option value="">{t('-- No Parent (Top Level) --')}</option>
+ {db.productCategories.filter(c => c.id !== editingId).map(c => (
  <option key={c.id} value={c.id}>{c.name}</option>
  ))}
  </select>
  </div>
 
  <div className="border-t border-slate-100 pt-3 mt-2 space-y-3">
- <h5 className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider">Accounting GL Mapping</h5>
- 
+ <h5 className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider">{t('Accounting GL Mapping')}</h5>
+
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sales/Revenue GL Account</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Sales/Revenue GL Account')}</label>
  <input
  type="text"
  required
@@ -1485,7 +1496,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Inventory Asset GL Account</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Inventory Asset GL Account')}</label>
  <input
  type="text"
  required
@@ -1497,7 +1508,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">COGS / Expense GL Account</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('COGS / Expense GL Account')}</label>
  <input
  type="text"
  required
@@ -1516,14 +1527,14 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  onClick={clearForm}
  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all duration-150"
  >
- Cancel
+ {t('Cancel')}
  </button>
  )}
  <button
  type="submit"
  className="flex-1 bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-600/10 text-white rounded-xl py-2.5 font-bold transition-all duration-150 text-center"
  >
- {editingId ? 'Save Category' : 'Create Category'}
+ {editingId ? t('Save Category') : t('Create Category')}
  </button>
  </div>
  </>
@@ -1534,35 +1545,52 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  {/* Unit of Measure Form */}
  {subTab === 'units' && (
  <form onSubmit={handleSaveUnit} className="space-y-4 text-xs">
- {!canEditUnits ? (
+ {!(editingId ? canUpdateUnits : canCreateUnits) ? (
  <div className="p-4 bg-rose-50 text-rose-700 rounded-xl border border-rose-100 flex items-start gap-2 text-[11px] font-semibold leading-relaxed">
  <Lock className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
- <span>You do not have permissions to manage units.</span>
+ <span>{t('You do not have permissions to manage units.')}</span>
  </div>
  ) : (
  <>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Unit Name</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('ZATCA Unit Code')}</label>
+ {/* Constrained to the allowed UN/ECE Recommendation 20 codes ZATCA's UBL invoices
+     require (src/zatcaUnitCodes.ts) — this used to be free text (placeholder literally
+     suggested "PCS, BOX", neither a real code), so a unit created here could never
+     actually be submitted to ZATCA correctly. The server enforces this too; the picker
+     is so an admin lands on a valid choice in the first place instead of hitting a
+     rejection after typing. */}
+ <select
+ required
+ value={unitCode}
+ onChange={(e) => {
+ const code = e.target.value;
+ setUnitCode(code);
+ const preset = ZATCA_UNIT_CODES.find(u => u.code === code);
+ if (preset && (!unitName.trim() || ZATCA_UNIT_CODES.some(u => u.label === unitName.trim()))) {
+ setUnitName(preset.label);
+ }
+ }}
+ className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
+ >
+ <option value="" disabled>{t('Select a ZATCA-recognized unit code...')}</option>
+ {ZATCA_UNIT_CODES.map(u => (
+ <option key={u.code} value={u.code}>{u.code} — {u.label} ({u.category})</option>
+ ))}
+ </select>
+ </div>
+
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Display Name')}</label>
  <input
  type="text"
  required
- placeholder="e.g. Piece"
+ placeholder="e.g. Kilogram, Box of 12"
  value={unitName}
  onChange={(e) => setUnitName(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"
  />
- </div>
-
- <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Unit Code / Abbreviation</label>
- <input
- type="text"
- required
- placeholder="e.g. PCS, BOX"
- value={unitCode}
- onChange={(e) => setUnitCode(e.target.value)}
- className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"
- />
+ <p className="text-[9px] text-slate-400">{t("Shown to users; the ZATCA code above is what's actually submitted on invoices.")}</p>
  </div>
 
  <div className="flex gap-2 pt-3">
@@ -1572,14 +1600,14 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  onClick={clearForm}
  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all duration-150"
  >
- Cancel
+ {t('Cancel')}
  </button>
  )}
  <button
  type="submit"
  className="flex-1 bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-600/10 text-white rounded-xl py-2.5 font-bold transition-all duration-150 text-center"
  >
- {editingId ? 'Save Unit' : 'Create Unit'}
+ {editingId ? t('Save Unit') : t('Create Unit')}
  </button>
  </div>
  </>
@@ -1590,15 +1618,15 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  {/* Physical Warehouses Form */}
  {subTab === 'warehouses' && (
  <form onSubmit={handleSaveWarehouse} className="space-y-4 text-xs">
- {!canEditWarehouses ? (
+ {!(editingId ? canUpdateWarehouses : canCreateWarehouses) ? (
  <div className="p-4 bg-rose-50 text-rose-700 rounded-xl border border-rose-100 flex items-start gap-2 text-[11px] font-semibold leading-relaxed">
  <Lock className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
- <span>You do not have permissions to manage warehouses.</span>
+ <span>{t('You do not have permissions to manage warehouses.')}</span>
  </div>
  ) : (
  <>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Warehouse Name</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Warehouse Name')}</label>
  <input
  type="text"
  required
@@ -1610,7 +1638,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Warehouse Code</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Warehouse Code')}</label>
  <input
  type="text"
  required
@@ -1622,7 +1650,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Address / Location</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Address / Location')}</label>
  <textarea
  placeholder="e.g. Riyadh Industrial Area"
  value={whAddress}
@@ -1640,7 +1668,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
  />
  <label htmlFor="whIsActive" className="text-[11px] font-bold text-slate-600 cursor-pointer select-none">
- Active & Operational Location
+ {t('Active & Operational Location')}
  </label>
  </div>
 
@@ -1651,14 +1679,14 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  onClick={clearForm}
  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all duration-150"
  >
- Cancel
+ {t('Cancel')}
  </button>
  )}
  <button
  type="submit"
  className="flex-1 bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-600/10 text-white rounded-xl py-2.5 font-bold transition-all duration-150 text-center"
  >
- {editingId ? 'Save Warehouse' : 'Create Warehouse'}
+ {editingId ? t('Save Warehouse') : t('Create Warehouse')}
  </button>
  </div>
  </>
@@ -1675,87 +1703,101 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center flex-wrap gap-2">
  <div>
  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
- {subTab === 'customers' && 'Active Customer Directory'}
- {subTab === 'vendors' && 'Material Suppliers & Vendors Registry'}
- {subTab === 'products' && 'Product Catalog & Service Rates'}
- {subTab === 'categories' && 'Inventory Category Tree & GL Mappings'}
- {subTab === 'units' && 'Units of Measure Registry'}
- {subTab === 'warehouses' && 'Physical Warehouses & Stock Locations'}
+ {subTab === 'customers' && t('Active Customer Directory')}
+ {subTab === 'vendors' && t('Material Suppliers & Vendors Registry')}
+ {subTab === 'products' && t('Product Catalog & Service Rates')}
+ {subTab === 'categories' && t('Inventory Category Tree & GL Mappings')}
+ {subTab === 'units' && t('Units of Measure Registry')}
+ {subTab === 'warehouses' && t('Physical Warehouses & Stock Locations')}
  </h4>
  <div className="flex items-center gap-2 mt-0.5">
  <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded uppercase">
- 🏢 Scoped: {db.companySetup?.name}
+ 🏢 {t('Scoped:')} {db.companySetup?.name}
  </span>
  </div>
  </div>
  <span className="px-2.5 py-1 bg-white border border-slate-200/60 rounded-xl text-[10px] font-bold text-slate-500">
- Total: {subTab === 'customers' ? companyCustomers.length : subTab === 'vendors' ? companyVendors.length : subTab === 'products' ? companyProducts.length : subTab === 'categories' ? categories.length : subTab === 'units' ? units.length : warehouses.length} records
+ {t('Total:')} {subTab === 'customers' ? companyCustomers.length : subTab === 'vendors' ? companyVendors.length : subTab === 'products' ? companyProducts.length : subTab === 'categories' ? db.productCategories.length : subTab === 'units' ? db.unitsOfMeasure.length : db.warehouses.length} {t('records')}
  </span>
- {((subTab === 'customers' && canEditCustomers) || (subTab === 'vendors' && canEditVendors) || (subTab === 'products' && canEditProducts) || (subTab === 'categories' && canEditCategories) || (subTab === 'units' && canEditUnits) || (subTab === 'warehouses' && canEditWarehouses)) && (
+ {((subTab === 'customers' && canCreateCustomers) || (subTab === 'vendors' && canCreateVendors) || (subTab === 'products' && canCreateProducts) || (subTab === 'categories' && canCreateCategories) || (subTab === 'units' && canCreateUnits) || (subTab === 'warehouses' && canCreateWarehouses)) && (
  <button
  onClick={onCreateNew}
  className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-bold flex items-center gap-1"
  >
- <Plus className="w-3 h-3" /> New {subTab === 'customers' ? 'Customer' : subTab === 'vendors' ? 'Vendor' : subTab === 'products' ? 'Product' : subTab === 'categories' ? 'Category' : subTab === 'units' ? 'Unit' : 'Warehouse'}
+ <Plus className="w-3 h-3" /> {t('New')} {subTab === 'customers' ? t('Customer') : subTab === 'vendors' ? t('Vendor') : subTab === 'products' ? t('Product') : subTab === 'categories' ? t('Category') : subTab === 'units' ? t('Unit') : t('Warehouse')}
  </button>
  )}
- {subTab === 'products' && canEditProducts && (
+ {subTab === 'products' && canCreateProducts && (
  <button
  onClick={handleRestoreProducts}
  className="px-2.5 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 rounded-xl text-[10px] font-bold"
- title="Restore deleted products that are still in invoices"
+ title={t('Restore deleted products that are still in invoices')}
  >
- Restore Missing Products
+ {t('Restore Missing Products')}
  </button>
  )}
  </div>
- 
+
  {subTab === 'customers' && (
  <div className="overflow-x-auto">
  <table className="w-full text-start border-collapse">
  <thead>
  <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
- <th className="p-4 ps-5">Customer Profile Name</th>
- <th className="p-4">Contact Email</th>
- <th className="p-4">VAT Registration</th>
- <th className="p-4 pe-5 text-end">Actions</th>
+ <th className="p-4 ps-5">{t('Customer Profile Name')}</th>
+ <th className="p-4">{t('Contact Email')}</th>
+ <th className="p-4">{t('VAT Registration')}</th>
+ <th className="p-4">{t('Status')}</th>
+ <th className="p-4 pe-5 text-end">{t('Actions')}</th>
  </tr>
  </thead>
  <tbody className="divide-y divide-slate-100 ">
  {companyCustomers.map(c => (
- <tr key={c.id} className="hover:bg-slate-50/40 text-slate-700 transition-colors duration-150">
+ <tr key={c.id} className={`hover:bg-slate-50/40 transition-colors duration-150 ${c.isActive === false ? 'opacity-60 text-slate-500' : 'text-slate-700'}`}>
  <td className="p-4 ps-5">
  <span className="font-bold text-slate-900 block">{c.name}</span>
  <span className="text-[10px] text-slate-400 block mt-0.5 font-medium">
- {c.phone || 'No phone'} • {c.address || 'No physical address'}
+ {c.phone || t('No phone')} • {c.address || t('No physical address')}
  </span>
  </td>
- <td className="p-4 font-medium text-slate-600">{c.email || <span className="text-slate-350 italic">None</span>}</td>
+ <td className="p-4 font-medium text-slate-600">{c.email || <span className="text-slate-350 italic">{t('None')}</span>}</td>
  <td className="p-4">
  {c.taxRegNumber ? (
  <span className="font-mono font-bold bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{c.taxRegNumber}</span>
  ) : (
- <span className="text-slate-350 italic text-[10px]">Unregistered</span>
+ <span className="text-slate-350 italic text-[10px]">{t('Unregistered')}</span>
  )}
  </td>
+ <td className="p-4">
+ <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+ c.isActive === false ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+ }`}>
+ {c.isActive === false ? t('Inactive') : t('Active')}
+ </span>
+ </td>
  <td className="p-4 pe-5 text-end space-x-1.5">
- {!c.isSystem && canEditCustomers ? (
+ {!c.isSystem ? (
  <div className="inline-flex gap-1.5">
+ {canUpdateCustomers && (
  <button
  onClick={() => onEdit(c.id)}
  className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-[10px] font-bold transition-all duration-150"
  >
- Edit
+ {t('Edit')}
  </button>
+ )}
+ {canDeleteCustomers && (
  <button
- onClick={() => handleDeleteCustomer(c.id)}
- className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[10px] font-bold transition-all duration-150"
+ onClick={() => handleToggleCustomerActive(c.id)}
+ className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all duration-150 ${
+ c.isActive === false ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600' : 'bg-rose-50 hover:bg-rose-100 text-rose-600'
+ }`}
  >
- Delete
+ {c.isActive === false ? t('Reactivate') : t('Deactivate')}
  </button>
+ )}
  </div>
  ) : (
- c.isSystem ? <span className="text-[10px] text-slate-400 bg-slate-100/80 px-2 py-0.5 rounded-md italic font-semibold">System Record</span> : null
+ <span className="text-[10px] text-slate-400 bg-slate-100/80 px-2 py-0.5 rounded-md italic font-semibold">{t('System Record')}</span>
  )}
  </td>
  </tr>
@@ -1770,47 +1812,61 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <table className="w-full text-start border-collapse">
  <thead>
  <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
- <th className="p-4 ps-5">Vendor / Material Supplier</th>
- <th className="p-4">Email</th>
- <th className="p-4">VAT Registration</th>
- <th className="p-4 pe-5 text-end">Actions</th>
+ <th className="p-4 ps-5">{t('Vendor / Material Supplier')}</th>
+ <th className="p-4">{t('Email')}</th>
+ <th className="p-4">{t('VAT Registration')}</th>
+ <th className="p-4">{t('Status')}</th>
+ <th className="p-4 pe-5 text-end">{t('Actions')}</th>
  </tr>
  </thead>
  <tbody className="divide-y divide-slate-100 ">
  {companyVendors.map(v => (
- <tr key={v.id} className="hover:bg-slate-50/40 text-slate-700 transition-colors duration-150">
+ <tr key={v.id} className={`hover:bg-slate-50/40 transition-colors duration-150 ${v.isActive === false ? 'opacity-60 text-slate-500' : 'text-slate-700'}`}>
  <td className="p-4 ps-5">
  <span className="font-bold text-slate-900 block">{v.name}</span>
  <span className="text-[10px] text-slate-400 block mt-0.5 font-medium">
- {v.phone || 'No phone'} • {v.address || 'No physical address'}
+ {v.phone || t('No phone')} • {v.address || t('No physical address')}
  </span>
  </td>
- <td className="p-4 font-medium text-slate-600">{v.email || <span className="text-slate-350 italic">None</span>}</td>
+ <td className="p-4 font-medium text-slate-600">{v.email || <span className="text-slate-350 italic">{t('None')}</span>}</td>
  <td className="p-4">
  {v.taxRegNumber ? (
  <span className="font-mono font-bold bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{v.taxRegNumber}</span>
  ) : (
- <span className="text-slate-350 italic text-[10px]">Unregistered</span>
+ <span className="text-slate-350 italic text-[10px]">{t('Unregistered')}</span>
  )}
  </td>
+ <td className="p-4">
+ <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+ v.isActive === false ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+ }`}>
+ {v.isActive === false ? t('Inactive') : t('Active')}
+ </span>
+ </td>
  <td className="p-4 pe-5 text-end space-x-1.5">
- {!v.isSystem && canEditVendors ? (
+ {!v.isSystem ? (
  <div className="inline-flex gap-1.5">
+ {canUpdateVendors && (
  <button
  onClick={() => onEdit(v.id)}
  className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-[10px] font-bold transition-all duration-150"
  >
- Edit
+ {t('Edit')}
  </button>
+ )}
+ {canDeleteVendors && (
  <button
- onClick={() => handleDeleteVendor(v.id)}
- className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[10px] font-bold transition-all duration-150"
+ onClick={() => handleToggleVendorActive(v.id)}
+ className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all duration-150 ${
+ v.isActive === false ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600' : 'bg-rose-50 hover:bg-rose-100 text-rose-600'
+ }`}
  >
- Delete
+ {v.isActive === false ? t('Reactivate') : t('Deactivate')}
  </button>
+ )}
  </div>
  ) : (
- v.isSystem ? <span className="text-[10px] text-slate-400 bg-slate-100/80 px-2 py-0.5 rounded-md italic font-semibold">System Record</span> : null
+ <span className="text-[10px] text-slate-400 bg-slate-100/80 px-2 py-0.5 rounded-md italic font-semibold">{t('System Record')}</span>
  )}
  </td>
  </tr>
@@ -1825,47 +1881,61 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <table className="w-full text-start border-collapse">
  <thead>
  <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
- <th className="p-4 ps-5">Catalog Service / Item</th>
- <th className="p-4">Image</th>
- <th className="p-4">POS Enabled</th>
- <th className="p-4">Type / Ledger Scope</th>
- <th className="p-4">Unit</th>
- <th className="p-4 text-end">Unit Rate Price</th>
- {canEditProducts && <th className="p-4 pe-5 text-end">Actions</th>}
+ <th className="p-4 ps-5">{t('Catalog Service / Item')}</th>
+ <th className="p-4">{t('Image')}</th>
+ <th className="p-4">{t('POS Enabled')}</th>
+ <th className="p-4">{t('Type / Ledger Scope')}</th>
+ <th className="p-4">{t('Unit')}</th>
+ <th className="p-4">{t('Status')}</th>
+ <th className="p-4 text-end">{t('Unit Rate Price')}</th>
+ {(canUpdateProducts || canDeleteProducts) && <th className="p-4 pe-5 text-end">{t('Actions')}</th>}
  </tr>
  </thead>
  <tbody className="divide-y divide-slate-100 ">
  {companyProducts.map(p => (
- <tr key={p.id} className="hover:bg-slate-50/40 text-slate-700 transition-colors duration-150">
+ <tr key={p.id} className={`hover:bg-slate-50/40 transition-colors duration-150 ${p.isActive === false ? 'opacity-60 text-slate-500' : 'text-slate-700'}`}>
  <td className="p-4 ps-5 font-bold text-slate-900">{p.name}</td>
  <td className="p-4">
    {p.base64Image ? <img src={p.base64Image} alt={p.name} className="w-10 h-10 object-cover rounded" /> : <div className="w-10 h-10 bg-slate-100 rounded"></div>}
  </td>
- <td className="p-4">{p.isPosItem ? 'Yes' : 'No'}</td>
+ <td className="p-4">{p.isPosItem ? t('Yes') : t('No')}</td>
  <td className="p-4 font-semibold">
  <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
  p.type === 'Sales' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'
  }`}>
- {p.type}
+ {t(p.type)}
  </span>
  </td>
- <td className="p-4 font-semibold text-slate-600">{p.unit || 'No'}</td>
+ <td className="p-4 font-semibold text-slate-600">{p.unit || t('No')}</td>
+ <td className="p-4">
+ <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+ p.isActive === false ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+ }`}>
+ {p.isActive === false ? t('Inactive') : t('Active')}
+ </span>
+ </td>
  <td className="p-4 text-end font-extrabold text-slate-900 text-sm">{db.companySetup?.currency || 'SAR'} {Number(p.unitPrice || 0).toFixed(2)}</td>
- {canEditProducts && (
+ {(canUpdateProducts || canDeleteProducts) && (
  <td className="p-4 pe-5 text-end space-x-1.5">
  <div className="inline-flex gap-1.5">
+ {canUpdateProducts && (
  <button
  onClick={() => onEdit(p.id)}
  className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-[10px] font-bold transition-all duration-150"
  >
- Edit
+ {t('Edit')}
  </button>
+ )}
+ {canDeleteProducts && (
  <button
- onClick={() => handleDeleteProduct(p.id)}
- className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[10px] font-bold transition-all duration-150"
+ onClick={() => handleToggleProductActive(p.id)}
+ className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all duration-150 ${
+ p.isActive === false ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600' : 'bg-rose-50 hover:bg-rose-100 text-rose-600'
+ }`}
  >
- Delete
+ {p.isActive === false ? t('Reactivate') : t('Deactivate')}
  </button>
+ )}
  </div>
  </td>
  )}
@@ -1881,45 +1951,59 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <table className="w-full text-start border-collapse">
  <thead>
  <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
- <th className="p-4 ps-5">Category Name</th>
- <th className="p-4">Parent Category</th>
- <th className="p-4">Sales GL Mapping</th>
- <th className="p-4">Asset GL Mapping</th>
- <th className="p-4">COGS GL Mapping</th>
- {canEditCategories && <th className="p-4 pe-5 text-end">Actions</th>}
+ <th className="p-4 ps-5">{t('Category Name')}</th>
+ <th className="p-4">{t('Parent Category')}</th>
+ <th className="p-4">{t('Sales GL Mapping')}</th>
+ <th className="p-4">{t('Asset GL Mapping')}</th>
+ <th className="p-4">{t('COGS GL Mapping')}</th>
+ <th className="p-4">{t('Status')}</th>
+ {(canUpdateCategories || canDeleteCategories) && <th className="p-4 pe-5 text-end">{t('Actions')}</th>}
  </tr>
  </thead>
  <tbody className="divide-y divide-slate-100 ">
- {categories.map(c => {
+ {db.productCategories.map(c => {
  // Real saved/schema fields are parentCategoryId/salesGlGroup/purchaseGlGroup/cogsGlGroup
  // — this used to read parentId/salesGlAccount/purchaseGlAccount/cogsGlAccount, which
  // don't exist, so every category with real GL codes and a real parent still displayed
  // "Unmapped"/"-- Top Level --" here regardless of what was actually saved.
- const parent = categories.find(parentCat => parentCat.id === (c as any).parentCategoryId);
+ const parent = db.productCategories.find(parentCat => parentCat.id === (c as any).parentCategoryId);
  return (
- <tr key={c.id} className="hover:bg-slate-50/40 text-slate-700 transition-colors duration-150">
+ <tr key={c.id} className={`hover:bg-slate-50/40 transition-colors duration-150 ${c.isActive === false ? 'opacity-60 text-slate-500' : 'text-slate-700'}`}>
  <td className="p-4 ps-5">
  <span className="font-bold text-slate-900 block">{c.name}</span>
  </td>
- <td className="p-4 text-slate-500 font-medium">{parent ? parent.name : <span className="text-slate-400 italic">-- Top Level --</span>}</td>
- <td className="p-4"><code className="font-mono bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{(c as any).salesGlGroup || 'Unmapped'}</code></td>
- <td className="p-4"><code className="font-mono bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{(c as any).purchaseGlGroup || 'Unmapped'}</code></td>
- <td className="p-4"><code className="font-mono bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{(c as any).cogsGlGroup || 'Unmapped'}</code></td>
- {canEditCategories && (
+ <td className="p-4 text-slate-500 font-medium">{parent ? parent.name : <span className="text-slate-400 italic">{t('-- Top Level --')}</span>}</td>
+ <td className="p-4"><code className="font-mono bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{(c as any).salesGlGroup || t('Unmapped')}</code></td>
+ <td className="p-4"><code className="font-mono bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{(c as any).purchaseGlGroup || t('Unmapped')}</code></td>
+ <td className="p-4"><code className="font-mono bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{(c as any).cogsGlGroup || t('Unmapped')}</code></td>
+ <td className="p-4">
+ <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+ c.isActive === false ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+ }`}>
+ {c.isActive === false ? t('Inactive') : t('Active')}
+ </span>
+ </td>
+ {(canUpdateCategories || canDeleteCategories) && (
  <td className="p-4 pe-5 text-end">
  <div className="inline-flex gap-1.5">
+ {canUpdateCategories && (
  <button
  onClick={() => onEdit(c.id)}
  className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-[10px] font-bold transition-all duration-150"
  >
- Edit
+ {t('Edit')}
  </button>
+ )}
+ {canDeleteCategories && (
  <button
- onClick={() => handleDeleteCategory(c.id)}
- className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[10px] font-bold transition-all duration-150"
+ onClick={() => handleToggleCategoryActive(c.id)}
+ className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all duration-150 ${
+ c.isActive === false ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600' : 'bg-rose-50 hover:bg-rose-100 text-rose-600'
+ }`}
  >
- Delete
+ {c.isActive === false ? t('Reactivate') : t('Deactivate')}
  </button>
+ )}
  </div>
  </td>
  )}
@@ -1936,25 +2020,35 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <table className="w-full text-start border-collapse">
  <thead>
  <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
- <th className="p-4 ps-5">Unit Name</th>
- <th className="p-4">Unit Code / Abbreviation</th>
- {canEditUnits && <th className="p-4 pe-5 text-end">Actions</th>}
+ <th className="p-4 ps-5">{t('Unit Name')}</th>
+ <th className="p-4">{t('Unit Code / Abbreviation')}</th>
+ <th className="p-4">{t('Status')}</th>
+ {canDeleteUnits && <th className="p-4 pe-5 text-end">{t('Actions')}</th>}
  </tr>
  </thead>
  <tbody className="divide-y divide-slate-100 ">
- {units.map(u => (
- <tr key={u.id} className="hover:bg-slate-50/40 text-slate-700 transition-colors duration-150">
+ {db.unitsOfMeasure.map(u => (
+ <tr key={u.id} className={`hover:bg-slate-50/40 transition-colors duration-150 ${u.isActive === false ? 'opacity-60 text-slate-500' : 'text-slate-700'}`}>
  <td className="p-4 ps-5 font-bold text-slate-900">{u.name}</td>
  <td className="p-4">
  <span className="font-mono font-bold bg-slate-50 border border-slate-100 text-indigo-600 rounded px-1.5 py-0.5 text-[10px]">{u.code}</span>
  </td>
- {canEditUnits && (
+ <td className="p-4">
+ <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+ u.isActive === false ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+ }`}>
+ {u.isActive === false ? t('Inactive') : t('Active')}
+ </span>
+ </td>
+ {canDeleteUnits && (
  <td className="p-4 pe-5 text-end">
  <button
- onClick={() => handleDeleteUnit(u.id)}
- className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[10px] font-bold transition-all duration-150"
+ onClick={() => handleToggleUnitActive(u.id)}
+ className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all duration-150 ${
+ u.isActive === false ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600' : 'bg-rose-50 hover:bg-rose-100 text-rose-600'
+ }`}
  >
- Delete
+ {u.isActive === false ? t('Reactivate') : t('Deactivate')}
  </button>
  </td>
  )}
@@ -1970,43 +2064,49 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <table className="w-full text-start border-collapse">
  <thead>
  <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
- <th className="p-4 ps-5">Warehouse Code</th>
- <th className="p-4">Warehouse Name</th>
- <th className="p-4">Location Address</th>
- <th className="p-4">Status</th>
- {canEditWarehouses && <th className="p-4 pe-5 text-end">Actions</th>}
+ <th className="p-4 ps-5">{t('Warehouse Code')}</th>
+ <th className="p-4">{t('Warehouse Name')}</th>
+ <th className="p-4">{t('Location Address')}</th>
+ <th className="p-4">{t('Status')}</th>
+ {(canUpdateWarehouses || canDeleteWarehouses) && <th className="p-4 pe-5 text-end">{t('Actions')}</th>}
  </tr>
  </thead>
  <tbody className="divide-y divide-slate-100">
- {warehouses.map(wh => (
- <tr key={wh.id} className="hover:bg-slate-50/40 text-slate-700 transition-colors duration-150">
+ {db.warehouses.map(wh => (
+ <tr key={wh.id} className={`hover:bg-slate-50/40 transition-colors duration-150 ${wh.isActive === false ? 'opacity-60 text-slate-500' : 'text-slate-700'}`}>
  <td className="p-4 ps-5">
  <span className="font-mono font-bold bg-slate-50 border border-slate-100 text-indigo-600 rounded px-1.5 py-0.5 text-[10px]">{wh.code}</span>
  </td>
  <td className="p-4 font-bold text-slate-900">{wh.name}</td>
- <td className="p-4 text-slate-500 font-medium">{wh.address || <span className="text-slate-350 italic">No address specified</span>}</td>
+ <td className="p-4 text-slate-500 font-medium">{wh.address || <span className="text-slate-350 italic">{t('No address specified')}</span>}</td>
  <td className="p-4">
  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
- wh.isActive ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'
+ wh.isActive !== false ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'
  }`}>
- {wh.isActive ? 'Active' : 'Inactive'}
+ {wh.isActive !== false ? t('Active') : t('Inactive')}
  </span>
  </td>
- {canEditWarehouses && (
+ {(canUpdateWarehouses || canDeleteWarehouses) && (
  <td className="p-4 pe-5 text-end space-x-1.5">
  <div className="inline-flex gap-1.5">
+ {canUpdateWarehouses && (
  <button
  onClick={() => onEdit(wh.id)}
  className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-[10px] font-bold transition-all duration-150"
  >
- Edit
+ {t('Edit')}
  </button>
+ )}
+ {canDeleteWarehouses && (
  <button
- onClick={() => handleDeleteWarehouse(wh.id)}
- className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[10px] font-bold transition-all duration-150"
+ onClick={() => handleToggleWarehouseActive(wh.id)}
+ className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all duration-150 ${
+ wh.isActive === false ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600' : 'bg-rose-50 hover:bg-rose-100 text-rose-600'
+ }`}
  >
- Delete
+ {wh.isActive === false ? t('Reactivate') : t('Deactivate')}
  </button>
+ )}
  </div>
  </td>
  )}

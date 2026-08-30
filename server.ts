@@ -1,4 +1,9 @@
-import 'dotenv/config';
+// Deliberately not the default `.env` filename — see .gitignore's comment on
+// `app.secrets` for why (avoids collision with a hosting platform's own .env-specific
+// tooling). Resolved relative to the process's working directory, matching dotenv's own
+// default `.env` lookup behavior exactly, just against a different filename.
+import dotenv from 'dotenv';
+dotenv.config({ path: 'app.secrets', quiet: true });
 import express from "express";
 import path from "path";
 import fs from "fs";
@@ -12,7 +17,9 @@ import { db, pool } from './src/db/index.js';
 import * as schema from './src/db/schema.js';
 import { mergeRolePermissions } from './src/types.js';
 import { generateId } from './src/id.js';
+import crypto from 'crypto';
 import { recordAuditLog } from './server/lib/audit.js';
+import { isMailerConfigured, sendPasswordResetEmail } from './server/lib/mailer.js';
 import masterEntitiesRouter from './server/routes/masterEntities.js';
 import usersRouter from './server/routes/users.js';
 import rolesRouter from './server/routes/roles.js';
@@ -21,6 +28,7 @@ import expensesRouter from './server/routes/expenses.js';
 import posRouter from './server/routes/pos.js';
 import zatcaRouter from './server/routes/zatca.js';
 import inventoryRouter from './server/routes/inventory.js';
+import settingsResourcesRouter from './server/routes/settingsResources.js';
 
 // A user's effective permissions come from every Role assigned to them (see the
 // `userRoles` junction table in src/db/schema.ts), not a per-user column — this is the
@@ -46,10 +54,27 @@ async function startServer() {
   app.set('trust proxy', 1);
 
   // --- Resilient Session Store Fallback ---
+  // Falls back from Postgres to in-memory sessions on error, same as before — but the
+  // fallback now self-heals instead of being permanent. The original version latched
+  // `useBackup = true` for the lifetime of the process on the very first transient error
+  // (a momentary network blip, a brief pool exhaustion during a deploy): every session
+  // afterward silently stopped persisting to Postgres, with no path back, for as long as
+  // that process kept running — invisible in normal operation, and fatal to horizontal
+  // scaling specifically (a second app instance shares nothing with the first's
+  // in-memory sessions, so a user's next request landing on a different instance sees
+  // them as logged out). Real production traffic can and will produce a transient DB
+  // hiccup at some point; the store needs to recover from one automatically, not require
+  // a process restart to notice it's been degraded.
   class ResilientSessionStore extends session.Store {
     private pgStore: any;
     private memStore: any;
     private useBackup: boolean = false;
+    private lastFailureAt: number = 0;
+    // After this many ms since the last failure, the next operation gets a real retry
+    // against Postgres instead of assuming it's still down. Short enough to recover
+    // quickly from a real blip; long enough not to hammer a genuinely-down DB with a
+    // retry on every single request in the meantime.
+    private readonly RECOVERY_COOLDOWN_MS = 10000;
 
     constructor() {
       super();
@@ -59,53 +84,85 @@ async function startServer() {
           pool: pool as any,
           tableName: 'user_sessions'
         });
-        
+
         this.pgStore.on('error', (err: any) => {
           console.warn("[Session] PgSession store error (switching to memory fallback):", err.message);
-          this.useBackup = true;
+          this.markFailure();
         });
       } catch (e: any) {
         console.warn("[Session] Failed to initialize PgSession, using MemoryStore:", e.message);
+        // pgStore was never constructed here — nothing to retry, so this one case
+        // (unlike every markFailure() below) is a genuinely permanent fallback.
         this.useBackup = true;
       }
     }
 
+    private markFailure() {
+      this.useBackup = true;
+      this.lastFailureAt = Date.now();
+    }
+
+    private markRecovered() {
+      if (this.useBackup) {
+        console.log("[Session] PgSession store recovered — switching back from memory fallback.");
+      }
+      this.useBackup = false;
+    }
+
+    // Note on the tradeoff this implies: a session created or renewed in MemoryStore
+    // during a fallback window won't exist in pgStore once recovery flips back — that
+    // user's session effectively ends when the store recovers. That's a real limitation
+    // of any dual-store fallback without a synchronization step between the two, but it
+    // bounds the blast radius to sessions active during the outage window instead of
+    // every session for the rest of the process's life, which is what made the original
+    // permanent-latch version unacceptable for a scaled deployment.
+    private shouldUseBackup(): boolean {
+      if (!this.pgStore) return true;
+      if (!this.useBackup) return false;
+      return (Date.now() - this.lastFailureAt) < this.RECOVERY_COOLDOWN_MS;
+    }
+
     get(sid: string, callback: any) {
-      if (this.useBackup || !this.pgStore) {
+      if (this.shouldUseBackup()) {
         return this.memStore.get(sid, callback);
       }
       this.pgStore.get(sid, (err: any, session: any) => {
         if (err) {
           console.warn("[Session] PgSession.get failed, falling back to MemoryStore:", err.message);
-          this.useBackup = true;
+          this.markFailure();
           return this.memStore.get(sid, callback);
         }
+        this.markRecovered();
         callback(null, session);
       });
     }
 
     set(sid: string, session: any, callback: any) {
-      if (this.useBackup || !this.pgStore) {
+      if (this.shouldUseBackup()) {
         return this.memStore.set(sid, session, callback);
       }
       this.pgStore.set(sid, session, (err: any) => {
         if (err) {
           console.warn("[Session] PgSession.set failed, falling back to MemoryStore:", err.message);
-          this.useBackup = true;
+          this.markFailure();
           return this.memStore.set(sid, session, callback);
         }
+        this.markRecovered();
         if (callback) callback(null);
       });
     }
 
     destroy(sid: string, callback: any) {
-      if (this.useBackup || !this.pgStore) {
+      if (this.shouldUseBackup()) {
         return this.memStore.destroy(sid, callback);
       }
       this.pgStore.destroy(sid, (err: any) => {
         if (err) {
+          console.warn("[Session] PgSession.destroy failed, falling back to MemoryStore:", err.message);
+          this.markFailure();
           return this.memStore.destroy(sid, callback);
         }
+        this.markRecovered();
         if (callback) callback(null);
       });
     }
@@ -138,6 +195,16 @@ async function startServer() {
     const querySessionId = req.query.sessionId || req.query.session_id;
     const resolvedSessionId = headerSessionId || querySessionId;
 
+    // Which underlying user_sessions row this request's identity actually comes from -
+    // req.sessionID for the normal cookie path, or the raw x-session-id/query value for
+    // the non-cookie path. A route that needs to persist something into "this session"
+    // (e.g. POST /api/switch-company below) must write to *this* row specifically -
+    // req.session here is a fresh, disconnected session object on the non-cookie path
+    // (express-session always allocates one per request regardless of whether a valid
+    // cookie was presented), so writes to req.session alone silently vanish for any
+    // caller using x-session-id, which never sees them on its next request.
+    req.activeSessionId = req.sessionID;
+
     if (!userId && resolvedSessionId) {
       try {
         const [sessionRow] = await db.select()
@@ -148,6 +215,7 @@ async function startServer() {
           const sessionData = sessionRow.sess as any;
           if (sessionData && sessionData.userId) {
             userId = sessionData.userId;
+            req.activeSessionId = String(resolvedSessionId);
             if (req.session) {
               req.session.userId = sessionData.userId;
               req.session.companyId = sessionData.companyId;
@@ -176,7 +244,16 @@ async function startServer() {
           req.user.permissions = null;
         }
 
-        // Determine target company
+        // Determine target company. Resolution order: an explicit per-request override
+        // (query/body/header - used when a request is deliberately acting on a specific
+        // company right now), then the *persisted* selection in the session (set at
+        // login and updated by POST /api/switch-company below - this is what "the
+        // currently selected company" actually means across the portal), then finally
+        // the user's own home company as the last-resort default. Previously this last
+        // fallback ran whenever no per-request param was passed - which is most
+        // requests, since only a handful of call sites ever bothered to pass one - so a
+        // super-admin's company selection was silently discarded on nearly every request
+        // that didn't explicitly repeat it, always reverting to their own home company.
         let companyId = req.query.companyId || req.body.companyId || req.headers['x-company-id'];
 
         if (companyId) {
@@ -187,6 +264,8 @@ async function startServer() {
           } else {
             req.targetCompanyId = companyId;
           }
+        } else if (req.session?.companyId) {
+          req.targetCompanyId = req.session.companyId;
         } else {
           req.targetCompanyId = user.companyId;
         }
@@ -310,6 +389,113 @@ async function startServer() {
     }
   });
 
+  // --- Forgot Password: request a reset link ---
+  // Always responds with the same generic message regardless of whether the username
+  // exists, has an email on file, or SMTP is even configured for that account-existence
+  // question specifically — this is the one place in the app deliberately designed to
+  // never confirm or deny that a given username exists (classic account-enumeration
+  // guard). The one exception is when SMTP itself isn't configured at all: that's a
+  // global server-configuration fact, not a per-account secret, so it's surfaced plainly
+  // (mainly useful for admins/testers working on a fresh checkout before .env is filled in).
+  app.post("/api/auth/forgot-password", async (req: any, res: any) => {
+    if (!isMailerConfigured()) {
+      return res.status(503).json({ error: 'Password reset is not configured on this server yet (no SMTP credentials set in .env). Contact your administrator.' });
+    }
+
+    const cleanUsername = String(req.body?.username || '').trim().toLowerCase();
+    const genericResponse = { message: 'If that account exists and has an email on file, a password reset link has been sent to it.' };
+    if (!cleanUsername) {
+      return res.json(genericResponse);
+    }
+
+    try {
+      const user = await db.select()
+        .from(schema.users)
+        .where(sql`LOWER(${schema.users.username}) = ${cleanUsername}`)
+        .then(r => r[0]);
+
+      if (user && user.isDeleted !== 1 && user.isActive !== false && user.email) {
+        const rawToken = crypto.randomBytes(32).toString('hex');
+        const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+        await db.insert(schema.passwordResetTokens).values({
+          id: generateId(),
+          userId: user.id,
+          tokenHash,
+          expiresAt,
+        });
+
+        const origin = process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
+        const resetUrl = `${origin}/?resetToken=${rawToken}`;
+
+        sendPasswordResetEmail(user.email, resetUrl, user.username).catch((err) => {
+          console.error('[Mailer] Failed to send password reset email:', err.message);
+        });
+
+        recordAuditLog(
+          { user, targetCompanyId: user.companyId, ip: req.ip, headers: req.headers, socket: req.socket },
+          'PASSWORD_RESET_REQUESTED',
+          'user',
+          user.id,
+          { username: user.username }
+        );
+      }
+    } catch (err: any) {
+      console.error('[Auth] Forgot-password lookup failed:', err.message);
+      // Still fall through to the generic response — a DB hiccup here shouldn't leak
+      // anything different to the caller than "account not found" would.
+    }
+
+    res.json(genericResponse);
+  });
+
+  // --- Forgot Password: consume the token, set a new password ---
+  app.post("/api/auth/reset-password", async (req: any, res: any) => {
+    const rawToken = String(req.body?.token || '').trim();
+    const newPassword = String(req.body?.newPassword || '');
+
+    if (!rawToken) {
+      return res.status(400).json({ error: 'Missing reset token.' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    try {
+      const tokenRow = await db.select()
+        .from(schema.passwordResetTokens)
+        .where(eq(schema.passwordResetTokens.tokenHash, tokenHash))
+        .then(r => r[0]);
+
+      if (!tokenRow || tokenRow.usedAt || new Date(tokenRow.expiresAt) < new Date()) {
+        return res.status(400).json({ error: 'This reset link is invalid or has expired. Request a new one.' });
+      }
+
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      await db.update(schema.users).set({ password: hashedPassword }).where(eq(schema.users.id, tokenRow.userId));
+      await db.update(schema.passwordResetTokens).set({ usedAt: new Date() }).where(eq(schema.passwordResetTokens.id, tokenRow.id));
+
+      const user = await db.select().from(schema.users).where(eq(schema.users.id, tokenRow.userId)).then(r => r[0]);
+      if (user) {
+        recordAuditLog(
+          { user, targetCompanyId: user.companyId, ip: req.ip, headers: req.headers, socket: req.socket },
+          'PASSWORD_RESET_COMPLETED',
+          'user',
+          user.id,
+          { username: user.username }
+        );
+      }
+
+      res.json({ message: 'Password updated. You can now log in with your new password.' });
+    } catch (err: any) {
+      console.error('[Auth] Reset-password failed:', err.message);
+      res.status(500).json({ error: 'Failed to reset password. Please try again.' });
+    }
+  });
+
   // API Routes (Public)
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
@@ -317,6 +503,54 @@ async function startServer() {
 
   // Protect remaining routes
   app.use('/api', isAuthenticated);
+
+  // Persists which company a super-admin is currently viewing into the session itself,
+  // so it's automatically honored by every subsequent request's isAuthenticated
+  // resolution (req.session.companyId) without each individual fetch call needing to
+  // remember to repeat it as a query param. Only a super-admin may switch companies -
+  // a company-scoped admin/user has exactly one company and no UI ever offers this.
+  app.post('/api/switch-company', async (req: any, res: any) => {
+    const isSuper = req.user?.isSuperAdmin === true || req.user?.role === 'super-admin';
+    if (!isSuper) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { companyId } = req.body;
+    if (!companyId || typeof companyId !== 'string') {
+      return res.status(400).json({ error: 'companyId is required' });
+    }
+    const [company] = await db.select().from(schema.companies).where(eq(schema.companies.id, companyId));
+    if (!company) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    req.session.companyId = companyId;
+
+    // Persist directly into the actual stored session row for req.activeSessionId
+    // (set by isAuthenticated) rather than relying solely on req.session.save() - on the
+    // x-session-id path req.session is a fresh, disconnected object express-session
+    // allocates per-request, and .save() on it would silently write to a *different*
+    // row than the one subsequent x-session-id requests actually look up.
+    try {
+      const [existingRow] = await db.select().from(schema.user_sessions)
+        .where(eq(schema.user_sessions.sid, req.activeSessionId));
+      if (existingRow) {
+        const mergedSess = { ...(existingRow.sess as any), companyId };
+        await db.update(schema.user_sessions)
+          .set({ sess: mergedSess })
+          .where(eq(schema.user_sessions.sid, req.activeSessionId));
+      }
+    } catch (err) {
+      console.error('[switch-company] Direct session row update failed:', err);
+    }
+
+    req.session.save((err: any) => {
+      if (err) {
+        console.error('[switch-company] Session save error:', err);
+        return res.status(500).json({ error: 'Failed to persist company selection' });
+      }
+      res.json({ success: true, companyId });
+    });
+  });
 
   // --- Auto-Audit Interceptor Middleware ---
   app.use(async (req: any, res: any, next: any) => {
@@ -511,6 +745,7 @@ async function startServer() {
   app.use('/api/pos', posRouter);
   app.use('/api/zatca', zatcaRouter);
   app.use('/api/inventory', inventoryRouter);
+  app.use('/api', settingsResourcesRouter);
 
   // Protected Routes
   app.get("/api/companies", async (req: any, res: any) => {
@@ -651,6 +886,10 @@ async function startServer() {
         schema.goodsReceiptNotes,
         schema.goodsReceiptNoteItems,
         schema.purchaseBills,
+        schema.purchaseReturns,
+        schema.purchaseReturnItems,
+        schema.physicalStockTakes,
+        schema.physicalStockTakeItems,
         schema.inventoryStocks,
         schema.productCategories,
         schema.unitsOfMeasure,
@@ -701,46 +940,66 @@ async function startServer() {
 
   app.get("/api/state", async (req: any, res: any) => {
     try {
+      // This response changes on every write anywhere in the app (a new GRN/invoice/
+      // expense/etc.) and Express's default `res.json()` only sets a weak ETag, no
+      // Cache-Control — enough for some browsers to serve a stale disk-cached copy
+      // even across an ordinary reload (not just back-forward cache), which reads to a
+      // user as "I just created X and a refresh still doesn't show it" even though the
+      // server and DB are already correct. Force real revalidation every time.
+      res.set('Cache-Control', 'no-store');
       const { getFullState } = await import('./src/db/apiState.js');
       // Scope state by companyId
       const state = await getFullState();
       
       const isSuper = req.user?.isSuperAdmin === true || req.user?.role === 'super-admin';
       const companyId = req.targetCompanyId || req.user?.companyId || req.session?.companyId;
-      
-      // Filter state by companyId and remove passwords from users
+
+      // Every business/transaction field is scoped to `companyId` unconditionally, even
+      // for a super-admin — a super-admin browsing one company must never receive every
+      // other tenant's data in the same payload just because their role bypasses the
+      // filter. `companyId` is resolved from the client's explicit selection
+      // (`req.targetCompanyId`, set by the `?companyId=` query param — see
+      // `isAuthenticated`), not from the caller's own home company, so switching the
+      // company selector in the UI genuinely changes what this endpoint returns.
+      // The one deliberate exception is `companies` itself: a super-admin needs the full
+      // list to populate the company-switcher UI they use to change `companyId` in the
+      // first place — that's navigation metadata, not tenant business data.
       const filteredState = {
         ...state,
         companies: isSuper ? state.companies : state.companies.filter((c: any) => c.id === companyId),
-        templates: isSuper ? state.templates : state.templates.filter((t: any) => t.companyId === companyId),
-        products: isSuper ? state.products : state.products.filter((p: any) => p.companyId === companyId),
-        customers: isSuper ? state.customers : state.customers.filter((c: any) => c.companyId === companyId),
-        vendors: isSuper ? state.vendors : state.vendors.filter((v: any) => v.companyId === companyId),
-        banks: isSuper ? state.banks : state.banks.filter((b: any) => b.companyId === companyId),
-        months: isSuper ? state.months : state.months.filter((m: any) => m.companyId === companyId),
-        quotations: isSuper ? state.quotations : state.quotations.filter((q: any) => q.companyId === companyId),
-        invoices: isSuper ? state.invoices : state.invoices.filter((i: any) => i.companyId === companyId),
-        expenses: isSuper ? state.expenses : state.expenses.filter((e: any) => e.companyId === companyId),
-        recurringTemplates: isSuper ? state.recurringTemplates : state.recurringTemplates.filter((r: any) => r.companyId === companyId),
-        recurringPostings: isSuper ? state.recurringPostings : state.recurringPostings.filter((rp: any) => rp.companyId === companyId),
-        vouchers: isSuper ? state.vouchers : state.vouchers.filter((v: any) => v.companyId === companyId),
-        investors: isSuper ? state.investors : state.investors.filter((inv: any) => inv.companyId === companyId),
-        posShifts: isSuper ? state.posShifts : state.posShifts.filter((ps: any) => ps.companyId === companyId),
-        posHeldInvoices: isSuper ? state.posHeldInvoices : state.posHeldInvoices.filter((ph: any) => ph.companyId === companyId),
-        productCategories: isSuper ? state.productCategories : (state.productCategories || []).filter((c: any) => c.companyId === companyId),
-        unitsOfMeasure: isSuper ? state.unitsOfMeasure : (state.unitsOfMeasure || []).filter((u: any) => u.companyId === companyId),
-        productWarehouses: isSuper ? state.productWarehouses : (state.productWarehouses || []).filter((pw: any) => pw.companyId === companyId),
-        taxSlabs: isSuper ? state.taxSlabs : (state.taxSlabs || []).filter((t: any) => t.companyId === companyId || t.companyId == null),
-        warehouses: isSuper ? state.warehouses : (state.warehouses || []).filter((w: any) => w.companyId === companyId),
-        purchaseRequisitions: isSuper ? state.purchaseRequisitions : (state.purchaseRequisitions || []).filter((pr: any) => pr.companyId === companyId),
-        purchaseOrders: isSuper ? state.purchaseOrders : (state.purchaseOrders || []).filter((po: any) => po.companyId === companyId),
-        goodsReceiptNotes: isSuper ? state.goodsReceiptNotes : (state.goodsReceiptNotes || []).filter((g: any) => g.companyId === companyId),
-        inventoryStocks: isSuper ? state.inventoryStocks : (state.inventoryStocks || []).filter((s: any) => s.companyId === companyId),
-        roles: isSuper ? state.roles : (state.roles || []).filter((r: any) => r.companyId === companyId),
+        templates: state.templates.filter((t: any) => t.companyId === companyId),
+        products: state.products.filter((p: any) => p.companyId === companyId),
+        customers: state.customers.filter((c: any) => c.companyId === companyId),
+        vendors: state.vendors.filter((v: any) => v.companyId === companyId),
+        banks: state.banks.filter((b: any) => b.companyId === companyId),
+        months: state.months.filter((m: any) => m.companyId === companyId),
+        quotations: state.quotations.filter((q: any) => q.companyId === companyId),
+        invoices: state.invoices.filter((i: any) => i.companyId === companyId),
+        expenses: state.expenses.filter((e: any) => e.companyId === companyId),
+        recurringTemplates: state.recurringTemplates.filter((r: any) => r.companyId === companyId),
+        recurringPostings: state.recurringPostings.filter((rp: any) => rp.companyId === companyId),
+        vouchers: state.vouchers.filter((v: any) => v.companyId === companyId),
+        investors: state.investors.filter((inv: any) => inv.companyId === companyId),
+        posShifts: state.posShifts.filter((ps: any) => ps.companyId === companyId),
+        posHeldInvoices: state.posHeldInvoices.filter((ph: any) => ph.companyId === companyId),
+        productCategories: (state.productCategories || []).filter((c: any) => c.companyId === companyId),
+        unitsOfMeasure: (state.unitsOfMeasure || []).filter((u: any) => u.companyId === companyId),
+        productWarehouses: (state.productWarehouses || []).filter((pw: any) => pw.companyId === companyId),
+        taxSlabs: (state.taxSlabs || []).filter((t: any) => t.companyId === companyId || t.companyId == null),
+        warehouses: (state.warehouses || []).filter((w: any) => w.companyId === companyId),
+        purchaseRequisitions: (state.purchaseRequisitions || []).filter((pr: any) => pr.companyId === companyId),
+        purchaseOrders: (state.purchaseOrders || []).filter((po: any) => po.companyId === companyId),
+        goodsReceiptNotes: (state.goodsReceiptNotes || []).filter((g: any) => g.companyId === companyId),
+        inventoryStocks: (state.inventoryStocks || []).filter((s: any) => s.companyId === companyId),
+        purchaseBills: (state.purchaseBills || []).filter((b: any) => b.companyId === companyId),
+        purchaseReturns: (state.purchaseReturns || []).filter((r: any) => r.companyId === companyId),
+        physicalStockTakes: (state.physicalStockTakes || []).filter((s: any) => s.companyId === companyId),
+        stockLedgerTransactions: (state.stockLedgerTransactions || []).filter((s: any) => s.companyId === companyId),
+        roles: (state.roles || []).filter((r: any) => r.companyId === companyId),
         // userRoles is a plain (userId, roleId) join row with no companyId of its own —
         // scope it via which users actually belong to this company, the same way every
         // other field above is scoped, instead of returning every tenant's assignments.
-        userRoles: isSuper ? (state.userRoles || []) : (() => {
+        userRoles: (() => {
           const companyUserIds = new Set((state.users || []).filter((u: any) => u.companyId === companyId).map((u: any) => u.id));
           return (state.userRoles || []).filter((ur: any) => companyUserIds.has(ur.userId));
         })(),
@@ -752,7 +1011,11 @@ async function startServer() {
             list.push(ur.roleId);
             roleIdsByUserId.set(ur.userId, list);
           }
-          return (isSuper ? state.users : state.users.filter((u: any) => u.companyId === companyId))
+          // The logged-in user's own row must always be present regardless of company
+          // scoping - a super-admin viewing a *different* company than their own home
+          // company still needs their own account (currentUser, permissions) resolved.
+          return state.users
+            .filter((u: any) => u.companyId === companyId || u.id === req.user?.id)
             .filter((u: any) => u.isDeleted !== 1)
             .map((u: any) => {
               const { password, ...userWithoutPassword } = u;
@@ -927,141 +1190,10 @@ Do NOT wrap the response in any introductory, markdown formatting (no \`\`\`json
     }
   });
 
-  app.post("/api/translate-all", async (req: any, res: any) => {
-    const translations = req.body?.translations;
-    try {
-      if (!Array.isArray(translations)) {
-        return res.status(400).json({ error: "translations must be an array" });
-      }
-
-      // Filter translations that actually need translation (missing 'ar' or 'ur')
-      const needsTranslation = translations.filter(t => !t.ar || !t.ur);
-      if (needsTranslation.length === 0) {
-        return res.json({ translations });
-      }
-
-      // 1. Resolve offline translations using pre-seeded dictionary
-      try {
-        const { SEED_TRANSLATIONS } = await import('./src/dbStore.js');
-        needsTranslation.forEach(item => {
-          const staticItem = SEED_TRANSLATIONS.find((st: any) => st.key === item.key);
-          if (staticItem) {
-            item.ar = item.ar || staticItem.ar || "";
-            item.ur = item.ur || staticItem.ur || "";
-          }
-        });
-      } catch (e) {
-        console.warn("Failed to load static dictionary for bulk translation offline fallback:", e);
-      }
-
-      // Filter again to see what is still missing translation
-      const remainingNeedsTranslation = needsTranslation.filter(t => !t.ar || !t.ur);
-      const results = [...translations];
-
-      // 2. Only call Gemini for remaining missing items if key is configured
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (remainingNeedsTranslation.length > 0 && apiKey) {
-        try {
-          const { GoogleGenAI } = await import("@google/genai");
-          const ai = new GoogleGenAI({
-            apiKey: apiKey,
-            httpOptions: {
-              headers: {
-                'User-Agent': 'aistudio-build',
-              }
-            }
-          });
-
-          // Split into batches of 15 to ensure high quality and response limit safety
-          const batchSize = 15;
-          for (let i = 0; i < remainingNeedsTranslation.length; i += batchSize) {
-            const batch = remainingNeedsTranslation.slice(i, i + batchSize);
-            
-            const prompt = `You are an expert enterprise software translator specialized in manufacturing, ERP, and precision engineering terminologies for Arabic and Urdu regions.
-Translate the following English user interface (UI) keys and phrases into authentic, natural, professional, and standard enterprise Arabic (ar) and Urdu (ur).
-For each item, preserve proper professional software context. For example, "Post" in accounting means "ترحيل" (Arabic) or "پوسٹ کریں" (Urdu). "Draft" is "مسودة" (Arabic) or "مسودہ" (Urdu).
-
-Respond STRICTLY with a valid JSON array of objects following this TypeScript interface:
-interface TranslatedItem {
-  id: string;
-  key: string;
-  ar: string; // Professional Arabic software translation
-  ur: string; // Professional Urdu software translation
-}
-
-Do NOT wrap the response in any introductory or explanatory text. Return ONLY the raw JSON array.
-
-Input batch items to translate:
-${JSON.stringify(batch.map(item => ({ id: item.id, key: item.key, en: item.en || item.key })))}
-`;
-
-            try {
-              const response = await ai.models.generateContent({
-                model: "gemini-3.6-flash",
-                contents: prompt,
-                config: {
-                  responseMimeType: "application/json",
-                }
-              });
-
-              const textResponse = response.text;
-              if (textResponse) {
-                const parsedBatch = JSON.parse(textResponse.trim());
-                if (Array.isArray(parsedBatch)) {
-                  parsedBatch.forEach((translatedItem: any) => {
-                    const index = results.findIndex(r => r.id === translatedItem.id);
-                    if (index !== -1) {
-                      results[index] = {
-                        ...results[index],
-                        ar: results[index].ar || translatedItem.ar || "",
-                        ur: results[index].ur || translatedItem.ur || ""
-                      };
-                    }
-                  });
-                }
-              }
-            } catch (batchErr: any) {
-              const errStr = String(batchErr.message || batchErr || "");
-              if (errStr.includes("PERMISSION_DENIED") || errStr.includes("denied access") || errStr.includes("403")) {
-                console.log("[Translation API] Translation service restricted. Using static fallback dictionary.");
-              } else {
-                console.log("[Translation API] AI batch translation unavailable. Using static fallback dictionary.");
-              }
-            }
-          }
-        } catch (apiErr: any) {
-          console.log("[Translation API] AI client unavailable. Using static fallback dictionary.");
-        }
-      } else if (remainingNeedsTranslation.length > 0) {
-        console.log("[Translation API] No GEMINI_API_KEY available or remaining items are already processed.");
-      }
-
-      // 3. Upsert results to Postgres DB
-      for (const t of results) {
-        await db.insert(schema.translations)
-          .values({
-            id: t.id,
-            key: t.key,
-            en: t.en || t.key,
-            ar: t.ar || "",
-            ur: t.ur || ""
-          })
-          .onConflictDoUpdate({
-            target: schema.translations.id,
-            set: {
-              ar: t.ar || "",
-              ur: t.ur || ""
-            }
-          });
-      }
-
-      res.json({ translations: results });
-    } catch (error: any) {
-      console.warn("[Translation API] Translation process warn:", error);
-      // Return the current list (with offline ones applied) to client instead of 500
-      res.json({ translations: translations, warn: error.message });
-    }
-  });
+  // The bulk "Auto-Translate (Gemini)" endpoint that used to live here was removed by
+  // explicit product decision — Translations tab edits are single-record, explicit
+  // transactions only (Create/Update/Delete), never a whole-array sync. Per-key
+  // auto-translation on first use still happens above, in /api/register-missing-key.
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

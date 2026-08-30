@@ -4,8 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-- `npm run dev` — start the dev server (`tsx server.ts`, serves both the API and the Vite-bundled React client on port 3000).
-  **The backend does not auto-restart on file changes.** Only the Vite middleware hot-reloads the React client — anything edited under `server/`, `src/db/`, or any file the backend imports requires manually stopping and restarting this process, or you will silently run/test against stale code. This has already caused a real incident (see BACKLOG.md item 35).
+- `npm run dev` — start the dev server (`tsx watch server.ts`, serves both the API and the Vite-bundled React client on port 3000). The backend now auto-restarts on changes under `server/`, `src/db/`, or any other file it imports (fixed after a real stale-code incident, see BACKLOG.md items 35 and 1547's fix) — the Vite middleware separately hot-reloads the React client as before. Still allow a couple of seconds after saving a backend file before trusting the next request/test run, since the restart isn't instant.
 - `npm run build` — production build (`vite build` for the client, `esbuild` bundling `server.ts` to `dist/server.cjs`).
 - `npm start` — run the production build.
 - `npm run lint` — `tsc --noEmit`. Run after any non-trivial change.
@@ -13,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npx vitest run tests/<file>.test.ts` — run a single test file.
 - `npm run db:push` — apply `src/db/schema.ts` changes to the database via `drizzle-kit push`. There are no checked-in migration files; schema changes are pushed directly. This diffs the *live* database against the schema file, so it can surface and offer to apply unrelated drift accumulated from earlier hand-applied SQL — read its printed plan before it applies.
 
-**Secrets:** `src/db/drizzle.config.ts` and `src/db/index.ts` both import `./dbCredentials`, a gitignored local file (not in this checkout by default) holding DB connection info — required for `db:push` and for anything touching the database to work at all.
+**Secrets:** DB connection info (`SQL_HOST`/`SQL_USER`/`SQL_PASSWORD`/`SQL_DB_NAME`) plus `SESSION_SECRET` and `ZATCA_KEY_ENCRYPTION_SECRET` live in a gitignored file named `app.secrets` at the repo root (not in this checkout by default) — deliberately not named `.env`, so a hosting platform's own .env-specific tooling (dashboard-injected env vars, deploy templating) can't recognize or overwrite it. Required for `db:push` and for anything touching the database or ZATCA signing to work at all; loaded explicitly via `dotenv.config({ path: 'app.secrets' })` in `server.ts`, `src/db/index.ts`, and `src/db/drizzle.config.ts` — not the default `dotenv/config` auto-lookup. `src/db/dbCredentials.ts` (also gitignored) is a documented-but-currently-unused placeholder, kept for a future non-local Postgres provider if one is ever added.
 
 ## Architecture
 

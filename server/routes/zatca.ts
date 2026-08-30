@@ -8,11 +8,14 @@ import { generateZatcaUblXml } from '../lib/zatca/xmlBuilder.js';
 import { ZatcaApiClient } from '../lib/zatca/apiClient.js';
 import { processInvoiceZatca } from '../lib/zatca/processInvoice.js';
 import { isAdminUser, isSuperAdminUser } from '../lib/authz.js';
+import { normalizePermissions } from '../../src/types.js';
 import { generateId } from '../../src/id.js';
 import { recordAuditLog } from '../lib/audit.js';
+import { ZATCA_EGS_APP_NAME, ZATCA_EGS_APP_VERSION } from '../lib/zatca/appIdentity.js';
 import { validateTaxpayerIdentity } from '../lib/zatca/validators.js';
-import { certificateMatchesPrivateKey } from '../lib/zatca/x509.js';
-import { getZatcaSandboxSampleBinarySecurityToken, getZatcaSandboxSamplePrivateKeyPem } from '../lib/zatca/sandboxSampleIdentity.js';
+import { certificateMatchesPrivateKey, extractZatcaCertificateTaxpayerIdentity } from '../lib/zatca/x509.js';
+import { getZatcaSandboxSampleBinarySecurityToken, getZatcaSandboxSamplePrivateKeyPem, ZATCA_SANDBOX_SAMPLE_VAT_NUMBER, ZATCA_SANDBOX_SAMPLE_CR_NUMBER } from '../lib/zatca/sandboxSampleIdentity.js';
+import { encryptPrivateKey, decryptPrivateKey } from '../lib/zatca/keyEncryption.js';
 
 const router = Router();
 
@@ -82,6 +85,54 @@ async function logZatcaApiError(req: any, companyId: string, environment: string
   });
 }
 
+/**
+ * POST Submit or re-submit invoice directly to ZATCA Phase 2
+ *
+ * Registered before the admin-only gate below (not inside it): unlike CSR/CSID/
+ * environment configuration, which touch per-company cryptographic secrets and stay
+ * admin-tier-only, manually (re)submitting an already-created invoice is line-staff
+ * work — anyone whose Role grants invoice.create or invoice.update (the same leaves
+ * that already let them create the invoice or record its payment) can trigger it too,
+ * not just admins.
+ */
+router.post('/submit-invoice/:invoiceId', async (req: any, res) => {
+  try {
+    const { invoiceId } = req.params;
+    // normalizePermissions already grants every leaf true for an admin/super-admin, so
+    // this alone covers "admins can always do this" too — no separate isAdminUser check.
+    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+    if (!permissions.invoice.create.enabled && !permissions.invoice.update.enabled) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+
+    // A CLEARED/REPORTED invoice is a permanent, ZATCA-confirmed record — its ICV/UUID/
+    // hash must never be touched again (see hashChain.ts's resubmission-identity logic).
+    // Reprocessing it here would mint a fresh chain identity for a document ZATCA has
+    // already accepted under a different one, corrupting this app's own record of what
+    // was actually cleared without ZATCA ever being told.
+    const [invoice] = await db.select({ zatcaStatus: schema.invoices.zatcaStatus, companyId: schema.invoices.companyId }).from(schema.invoices).where(eq(schema.invoices.id, invoiceId));
+    if (!invoice) {
+      return res.status(404).json({ success: false, error: 'Invoice not found' });
+    }
+    // Super-admins may target any company; everyone else is confined to their own
+    // session's targetCompanyId, same as every other invoice-mutating route.
+    if (!isSuperAdminUser(req.user) && invoice.companyId !== req.targetCompanyId) {
+      return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+    if (invoice.zatcaStatus === 'CLEARED' || invoice.zatcaStatus === 'REPORTED') {
+      return res.status(400).json({ success: false, error: 'This invoice has already been cleared/reported by ZATCA and cannot be resubmitted. Issue a Credit Note to reverse it instead.' });
+    }
+
+    const result = await processInvoiceZatca(invoiceId);
+    if (result.error) {
+      return res.status(400).json({ success: false, error: result.error });
+    }
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ZATCA configuration/signing is not a line-staff action and touches per-company
 // cryptographic secrets — require admin/super-admin, and for non-super-admins verify
 // the request's target company (from body/params, or resolved via invoiceId) matches
@@ -131,7 +182,7 @@ router.get('/company-status/:companyId', async (req, res) => {
     }
 
     const configs = await db.select().from(schema.zatcaEnvironmentConfigs).where(eq(schema.zatcaEnvironmentConfigs.companyId, companyId));
-    const hashState = await getNextHashChainState(companyId);
+    const hashState = await getNextHashChainState(companyId, (company.zatcaEnvironment as any) || 'sandbox');
 
     // Each environment carries its OWN taxpayer identity now (sandbox uses ZATCA's
     // published test identity; simulation/production need the company's real
@@ -287,7 +338,7 @@ router.post('/generate-keypair-csr', async (req, res) => {
       organizationUnitName: config!.district || 'HeadOffice',
       organizationName: company.name,
       countryName: config!.countryCode || 'SA',
-      serialNumber: `1-ERP|2-2.0|3-${company.id}`,
+      serialNumber: `1-${ZATCA_EGS_APP_NAME}|2-${ZATCA_EGS_APP_VERSION}|3-${company.id}`,
       vatNumber: config!.tinNumber || '300000000000003',
       invoiceType: '1100',
       location: config!.city || 'Riyadh',
@@ -296,7 +347,7 @@ router.post('/generate-keypair-csr', async (req, res) => {
     }, keyPair.privateKeyPem);
 
     await upsertEnvConfig(companyId, environment, {
-      ecdsaPrivateKey: keyPair.privateKeyPem,
+      ecdsaPrivateKey: encryptPrivateKey(keyPair.privateKeyPem),
     });
 
     res.json({
@@ -338,7 +389,7 @@ router.post('/request-compliance-csid', async (req, res) => {
     // against the shared public sandbox test identity) — every signature made with our
     // stored key would then be cryptographically invalid against it. Fail loudly instead
     // of silently storing a broken pairing and reporting success.
-    if (!certificateMatchesPrivateKey(result.binarySecurityToken, config.ecdsaPrivateKey)) {
+    if (!certificateMatchesPrivateKey(result.binarySecurityToken, decryptPrivateKey(config.ecdsaPrivateKey))) {
       const err: any = new Error('ZATCA issued a Compliance CSID certificate that does not match this environment\'s private key. Not stored — this would sign every invoice with an invalid signature. Try again, or regenerate the keypair/CSR (Step 2) and retry.');
       err.status = 502;
       err.zatcaStep = 'requestComplianceCsid:keyMismatch';
@@ -409,7 +460,7 @@ router.post('/run-compliance-suite', async (req, res) => {
       subtotal: 100,
       totalVat: 15,
       grandTotal: 115,
-      privateKeyPem: config.ecdsaPrivateKey || undefined,
+      privateKeyPem: config.ecdsaPrivateKey ? decryptPrivateKey(config.ecdsaPrivateKey) : undefined,
       certificatePem: config.complianceCsidCert || undefined,
     };
 
@@ -540,8 +591,8 @@ router.post('/request-production-csid', async (req, res) => {
     // (399999999900003) regardless of the CSR actually submitted. Simulation/Production
     // use each company's own real, unique VAT, so this collision cannot occur there — a
     // mismatch in those environments is a genuine problem and must still hard-fail.
-    let signingKeyToStore = config.ecdsaPrivateKey;
-    let keyMatches = certificateMatchesPrivateKey(prodResult.binarySecurityToken, config.ecdsaPrivateKey);
+    let signingKeyToStore = decryptPrivateKey(config.ecdsaPrivateKey);
+    let keyMatches = certificateMatchesPrivateKey(prodResult.binarySecurityToken, signingKeyToStore);
     let usedSandboxSampleKey = false;
 
     if (!keyMatches && environment === 'sandbox' && prodResult.binarySecurityToken === getZatcaSandboxSampleBinarySecurityToken()) {
@@ -557,7 +608,7 @@ router.post('/request-production-csid', async (req, res) => {
       usedSandboxSampleKey = true;
       await recordAuditLog(req, 'zatca_sandbox_sample_key_adopted', 'zatca_environment_config', null, {
         companyId, environment,
-        message: 'ZATCA sandbox returned its known published sample Production CSID certificate. Switched this environment\'s signing key to ZATCA\'s matching bundled sample private key so real invoices sign correctly. Sandbox only — never applied to Simulation/Production.',
+        message: `ZATCA sandbox returned its known published sample Production CSID certificate. Switched this environment's signing key AND identity (TIN/CR) to ZATCA's matching sample values (VAT ${ZATCA_SANDBOX_SAMPLE_VAT_NUMBER} / CR ${ZATCA_SANDBOX_SAMPLE_CR_NUMBER}) so invoices declare the same seller identity the certificate is actually authorized for — the signing-key swap alone left every invoice's declared seller TIN mismatched against the certificate, which ZATCA's real API rejects with a certificate-permissions error even though the signature itself is valid. Sandbox only — never applied to Simulation/Production.`,
       });
     } else if (!keyMatches && environment !== 'sandbox') {
       const err: any = new Error('ZATCA issued a Production CSID certificate that does not match this environment\'s private key. Not stored, and the environment was NOT marked onboarded — every invoice would have signed with an invalid signature. Try requesting the Production CSID again.');
@@ -575,10 +626,39 @@ router.post('/request-production-csid', async (req, res) => {
       });
     }
 
+    // More general than the usedSandboxSampleKey branch above: that one only catches
+    // ZATCA returning its literal published sample certificate byte-for-byte. Confirmed
+    // live that Sandbox can ALSO issue a certificate that genuinely pairs with our own
+    // submitted keypair (keyMatches already true, no swap needed above) while still
+    // forcing the certificate's SUBJECT to the shared test identity — read the
+    // certificate's actual bound VAT/CR directly rather than trusting config.tinNumber,
+    // and correct the stored identity if the certificate disagrees with it. Sandbox only:
+    // Simulation/Production certificates never carry this shared-identity pattern
+    // (extractZatcaCertificateTaxpayerIdentity's CN match is specific to ZATCA's
+    // "TST-<cr>-<vat>" test-cert format), so this is a no-op there.
+    let identityCorrected: { vatNumber?: string; crNumber?: string } = {};
+    if (environment === 'sandbox' && keyMatches) {
+      const boundIdentity = extractZatcaCertificateTaxpayerIdentity(prodResult.binarySecurityToken);
+      if (boundIdentity.vatNumber && boundIdentity.vatNumber !== config.tinNumber) {
+        identityCorrected = boundIdentity;
+        await recordAuditLog(req, 'zatca_sandbox_certificate_identity_corrected', 'zatca_environment_config', null, {
+          companyId, environment,
+          message: `ZATCA sandbox issued a Production CSID certificate that pairs with this environment's own key, but is bound to a different taxpayer identity (VAT ${boundIdentity.vatNumber}) than what was configured (VAT ${config.tinNumber}) — read directly from the certificate and corrected, or every future invoice would declare a seller VAT the certificate isn't authorized for.`,
+        });
+      }
+    }
+
     await upsertEnvConfig(companyId, environment, {
-      ecdsaPrivateKey: signingKeyToStore,
+      ecdsaPrivateKey: encryptPrivateKey(signingKeyToStore),
       productionCsidCert: prodResult.binarySecurityToken,
       productionCsidSecret: prodResult.secret,
+      // Must move together with the signing-key swap above (same reasoning) — the invoice
+      // XML's declared seller TIN/CR (server/lib/zatca/processInvoice.ts) comes straight
+      // from these two config fields, so leaving them at whatever the admin typed in Step
+      // 1 keeps every future invoice mismatched against what this certificate is bound to.
+      ...(usedSandboxSampleKey ? { tinNumber: ZATCA_SANDBOX_SAMPLE_VAT_NUMBER, crNumber: ZATCA_SANDBOX_SAMPLE_CR_NUMBER } : {}),
+      ...(identityCorrected.vatNumber ? { tinNumber: identityCorrected.vatNumber } : {}),
+      ...(identityCorrected.crNumber ? { crNumber: identityCorrected.crNumber } : {}),
       isOnboarded: true,
     });
 
@@ -625,6 +705,20 @@ router.post('/request-production-csid', async (req, res) => {
 router.post('/submit-invoice/:invoiceId', async (req, res) => {
   try {
     const { invoiceId } = req.params;
+
+    // A CLEARED/REPORTED invoice is a permanent, ZATCA-confirmed record — its ICV/UUID/
+    // hash must never be touched again (see hashChain.ts's resubmission-identity logic).
+    // Reprocessing it here would mint a fresh chain identity for a document ZATCA has
+    // already accepted under a different one, corrupting this app's own record of what
+    // was actually cleared without ZATCA ever being told.
+    const [invoice] = await db.select({ zatcaStatus: schema.invoices.zatcaStatus }).from(schema.invoices).where(eq(schema.invoices.id, invoiceId));
+    if (!invoice) {
+      return res.status(404).json({ success: false, error: 'Invoice not found' });
+    }
+    if (invoice.zatcaStatus === 'CLEARED' || invoice.zatcaStatus === 'REPORTED') {
+      return res.status(400).json({ success: false, error: 'This invoice has already been cleared/reported by ZATCA and cannot be resubmitted. Issue a Credit Note to reverse it instead.' });
+    }
+
     const result = await processInvoiceZatca(invoiceId);
     if (result.error) {
       return res.status(400).json({ success: false, error: result.error });

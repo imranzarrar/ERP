@@ -1,8 +1,8 @@
 import { motion } from 'motion/react';
 import React from 'react';
-import { useTranslation } from '../hooks';
-import { DatabaseState, getActiveOpenMonth, getOpenMonths, calculateInvoiceTotals, getBankBalance } from '../dbStore';
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useTranslation, translateMonthLabel } from '../hooks';
+import { DatabaseState, getActiveOpenMonth, getOpenMonths, calculateInvoiceTotals, getBankBalance, getInvoiceSign } from '../dbStore';
+import { AreaChart, Area, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
  TrendingUp,
  TrendingDown,
@@ -19,6 +19,11 @@ import {
  Plus,
  Compass
 } from 'lucide-react';
+
+// Categorical series colors for "top N entities" breakdown charts (Top Customers, Top
+// Vendors) — reuses the app's existing semantic hues rather than introducing new brand
+// colors, cycled per bar so entities are visually distinguishable instead of one flat tone.
+const CHART_PALETTE = ['#4f46e5', '#059669', '#d97706', '#0891b2', '#e11d48'];
 
 interface DashboardProps {
  db: DatabaseState;
@@ -86,16 +91,37 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  setSelectedMonthFilter(openMonth ? openMonth.id : 'all');
  }, [db.selectedCompanyId, openMonth?.id]);
 
+ // Quick reporting-period presets, layered on top of the exact-month dropdown above
+ // rather than replacing it — 'month' defers entirely to selectedMonthFilter (preserving
+ // the original single-month/all-months behavior byte-for-byte), while 'last3'/'year' are
+ // genuinely new ranges the dropdown alone can't express.
+ type PeriodMode = 'month' | 'last3' | 'year';
+ const [periodMode, setPeriodMode] = React.useState<PeriodMode>('month');
+ const todayRealDate = new Date();
+ const currentCalendarYear = String(todayRealDate.getFullYear());
+ const last3MonthIds = React.useMemo(() => {
+ const anchor = openMonth ? new Date(`${openMonth.id}-01T00:00:00`) : todayRealDate;
+ const ids: string[] = [];
+ for (let i = 0; i < 3; i++) {
+ const d = new Date(anchor.getFullYear(), anchor.getMonth() - i, 1);
+ ids.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+ }
+ return ids;
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [openMonth?.id]);
+ const matchesPeriod = (dateStr: string): boolean => {
+ if (periodMode === 'last3') return last3MonthIds.some(id => dateStr.startsWith(id));
+ if (periodMode === 'year') return dateStr.startsWith(currentCalendarYear);
+ return selectedMonthFilter === 'all' ? true : dateStr.startsWith(selectedMonthFilter);
+ };
+
  // Filter invoices and quotations
  const monthInvoices = db.invoices.filter(inv => {
  const invCompanyId = inv.companyId;
  if (invCompanyId !== db.selectedCompanyId) return false;
- 
- if (selectedMonthFilter !== 'all') {
- const matchesMonth = inv.date.startsWith(selectedMonthFilter);
- if (!matchesMonth) return false;
- }
- 
+
+ if (!matchesPeriod(inv.date)) return false;
+
  if (isAdmin || currentUser?.permissions?.invoice) return true;
  return currentUser?.id ? inv.createdById === currentUser.id : false;
  });
@@ -103,12 +129,9 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  const monthExpenses = db.expenses.filter(exp => {
  const expCompanyId = exp.companyId;
  if (expCompanyId !== db.selectedCompanyId) return false;
- 
- if (selectedMonthFilter !== 'all') {
- const matchesMonth = exp.date.startsWith(selectedMonthFilter);
- if (!matchesMonth) return false;
- }
- 
+
+ if (!matchesPeriod(exp.date)) return false;
+
  if (isAdmin || currentUser?.permissions?.expense) return true;
  return currentUser?.id ? exp.createdById === currentUser.id : false;
  });
@@ -116,12 +139,9 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  const monthQuotations = db.quotations.filter(q => {
  const qCompanyId = q.companyId;
  if (qCompanyId !== db.selectedCompanyId) return false;
- 
- if (selectedMonthFilter !== 'all') {
- const matchesMonth = q.date.startsWith(selectedMonthFilter);
- if (!matchesMonth) return false;
- }
- 
+
+ if (!matchesPeriod(q.date)) return false;
+
  if (isAdmin || currentUser?.permissions?.quotation) return true;
  return currentUser?.id ? q.createdById === currentUser.id : false;
  });
@@ -130,28 +150,32 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
   const monthVouchers = db.vouchers.filter(v => {
     const vCompId = v.companyId;
     if (vCompId !== db.selectedCompanyId) return false;
-    if (selectedMonthFilter !== 'all') {
-      return v.date.startsWith(selectedMonthFilter);
-    }
-    return true;
+    return matchesPeriod(v.date);
   });
 
   const totalSales = monthInvoices
     .filter(inv => inv.status === 'Active')
     .reduce((sum, inv) => {
       const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId);
-      return sum + totals.grandTotal;
+      return sum + totals.grandTotal * getInvoiceSign(inv);
     }, 0);
 
   const pendingCollection = db.invoices
     .filter(inv => {
       const invCompanyId = inv.companyId;
       if (invCompanyId !== db.selectedCompanyId) return false;
-      return inv.status === 'Active';
+      // A Credit Note is never itself a receivable — it always carries amountPaid: 0
+      // (schema default, never meaningful, see the note in InvoiceModule.tsx), so
+      // `grandTotal - amountPaid` is its full positive amount, then getInvoiceSign flips
+      // that to a large NEGATIVE "pending collection" instead of correctly contributing
+      // nothing. The actual reduction in what's owed already happened by not incrementing
+      // amountPaid on any invoice this CN reverses; excluding CN rows here avoids
+      // double-counting that reduction a second time as a negative KPI.
+      return inv.status === 'Active' && inv.documentType !== 'CreditNote';
     })
     .reduce((sum, inv) => {
       const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId);
-      return sum + (totals.grandTotal - (inv.amountPaid || 0));
+      return sum + (totals.grandTotal - (inv.amountPaid || 0)) * getInvoiceSign(inv);
     }, 0);
 
   const receivedSales = monthVouchers
@@ -195,7 +219,9 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  // Let's group monthInvoices by date to get a timeline
  const dailyDataMap: { [date: string]: { date: string; Sales: number; Expenses: number } } = {};
  
- // Seed last 10 days for nice visualization
+ // Seed last 10 days for nice visualization — only meaningful for a single-month view;
+ // Last-3-Months/This-Year span multiple months, where a "Day 01/04/07..." x-axis would
+ // misleadingly overlay unrelated months on the same tick.
  const getDaysArray = () => {
  const base = selectedMonthFilter !== 'all' ? selectedMonthFilter : (openMonth ? openMonth.id : '2026-06');
  for (let i = 1; i <= 28; i += 3) {
@@ -203,15 +229,16 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  dailyDataMap[dateStr] = { date: dateStr.replace(`${base}-`, 'Day '), Sales: 0, Expenses: 0 };
  }
  };
- getDaysArray();
+ if (periodMode === 'month') getDaysArray();
 
  monthInvoices.filter(inv => inv.status === 'Active').forEach(inv => {
  const key = inv.date;
  const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId);
+ const signedTotal = totals.grandTotal * getInvoiceSign(inv);
  if (dailyDataMap[key]) {
- dailyDataMap[key].Sales += totals.grandTotal;
+ dailyDataMap[key].Sales += signedTotal;
  } else {
- dailyDataMap[key] = { date: key.slice(5), Sales: totals.grandTotal, Expenses: 0 };
+ dailyDataMap[key] = { date: key.slice(5), Sales: signedTotal, Expenses: 0 };
  }
  });
 
@@ -265,7 +292,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  .filter(inv => inv.companyId === db.selectedCompanyId && inv.status === 'Active' && inv.date.startsWith(monthId))
  .reduce((sum, inv) => {
  const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId);
- return sum + totals.grandTotal;
+ return sum + totals.grandTotal * getInvoiceSign(inv);
  }, 0)
  );
  const hasHistoricalTarget = trailingMonthlySales.length > 0;
@@ -282,6 +309,93 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  const quotaProgress = Math.min((monthQuotations.length / quotaTarget) * 100, 100);
  const salesProgress = salesTarget > 0 ? Math.min((totalSales / salesTarget) * 100, 100) : 0;
 
+ // Pending Invoices / Pending Expenses — deliberately company-wide (not gated by the
+ // reporting period filter above), same reasoning as `pendingCollection`: what's actually
+ // owed right now doesn't reset just because the admin is looking at a different month.
+ const todayMs = Date.now();
+ const daysOutstanding = (dateStr: string) => Math.max(0, Math.floor((todayMs - new Date(`${dateStr}T00:00:00`).getTime()) / 86400000));
+
+ const pendingInvoicesBase = db.invoices
+ .filter(inv => inv.companyId === db.selectedCompanyId && inv.status === 'Active' && (inv.documentType === undefined || inv.documentType === 'Invoice'))
+ .map(inv => {
+ const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId);
+ const due = totals.grandTotal - (inv.amountPaid || 0);
+ return { inv, due, grandTotal: totals.grandTotal };
+ })
+ .filter(x => x.due > 0.01);
+ const pendingInvoicesList = [...pendingInvoicesBase]
+ .sort((a, b) => a.inv.date.localeCompare(b.inv.date))
+ .slice(0, 8);
+ const pendingInvoicesTotal = pendingInvoicesBase.reduce((sum, x) => sum + x.due, 0);
+ // Aging buckets for the pictogram strip — same day thresholds already used per-row below
+ // (>30 overdue, >14 aging), just aggregated into counts instead of per-invoice text.
+ const pendingInvoicesAging = pendingInvoicesBase.reduce((acc, x) => {
+ const days = daysOutstanding(x.inv.date);
+ if (days > 30) acc.overdue++;
+ else if (days > 14) acc.aging++;
+ else acc.onTime++;
+ return acc;
+ }, { onTime: 0, aging: 0, overdue: 0 });
+ // Caps rendered icons per bucket so a company with hundreds of open invoices doesn't
+ // blow out the card layout — overflow collapses to a "+N" label instead of more squares.
+ const renderAgingPictogram = (count: number, colorClass: string, cap: number = 10) => {
+ const shown = Math.min(count, cap);
+ const overflow = count - shown;
+ return (
+ <span className="inline-flex items-center gap-0.5">
+ {Array.from({ length: shown }).map((_, i) => (
+ <span key={i} className={`w-2.5 h-2.5 rounded-[3px] ${colorClass}`} />
+ ))}
+ {overflow > 0 && <span className="text-[9px] font-bold text-slate-400 ms-0.5">+{overflow}</span>}
+ </span>
+ );
+ };
+
+ const pendingExpensesList = db.expenses
+ .filter(exp => exp.companyId === db.selectedCompanyId && exp.status === 'Active' && exp.type === 'Actual')
+ .map(exp => ({ exp, due: exp.amount - (exp.amountPaid || 0) }))
+ .filter(x => x.due > 0.01)
+ .sort((a, b) => a.exp.date.localeCompare(b.exp.date))
+ .slice(0, 8);
+ const pendingExpensesTotal = db.expenses
+ .filter(exp => exp.companyId === db.selectedCompanyId && exp.status === 'Active' && exp.type === 'Actual')
+ .reduce((sum, exp) => sum + Math.max(0, exp.amount - (exp.amountPaid || 0)), 0);
+ const accrualsAwaitingSettlement = db.expenses.filter(exp =>
+ exp.companyId === db.selectedCompanyId && exp.status === 'Active' && exp.type === 'Accrual' && !exp.accrualSettled
+ ).length;
+
+ // Top Customers by Sales / Top Vendors by Expense — respects the active reporting period,
+ // unlike the pending lists above (this is a "who mattered this period" breakdown, not a
+ // point-in-time balance).
+ const topCustomersBySales = (() => {
+ const byCustomer = new Map<string, number>();
+ monthInvoices.filter(inv => inv.status === 'Active').forEach(inv => {
+ const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId);
+ byCustomer.set(inv.customerId, (byCustomer.get(inv.customerId) || 0) + totals.grandTotal * getInvoiceSign(inv));
+ });
+ return Array.from(byCustomer.entries())
+ .map(([customerId, amount]) => ({
+ name: db.customers.find(c => c.id === customerId)?.name || t('Unknown Customer'),
+ amount
+ }))
+ .sort((a, b) => b.amount - a.amount)
+ .slice(0, 5);
+ })();
+
+ const topVendorsByExpense = (() => {
+ const byVendor = new Map<string, number>();
+ monthExpenses.filter(exp => exp.status === 'Active' && exp.type === 'Actual').forEach(exp => {
+ byVendor.set(exp.vendorId, (byVendor.get(exp.vendorId) || 0) + exp.amount);
+ });
+ return Array.from(byVendor.entries())
+ .map(([vendorId, amount]) => ({
+ name: db.vendors.find(v => v.id === vendorId)?.name || t('Unknown Vendor'),
+ amount
+ }))
+ .sort((a, b) => b.amount - a.amount)
+ .slice(0, 5);
+ })();
+
  return (
  <div className="space-y-6">
 
@@ -297,7 +411,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  {t('Welcome back, ')}{currentUser.username}!
  </h2>
  <p className="text-xs text-slate-400 mt-1">
- {t('Active Session Month:')} <strong className="text-slate-200">{openMonth ? `${openMonth.name} (${openMonth.id})` : t('None Open')}</strong>
+ {t('Active Session Month:')} <strong className="text-slate-200">{openMonth ? `${translateMonthLabel(openMonth.name, t)} (${openMonth.id})` : t('None Open')}</strong>
  {openMonthsCount > 1 && <span className="text-indigo-300"> (+{openMonthsCount - 1} more open)</span>}
  </p>
  </div>
@@ -306,19 +420,35 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 shrink-0">
  <div className="flex flex-col gap-1">
  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">{t('Command Reporting Filter')}</span>
+ <div className="flex flex-wrap items-center gap-1.5">
  <select
  id="cmd-reporting-filter"
  value={selectedMonthFilter}
- onChange={(e) => setSelectedMonthFilter(e.target.value)}
+ onChange={(e) => { setSelectedMonthFilter(e.target.value); setPeriodMode('month'); }}
  className="bg-slate-800 border border-slate-700 text-slate-200 font-bold text-xs rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer min-w-[200px]"
  >
  <option value="all">📊 {t('All Months Combined')}</option>
  {availableMonths.map(m => (
  <option key={m.id} value={m.id}>
- 📅 {m.name} ({m.status})
+ 📅 {translateMonthLabel(m.name, t)} ({m.status === 'Open' ? t('Open') : t('Closed')})
  </option>
  ))}
  </select>
+ <button
+ type="button"
+ onClick={() => setPeriodMode('last3')}
+ className={`px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer border ${periodMode === 'last3' ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'}`}
+ >
+ {t('Last 3 Months')}
+ </button>
+ <button
+ type="button"
+ onClick={() => setPeriodMode('year')}
+ className={`px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer border ${periodMode === 'year' ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'}`}
+ >
+ {t('This Year')}
+ </button>
+ </div>
  </div>
  <div className="text-start sm:text-end hidden sm:block">
  <span className="text-[10px] font-bold text-slate-500 uppercase block">{t('Shop Standard System Time')}</span>
@@ -365,8 +495,8 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  <>
  {/* Key metric cards */}
  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
- 
- <div className="bg-white border border-slate-200/60 rounded-[28px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl hover:shadow-xl transition-shadow duration-300 space-y-3">
+
+ <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="bg-white border border-slate-200/60 rounded-[28px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl hover:shadow-xl transition-shadow duration-300 space-y-3">
  <div className="flex justify-between items-center">
  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Gross Month Sales')}</span>
  <span className="p-2 bg-emerald-50 text-emerald-600 rounded-xl"><DollarSign className="w-4 h-4" /></span>
@@ -381,9 +511,9 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
                 </div>
               </div>
  </div>
- </div>
+ </motion.div>
 
- <div className="bg-white border border-slate-200/60 rounded-[28px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl hover:shadow-xl transition-shadow duration-300 flex flex-col justify-between">
+ <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.05 }} className="bg-white border border-slate-200/60 rounded-[28px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl hover:shadow-xl transition-shadow duration-300 flex flex-col justify-between">
  <div>
  <div className="flex justify-between items-center">
  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Cash Capital In Bank')}</span>
@@ -402,9 +532,9 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  >
  <Plus className="w-3 h-3" /> {t('Manage Capital & Equity')}
  </button>
- </div>
+ </motion.div>
 
- <div className="bg-white border border-slate-200/60 rounded-[28px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl hover:shadow-xl transition-shadow duration-300 space-y-3">
+ <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1 }} className="bg-white border border-slate-200/60 rounded-[28px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl hover:shadow-xl transition-shadow duration-300 space-y-3">
  <div className="flex justify-between items-center">
  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Pending Collections')}</span>
  <span className="p-2 bg-amber-50 text-amber-600 rounded-xl"><Layers className="w-4 h-4" /></span>
@@ -415,9 +545,9 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  {t('On account sales credit')}
  </p>
  </div>
- </div>
+ </motion.div>
 
- <div className="bg-white border border-slate-200/60 rounded-[28px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl hover:shadow-xl transition-shadow duration-300 space-y-3">
+ <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.15 }} className="bg-white border border-slate-200/60 rounded-[28px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl hover:shadow-xl transition-shadow duration-300 space-y-3">
  <div className="flex justify-between items-center">
  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Actual cash outflow expenses')}</span>
  <span className="p-2 bg-rose-50 text-rose-600 rounded-xl"><TrendingDown className="w-4 h-4" /></span>
@@ -431,12 +561,12 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
                 </div>
                 {totalAssetCapEx > 0 && (
                   <div className="text-amber-600 font-extrabold uppercase mt-0.5">
-                    CapEx Assets: {currencySymbol} {totalAssetCapEx.toFixed(2)}
+                    {t('CapEx Assets:')} {currencySymbol} {totalAssetCapEx.toFixed(2)}
                   </div>
                 )}
               </div>
  </div>
- </div>
+ </motion.div>
 
  </div>
 
@@ -705,6 +835,215 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
 
  </div>
 
+ </div>
+
+ {/* Pending Invoices / Pending Expenses — point-in-time outstanding balances, not
+ gated by the reporting period filter (see calculation comment above). */}
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+ <motion.div
+ initial={{ opacity: 0, y: 12 }}
+ animate={{ opacity: 1, y: 0 }}
+ transition={{ duration: 0.35 }}
+ className="bg-white border border-slate-200/60 rounded-[28px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl"
+ >
+ <div className="flex justify-between items-center mb-4">
+ <div>
+ <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+ <FileCheck className="w-3.5 h-3.5 text-amber-500" /> {t('Pending Invoices')}
+ </h4>
+ <p className="text-[10px] text-slate-400 mt-0.5">{t('Outstanding customer collections, oldest first')}</p>
+ </div>
+ <button
+ onClick={() => onNavigate('invoices')}
+ className="text-[10px] font-extrabold text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 shrink-0"
+ >
+ {t('View All')} <ArrowUpRight className="w-3 h-3" />
+ </button>
+ </div>
+ {pendingInvoicesBase.length > 0 && (
+ <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mb-4 pb-3 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-wide">
+ <span className="flex items-center gap-1.5">{t('On time')} {renderAgingPictogram(pendingInvoicesAging.onTime, 'bg-slate-300')} <span className="text-slate-500">{pendingInvoicesAging.onTime}</span></span>
+ <span className="flex items-center gap-1.5">{t('Aging')} {renderAgingPictogram(pendingInvoicesAging.aging, 'bg-amber-400')} <span className="text-amber-600">{pendingInvoicesAging.aging}</span></span>
+ <span className="flex items-center gap-1.5">{t('Overdue')} {renderAgingPictogram(pendingInvoicesAging.overdue, 'bg-rose-500')} <span className="text-rose-600">{pendingInvoicesAging.overdue}</span></span>
+ </div>
+ )}
+ {pendingInvoicesList.length === 0 ? (
+ <div className="py-8 text-center">
+ <CheckCircle className="w-6 h-6 text-emerald-400 mx-auto mb-1.5" />
+ <p className="text-[11px] text-slate-400 font-semibold">{t('No outstanding invoice collections.')}</p>
+ </div>
+ ) : (
+ <div className="space-y-1.5">
+ {pendingInvoicesList.map(({ inv, due }) => {
+ const customerName = db.customers.find(c => c.id === inv.customerId)?.name || t('Unknown Customer');
+ const days = daysOutstanding(inv.date);
+ return (
+ <button
+ key={inv.id}
+ onClick={() => onNavigate('invoices')}
+ className="w-full flex items-center justify-between gap-3 p-2.5 rounded-xl hover:bg-slate-50 transition text-start"
+ >
+ <div className="min-w-0">
+ <span className="text-xs font-bold text-slate-800 block truncate">{customerName}</span>
+ <span className="text-[10px] text-slate-400 font-mono">{inv.invoiceNumber}</span>
+ </div>
+ <div className="text-end shrink-0">
+ <span className="text-xs font-extrabold text-slate-900 block">{currencySymbol} {due.toFixed(2)}</span>
+ <span className={`text-[9px] font-bold ${days > 30 ? 'text-rose-600' : days > 14 ? 'text-amber-600' : 'text-slate-400'}`}>
+ {days} {t('days outstanding')}
+ </span>
+ </div>
+ </button>
+ );
+ })}
+ <div className="flex justify-between items-center pt-3 mt-1 border-t border-slate-100 text-xs">
+ <span className="text-slate-400 font-bold uppercase text-[10px]">{t('Total Outstanding')}</span>
+ <span className="font-extrabold text-amber-600">{currencySymbol} {pendingInvoicesTotal.toFixed(2)}</span>
+ </div>
+ </div>
+ )}
+ </motion.div>
+
+ <motion.div
+ initial={{ opacity: 0, y: 12 }}
+ animate={{ opacity: 1, y: 0 }}
+ transition={{ duration: 0.35, delay: 0.05 }}
+ className="bg-white border border-slate-200/60 rounded-[28px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl"
+ >
+ <div className="flex justify-between items-center mb-4">
+ <div>
+ <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+ <TrendingDown className="w-3.5 h-3.5 text-rose-500" /> {t('Pending Expenses')}
+ </h4>
+ <p className="text-[10px] text-slate-400 mt-0.5">{t('Unpaid vendor bills, oldest first')}</p>
+ </div>
+ <button
+ onClick={() => onNavigate('expenses')}
+ className="text-[10px] font-extrabold text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 shrink-0"
+ >
+ {t('View All')} <ArrowUpRight className="w-3 h-3" />
+ </button>
+ </div>
+ {pendingExpensesList.length === 0 ? (
+ <div className="py-8 text-center">
+ <CheckCircle className="w-6 h-6 text-emerald-400 mx-auto mb-1.5" />
+ <p className="text-[11px] text-slate-400 font-semibold">{t('No unpaid vendor bills.')}</p>
+ </div>
+ ) : (
+ <div className="space-y-1.5">
+ {pendingExpensesList.map(({ exp, due }) => {
+ const vendorName = db.vendors.find(v => v.id === exp.vendorId)?.name || t('Unknown Vendor');
+ const days = daysOutstanding(exp.date);
+ return (
+ <button
+ key={exp.id}
+ onClick={() => onNavigate('expenses')}
+ className="w-full flex items-center justify-between gap-3 p-2.5 rounded-xl hover:bg-slate-50 transition text-start"
+ >
+ <div className="min-w-0">
+ <span className="text-xs font-bold text-slate-800 block truncate">{vendorName}</span>
+ <span className="text-[10px] text-slate-400 font-mono">{exp.expenseNumber}</span>
+ </div>
+ <div className="text-end shrink-0">
+ <span className="text-xs font-extrabold text-slate-900 block">{currencySymbol} {due.toFixed(2)}</span>
+ <span className={`text-[9px] font-bold ${days > 30 ? 'text-rose-600' : days > 14 ? 'text-amber-600' : 'text-slate-400'}`}>
+ {days} {t('days outstanding')}
+ </span>
+ </div>
+ </button>
+ );
+ })}
+ <div className="flex justify-between items-center pt-3 mt-1 border-t border-slate-100 text-xs">
+ <span className="text-slate-400 font-bold uppercase text-[10px]">{t('Total Outstanding')}</span>
+ <span className="font-extrabold text-rose-600">{currencySymbol} {pendingExpensesTotal.toFixed(2)}</span>
+ </div>
+ {accrualsAwaitingSettlement > 0 && (
+ <button
+ onClick={() => onNavigate('recurring')}
+ className="w-full flex items-center justify-between gap-2 mt-1 p-2 rounded-lg bg-amber-50 border border-amber-100 text-[10px]"
+ >
+ <span className="text-amber-700 font-bold">{accrualsAwaitingSettlement} {t('accrual(s) awaiting settlement')}</span>
+ <ArrowUpRight className="w-3 h-3 text-amber-600" />
+ </button>
+ )}
+ </div>
+ )}
+ </motion.div>
+ </div>
+
+ {/* Top Customers by Sales / Top Vendors by Expense — respects the active reporting period */}
+ <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+ <motion.div
+ initial={{ opacity: 0, y: 12 }}
+ animate={{ opacity: 1, y: 0 }}
+ transition={{ duration: 0.35, delay: 0.1 }}
+ className="bg-white border border-slate-200/60 rounded-[28px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl"
+ >
+ <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4">{t('Top Customers by Sales')}</h4>
+ {topCustomersBySales.length === 0 ? (
+ <p className="text-[11px] text-slate-400 text-center py-8">{t('No sales recorded in this period.')}</p>
+ ) : (
+ <div className="h-56">
+ <ResponsiveContainer width="100%" height="100%">
+ <BarChart data={topCustomersBySales} layout="vertical" margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
+ <defs>
+ {CHART_PALETTE.map((color, i) => (
+ <linearGradient key={i} id={`custGrad${i}`} x1="0" y1="0" x2="1" y2="0">
+ <stop offset="0%" stopColor={color} stopOpacity={0.55} />
+ <stop offset="100%" stopColor={color} stopOpacity={1} />
+ </linearGradient>
+ ))}
+ </defs>
+ <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+ <XAxis type="number" stroke="#94a3b8" fontSize={10} tickLine={false} />
+ <YAxis type="category" dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} width={110} />
+ <Tooltip contentStyle={{ background: '#0f172a', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '11px' }} formatter={(v: number) => [`${currencySymbol} ${v.toFixed(2)}`, t('Sales')]} />
+ <Bar dataKey="amount" radius={[0, 6, 6, 0]}>
+ {topCustomersBySales.map((_, i) => (
+ <Cell key={i} fill={`url(#custGrad${i % CHART_PALETTE.length})`} />
+ ))}
+ </Bar>
+ </BarChart>
+ </ResponsiveContainer>
+ </div>
+ )}
+ </motion.div>
+
+ <motion.div
+ initial={{ opacity: 0, y: 12 }}
+ animate={{ opacity: 1, y: 0 }}
+ transition={{ duration: 0.35, delay: 0.15 }}
+ className="bg-white border border-slate-200/60 rounded-[28px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl"
+ >
+ <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4">{t('Top Vendors by Expense')}</h4>
+ {topVendorsByExpense.length === 0 ? (
+ <p className="text-[11px] text-slate-400 text-center py-8">{t('No expenses recorded in this period.')}</p>
+ ) : (
+ <div className="h-56">
+ <ResponsiveContainer width="100%" height="100%">
+ <BarChart data={topVendorsByExpense} layout="vertical" margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
+ <defs>
+ {CHART_PALETTE.map((color, i) => (
+ <linearGradient key={i} id={`vendGrad${i}`} x1="0" y1="0" x2="1" y2="0">
+ <stop offset="0%" stopColor={color} stopOpacity={0.55} />
+ <stop offset="100%" stopColor={color} stopOpacity={1} />
+ </linearGradient>
+ ))}
+ </defs>
+ <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+ <XAxis type="number" stroke="#94a3b8" fontSize={10} tickLine={false} />
+ <YAxis type="category" dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} width={110} />
+ <Tooltip contentStyle={{ background: '#0f172a', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '11px' }} formatter={(v: number) => [`${currencySymbol} ${v.toFixed(2)}`, t('Expenses')]} />
+ <Bar dataKey="amount" radius={[0, 6, 6, 0]}>
+ {topVendorsByExpense.map((_, i) => (
+ <Cell key={i} fill={`url(#vendGrad${i % CHART_PALETTE.length})`} />
+ ))}
+ </Bar>
+ </BarChart>
+ </ResponsiveContainer>
+ </div>
+ )}
+ </motion.div>
  </div>
  </>
  ) : (

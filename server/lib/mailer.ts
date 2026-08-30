@@ -1,0 +1,62 @@
+import nodemailer from 'nodemailer';
+
+// SMTP credentials come from the environment only — never hardcoded, never logged.
+// isMailerConfigured() gates every caller so an unconfigured server fails with a clear,
+// actionable error instead of nodemailer throwing deep inside a request handler.
+function getSmtpConfig() {
+  const host = process.env.SMTP_HOST;
+  const port = process.env.SMTP_PORT;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASSWORD;
+  const from = process.env.SMTP_FROM || user;
+  if (!host || !port || !user || !pass) return null;
+  return { host, port: Number(port), user, pass, from };
+}
+
+export function isMailerConfigured(): boolean {
+  return getSmtpConfig() !== null;
+}
+
+let cachedTransporter: nodemailer.Transporter | null = null;
+function getTransporter(): nodemailer.Transporter {
+  const config = getSmtpConfig();
+  if (!config) {
+    throw new Error('SMTP is not configured (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD missing from environment).');
+  }
+  if (!cachedTransporter) {
+    cachedTransporter = nodemailer.createTransport({
+      host: config.host,
+      port: config.port,
+      // 465 is the conventional implicit-TLS SMTP port; every other port (587, 25, ...)
+      // uses STARTTLS instead, which nodemailer negotiates automatically when secure: false.
+      secure: config.port === 465,
+      auth: { user: config.user, pass: config.pass },
+    });
+  }
+  return cachedTransporter;
+}
+
+export async function sendPasswordResetEmail(to: string, resetUrl: string, username: string): Promise<void> {
+  const config = getSmtpConfig();
+  if (!config) {
+    throw new Error('SMTP is not configured (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD missing from environment).');
+  }
+  const transporter = getTransporter();
+  await transporter.sendMail({
+    from: config.from,
+    to,
+    subject: 'Reset your ERP portal password',
+    text: `Hello ${username},\n\nA password reset was requested for your account. Click the link below to choose a new password. This link expires in 1 hour and can only be used once.\n\n${resetUrl}\n\nIf you did not request this, you can safely ignore this email — your password will not be changed.`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color: #1e1b4b;">Reset your password</h2>
+        <p>Hello <strong>${username}</strong>,</p>
+        <p>A password reset was requested for your account. Click the button below to choose a new password. This link expires in <strong>1 hour</strong> and can only be used once.</p>
+        <p style="margin: 24px 0;">
+          <a href="${resetUrl}" style="background:#4f46e5;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Reset Password</a>
+        </p>
+        <p style="color:#64748b;font-size:12px;">If you did not request this, you can safely ignore this email — your password will not be changed.</p>
+      </div>
+    `,
+  });
+}

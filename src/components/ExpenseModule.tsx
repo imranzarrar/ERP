@@ -1,8 +1,9 @@
 import React from 'react';
 import { useTranslation } from '../hooks';
-import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, getDefaultTaxSlabId, saveExpense, markExpensePaid, cancelExpense, calculateInvoiceTotals } from '../dbStore';
+import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, getDefaultTaxSlabId, calculateInvoiceTotals } from '../dbStore';
 import { generateId } from '../id';
 import { Expense, ExpenseItem, Vendor, TaxSlab, BankAccount, User, normalizePermissions } from '../types';
+import ItemCatalogSearch from './ItemCatalogSearch';
 import {
  FileText,
  Plus,
@@ -25,17 +26,17 @@ import {
 
 interface ExpenseModuleProps {
  db: DatabaseState;
- onUpdateDb: (db: DatabaseState) => void;
- onPrintDoc: (type: 'Quotation' | 'Invoice' | 'Expense', data: any) => void;
+ onPrintDoc: (type: 'Quotation' | 'Invoice' | 'Expense' | 'PaymentReceipt', data: any) => void;
  // 'list' renders the Expenses table; 'add' renders the create form — each is mounted
  // under its own nav tab/permission (expenses vs expenses-add). No edit mode: expenses
  // are never modified in place, only paid/cancelled (existing row actions).
  mode: 'list' | 'add';
  onDone: () => void;
  onCreateNew: () => void;
+ onRefreshDb?: () => Promise<void>;
 }
 
-export default function ExpenseModule({ db, onUpdateDb, onPrintDoc, mode, onDone, onCreateNew }: ExpenseModuleProps) {
+export default function ExpenseModule({ db, onPrintDoc, mode, onDone, onCreateNew, onRefreshDb }: ExpenseModuleProps) {
  const { t, isRTL, lang } = useTranslation(db);
  const currentUser = db.currentUser;
  const isAdmin = currentUser?.role === 'admin' || currentUser?.isSuperAdmin === true;
@@ -110,31 +111,12 @@ export default function ExpenseModule({ db, onUpdateDb, onPrintDoc, mode, onDone
  const [viewAttachment, setViewAttachment] = React.useState<string | null>(null);
  const [isSavingExpense, setIsSavingExpense] = React.useState(false);
   const [view] = React.useState<"list" | "create">(mode === 'add' ? 'create' : 'list');
-  // Expenses from server
-  const [expenses, setExpenses] = React.useState<Expense[]>([]);
-  const fetchExpenses = async () => {
-    try {
-      const resp = await fetch(`/api/expenses?companyId=${db.selectedCompanyId}`);
-      const data = await resp.json();
-      if (Array.isArray(data)) {
-        setExpenses(data);
-      } else {
-        setExpenses([]);
-        if (data && data.error) {
-          setError(data.error);
-        }
-      }
-    } catch (e) {
-      console.error("Failed to fetch expenses:", e);
-      setExpenses([]);
-    }
-  };
-  React.useEffect(() => {
-    fetchExpenses();
-  }, [db.selectedCompanyId]);
 
-  // Filter based on role and active filters
-  const filteredExpenses = expenses.filter(exp => {
+  // Filter based on role and active filters — reads straight from the shared
+  // `db.expenses` (populated by `/api/state`, refreshed via `onRefreshDb`); this used to
+  // be a separately-fetched local copy, which meant an expense created/updated elsewhere
+  // never appeared here without a hard page reload.
+  const filteredExpenses = db.expenses.filter(exp => {
     const expCompanyId = exp.companyId;
     if (expCompanyId !== db.selectedCompanyId) return false;
 
@@ -143,7 +125,7 @@ export default function ExpenseModule({ db, onUpdateDb, onPrintDoc, mode, onDone
     if (filterEndDate && exp.date > filterEndDate) return false;
     if (filterStatus === 'Unpaid' && (exp.paymentStatus === 'Paid' || exp.status !== 'Active')) return false;
 
-    if (isAdmin || userPermissions.expense.view.enabled) return true;
+    if (userPermissions.expense.read.enabled) return true;
     return exp.createdById === currentUser.id;
   });
 
@@ -247,7 +229,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  return triggerError('Bill/Receipt attachment is mandatory when purchasing an Asset.');
  }
 
- if (!isAdmin && !userPermissions.expense.create.enabled) {
+ if (!userPermissions.expense.create.enabled) {
  return triggerError('You do not have permission to log expenses.');
  }
  const amountVal = parseFloat(formAmount);
@@ -289,18 +271,14 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  try {
   const response = await fetch("/api/expenses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(expData) });
   const result = await response.json();
-  // POST /api/expenses only ever returns { success: true } or { error }, never a `db`
-  // field — a prior version called onUpdateDb(result.db) here, which resolved to
-  // onUpdateDb(undefined) on every real save, nulling the entire app's `db` state on
-  // the very next render (every downstream read of db.selectedCompanyId/db.vendors/etc.
-  // would throw). fetchExpenses() below already refreshes this module's own list; the
-  // global db is refreshed by the normal navigation/reload path instead of guessing at
-  // a delta this endpoint doesn't return.
+  // POST /api/expenses only ever returns { success: true } or { error }, never a full
+  // `db` blob to merge back in — a real GET /api/state refetch (onRefreshDb) below is
+  // how this module (and every other one reading db.expenses) sees the new row.
   if (!response.ok || result.error) {
  triggerError(result.error || 'Failed to save expense.');
  return;
  }
-  await fetchExpenses();
+  if (onRefreshDb) await onRefreshDb();
  triggerSuccess('Expense saved successfully. Cash flows registered in ledger.');
  onDone();
  } catch (err: any) {
@@ -322,34 +300,54 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  });
  };
 
- const handleConfirmPay = (e: React.FormEvent) => {
+ const handleConfirmPay = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!payingExpense) return;
 
  const amt = parseFloat(payForm.amount);
  if (isNaN(amt) || amt <= 0) return triggerError('Please enter a valid payment amount.');
 
- const result = markExpensePaid(db, payingExpense.id, payForm.date, payForm.bankId, amt);
- if (result.error) {
- triggerError(result.error);
- } else {
+ try {
+ const response = await fetch(`/api/expenses/${payingExpense.id}/pay`, {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ date: payForm.date, bankId: payForm.bankId, amount: amt })
+ });
+ const result = await response.json();
+ if (!response.ok || result.error) {
+ triggerError(result.error || 'Failed to record payment.');
+ return;
+ }
  triggerSuccess(`Expense ${payingExpense.expenseNumber} payment of ${amt} ${currencySymbol} received and payment voucher posted.`);
- onUpdateDb(result.db);
+ if (onRefreshDb) await onRefreshDb();
+ // Auto-open the printable receipt right away — proof of disbursement on the spot.
+ // Undefined for an Accrual-type expense (no voucher is created on that path).
+ if (result.voucher) {
+ const voucherBank = db.banks.find(b => b.id === result.voucher.bankId);
+ onPrintDoc('PaymentReceipt', { ...result.voucher, bankData: voucherBank });
+ }
  setPayingExpense(null);
+ } catch (err: any) {
+ triggerError(err?.message || 'Failed to record payment — check your connection and try again.');
  }
  };
 
  // Cancel expense
- const handleCancelExpense = (expId: string) => {
- const canCancel = isAdmin || userPermissions.cancel.access.enabled;
+ const handleCancelExpense = async (expId: string) => {
+ const canCancel = userPermissions.expense.delete.enabled;
  if (!canCancel) return triggerError('You do not have cancellation permission.');
 
- const result = cancelExpense(db, expId);
- if (result.error) {
- triggerError(result.error);
- } else {
+ try {
+ const response = await fetch(`/api/expenses/${expId}/cancel`, { method: 'POST' });
+ const result = await response.json();
+ if (!response.ok || result.error) {
+ triggerError(result.error || 'Failed to cancel expense.');
+ return;
+ }
  triggerSuccess('Expense cancelled successfully. Reversal vouchers generated in bank ledger.');
- onUpdateDb(result.db);
+ if (onRefreshDb) await onRefreshDb();
+ } catch (err: any) {
+ triggerError(err?.message || 'Failed to cancel expense — check your connection and try again.');
  }
  };
 
@@ -460,7 +458,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  </span>
  </div>
  </div>
- {openMonth && (isAdmin || userPermissions.expense.create.enabled) && (
+ {openMonth && userPermissions.expense.create.enabled && (
  <button
  onClick={handleInitiateCreate}
  className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 py-1.5 text-xs font-bold flex items-center gap-1 shadow-sm"
@@ -497,7 +495,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  onChange={(e) => setFilterStatus(e.target.value as any)}
  className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none font-semibold text-slate-700"
  >
- <option value="All">All Expenses</option>
+ <option value="All">{t('All Expenses')}</option>
  <option value="Unpaid">{t("Pending / Unpaid Only")}</option>
  </select>
  </div>
@@ -530,7 +528,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  const vend = db.vendors.find(v => v.id === exp.vendorId);
  const bank = db.banks.find(b => b.id === exp.bankId);
  const isPending = (exp.paymentStatus === 'Unpaid' || exp.paymentStatus === 'Partially Paid') && exp.status === 'Active';
- const canCancel = (isAdmin || userPermissions.cancel.access.enabled) && exp.status === 'Active';
+ const canCancel = userPermissions.expense.delete.enabled && exp.status === 'Active';
 
  return (
  <tr key={exp.id} className="border-b border-slate-100 hover:bg-slate-50/20">
@@ -541,7 +539,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  <button
  onClick={() => setViewAttachment(exp.attachmentUrl)}
  className="p-1.5 bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 rounded-lg transition-colors"
- title="View Attachment"
+ title={t('View Attachment')}
  >
  <Paperclip className="w-3.5 h-3.5" />
  </button>
@@ -577,7 +575,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
  exp.status === 'Active' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
  }`}>
- {exp.status}
+ {t(exp.status)}
  </span>
  </td>
  <td className="p-3 text-center">
@@ -586,7 +584,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  exp.paymentStatus === 'Partially Paid' ? 'bg-indigo-100 text-indigo-800 font-bold' :
  'bg-amber-100 text-amber-800'
  }`}>
- {exp.paymentStatus}
+ {t(exp.paymentStatus)}
  </span>
  </td>
  <td className="p-3 text-end space-x-1.5">
@@ -594,7 +592,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  <button
  onClick={() => onPrintDoc('Expense', { ...exp, vendorData: vend, bankData: bank })}
  className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition cursor-pointer inline-flex items-center gap-1 text-[11px] font-semibold"
- title="Print Expense Bill"
+ title={t('Print Expense Bill')}
  >
  <Printer className="w-3.5 h-3.5" />
  <span>Print</span>
@@ -604,10 +602,10 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  <button
  onClick={() => handleInitiatePay(exp)}
  className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer inline-flex items-center gap-1 text-[10px] font-bold shadow-sm"
- title="Settle Payment"
+ title={t('Settle Payment')}
  >
  <CreditCard className="w-3.5 h-3.5" />
- <span>Settle Pay</span>
+ <span>{t('Settle Pay')}</span>
  </button>
  )}
 
@@ -619,7 +617,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  }
  }}
  className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 transition cursor-pointer inline-flex items-center gap-1 text-[11px] font-bold"
- title="Cancel Expense"
+ title={t('Cancel Expense')}
  >
  <AlertTriangle className="w-3.5 h-3.5" />
  <span>Cancel</span>
@@ -724,7 +722,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none"
  >
  {db.vendors.filter(v => v.companyId === db.selectedCompanyId || !v.companyId).map(v => (
- <option key={v.id} value={v.id}>{v.name} {v.isSystem ? '(Default)' : ''}</option>
+ <option key={v.id} value={v.id}>{v.name} {v.isSystem ? t('(Default)') : ''}</option>
  ))}
  </select>
  </div>
@@ -745,7 +743,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
 
  {/* Bank is Admin-only editable; staff see read-only bank */}
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Disbursement Bank</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Disbursement Bank')}</label>
  {isAdmin ? (
  <select
  required
@@ -754,13 +752,13 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none"
  >
  {db.banks.filter(b => b.isActive && b.companyId === db.selectedCompanyId).map(b => (
- <option key={b.id} value={b.id}>{b.bankName} (Default: {b.isDefault ? 'Yes' : 'No'})</option>
+ <option key={b.id} value={b.id}>{b.bankName} ({t('Default:')} {b.isDefault ? t('Yes') : t('No')})</option>
  ))}
  </select>
  ) : (
  <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-500 font-semibold flex items-center gap-1.5">
  <Lock className="w-3.5 h-3.5 text-slate-400" />
- <span>{db.banks.find(b => b.id === formBankId)?.bankName || 'Default Bank'}</span>
+ <span>{db.banks.find(b => b.id === formBankId)?.bankName || t('Default Bank')}</span>
  </div>
  )}
  </div>
@@ -850,15 +848,15 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  }}
  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-xs text-slate-800 focus:outline-none"
  />
- {formAttachmentUrl && <p className="text-[10px] text-emerald-500 mt-0.5">File attached successfully</p>}
+ {formAttachmentUrl && <p className="text-[10px] text-emerald-500 mt-0.5">{t('File attached successfully')}</p>}
  </div>
- 
+
  <div className="col-span-1 md:col-span-2 space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase">{t('General Description / Summary')}</label>
  <input
  type="text"
  required
- placeholder="e.g. Spiral upcut router bits purchases, factory glue"
+ placeholder={t('e.g. Spiral upcut router bits purchases, factory glue')}
  value={formDescription}
  onChange={(e) => setFormDescription(e.target.value)}
  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none"
@@ -912,29 +910,19 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
  <td className="py-2 px-3 text-slate-400 font-bold text-[11px] align-top pt-3">{idx + 1}</td>
  <td className="py-2 px-2 align-top">
- <input
- type="text"
+ <ItemCatalogSearch
  required
- list={`expense-catalog-${idx}`}
  placeholder={t("Type or search material from catalog...")}
  value={item.description}
- onChange={(e) => {
- const val = e.target.value;
- handleUpdateLineItem(idx, 'description', val);
- const matched = purchaseProducts.find(p => p.name.toLowerCase() === val.trim().toLowerCase());
- if (matched) {
+ items={purchaseProducts}
+ currencySymbol={currencySymbol}
+ noMatchesLabel={t('No matching items found.')}
+ onChangeText={(val) => handleUpdateLineItem(idx, 'description', val)}
+ onSelectItem={(matched) => {
  handleUpdateLineItem(idx, 'unitCost', matched.unitPrice || 0);
- }
  }}
  className="w-full bg-slate-50/50 hover:bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
  />
- <datalist id={`expense-catalog-${idx}`}>
- {purchaseProducts.map(p => (
- <option key={p.id} value={p.name}>
- {`${currencySymbol} ${Number(p.unitPrice || 0).toFixed(2)} ${p.description ? '— ' + p.description : ''}`}
- </option>
- ))}
- </datalist>
  </td>
 
  <td className="py-2 px-2 align-top">
@@ -1000,7 +988,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  {/* Amount input (lockable if itemised) */}
  <div className="space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase">
- {showItemised ? 'Total Amount (Calculated from lines)' : `Total Expense Amount (${currencySymbol})`}
+ {showItemised ? t('Total Amount (Calculated from lines)') : `${t('Total Expense Amount')} (${currencySymbol})`}
  </label>
  <input
  type="number"
@@ -1020,7 +1008,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  onClick={onDone}
  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-semibold text-xs"
  >
- Cancel
+ {t('Cancel')}
  </button>
  <button
  type="submit"
@@ -1041,11 +1029,11 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  <CheckSquare className="w-5 h-5 text-emerald-600" />
  Settle Pending Expense
  </h3>
- <p className="mb-4">Recording subsequent payment disbursement for expense {payingExpense.expenseNumber}.</p>
+ <p className="mb-4">{t('Recording subsequent payment disbursement for expense')} {payingExpense.expenseNumber}.</p>
 
  <form onSubmit={handleConfirmPay} className="space-y-4">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Payment Settlement Date</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Payment Settlement Date')}</label>
  <input
  type="date"
  required
@@ -1056,7 +1044,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Disbursement Bank</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Disbursement Bank')}</label>
  {isAdmin ? (
  <select
  required
@@ -1071,13 +1059,13 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  ) : (
  <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-500 font-semibold flex items-center gap-1.5">
  <Lock className="w-3.5 h-3.5 text-slate-400" />
- <span>{db.banks.find(b => b.id === payForm.bankId)?.bankName || 'Default Bank'}</span>
+ <span>{db.banks.find(b => b.id === payForm.bankId)?.bankName || t('Default Bank')}</span>
  </div>
  )}
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Payment Amount</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Payment Amount')}</label>
  <div className="relative">
  <input
  type="number"
@@ -1094,8 +1082,8 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  </div>
  </div>
  <div className="flex justify-between text-[10px] text-slate-400 pt-1 px-0.5">
- <span>Already {t("Paid:")} {Number(payingExpense.amountPaid || 0).toFixed(2)} {currencySymbol}</span>
- <span>Remaining: {Number(payingExpense.amount - (payingExpense.amountPaid || 0)).toFixed(2)} {currencySymbol}</span>
+ <span>{t('Already')} {t("Paid:")} {Number(payingExpense.amountPaid || 0).toFixed(2)} {currencySymbol}</span>
+ <span>{t('Remaining:')} {Number(payingExpense.amount - (payingExpense.amountPaid || 0)).toFixed(2)} {currencySymbol}</span>
  </div>
  </div>
 
@@ -1105,13 +1093,13 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  onClick={() => setPayingExpense(null)}
  className="px-3 py-1.5 bg-slate-100 text-slate-500 rounded-lg font-semibold hover:bg-slate-200"
  >
- Cancel
+ {t('Cancel')}
  </button>
  <button
  type="submit"
  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm"
  >
- Confirm Payment Disbursement
+ {t('Confirm Payment Disbursement')}
  </button>
  </div>
  </form>

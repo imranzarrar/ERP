@@ -1,3 +1,5 @@
+import { PERMISSION_MODULES } from './permissionSchema';
+
 export type UserRole = 'admin' | 'user' | 'super-admin';
 
 export interface UseCasePermission {
@@ -82,192 +84,46 @@ export function mergeRolePermissions(rolePermissionsList: any[]): any {
   return rolePermissionsList.reduce((acc, rp) => mergeInto(acc, rp || {}), {});
 }
 
+// Registry-driven: every module/leaf comes from PERMISSION_MODULES (src/permissionSchema.ts)
+// instead of three independently hand-maintained object literals (admin defaults,
+// non-admin defaults, no-role-assigned defaults). That triplication is exactly what let a
+// module silently default to full access once already — an admin-only leaf's `true`
+// literal got copied into the "no permissions object" fallback by mistake, so any
+// role-based user with zero roles assigned got full access to quotation/invoice/expense/
+// POS instead of none. A single loop over one registry can't drift the same way: the
+// "no role assigned" case isn't a fourth hand-written branch here, it's just this same
+// loop fed an empty object, which resolves every leaf (including fallback-inherited ones)
+// to false through the exact same code path admins and role-holders go through.
 export function normalizePermissions(p: any, role?: string, isSuperAdmin?: boolean): any {
   const isAdmin = role === 'admin' || isSuperAdmin === true || role === 'super-admin';
+  const safeP = (p && typeof p === 'object') ? p : {};
+  const resolved: Record<string, boolean> = {};
+  const result: any = {};
 
-  const defaultPermissions = {
-    quotation: { view: { enabled: true }, create: { enabled: true } },
-    invoice: { view: { enabled: true }, create: { enabled: true } },
-    expense: { view: { enabled: true }, create: { enabled: true } },
-    pos: {
-      access: { enabled: true },
-      terminal: { enabled: true },
-      shifts: { enabled: true },
-      history: { enabled: true },
-      return: { enabled: true },
-      cancel: { enabled: true },
-      discount: { enabled: true }
-    },
-    customers: {
-      view: { enabled: true },
-      edit: { enabled: isAdmin }
-    },
-    vendors: {
-      view: { enabled: true },
-      edit: { enabled: isAdmin }
-    },
-    products: {
-      view: { enabled: true },
-      edit: { enabled: isAdmin }
-    },
-    categories: {
-      view: { enabled: true },
-      edit: { enabled: isAdmin }
-    },
-    units: {
-      view: { enabled: true },
-      edit: { enabled: isAdmin }
-    },
-    warehouses: {
-      view: { enabled: true },
-      edit: { enabled: isAdmin }
-    },
-    inventory: {
-      access: { enabled: true },
-      pr: { enabled: true },
-      po: { enabled: true },
-      grn: { enabled: true },
-      stock: { enabled: true }
-    },
-    cancel: { access: { enabled: isAdmin } },
-    investors: { access: { enabled: isAdmin } },
-    fiscalMonths: { access: { enabled: isAdmin } },
-    banks: { view: { enabled: isAdmin }, edit: { enabled: isAdmin } },
-    taxSlabs: { view: { enabled: isAdmin }, edit: { enabled: isAdmin } },
-    reports: { access: { enabled: isAdmin } }
-  };
-
-  if (isAdmin) {
-    return defaultPermissions;
+  for (const mod of PERMISSION_MODULES) {
+    result[mod.id] = {};
+    for (const leaf of mod.leaves) {
+      const path = `${mod.id}.${leaf.key}.enabled`;
+      let value: boolean;
+      if (isAdmin) {
+        value = true;
+      } else {
+        const fallback = leaf.fallbackFrom ? (resolved[leaf.fallbackFrom] ?? false) : false;
+        value = getAtPath(safeP, path, fallback);
+      }
+      resolved[`${mod.id}.${leaf.key}`] = value;
+      result[mod.id][leaf.key] = { enabled: value };
+    }
   }
 
-  if (!p || typeof p !== 'object') {
-    return {
-      ...defaultPermissions,
-      // `defaultPermissions` above is the isAdmin=true shape (that's the only other
-      // caller that uses it as-is) — every module must be explicitly overridden to
-      // false here, not just the ones already using an `isAdmin` ternary internally.
-      // quotation/invoice/expense/pos previously fell through as `true` from the
-      // spread since they're bare literals above, meaning any non-admin user with no
-      // permissions object at all (in particular: a role-based user with zero roles
-      // assigned) got full default access to those four modules instead of none.
-      quotation: { view: { enabled: false }, create: { enabled: false } },
-      invoice: { view: { enabled: false }, create: { enabled: false } },
-      expense: { view: { enabled: false }, create: { enabled: false } },
-      pos: {
-        access: { enabled: false },
-        terminal: { enabled: false },
-        shifts: { enabled: false },
-        history: { enabled: false },
-        return: { enabled: false },
-        cancel: { enabled: false },
-        discount: { enabled: false }
-      },
-      cancel: { access: { enabled: false } },
-      customers: { view: { enabled: false }, edit: { enabled: false } },
-      vendors: { view: { enabled: false }, edit: { enabled: false } },
-      products: { view: { enabled: false }, edit: { enabled: false } },
-      categories: { view: { enabled: false }, edit: { enabled: false } },
-      units: { view: { enabled: false }, edit: { enabled: false } },
-      warehouses: { view: { enabled: false }, edit: { enabled: false } },
-      inventory: {
-        access: { enabled: false },
-        pr: { enabled: false },
-        po: { enabled: false },
-        grn: { enabled: false },
-        stock: { enabled: false }
-      },
-      investors: { access: { enabled: false } },
-      fiscalMonths: { access: { enabled: false } },
-      banks: { view: { enabled: false }, edit: { enabled: false } },
-      taxSlabs: { view: { enabled: false }, edit: { enabled: false } },
-      reports: { access: { enabled: false } }
-    };
-  }
-
-  const getValue = (path: string, def: boolean): boolean => getAtPath(p, path, def);
-
-  // `p` is always either a Role's `permissions` JSON (written exclusively by the Roles
-  // editor in AdminSettings.tsx, always in this exact `.view`/`.create` shape) or `null`
-  // (no role assigned, handled by the `!p` branch above). No legacy-shape fallback is
-  // needed here — earlier permission-model iterations required one (removed once roles
-  // became the sole source of non-admin permissions; see BACKLOG.md).
-  // Default `false` (fail closed) rather than `true`: the Roles editor's checkbox tree
-  // shows an unmentioned module as unchecked, so resolution must agree — a module a role
-  // never touches must not be silently granted, same as every other module here.
-  const viewCreateFor = (modulePath: string) => ({
-    view: { enabled: getValue(`${modulePath}.view.enabled`, false) },
-    create: { enabled: getValue(`${modulePath}.create.enabled`, false) }
-  });
-
-  const productsViewResolved = getValue('products.view.enabled', false);
-  const productsEditResolved = getValue('products.edit.enabled', false);
-
-  const canonical = {
-    quotation: viewCreateFor('quotation'),
-    invoice: viewCreateFor('invoice'),
-    expense: viewCreateFor('expense'),
-    pos: {
-      access: { enabled: getValue('pos.access.enabled', false) },
-      terminal: { enabled: getValue('pos.terminal.enabled', false) },
-      shifts: { enabled: getValue('pos.shifts.enabled', false) },
-      history: { enabled: getValue('pos.history.enabled', false) },
-      return: { enabled: getValue('pos.return.enabled', false) },
-      cancel: { enabled: getValue('pos.cancel.enabled', false) },
-      discount: { enabled: getValue('pos.discount.enabled', false) }
-    },
-    customers: {
-      view: { enabled: getValue('customers.view.enabled', false) },
-      edit: { enabled: getValue('customers.edit.enabled', false) }
-    },
-    vendors: {
-      view: { enabled: getValue('vendors.view.enabled', false) },
-      edit: { enabled: getValue('vendors.edit.enabled', false) }
-    },
-    products: {
-      view: { enabled: productsViewResolved },
-      edit: { enabled: productsEditResolved }
-    },
-    categories: {
-      view: { enabled: getValue('categories.view.enabled', productsViewResolved) },
-      edit: { enabled: getValue('categories.edit.enabled', productsEditResolved) }
-    },
-    units: {
-      view: { enabled: getValue('units.view.enabled', productsViewResolved) },
-      edit: { enabled: getValue('units.edit.enabled', productsEditResolved) }
-    },
-    warehouses: {
-      view: { enabled: getValue('warehouses.view.enabled', productsViewResolved) },
-      edit: { enabled: getValue('warehouses.edit.enabled', productsEditResolved) }
-    },
-    inventory: {
-      access: { enabled: getValue('inventory.access.enabled', false) },
-      pr: { enabled: getValue('inventory.pr.enabled', false) },
-      po: { enabled: getValue('inventory.po.enabled', false) },
-      grn: { enabled: getValue('inventory.grn.enabled', false) },
-      stock: { enabled: getValue('inventory.stock.enabled', false) }
-    },
-    cancel: { access: { enabled: getValue('cancel.access.enabled', false) } },
-    investors: { access: { enabled: getValue('investors.access.enabled', false) } },
-    fiscalMonths: { access: { enabled: getValue('fiscalMonths.access.enabled', false) } },
-    banks: {
-      view: { enabled: getValue('banks.view.enabled', false) },
-      edit: { enabled: getValue('banks.edit.enabled', false) }
-    },
-    taxSlabs: {
-      view: { enabled: getValue('taxSlabs.view.enabled', false) },
-      edit: { enabled: getValue('taxSlabs.edit.enabled', false) }
-    },
-    reports: { access: { enabled: getValue('reports.access.enabled', false) } }
-  };
-
-  return canonical;
+  return result;
 }
 
 export interface User {
   id: string;
   username: string;
   password?: string;
+  email?: string;
   role: UserRole;
   // The DB no longer stores a raw permissions blob per user — the server resolves this
   // field from every Role assigned to the user (see the `userRoles` junction table in
@@ -298,6 +154,7 @@ export interface CompanySetup {
   customHeader: string;
   customFooter: string;
   vatNumber?: string; // Saudi VAT Registration Number
+  crNumber?: string; // Commercial Registration number — print-facing, distinct from the per-environment ZATCA config value
   themeId?: string; // Selected dynamic theme profile id
   currency?: string; // e.g. "SAR", "USD", "$"
   portalTitle?: string; // Left sidebar brand heading
@@ -359,6 +216,10 @@ export interface TaxSlab {
   // every document (Quotation/Invoice/Expense/POS), but never restricts changing it.
   // At most one per company (server-enforced), see src/db/schema.ts.
   isDefault?: boolean;
+  // ZATCA VATEX-SA-xx code + human-readable reason, only meaningful for an Exempt ('E')
+  // or Zero-rated ('Z') slab — see src/db/schema.ts for why this can't be defaulted.
+  exemptionReasonCode?: string | null;
+  exemptionReason?: string | null;
 }
 
 export interface ProductService {
@@ -389,6 +250,15 @@ export interface ProductService {
   shiftId?: string;
   attachmentUrl?: string;
   amountPaid?: number;
+  isActive?: boolean;
+  // Weighted rolling averages — updated server-side on every GRN receipt (averageCost)
+  // and every invoice/POS sale line (averageSalePrice). See schema.ts's own comment on
+  // productsServices for why these are true running averages, not recomputed from
+  // history. Optional because rows created before this column existed may not carry it.
+  averageCost?: number;
+  averageSalePrice?: number;
+  totalQuantityPurchased?: number;
+  totalQuantitySold?: number;
 }
 
 export interface Customer {
@@ -399,10 +269,22 @@ export interface Customer {
   address: string;
   taxRegNumber?: string;
   isSystem?: boolean; // Walk-in Customer (undeletable)
+  isActive?: boolean;
   companyId?: string;
   isPosSale?: boolean;
   shiftId?: string;
   attachmentUrl?: string;
+  // ZATCA Buyer Fields — see customers table in src/db/schema.ts
+  buyerType?: 'B2B' | 'B2C';
+  vatNumber?: string;
+  buildingNumber?: string;
+  streetName?: string;
+  district?: string;
+  city?: string;
+  postalCode?: string;
+  countryCode?: string;
+  // General print-facing Commercial Registration number — not a ZATCA field.
+  crNumber?: string;
 }
 
 export interface Vendor {
@@ -413,10 +295,22 @@ export interface Vendor {
   address: string;
   taxRegNumber?: string;
   isSystem?: boolean; // Cash Vendor (undeletable)
+  isActive?: boolean;
   companyId?: string;
   isPosSale?: boolean;
   shiftId?: string;
   attachmentUrl?: string;
+  // ZATCA Address Fields — see vendors table in src/db/schema.ts
+  buyerType?: 'B2B' | 'B2C';
+  vatNumber?: string;
+  buildingNumber?: string;
+  streetName?: string;
+  district?: string;
+  city?: string;
+  postalCode?: string;
+  countryCode?: string;
+  // General print-facing Commercial Registration number — not a ZATCA field.
+  crNumber?: string;
 }
 
 export interface BankAccount {
@@ -458,6 +352,8 @@ export interface QuotationItem {
   discountAmount?: number; // Line-item flat discount amount to be reduced from unit cost
   taxSlabId?: string; // Optional line-item tax slab ID
   taxRate?: number; // Optional line-item tax rate override
+  unit?: string; // ZATCA UN/ECE Rec 20 unit code (see src/zatcaUnitCodes.ts), inherited from the matched product
+  productId?: string; // Set only when this line was selected via ItemCatalogSearch, not free-typed
 }
 
 export interface Quotation {
@@ -476,6 +372,10 @@ export interface Quotation {
   isPosSale?: boolean;
   shiftId?: string;
   attachmentUrl?: string;
+  // Dedicated cancel flag, separate from `status` (the phase field: Draft/Sent/Accepted/
+  // Converted). A quotation displays as "Cancelled" whenever this is true, regardless of
+  // what phase it was in when cancelled — see POST /quotations/:id/cancel.
+  isCancelled?: boolean;
 }
 
 export interface InvoiceItem {
@@ -486,6 +386,8 @@ export interface InvoiceItem {
   discountAmount?: number; // Line-item flat discount amount to be reduced from unit cost
   taxSlabId?: string; // Optional line-item tax slab ID for per-item ZATCA VAT rates
   taxRate?: number; // Optional line-item tax rate override
+  unit?: string; // ZATCA UN/ECE Rec 20 unit code (see src/zatcaUnitCodes.ts), inherited from the matched product
+  productId?: string; // Set only when this line was selected via ItemCatalogSearch, not free-typed
 }
 
 export interface Invoice {
@@ -594,7 +496,10 @@ export interface Voucher {
   bankId: string;
   amount: number;
   description: string;
-  referenceType: 'Invoice' | 'Expense' | 'Transfer' | 'Equity';
+  // 'PurchaseBill' added alongside the other three — POST /api/inventory/purchase-bills/
+  // :id/pay (server/routes/inventory.ts) already writes this value on every bill payment
+  // voucher; the type was never updated to match when that route was built.
+  referenceType: 'Invoice' | 'Expense' | 'Transfer' | 'Equity' | 'PurchaseBill';
   referenceId: string; // ID of Invoice, Expense, or other transfer Bank ID
   createdById: string;
   createdAt: string;
@@ -696,7 +601,7 @@ export interface PurchaseRequisition {
   prNumber: string;
   requestedBy: string;
   date: string;
-  status: 'Draft' | 'Pending' | 'Approved' | 'Rejected' | 'Closed';
+  status: 'Draft' | 'Pending' | 'Approved' | 'Rejected' | 'Closed' | 'Cancelled';
   notes?: string;
   companyId: string;
   items?: PurchaseRequisitionItem[];
@@ -749,8 +654,69 @@ export interface GoodsReceiptNote {
   notes?: string;
   vehicleNumber?: string;
   driverName?: string;
+  isReversed?: boolean;
+  isBilled?: boolean;
   companyId: string;
   items?: GoodsReceiptNoteItem[];
+}
+
+export interface PurchaseBill {
+  id: string;
+  billNumber: string;
+  vendorId: string;
+  date: string;
+  dueDate?: string;
+  grnIds: string; // comma-separated
+  subTotal: number;
+  taxTotal: number;
+  grandTotal: number;
+  status: 'Unpaid' | 'Partially Paid' | 'Paid' | 'Cancelled';
+  amountPaid: number;
+  bankId?: string;
+  companyId: string;
+}
+
+export interface PurchaseReturnItem {
+  id: string;
+  returnId: string;
+  productId: string;
+  quantityReturned: number;
+  batchNumber?: string;
+}
+
+export interface PurchaseReturn {
+  id: string;
+  returnNumber: string;
+  grnId: string;
+  vendorId: string;
+  warehouseId: string;
+  date: string;
+  notes?: string;
+  status: 'Active' | 'Cancelled';
+  companyId: string;
+  items?: PurchaseReturnItem[];
+}
+
+export interface PhysicalStockTakeItem {
+  id: string;
+  stockTakeId: string;
+  productId: string;
+  batchNumber?: string;
+  systemQuantity: number;
+  physicalQuantity: number;
+  variance: number;
+}
+
+export interface PhysicalStockTake {
+  id: string;
+  referenceNumber: string;
+  warehouseId: string;
+  date: string;
+  status: 'Draft' | 'Completed' | 'Cancelled';
+  performedBy: string;
+  notes?: string;
+  companyId: string;
+  items?: PhysicalStockTakeItem[];
 }
 
 export interface InventoryStock {
@@ -763,6 +729,19 @@ export interface InventoryStock {
   companyId: string;
 }
 
+export interface StockLedgerTransaction {
+  id: string;
+  productId: string;
+  warehouseId: string;
+  transactionType: 'GRN' | 'Return' | 'Sale' | 'Adjustment' | 'StockTake';
+  referenceId: string;
+  date: string;
+  quantityChange: number;
+  endingQuantity: number;
+  batchNumber?: string;
+  companyId: string;
+}
+
 export interface ProductCategory {
   id: string;
   name: string;
@@ -770,6 +749,7 @@ export interface ProductCategory {
   purchaseGlGroup?: string;
   salesGlGroup?: string;
   cogsGlGroup?: string;
+  isActive?: boolean;
   companyId: string;
 }
 
@@ -777,6 +757,7 @@ export interface UnitOfMeasure {
   id: string;
   name: string;
   code: string;
+  isActive?: boolean;
   companyId: string;
 }
 

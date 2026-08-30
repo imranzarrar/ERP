@@ -1,5 +1,5 @@
 import React from 'react';
-import { DatabaseState, getActiveOpenMonth, getDefaultTaxSlabId, postRecurringExpense, settleAccrualExpense, generateId } from '../dbStore';
+import { DatabaseState, getActiveOpenMonth, getDefaultTaxSlabId } from '../dbStore';
 import { RecurringExpenseTemplate, Expense, BankAccount } from '../types';
 import {
  FileText,
@@ -26,13 +26,12 @@ import {
 
 interface RecurringExpensesProps {
  db: DatabaseState;
- onUpdateDb: (db: DatabaseState) => void;
  onRefreshDb?: () => Promise<void>;
 }
 
-import { useTranslation } from '../hooks';
+import { useTranslation, translateMonthLabel } from '../hooks';
 
-export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: RecurringExpensesProps) {
+export default function RecurringExpenses({ db, onRefreshDb }: RecurringExpensesProps) {
  const { t } = useTranslation(db);
  const openMonth = getActiveOpenMonth(db);
  const activeTemplates = db.recurringTemplates.filter(t => t.isActive);
@@ -128,95 +127,92 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  };
 
  // Start editing a template
- const handleStartEditTemplate = (t: RecurringExpenseTemplate) => {
- setEditingTemplate(t);
+ const handleStartEditTemplate = (tmpl: RecurringExpenseTemplate) => {
+ setEditingTemplate(tmpl);
  setTemplateForm({
- description: t.description,
- defaultAmount: t.defaultAmount.toString(),
- bankId: t.bankId,
- vendorId: t.vendorId,
- taxSlabId: t.taxSlabId,
- isActive: t.isActive
+ description: tmpl.description,
+ defaultAmount: tmpl.defaultAmount.toString(),
+ bankId: tmpl.bankId,
+ vendorId: tmpl.vendorId,
+ taxSlabId: tmpl.taxSlabId,
+ isActive: tmpl.isActive
  });
  setIsAddingTemplate(true);
  };
 
  // Toggle active/inactive template
- const handleToggleTemplateActive = (t: RecurringExpenseTemplate) => {
- const updatedTemplates = db.recurringTemplates.map(item => item.id === t.id ? {
- ...item,
- isActive: !item.isActive
- } : item);
-
- const updatedDb = {
- ...db,
- recurringTemplates: updatedTemplates
- };
-
- 
- onUpdateDb(updatedDb);
- triggerSuccess(`Template "${t.description}" is now ${!t.isActive ? 'Active' : 'Inactive'}.`);
+ const handleToggleTemplateActive = async (tmpl: RecurringExpenseTemplate) => {
+ try {
+ const res = await fetch(`/api/transactions/recurring-templates/${tmpl.id}/toggle`, { method: 'PATCH' });
+ const data = await res.json();
+ if (!res.ok || data.error) {
+ triggerError(data.error || t('Failed to toggle template status.'));
+ return;
+ }
+ triggerSuccess(`${t('Template')} "${tmpl.description}" ${t('is now')} ${!tmpl.isActive ? t('Active') : t('Inactive')}.`);
+ if (onRefreshDb) await onRefreshDb();
+ } catch (err: any) {
+ triggerError(err?.message || t('An error occurred while toggling the template.'));
+ }
  };
 
  // Delete a template
- const handleDeleteTemplate = (id: string) => {
- if (!window.confirm('Are you sure you want to delete this recurring template? This will not affect prior postings but prevents future occurrences.')) return;
+ const handleDeleteTemplate = async (id: string) => {
+ if (!window.confirm(t('Are you sure you want to delete this recurring template? This will not affect prior postings but prevents future occurrences.'))) return;
 
- const updatedTemplates = db.recurringTemplates.filter(t => t.id !== id);
- const updatedDb = {
- ...db,
- recurringTemplates: updatedTemplates
- };
-
- 
- onUpdateDb(updatedDb);
- triggerSuccess('Recurring template deleted successfully.');
+ try {
+ const res = await fetch(`/api/transactions/recurring-templates/${id}`, { method: 'DELETE' });
+ const data = await res.json();
+ if (!res.ok || data.error) {
+ triggerError(data.error || t('Failed to delete recurring template.'));
+ return;
+ }
+ triggerSuccess(t('Recurring template deleted successfully.'));
+ if (onRefreshDb) await onRefreshDb();
+ } catch (err: any) {
+ triggerError(err?.message || t('An error occurred while deleting the template.'));
+ }
  };
 
  // Save template (add or edit)
- const handleSaveTemplate = (e: React.FormEvent) => {
+ const handleSaveTemplate = async (e: React.FormEvent) => {
  e.preventDefault();
  const amountNum = parseFloat(templateForm.defaultAmount);
- if (isNaN(amountNum) || amountNum <= 0) return triggerError('Please enter a valid amount.');
+ if (isNaN(amountNum) || amountNum <= 0) return triggerError(t('Please enter a valid amount.'));
 
- let updatedTemplates = [...db.recurringTemplates];
-
- if (editingTemplate) {
- updatedTemplates = updatedTemplates.map(t => t.id === editingTemplate.id ? {
- ...t,
+ const payload = {
  description: templateForm.description,
  defaultAmount: amountNum,
  bankId: templateForm.bankId,
  vendorId: templateForm.vendorId,
  taxSlabId: templateForm.taxSlabId,
  isActive: templateForm.isActive
- } : t);
- triggerSuccess('Recurring template updated successfully.');
- } else {
- const newTemplate: RecurringExpenseTemplate = {
- id: generateId(),
- description: templateForm.description,
- defaultAmount: amountNum,
- bankId: templateForm.bankId,
- vendorId: templateForm.vendorId,
- taxSlabId: templateForm.taxSlabId,
- isActive: templateForm.isActive,
- companyId: db.selectedCompanyId
  };
- updatedTemplates.push(newTemplate);
- triggerSuccess('New recurring template created successfully.');
+
+ try {
+ const res = editingTemplate
+ ? await fetch(`/api/transactions/recurring-templates/${editingTemplate.id}`, {
+ method: 'PUT',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify(payload)
+ })
+ : await fetch('/api/transactions/recurring-templates', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify(payload)
+ });
+ const data = await res.json();
+ if (!res.ok || data.error) {
+ triggerError(data.error || t('Failed to save recurring template.'));
+ return;
  }
-
- const updatedDb = {
- ...db,
- recurringTemplates: updatedTemplates
- };
-
- 
- onUpdateDb(updatedDb);
-
+ triggerSuccess(editingTemplate ? t('Recurring template updated successfully.') : t('New recurring template created successfully.'));
+ if (onRefreshDb) await onRefreshDb();
  setEditingTemplate(null);
  setIsAddingTemplate(false);
+ } catch (err: any) {
+ triggerError(err?.message || t('An error occurred while saving the template.'));
+ }
  };
 
  // Start editing accrual
@@ -233,50 +229,55 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  };
 
  // Save accrual edit
- const handleSaveAccrual = (e: React.FormEvent) => {
+ const handleSaveAccrual = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!editingAccrual) return;
 
  const amountNum = parseFloat(accrualForm.amount);
- if (isNaN(amountNum) || amountNum <= 0) return triggerError('Please enter a valid amount.');
+ if (isNaN(amountNum) || amountNum <= 0) return triggerError(t('Please enter a valid amount.'));
 
- const updatedExpenses = db.expenses.map(exp => exp.id === editingAccrual.id ? {
- ...exp,
+ try {
+ const res = await fetch(`/api/transactions/accruals/${editingAccrual.id}`, {
+ method: 'PUT',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({
  description: accrualForm.description,
  amount: amountNum,
  vendorId: accrualForm.vendorId,
  bankId: accrualForm.bankId,
  date: accrualForm.date,
  taxSlabId: accrualForm.taxSlabId
- } : exp);
-
- const updatedDb = {
- ...db,
- expenses: updatedExpenses
- };
-
- 
- onUpdateDb(updatedDb);
- triggerSuccess('Accrual entry updated successfully.');
+ })
+ });
+ const data = await res.json();
+ if (!res.ok || data.error) {
+ triggerError(data.error || t('Failed to update accrual entry.'));
+ return;
+ }
+ triggerSuccess(t('Accrual entry updated successfully.'));
+ if (onRefreshDb) await onRefreshDb();
  setEditingAccrual(null);
+ } catch (err: any) {
+ triggerError(err?.message || t('An error occurred while updating the accrual.'));
+ }
  };
 
  // Delete accrual
- const handleDeleteAccrual = (id: string) => {
- if (!window.confirm('Are you sure you want to delete this accrual entry? This will delete the accrual liability and associated postings.')) return;
+ const handleDeleteAccrual = async (id: string) => {
+ if (!window.confirm(t('Are you sure you want to delete this accrual entry? This will delete the accrual liability and associated postings.'))) return;
 
- const updatedExpenses = db.expenses.filter(exp => exp.id !== id);
- const updatedPostings = db.recurringPostings.filter(post => post.expenseId !== id);
-
- const updatedDb = {
- ...db,
- expenses: updatedExpenses,
- recurringPostings: updatedPostings
- };
-
- 
- onUpdateDb(updatedDb);
- triggerSuccess('Accrual entry deleted successfully.');
+ try {
+ const res = await fetch(`/api/transactions/accruals/${id}`, { method: 'DELETE' });
+ const data = await res.json();
+ if (!res.ok || data.error) {
+ triggerError(data.error || t('Failed to delete accrual entry.'));
+ return;
+ }
+ triggerSuccess(t('Accrual entry deleted successfully.'));
+ if (onRefreshDb) await onRefreshDb();
+ } catch (err: any) {
+ triggerError(err?.message || t('An error occurred while deleting the accrual.'));
+ }
  };
 
  // Helper to find posting status for a template in the current open month
@@ -294,14 +295,14 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  return { status: 'Unposted', expenseId: null };
  };
 
- const handleInitiatePost = (t: RecurringExpenseTemplate) => {
- if (!openMonth) return triggerError('Please open a fiscal month first.');
- setPostingTemplate(t);
+ const handleInitiatePost = (tmpl: RecurringExpenseTemplate) => {
+ if (!openMonth) return triggerError(t('Please open a fiscal month first.'));
+ setPostingTemplate(tmpl);
  setPostForm({
- amount: t.defaultAmount.toString(),
+ amount: tmpl.defaultAmount.toString(),
  date: `${openMonth.id}-28`, // default to late in the month
  paymentStatus: 'Paid',
- bankId: t.bankId || db.banks.find(b => b.isDefault)?.id || db.banks[0]?.id || ''
+ bankId: tmpl.bankId || db.banks.find(b => b.isDefault)?.id || db.banks[0]?.id || ''
  });
  };
 
@@ -310,7 +311,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  if (!postingTemplate || !openMonth) return;
 
  const amountNum = parseFloat(postForm.amount);
- if (isNaN(amountNum) || amountNum <= 0) return triggerError('Please enter a valid expense amount.');
+ if (isNaN(amountNum) || amountNum <= 0) return triggerError(t('Please enter a valid expense amount.'));
 
  try {
    const res = await fetch('/api/transactions/recurring-postings', {
@@ -328,21 +329,21 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
    });
    const data = await res.json();
    if (!res.ok || data.error) {
-     triggerError(data.error || 'Failed to post recurring expense.');
+     triggerError(data.error || t('Failed to post recurring expense.'));
    } else {
-     triggerSuccess(`Successfully posted recurring template "${postingTemplate.description}" as ${postType}.`);
+     triggerSuccess(`${t('Successfully posted recurring template')} "${postingTemplate.description}" ${t('as')} ${t(postType)}.`);
      if (onRefreshDb) {
        await onRefreshDb();
      }
      setPostingTemplate(null);
    }
  } catch (err: any) {
-   triggerError(err.message || 'An error occurred while posting recurring expense.');
+   triggerError(err.message || t('An error occurred while posting recurring expense.'));
  }
  };
 
  const handleInitiateSettle = (accrual: Expense) => {
- if (!openMonth) return triggerError('Please open a fiscal month first.');
+ if (!openMonth) return triggerError(t('Please open a fiscal month first.'));
  setSettlingAccrual(accrual);
  setSettleForm({
  amount: accrual.amount.toString(),
@@ -357,7 +358,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  if (!settlingAccrual) return;
 
  const amountNum = parseFloat(settleForm.amount);
- if (isNaN(amountNum) || amountNum <= 0) return triggerError('Please enter a valid actual amount.');
+ if (isNaN(amountNum) || amountNum <= 0) return triggerError(t('Please enter a valid actual amount.'));
 
  try {
    const res = await fetch('/api/transactions/settle-accrual', {
@@ -373,16 +374,16 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
    });
    const data = await res.json();
    if (!res.ok || data.error) {
-     triggerError(data.error || 'Failed to settle accrual expense.');
+     triggerError(data.error || t('Failed to settle accrual expense.'));
    } else {
-     triggerSuccess('Accrual settled successfully and Actual Expense generated.');
+     triggerSuccess(t('Accrual settled successfully and Actual Expense generated.'));
      if (onRefreshDb) {
        await onRefreshDb();
      }
      setSettlingAccrual(null);
    }
  } catch (err: any) {
-   triggerError(err.message || 'An error occurred while settling accrual.');
+   triggerError(err.message || t('An error occurred while settling accrual.'));
  }
  };
 
@@ -417,7 +418,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  }`}
  >
  <Sliders className="w-3.5 h-3.5" />
- Month Postings & Settle
+ {t('Month Postings & Settle')}
  </button>
  <button
  onClick={() => setSubTab('templates')}
@@ -428,7 +429,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  }`}
  >
  <Settings className="w-3.5 h-3.5" />
- Manage Templates
+ {t('Manage Templates')}
  </button>
  <button
  onClick={() => setSubTab('accruals')}
@@ -439,7 +440,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  }`}
  >
  <FileText className="w-3.5 h-3.5" />
- Manage Accrual Entries
+ {t('Manage Accrual Entries')}
  </button>
  </div>
 
@@ -456,14 +457,14 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  </div>
  <p className="text-xs text-indigo-700 mt-1">
  {openMonth ? (
- <span>Currently Open Month: <strong>{openMonth.name} ({openMonth.id})</strong></span>
+ <span>{t('Currently Open Month:')} <strong>{translateMonthLabel(openMonth.name, t)} ({openMonth.id})</strong></span>
  ) : (
- <span className="text-rose-600 font-bold flex items-center gap-1"><AlertTriangle className="w-4 h-4" /> NO FISCAL PERIOD OPEN</span>
+ <span className="text-rose-600 font-bold flex items-center gap-1"><AlertTriangle className="w-4 h-4" /> {t('NO FISCAL PERIOD OPEN')}</span>
  )}
  </p>
  </div>
  <div className="text-xs text-slate-500 max-w-md">
- Active recurring templates are <strong>mandatory</strong> to be posted (as Actual or Accrual) before the fiscal month can be successfully closed.
+ {t('Active recurring templates are')} <strong>{t('mandatory')}</strong> {t('to be posted (as Actual or Accrual) before the fiscal month can be successfully closed.')}
  </div>
  </div>
 
@@ -471,11 +472,11 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
  <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
  <div>
- <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Active Recurring Expense Templates ({activeTemplates.length})</h4>
+ <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">{t('Active Recurring Expense Templates')} ({activeTemplates.length})</h4>
  <div className="flex items-center gap-2 mt-0.5">
- <p className="text-[10px] text-slate-400">Post salaries, rent, and software licenses for {openMonth?.name || 'open month'}</p>
+ <p className="text-[10px] text-slate-400">{t('Post salaries, rent, and software licenses for')} {openMonth ? translateMonthLabel(openMonth.name, t) : t('open month')}</p>
  <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded uppercase">
- 🏢 Scoped: {db.companySetup?.name}
+ 🏢 {t('Scoped:')} {db.companySetup?.name}
  </span>
  </div>
  </div>
@@ -484,21 +485,21 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  <div className="divide-y divide-slate-100 ">
  {activeTemplates.length === 0 ? (
  <div className="p-8 text-center text-slate-400 text-xs">
- No active recurring expense templates found. Define templates in Settings first.
+ {t('No active recurring expense templates found. Define templates in Settings first.')}
  </div>
  ) : (
- activeTemplates.map(t => {
- const posting = getPostingStatus(t.id);
+ activeTemplates.map(tmpl => {
+ const posting = getPostingStatus(tmpl.id);
  const isUnposted = posting.status === 'Unposted';
- 
+
  return (
- <div key={t.id} className="p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:bg-slate-50/20 transition">
+ <div key={tmpl.id} className="p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:bg-slate-50/20 transition">
  <div>
- <span className="text-xs font-bold text-slate-900 ">{t.description}</span>
+ <span className="text-xs font-bold text-slate-900 ">{tmpl.description}</span>
  <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-slate-400">
- <span>Default Cost: <strong>{currencySymbol} {t.defaultAmount.toFixed(2)}</strong></span>
+ <span>{t('Default Cost:')} <strong>{currencySymbol} {tmpl.defaultAmount.toFixed(2)}</strong></span>
  <span>•</span>
- <span>Default Account: <strong>{db.banks.find(b => b.id === t.bankId)?.bankName || 'Default'}</strong></span>
+ <span>{t('Default Account:')} <strong>{db.banks.find(b => b.id === tmpl.bankId)?.bankName || t('Default')}</strong></span>
  </div>
  </div>
 
@@ -512,15 +513,15 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  {posting.status === 'Posted as Actual' && <Check className="w-3 h-3" />}
  {posting.status === 'Posted as Accrual' && <Zap className="w-3 h-3" />}
  {posting.status === 'Accrual Settled' && <ShieldCheck className="w-3 h-3" />}
- <span>{posting.status}</span>
+ <span>{t(posting.status)}</span>
  </span>
 
  {openMonth && isUnposted && (
  <button
- onClick={() => handleInitiatePost(t)}
+ onClick={() => handleInitiatePost(tmpl)}
  className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-0.5 shadow-sm cursor-pointer"
  >
- Post Expense
+ {t('Post Expense')}
  </button>
  )}
  </div>
@@ -535,15 +536,15 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
  <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
  <div>
- <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Unsettled Accrual Ledger Entries ({unsettledAccruals.length})</h4>
- <p className="text-[10px] text-slate-400">Past accruals awaiting actual billing invoices and cash payments</p>
+ <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">{t('Unsettled Accrual Ledger Entries')} ({unsettledAccruals.length})</h4>
+ <p className="text-[10px] text-slate-400">{t('Past accruals awaiting actual billing invoices and cash payments')}</p>
  </div>
  </div>
 
  <div className="divide-y divide-slate-100 ">
  {unsettledAccruals.length === 0 ? (
  <div className="p-6 text-center text-slate-400 text-xs">
- 🎉 No outstanding accruals to settle.
+ 🎉 {t('No outstanding accruals to settle.')}
  </div>
  ) : (
  unsettledAccruals.map(acc => {
@@ -553,11 +554,11 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  <div>
  <span className="text-xs font-bold text-slate-800 ">{acc.description}</span>
  <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-slate-400">
- <span>Accrued Amount: <strong>{currencySymbol} {acc.amount.toFixed(2)}</strong></span>
+ <span>{t('Accrued Amount:')} <strong>{currencySymbol} {acc.amount.toFixed(2)}</strong></span>
  <span>•</span>
- <span>Period: <strong>{acc.date}</strong></span>
+ <span>{t('Period:')} <strong>{acc.date}</strong></span>
  <span>•</span>
- <span>Vendor: <strong>{vendor?.name || 'Cash Vendor'}</strong></span>
+ <span>{t('Vendor:')} <strong>{vendor?.name || t('Cash Vendor')}</strong></span>
  </div>
  </div>
 
@@ -566,7 +567,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  onClick={() => handleInitiateSettle(acc)}
  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-sm cursor-pointer"
  >
- Settle Accrual <ArrowRight className="w-3.5 h-3.5" />
+ {t('Settle Accrual')} <ArrowRight className="w-3.5 h-3.5" />
  </button>
  )}
  </div>
@@ -583,71 +584,71 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
  <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
  <div>
- <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">All Recurring Expense Templates ({allTemplates.length})</h4>
- <p className="text-[10px] text-slate-400 mt-0.5">Define active recurring workflows or deactivate temporarily so they don't block month closing</p>
+ <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">{t('All Recurring Expense Templates')} ({allTemplates.length})</h4>
+ <p className="text-[10px] text-slate-400 mt-0.5">{t("Define active recurring workflows or deactivate temporarily so they don't block month closing")}</p>
  </div>
  <button
  onClick={handleStartAddTemplate}
  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 shadow-sm cursor-pointer"
  >
- <Plus className="w-3.5 h-3.5" /> Add Template
+ <Plus className="w-3.5 h-3.5" /> {t('Add Template')}
  </button>
  </div>
 
  <div className="divide-y divide-slate-100 ">
  {allTemplates.length === 0 ? (
  <div className="p-8 text-center text-slate-400 text-xs">
- No recurring templates. Create one to automate standard operations!
+ {t('No recurring templates. Create one to automate standard operations!')}
  </div>
  ) : (
- allTemplates.map(t => {
- const vendor = db.vendors.find(v => v.id === t.vendorId);
- const bank = db.banks.find(b => b.id === t.bankId);
- const taxSlab = db.taxSlabs.find(ts => ts.id === t.taxSlabId);
- 
+ allTemplates.map(tmpl => {
+ const vendor = db.vendors.find(v => v.id === tmpl.vendorId);
+ const bank = db.banks.find(b => b.id === tmpl.bankId);
+ const taxSlab = db.taxSlabs.find(ts => ts.id === tmpl.taxSlabId);
+
  return (
- <div key={t.id} className="p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:bg-slate-50/20 transition">
+ <div key={tmpl.id} className="p-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:bg-slate-50/20 transition">
  <div className="space-y-1 font-sans">
  <div className="flex items-center gap-2">
- <span className="text-xs font-bold text-slate-900 ">{t.description}</span>
+ <span className="text-xs font-bold text-slate-900 ">{tmpl.description}</span>
  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide ${
- t.isActive ? 'bg-emerald-100 text-emerald-800 ' : 'bg-slate-100 text-slate-800 '
+ tmpl.isActive ? 'bg-emerald-100 text-emerald-800 ' : 'bg-slate-100 text-slate-800 '
  }`}>
- {t.isActive ? 'Active' : 'Inactive'}
+ {tmpl.isActive ? t('Active') : t('Inactive')}
  </span>
  </div>
  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-400 font-mono">
- <span>Default Cost: <strong className="text-slate-700 ">{currencySymbol} {t.defaultAmount.toFixed(2)}</strong></span>
+ <span>{t('Default Cost:')} <strong className="text-slate-700 ">{currencySymbol} {tmpl.defaultAmount.toFixed(2)}</strong></span>
  <span>•</span>
- <span>Account: <strong className="text-slate-700 ">{bank?.bankName || 'Default'}</strong></span>
+ <span>{t('Account:')} <strong className="text-slate-700 ">{bank?.bankName || t('Default')}</strong></span>
  <span>•</span>
- <span>Vendor: <strong className="text-slate-700 ">{vendor?.name || 'Cash Vendor'}</strong></span>
+ <span>{t('Vendor:')} <strong className="text-slate-700 ">{vendor?.name || t('Cash Vendor')}</strong></span>
  <span>•</span>
- <span>Tax Slab: <strong className="text-slate-700 ">{taxSlab?.name || 'No Tax'}</strong></span>
+ <span>{t('Tax Slab:')} <strong className="text-slate-700 ">{taxSlab?.name || t('No Tax')}</strong></span>
  </div>
  </div>
 
  <div className="flex items-center gap-2 shrink-0">
  {/* Toggle active state */}
  <button
- onClick={() => handleToggleTemplateActive(t)}
- title={t.isActive ? 'Deactivate template' : 'Activate template'}
+ onClick={() => handleToggleTemplateActive(tmpl)}
+ title={tmpl.isActive ? t('Deactivate template') : t('Activate template')}
  className={`p-1.5 rounded-lg border transition cursor-pointer ${
- t.isActive 
- ? 'bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100 ' 
+ tmpl.isActive
+ ? 'bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100 '
  : 'bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100 '
  }`}
  >
- {t.isActive ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
+ {tmpl.isActive ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
  </button>
  <button
- onClick={() => handleStartEditTemplate(t)}
+ onClick={() => handleStartEditTemplate(tmpl)}
  className="p-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-xs font-bold transition cursor-pointer animate-none"
  >
  <Edit2 className="w-3.5 h-3.5" />
  </button>
  <button
- onClick={() => handleDeleteTemplate(t.id)}
+ onClick={() => handleDeleteTemplate(tmpl.id)}
  className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-100 :bg-rose-950/40 rounded-lg text-xs font-bold transition cursor-pointer"
  >
  <Trash2 className="w-3.5 h-3.5" />
@@ -666,14 +667,14 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  <div className="space-y-6 animate-in fade-in duration-200">
  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
  <div className="p-4 border-b border-slate-100 bg-slate-50/50">
- <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">All Active Accrual Entries ({db.expenses.filter(e => e.type === 'Accrual' && e.status === 'Active').length})</h4>
- <p className="text-[10px] text-slate-400 mt-0.5">Review, correct, or delete any generated accrual liability records before they are settled</p>
+ <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">{t('All Active Accrual Entries')} ({db.expenses.filter(e => e.type === 'Accrual' && e.status === 'Active').length})</h4>
+ <p className="text-[10px] text-slate-400 mt-0.5">{t('Review, correct, or delete any generated accrual liability records before they are settled')}</p>
  </div>
 
  <div className="divide-y divide-slate-100 ">
  {db.expenses.filter(e => e.type === 'Accrual' && e.status === 'Active').length === 0 ? (
  <div className="p-8 text-center text-slate-400 text-xs">
- No active accrual entries found.
+ {t('No active accrual entries found.')}
  </div>
  ) : (
  db.expenses.filter(e => e.type === 'Accrual' && e.status === 'Active').map(acc => {
@@ -690,22 +691,22 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  </span>
  {acc.accrualSettled ? (
  <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800 ">
- Settled
+ {t('Settled')}
  </span>
  ) : (
  <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide bg-amber-100 text-amber-800 font-extrabold">
- Outstanding Accrual
+ {t('Outstanding Accrual')}
  </span>
  )}
  </div>
  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-400">
- <span>Amount: <strong className="text-slate-700 ">{currencySymbol} {acc.amount.toFixed(2)}</strong></span>
+ <span>{t('Amount:')} <strong className="text-slate-700 ">{currencySymbol} {acc.amount.toFixed(2)}</strong></span>
  <span>•</span>
- <span>Date: <strong className="text-slate-700 ">{acc.date}</strong></span>
+ <span>{t('Date:')} <strong className="text-slate-700 ">{acc.date}</strong></span>
  <span>•</span>
- <span>Vendor: <strong className="text-slate-700 ">{vendor?.name || 'Cash Vendor'}</strong></span>
+ <span>{t('Vendor:')} <strong className="text-slate-700 ">{vendor?.name || t('Cash Vendor')}</strong></span>
  <span>•</span>
- <span>Accrued Bank: <strong className="text-slate-700 ">{bank?.bankName || 'Default'}</strong></span>
+ <span>{t('Accrued Bank:')} <strong className="text-slate-700 ">{bank?.bankName || t('Default')}</strong></span>
  </div>
  </div>
 
@@ -715,7 +716,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  onClick={() => handleStartEditAccrual(acc)}
  className="px-2.5 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
  >
- <Edit2 className="w-3.5 h-3.5" /> Edit
+ <Edit2 className="w-3.5 h-3.5" /> {t('Edit')}
  </button>
  )}
  <button
@@ -750,15 +751,15 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  <XCircle className="w-5 h-5" />
  </button>
  </div>
- <p className="text-xs text-slate-400 mb-4">Define a template for monthly ledger items (e.g. Workshop rent, system power bills)</p>
+ <p className="text-xs text-slate-400 mb-4">{t('Define a template for monthly ledger items (e.g. Workshop rent, system power bills)')}</p>
 
  <form onSubmit={handleSaveTemplate} className="space-y-4 text-xs">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Description / Title</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Description / Title')}</label>
  <input
  type="text"
  required
- placeholder="e.g. Monthly workshop supervisor salary pool"
+ placeholder={t('e.g. Monthly workshop supervisor salary pool')}
  value={templateForm.description}
  onChange={(e) => setTemplateForm({ ...templateForm, description: e.target.value })}
  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -767,7 +768,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
 
  <div className="grid grid-cols-2 gap-3">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Default Amount ({currencySymbol})</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Default Amount')} ({currencySymbol})</label>
  <input
  type="number"
  step="0.01"
@@ -780,7 +781,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Tax Slab</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Tax Slab')}</label>
  <select
  required
  value={templateForm.taxSlabId}
@@ -794,7 +795,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Vendor</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Vendor')}</label>
  <select
  required
  value={templateForm.vendorId}
@@ -808,7 +809,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Bank Account</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Bank Account')}</label>
  <select
  required
  value={templateForm.bankId}
@@ -830,7 +831,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
  />
  <label htmlFor="template-active" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
- Is Active Template (Required to post for month closing)
+ {t('Is Active Template (Required to post for month closing)')}
  </label>
  </div>
  </div>
@@ -841,13 +842,13 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  onClick={() => setIsAddingTemplate(false)}
  className="px-3 py-1.5 bg-slate-100 text-slate-500 rounded-lg text-xs font-semibold hover:bg-slate-200 transition cursor-pointer"
  >
- Cancel
+ {t('Cancel')}
  </button>
  <button
  type="submit"
  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition shadow-sm cursor-pointer"
  >
- Save Template
+ {t('Save Template')}
  </button>
  </div>
  </form>
@@ -869,11 +870,11 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  <XCircle className="w-5 h-5" />
  </button>
  </div>
- <p className="text-xs text-slate-400 mb-4">Modify the liability description or amount of this active accrual ledger item ({editingAccrual.expenseNumber})</p>
+ <p className="text-xs text-slate-400 mb-4">{t('Modify the liability description or amount of this active accrual ledger item')} ({editingAccrual.expenseNumber})</p>
 
  <form onSubmit={handleSaveAccrual} className="space-y-4 text-xs">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Description</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Description')}</label>
  <input
  type="text"
  required
@@ -885,7 +886,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
 
  <div className="grid grid-cols-2 gap-3">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Accrual Amount ({currencySymbol})</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Accrual Amount')} ({currencySymbol})</label>
  <input
  type="number"
  step="0.01"
@@ -897,7 +898,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Accrual Date</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Accrual Date')}</label>
  <input
  type="date"
  required
@@ -908,7 +909,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Vendor</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Vendor')}</label>
  <select
  required
  value={accrualForm.vendorId}
@@ -922,7 +923,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Bank Account</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Bank Account')}</label>
  <select
  required
  value={accrualForm.bankId}
@@ -942,13 +943,13 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  onClick={() => setEditingAccrual(null)}
  className="px-3 py-1.5 bg-slate-100 text-slate-500 rounded-lg text-xs font-semibold hover:bg-slate-200 transition cursor-pointer"
  >
- Cancel
+ {t('Cancel')}
  </button>
  <button
  type="submit"
  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition shadow-sm cursor-pointer"
  >
- Save Changes
+ {t('Save Changes')}
  </button>
  </div>
  </form>
@@ -966,7 +967,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  <form onSubmit={handlePostRecurring} className="space-y-4 text-xs">
  {/* Type Switch */}
  <div className="space-y-1.5">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Posting Category</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Posting Category')}</label>
  <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
  <button
  type="button"
@@ -975,7 +976,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  postType === 'Actual' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 :text-slate-300'
  }`}
  >
- Actual Expense
+ {t('Actual Expense')}
  </button>
  <button
  type="button"
@@ -984,20 +985,20 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  postType === 'Accrual' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 :text-slate-300'
  }`}
  >
- Accrual Entry
+ {t('Accrual Entry')}
  </button>
  </div>
  <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
- {postType === 'Actual' 
- ? 'Generates a live expense record. If status is Paid, it automatically generates a Bank Payment Voucher.'
- : 'Records expense liability without cash flow. Accruals satisfy closure checks but do not generate a bank voucher.'
+ {postType === 'Actual'
+ ? t('Generates a live expense record. If status is Paid, it automatically generates a Bank Payment Voucher.')
+ : t('Records expense liability without cash flow. Accruals satisfy closure checks but do not generate a bank voucher.')
  }
  </p>
  </div>
 
  <div className="grid grid-cols-2 gap-3">
  <div className="space-y-1 col-span-2">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Amount ({currencySymbol})</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Amount')} ({currencySymbol})</label>
  <input
  type="number"
  step="0.01"
@@ -1009,7 +1010,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Posting Date</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Posting Date')}</label>
  <input
  type="date"
  required
@@ -1020,7 +1021,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Payment Bank Account</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Payment Bank Account')}</label>
  <select
  required
  disabled={postType === 'Accrual'}
@@ -1036,7 +1037,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
 
  {postType === 'Actual' && (
  <div className="col-span-2 space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Payment Status</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Payment Status')}</label>
  <div className="flex gap-4 p-1">
  <label className="flex items-center gap-1.5 cursor-pointer ">
  <input
@@ -1045,7 +1046,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  checked={postForm.paymentStatus === 'Paid'}
  onChange={() => setPostForm({ ...postForm, paymentStatus: 'Paid' })}
  />
- <span>Paid (triggers Payment Voucher)</span>
+ <span>{t('Paid (triggers Payment Voucher)')}</span>
  </label>
  <label className="flex items-center gap-1.5 cursor-pointer ">
  <input
@@ -1054,7 +1055,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  checked={postForm.paymentStatus === 'Unpaid'}
  onChange={() => setPostForm({ ...postForm, paymentStatus: 'Unpaid' })}
  />
- <span>Pending</span>
+ <span>{t('Pending')}</span>
  </label>
  </div>
  </div>
@@ -1067,13 +1068,13 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  onClick={() => setPostingTemplate(null)}
  className="px-3 py-1.5 bg-slate-100 text-slate-500 rounded-lg text-xs font-semibold hover:bg-slate-200 transition cursor-pointer"
  >
- Cancel
+ {t('Cancel')}
  </button>
  <button
  type="submit"
  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold transition shadow-sm cursor-pointer"
  >
- Post to Ledger
+ {t('Post to Ledger')}
  </button>
  </div>
  </form>
@@ -1086,12 +1087,12 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex justify-center items-center p-4 overflow-y-auto">
  <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl p-6 w-full max-w-md my-auto animate-in fade-in zoom-in-95 duration-100">
  <h3 className="font-bold text-sm text-slate-900 mb-1">{t('Settle Accrual Liability')}</h3>
- <p className="text-xs text-slate-400 mb-4">Prior accrual: {settlingAccrual.description} ({currencySymbol} {settlingAccrual.amount.toFixed(2)})</p>
+ <p className="text-xs text-slate-400 mb-4">{t('Prior accrual:')} {settlingAccrual.description} ({currencySymbol} {settlingAccrual.amount.toFixed(2)})</p>
 
  <form onSubmit={handleSettleAccrual} className="space-y-4 text-xs">
  <div className="grid grid-cols-2 gap-3">
  <div className="space-y-1 col-span-2">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Actual Bill Invoice Amount ({currencySymbol})</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Actual Bill Invoice Amount')} ({currencySymbol})</label>
  <input
  type="number"
  step="0.01"
@@ -1103,7 +1104,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Actual Settlement Date</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Actual Settlement Date')}</label>
  <input
  type="date"
  required
@@ -1114,7 +1115,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Select Bank</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Select Bank')}</label>
  <select
  required
  value={settleForm.bankId}
@@ -1128,7 +1129,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  </div>
 
  <div className="col-span-2 space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">Settlement Payment Status</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Settlement Payment Status')}</label>
  <div className="flex gap-4 p-1">
  <label className="flex items-center gap-1.5 cursor-pointer ">
  <input
@@ -1137,7 +1138,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  checked={settleForm.paymentStatus === 'Paid'}
  onChange={() => setSettleForm({ ...settleForm, paymentStatus: 'Paid' })}
  />
- <span>Paid (posts cash out voucher now)</span>
+ <span>{t('Paid (posts cash out voucher now)')}</span>
  </label>
  <label className="flex items-center gap-1.5 cursor-pointer ">
  <input
@@ -1146,7 +1147,7 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  checked={settleForm.paymentStatus === 'Unpaid'}
  onChange={() => setSettleForm({ ...settleForm, paymentStatus: 'Unpaid' })}
  />
- <span>Pending Actual Payment</span>
+ <span>{t('Pending Actual Payment')}</span>
  </label>
  </div>
  </div>
@@ -1158,13 +1159,13 @@ export default function RecurringExpenses({ db, onUpdateDb, onRefreshDb }: Recur
  onClick={() => setSettlingAccrual(null)}
  className="px-3 py-1.5 bg-slate-100 text-slate-500 rounded-lg text-xs font-semibold hover:bg-slate-200 transition cursor-pointer"
  >
- Cancel
+ {t('Cancel')}
  </button>
  <button
  type="submit"
  className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold transition shadow-sm cursor-pointer"
  >
- Settle Accrual
+ {t('Settle Accrual')}
  </button>
  </div>
  </form>
