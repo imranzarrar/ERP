@@ -15,7 +15,7 @@ import {
  AlertTriangle,
  Lock,
  Edit2
-, X, FolderKanban, Scaling, MapPin } from 'lucide-react';
+, X, FolderKanban, Scaling, MapPin, Package } from 'lucide-react';
 
 interface MasterEntitiesProps {
  db: DatabaseState;
@@ -92,7 +92,13 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
  // Standard (B2B) invoices need a full, verifiable buyer identity for a valid
  // AccountingCustomerParty; Simplified (B2C) only needs a name (see
  // server/lib/zatca/validators.ts's validateBuyerFields, which this mirrors).
- const [buyerType, setBuyerType] = React.useState<'B2B' | 'B2C'>('B2B');
+ // Defaults to B2C — the safer default for a brand-new customer record: a wrongly-B2C
+ // customer just submits as a valid Simplified invoice, while a wrongly-B2B one (the old
+ // default) silently blocks ZATCA submission entirely until someone notices and fills in
+ // a full VAT/address identity. Real incident: several companies' "Walk-in Customer" —
+ // a retail/anonymous buyer by definition — ended up B2B this way, with no VAT/address
+ // data, and any invoice against them was rejected pre-submission (BUYER_INCOMPLETE).
+ const [buyerType, setBuyerType] = React.useState<'B2B' | 'B2C'>('B2C');
  const [zatcaVatNumber, setZatcaVatNumber] = React.useState('');
  const [zatcaStreetName, setZatcaStreetName] = React.useState('');
  const [zatcaBuildingNumber, setZatcaBuildingNumber] = React.useState('');
@@ -140,6 +146,16 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
   const [whCode, setWhCode] = React.useState('');
   const [whAddress, setWhAddress] = React.useState('');
   const [whIsActive, setWhIsActive] = React.useState(true);
+  // Which branch this warehouse belongs to — GRN/Purchase Returns/Physical Stock Takes
+  // have no branchId column of their own; their branch is derived via this join.
+  const [whBranchId, setWhBranchId] = React.useState('');
+  // 'sales' (default, a location a sale can be attributed to/deducted from) vs 'backend'
+  // (distribution/storage only — never itself a sale's source, see warehouses.type's
+  // schema comment). isCompanyDefault is undefined until the user explicitly touches it
+  // on an edit, so the server's own "preserve unless explicitly sent" logic applies —
+  // see the warehouse route's comment for why that matters.
+  const [whType, setWhType] = React.useState<'sales' | 'backend'>('sales');
+  const [whIsCompanyDefault, setWhIsCompanyDefault] = React.useState(false);
 
   // Warehouses list for editing product
   const [activeProductWarehouses, setActiveProductWarehouses] = React.useState<any[]>([]);
@@ -149,6 +165,15 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
   const [addPwMax, setAddPwMax] = React.useState('');
   const [addPwLeadTime, setAddPwLeadTime] = React.useState('');
 
+  // Packaging/alternate units (e.g. "Carton-12") for the product being edited — see
+  // ProductUnitConversion's comment in src/types.ts for the full model.
+  const [addPucUnitId, setAddPucUnitId] = React.useState('');
+  const [addPucFactor, setAddPucFactor] = React.useState('');
+  const [addPucBarcode, setAddPucBarcode] = React.useState('');
+  const [addPucSku, setAddPucSku] = React.useState('');
+  const [addPucPurchasePrice, setAddPucPurchasePrice] = React.useState('');
+  const [addPucSalePrice, setAddPucSalePrice] = React.useState('');
+
  const clearForm = () => {
  setEditingId(null);
  setName('');
@@ -156,7 +181,7 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
  setPhone('');
  setAddress('');
  setTaxRegNumber('');
- setBuyerType('B2B');
+ setBuyerType('B2C');
  setZatcaVatNumber('');
  setZatcaStreetName('');
  setZatcaBuildingNumber('');
@@ -180,6 +205,12 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
     setProdMinLevel('');
     setProdMaxLevel('');
     setProdReorderLeadTime('');
+    setAddPucUnitId('');
+    setAddPucFactor('');
+    setAddPucBarcode('');
+    setAddPucSku('');
+    setAddPucPurchasePrice('');
+    setAddPucSalePrice('');
     setCatName('');
     setCatParentId('');
     setCatSalesGl('4000 - Product Sales');
@@ -191,6 +222,9 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
     setWhCode('');
     setWhAddress('');
     setWhIsActive(true);
+    setWhBranchId('');
+    setWhType('sales');
+    setWhIsCompanyDefault(false);
     setActiveProductWarehouses([]);
     setAddPwWarehouseId('');
     setAddPwBin('');
@@ -661,7 +695,14 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
       code: whCode.trim(),
       address: whAddress.trim() || null,
       isActive: whIsActive,
-      companyId: db.selectedCompanyId
+      companyId: db.selectedCompanyId,
+      branchId: whBranchId || null,
+      type: whType,
+      // Omitted entirely (not even `false`) when creating a new warehouse and the
+      // checkbox was left unchecked — lets the server auto-default a company's very
+      // first warehouse. On an edit, always sent explicitly so an admin can un-default
+      // one warehouse in favor of another.
+      isCompanyDefault: editingId ? whIsCompanyDefault : (whIsCompanyDefault ? true : undefined),
     };
 
     try {
@@ -770,6 +811,67 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
     }
   };
 
+  // Handlers - Product Unit Conversions (packaging/alternate units)
+  const clearUnitConversionForm = () => {
+    setAddPucUnitId('');
+    setAddPucFactor('');
+    setAddPucBarcode('');
+    setAddPucSku('');
+    setAddPucPurchasePrice('');
+    setAddPucSalePrice('');
+  };
+
+  const handleAddUnitConversion = async (productId: string) => {
+    if (!productId) return triggerError('No product selected.');
+    if (!addPucUnitId) return triggerError('Please select a unit of measure.');
+    const factor = parseFloat(addPucFactor);
+    if (!factor || factor <= 0) return triggerError('Conversion factor must be a positive number.');
+
+    const conversionData = {
+      productId,
+      unitOfMeasureId: addPucUnitId,
+      conversionFactor: String(factor),
+      barcode: addPucBarcode.trim() || null,
+      sku: addPucSku.trim() || null,
+      purchasePrice: addPucPurchasePrice ? String(parseFloat(addPucPurchasePrice)) : null,
+      salePrice: addPucSalePrice ? String(parseFloat(addPucSalePrice)) : null,
+    };
+
+    try {
+      const res = await fetch('/api/product-unit-conversions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(conversionData)
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        return triggerError(errData.error || 'Failed to save packaging unit.');
+      }
+      triggerSuccess('Packaging unit added successfully.');
+      clearUnitConversionForm();
+      if (onRefreshDb) await onRefreshDb();
+    } catch (err) {
+      triggerError('Failed to save packaging unit.');
+    }
+  };
+
+  const handleToggleUnitConversionActive = async (id: string) => {
+    const puc = (db.productUnitConversions || []).find(p => p.id === id);
+    const isActive = puc?.isActive !== false;
+    if (isActive && !window.confirm(t('Deactivate this packaging unit? It will no longer be selectable on new transactions, but its history stays intact.'))) return;
+    try {
+      const res = await fetch(`/api/product-unit-conversions/${id}/toggle-active`, { method: 'PATCH' });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        return triggerError(errData.error || 'Failed to update packaging unit status.');
+      }
+      triggerSuccess(isActive ? 'Packaging unit deactivated.' : 'Packaging unit reactivated.');
+      if (onRefreshDb) await onRefreshDb();
+    } catch (err) {
+      triggerError('Failed to update packaging unit status.');
+    }
+  };
+
  const handleStartEdit = (entity: any, type: SubTab) => {
    setEditingId(entity.id);
    if (type === 'products') {
@@ -807,6 +909,9 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
      setWhCode(entity.code);
      setWhAddress(entity.address || '');
      setWhIsActive(entity.isActive ?? true);
+     setWhBranchId((entity as any).branchId || '');
+     setWhType(((entity as any).type === 'backend') ? 'backend' : 'sales');
+     setWhIsCompanyDefault((entity as any).isCompanyDefault === true);
    } else {
      setName(entity.name);
      setEmail(entity.email || '');
@@ -1367,6 +1472,100 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
  )}
 
+ {editingId && prodCatalogType === 'item' && (
+ <div className="bg-amber-50/50 p-3.5 rounded-xl border border-amber-100 space-y-3 mt-2">
+ <div className="text-[10px] font-extrabold text-amber-700 uppercase tracking-wider flex items-center gap-1">
+ <Package className="w-3.5 h-3.5" /> {t('Alternate / Packaging Units')}
+ </div>
+ <p className="text-[10px] text-slate-500 leading-relaxed">
+ {t('e.g. a Carton of 12 — its own barcode and price, but inventory always stays tracked in this product\'s own base unit.')}
+ </p>
+
+ {(db.productUnitConversions || []).filter(puc => puc.productId === editingId).length > 0 && (
+ <div className="bg-white rounded-lg border border-amber-100 overflow-hidden divide-y divide-amber-50">
+ {(db.productUnitConversions || []).filter(puc => puc.productId === editingId).map(puc => {
+ const uom = (db.unitsOfMeasure || []).find(u => u.id === puc.unitOfMeasureId);
+ return (
+ <div key={puc.id} className={`p-2 flex items-center justify-between text-[11px] ${puc.isActive === false ? 'opacity-50' : ''}`}>
+ <div className="space-y-0.5">
+ <div className="font-bold text-slate-700">{uom ? uom.name : t('Unknown Unit')} — 1 = {puc.conversionFactor} {t('base units')}</div>
+ <div className="text-[10px] text-slate-400 flex flex-wrap gap-x-2">
+ {puc.barcode && <span>{t('Barcode:')} {puc.barcode}</span>}
+ {puc.sku && <span>{t('SKU:')} {puc.sku}</span>}
+ {puc.purchasePrice != null && <span>{t('Buy:')} {puc.purchasePrice}</span>}
+ {puc.salePrice != null && <span>{t('Sell:')} {puc.salePrice}</span>}
+ {puc.isActive === false && <span className="text-rose-500 font-bold">{t('Inactive')}</span>}
+ </div>
+ </div>
+ <button
+ type="button"
+ onClick={() => handleToggleUnitConversionActive(puc.id)}
+ className={`p-1 ${puc.isActive === false ? 'text-emerald-600 hover:text-emerald-700' : 'text-rose-500 hover:text-rose-700'}`}
+ >
+ {puc.isActive === false ? <Check className="w-3.5 h-3.5" /> : <Trash className="w-3.5 h-3.5" />}
+ </button>
+ </div>
+ );
+ })}
+ </div>
+ )}
+
+ <div className="bg-white p-2.5 rounded-lg border border-amber-100/80 space-y-2">
+ <div className="font-bold text-amber-700 text-[10px] uppercase">{t('Add Packaging Unit')}</div>
+
+ <div className="grid grid-cols-2 gap-2">
+ <div className="space-y-0.5">
+ <label className="text-[9px] font-bold text-slate-400">{t('Unit of Measure')}</label>
+ <select
+ value={addPucUnitId}
+ onChange={(e) => setAddPucUnitId(e.target.value)}
+ className="w-full bg-white border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none"
+ >
+ <option value="">{t('-- Choose Unit --')}</option>
+ {(db.unitsOfMeasure || []).filter(u => u.isActive !== false).map(u => (
+ <option key={u.id} value={u.id}>{u.name} ({u.code})</option>
+ ))}
+ </select>
+ </div>
+ <div className="space-y-0.5">
+ <label className="text-[9px] font-bold text-slate-400">{t('1 Unit = How Many Base Units')}</label>
+ <input type="number" min="0" step="0.0001" placeholder="e.g. 12" value={addPucFactor} onChange={(e) => setAddPucFactor(e.target.value)} className="w-full bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs" />
+ </div>
+ </div>
+
+ <div className="grid grid-cols-2 gap-2">
+ <div className="space-y-0.5">
+ <label className="text-[9px] font-bold text-slate-400">{t('Barcode')}</label>
+ <input type="text" placeholder={t('This packaging\'s own barcode')} value={addPucBarcode} onChange={(e) => setAddPucBarcode(e.target.value)} className="w-full bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs" />
+ </div>
+ <div className="space-y-0.5">
+ <label className="text-[9px] font-bold text-slate-400">{t('SKU')}</label>
+ <input type="text" value={addPucSku} onChange={(e) => setAddPucSku(e.target.value)} className="w-full bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs" />
+ </div>
+ </div>
+
+ <div className="grid grid-cols-2 gap-2">
+ <div className="space-y-0.5">
+ <label className="text-[9px] font-bold text-slate-400">{t('Purchase Price')}</label>
+ <input type="number" min="0" step="0.01" placeholder={t('Independent of base price')} value={addPucPurchasePrice} onChange={(e) => setAddPucPurchasePrice(e.target.value)} className="w-full bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs" />
+ </div>
+ <div className="space-y-0.5">
+ <label className="text-[9px] font-bold text-slate-400">{t('Sale Price')}</label>
+ <input type="number" min="0" step="0.01" placeholder={t('Independent of base price')} value={addPucSalePrice} onChange={(e) => setAddPucSalePrice(e.target.value)} className="w-full bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs" />
+ </div>
+ </div>
+
+ <button
+ type="button"
+ onClick={() => handleAddUnitConversion(editingId)}
+ className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-1 rounded text-[10px] uppercase transition"
+ >
+ {t('Add Packaging Unit')}
+ </button>
+ </div>
+ </div>
+ )}
+
  <div className="space-y-4 pt-2 border-t border-slate-100">
                   <div className="flex items-center gap-2">
                     <input type="checkbox" checked={prodIsPos} onChange={(e) => setProdIsPos(e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4" />
@@ -1395,8 +1594,9 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
                           const file = e.target.files?.[0];
                           if(!file) return;
                           const activeComp = db.companies.find(c => c.id === db.selectedCompanyId);
-                          const maxSizeKB = activeComp.posSettings?.maxImageSizeKB || 500;
-                          const maxDim = activeComp.posSettings?.maxImageDimensions || 800;
+                          const maxSizeKB = activeComp.posSettings?.maxImageSizeKB || 150;
+                          const maxDim = activeComp.posSettings?.maxImageDimensions || 600;
+                          const minDim = activeComp.posSettings?.minImageDimensions || 150;
 
                           if (file.size > maxSizeKB * 1024) {
                             alert(`${t('File too large! Maximum allowed size is')} ${maxSizeKB}KB.`);
@@ -1410,6 +1610,12 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
                             img.onload = () => {
                               if (img.width > maxDim || img.height > maxDim) {
                                 alert(`${t('Image dimensions too large! Max allowed is')} ${maxDim}x${maxDim}px.`);
+                                e.target.value = '';
+                                return;
+                              }
+                              if (minDim && (img.width < minDim || img.height < minDim)) {
+                                alert(`${t('Image dimensions too small! Minimum allowed is')} ${minDim}x${minDim}px.`);
+                                e.target.value = '';
                                 return;
                               }
                               setProdImage(event.target?.result as string);
@@ -1659,6 +1865,45 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  />
  </div>
 
+ {(db.branches || []).filter(b => b.companyId === db.selectedCompanyId && b.isActive !== false).length > 0 && (
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+ {t('Branch')}{!editingId && <span className="text-rose-500"> *</span>}
+ </label>
+ <select
+ value={whBranchId}
+ onChange={(e) => setWhBranchId(e.target.value)}
+ required={!editingId}
+ className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
+ >
+ {/* A brand-new warehouse must pick a real branch once the company has any —
+     server/routes/masterEntities.ts's POST /warehouses enforces this too. An
+     existing warehouse created before that company adopted branches can still
+     show/keep "Unassigned" here rather than being forced to pick one on every
+     unrelated edit — the backfill action in the Branches tab is the intended
+     way to close that gap in bulk. */}
+ {editingId && <option value="">{t('Unassigned (shared/company-wide)')}</option>}
+ {!editingId && <option value="" disabled>{t('-- Choose Branch --')}</option>}
+ {(db.branches || []).filter(b => b.companyId === db.selectedCompanyId && b.isActive !== false).map(b => (
+ <option key={b.id} value={b.id}>{b.name}</option>
+ ))}
+ </select>
+ </div>
+ )}
+
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Warehouse Type')}</label>
+ <select
+ value={whType}
+ onChange={(e) => setWhType(e.target.value as 'sales' | 'backend')}
+ className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
+ >
+ <option value="sales">{t('Sales / Location Warehouse')}</option>
+ <option value="backend">{t('Backend / Distribution Warehouse (not sellable from)')}</option>
+ </select>
+ <p className="text-[10px] text-slate-400">{t('A sale can only be posted against a Sales warehouse. Backend warehouses receive/store stock but never appear as a sales default.')}</p>
+ </div>
+
  <div className="flex items-center gap-2 py-1.5">
  <input
  type="checkbox"
@@ -1671,6 +1916,21 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  {t('Active & Operational Location')}
  </label>
  </div>
+
+ {whType === 'sales' && (
+ <div className="flex items-center gap-2 py-1.5">
+ <input
+ type="checkbox"
+ id="whIsCompanyDefault"
+ checked={whIsCompanyDefault}
+ onChange={(e) => setWhIsCompanyDefault(e.target.checked)}
+ className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+ />
+ <label htmlFor="whIsCompanyDefault" className="text-[11px] font-bold text-slate-600 cursor-pointer select-none">
+ {t('Set as company-wide default sales warehouse')}
+ </label>
+ </div>
+ )}
 
  <div className="flex gap-2 pt-3">
  {editingId && (
@@ -2067,6 +2327,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <th className="p-4 ps-5">{t('Warehouse Code')}</th>
  <th className="p-4">{t('Warehouse Name')}</th>
  <th className="p-4">{t('Location Address')}</th>
+ <th className="p-4">{t('Type')}</th>
  <th className="p-4">{t('Status')}</th>
  {(canUpdateWarehouses || canDeleteWarehouses) && <th className="p-4 pe-5 text-end">{t('Actions')}</th>}
  </tr>
@@ -2077,8 +2338,18 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <td className="p-4 ps-5">
  <span className="font-mono font-bold bg-slate-50 border border-slate-100 text-indigo-600 rounded px-1.5 py-0.5 text-[10px]">{wh.code}</span>
  </td>
- <td className="p-4 font-bold text-slate-900">{wh.name}</td>
+ <td className="p-4 font-bold text-slate-900">
+ {wh.name}
+ {wh.isCompanyDefault && <span className="ms-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">⭐ {t('Default')}</span>}
+ </td>
  <td className="p-4 text-slate-500 font-medium">{wh.address || <span className="text-slate-350 italic">{t('No address specified')}</span>}</td>
+ <td className="p-4">
+ <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+ wh.type === 'backend' ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+ }`}>
+ {wh.type === 'backend' ? t('Backend') : t('Sales')}
+ </span>
+ </td>
  <td className="p-4">
  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
  wh.isActive !== false ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'

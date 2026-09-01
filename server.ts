@@ -15,7 +15,8 @@ const PgSession = pgSession(session);
 import { eq, sql, and, or, desc, lt, ilike, inArray } from 'drizzle-orm';
 import { db, pool } from './src/db/index.js';
 import * as schema from './src/db/schema.js';
-import { mergeRolePermissions } from './src/types.js';
+import { mergeRolePermissions, normalizePermissions } from './src/types.js';
+import { isSuperAdminUser } from './server/lib/authz.js';
 import { generateId } from './src/id.js';
 import crypto from 'crypto';
 import { recordAuditLog } from './server/lib/audit.js';
@@ -29,6 +30,9 @@ import posRouter from './server/routes/pos.js';
 import zatcaRouter from './server/routes/zatca.js';
 import inventoryRouter from './server/routes/inventory.js';
 import settingsResourcesRouter from './server/routes/settingsResources.js';
+import branchesRouter from './server/routes/branches.js';
+import taxReturnsRouter from './server/routes/taxReturns.js';
+import employeesRouter from './server/routes/employees.js';
 
 // A user's effective permissions come from every Role assigned to them (see the
 // `userRoles` junction table in src/db/schema.ts), not a per-user column — this is the
@@ -268,6 +272,56 @@ async function startServer() {
           req.targetCompanyId = req.session.companyId;
         } else {
           req.targetCompanyId = user.companyId;
+        }
+
+        // Branch (physical-location) scoping. null means "no ceiling" — sees/can act on
+        // every branch in the company (admin/super-admin/the viewAllBranches permission
+        // leaf); otherwise the exact set from userBranches, which every document-creation
+        // route validates an incoming branchId against, and which read-path scoping will
+        // filter by as that rolls out further. Deliberately fails CLOSED on any lookup
+        // error for a non-privileged user (empty array = allowed to act on nothing) rather
+        // than falling back to unrestricted — a thrown query here must never silently
+        // widen what a restricted user can see.
+        try {
+          const normalizedPerms = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+          const canViewAllBranches = isSuperAdminUser(req.user) || user.role === 'admin' || normalizedPerms?.branches?.viewAllBranches?.enabled === true;
+          if (canViewAllBranches) {
+            req.allowedBranchIds = null;
+            req.primaryBranchId = null;
+          } else {
+            const branchRows = await db.select({ branchId: schema.userBranches.branchId, isPrimary: schema.userBranches.isPrimary })
+              .from(schema.userBranches)
+              .where(eq(schema.userBranches.userId, user.id));
+            // Branch restriction is only meaningful once the company has actually adopted
+            // branches at all — the exact same "optional until adopted" rule this app
+            // already applies everywhere else (see resolveDocumentBranchId's own comment,
+            // and the mandatory-branch-once-one-exists checks in warehouses/users routes).
+            // Without this, an ordinary permission-scoped user who simply has no row in
+            // userBranches (the default for every user in a company that has never
+            // created a branch) would be resolved to an EMPTY allowedBranchIds array —
+            // and since every one of that company's documents carries branchId: null,
+            // branchAccessOk's `allowedBranchIds.includes(null)` is always false, silently
+            // locking that user out of acting on ANY document at all. Confirmed live: a
+            // permission-scoped role with no branch assignment could no longer cancel its
+            // own quotation or approve a purchase requisition the moment branch-ownership
+            // checks were added to those routes, in a company with zero branches. Only
+            // once the company has ≥1 real branch does "you have zero rows in
+            // userBranches" mean anything restrictive — before that point there is
+            // nothing to be restricted FROM.
+            const [anyBranch] = await db.select({ id: schema.branches.id }).from(schema.branches)
+              .where(eq(schema.branches.companyId, req.targetCompanyId));
+            if (!anyBranch) {
+              req.allowedBranchIds = null;
+              req.primaryBranchId = null;
+            } else {
+              req.allowedBranchIds = branchRows.map(r => r.branchId);
+              req.primaryBranchId = branchRows.find(r => r.isPrimary)?.branchId || branchRows[0]?.branchId || null;
+            }
+          }
+        } catch (err: any) {
+          console.error("[Auth] Branch resolution failed, failing closed:", err.message);
+          req.allowedBranchIds = [];
+          req.primaryBranchId = null;
         }
 
         return next();
@@ -738,6 +792,9 @@ async function startServer() {
 
   // Protected Routers
   app.use('/api', masterEntitiesRouter);
+  app.use('/api', branchesRouter);
+  app.use('/api', taxReturnsRouter);
+  app.use('/api', employeesRouter);
   app.use('/api/users', usersRouter);
   app.use('/api/roles', rolesRouter);
   app.use('/api/transactions', transactionsRouter);
@@ -954,6 +1011,24 @@ async function startServer() {
       const isSuper = req.user?.isSuperAdmin === true || req.user?.role === 'super-admin';
       const companyId = req.targetCompanyId || req.user?.companyId || req.session?.companyId;
 
+      // Branch (physical-location) scoping — req.allowedBranchIds is null for an admin/
+      // super-admin/branches.viewAllBranches holder (no ceiling, see isAuthenticated in
+      // this file), otherwise the exact set from userBranches for a restricted user. A
+      // document with no branchId at all (branchId == null) stays visible to everyone —
+      // it predates branch adoption or the company never adopted branches, and hiding it
+      // from a restricted user would be a regression (data they could see yesterday
+      // disappearing), not a real isolation improvement. GRN/Purchase Returns/Physical
+      // Stock Takes have no branchId column of their own (see schema.ts) — their branch is
+      // derived via warehouseId, resolved once here rather than re-joined per row.
+      const branchOk = (branchId: string | null | undefined): boolean => {
+        if (req.allowedBranchIds === null || req.allowedBranchIds === undefined) return true;
+        if (branchId == null) return true;
+        return Array.isArray(req.allowedBranchIds) && req.allowedBranchIds.includes(branchId);
+      };
+      const branchIdByWarehouseId = new Map((state.warehouses || []).map((w: any) => [w.id, w.branchId]));
+      const branchOkViaWarehouse = (warehouseId: string | null | undefined): boolean =>
+        branchOk(warehouseId ? (branchIdByWarehouseId.get(warehouseId) as string | null | undefined) : undefined);
+
       // Every business/transaction field is scoped to `companyId` unconditionally, even
       // for a super-admin — a super-admin browsing one company must never receive every
       // other tenant's data in the same payload just because their role bypasses the
@@ -973,35 +1048,71 @@ async function startServer() {
         vendors: state.vendors.filter((v: any) => v.companyId === companyId),
         banks: state.banks.filter((b: any) => b.companyId === companyId),
         months: state.months.filter((m: any) => m.companyId === companyId),
-        quotations: state.quotations.filter((q: any) => q.companyId === companyId),
-        invoices: state.invoices.filter((i: any) => i.companyId === companyId),
-        expenses: state.expenses.filter((e: any) => e.companyId === companyId),
+        quotations: state.quotations.filter((q: any) => q.companyId === companyId && branchOk(q.branchId)),
+        invoices: state.invoices.filter((i: any) => i.companyId === companyId && branchOk(i.branchId)),
+        expenses: state.expenses.filter((e: any) => e.companyId === companyId && branchOk(e.branchId)),
         recurringTemplates: state.recurringTemplates.filter((r: any) => r.companyId === companyId),
         recurringPostings: state.recurringPostings.filter((rp: any) => rp.companyId === companyId),
-        vouchers: state.vouchers.filter((v: any) => v.companyId === companyId),
+        vouchers: state.vouchers.filter((v: any) => v.companyId === companyId && branchOk(v.branchId)),
         investors: state.investors.filter((inv: any) => inv.companyId === companyId),
-        posShifts: state.posShifts.filter((ps: any) => ps.companyId === companyId),
-        posHeldInvoices: state.posHeldInvoices.filter((ph: any) => ph.companyId === companyId),
+        posShifts: state.posShifts.filter((ps: any) => ps.companyId === companyId && branchOk(ps.branchId)),
+        posHeldInvoices: state.posHeldInvoices.filter((ph: any) => ph.companyId === companyId && branchOk(ph.branchId)),
         productCategories: (state.productCategories || []).filter((c: any) => c.companyId === companyId),
         unitsOfMeasure: (state.unitsOfMeasure || []).filter((u: any) => u.companyId === companyId),
-        productWarehouses: (state.productWarehouses || []).filter((pw: any) => pw.companyId === companyId),
+        productWarehouses: (state.productWarehouses || []).filter((pw: any) => pw.companyId === companyId && branchOkViaWarehouse(pw.warehouseId)),
+        // productUnitConversions has no companyId column of its own (schema.ts) — it's
+        // scoped only indirectly via productId -> productsServices.companyId. Never added
+        // to this filtered response at all (same gap as employees/jobTitles below), so
+        // every tenant's packaging/barcode/bulk-pricing rows leaked to every other tenant
+        // via the raw `...state` spread.
+        productUnitConversions: (() => {
+          const companyProductIds = new Set((state.products || []).filter((p: any) => p.companyId === companyId).map((p: any) => p.id));
+          return (state.productUnitConversions || []).filter((puc: any) => companyProductIds.has(puc.productId));
+        })(),
+        // Company-scoped only (no branchOk) — same treatment as productCategories/
+        // unitsOfMeasure above, not the branch-restricted documents below. Employees are
+        // master/reference data, not a transactional document a branch user shouldn't see:
+        // a Head-Office employee (branchId null) must reach every branch's invoice picker,
+        // and InvoiceModule/EmployeesModule already do their own branchId narrowing
+        // client-side (see eligibleSalesAssociates in InvoiceModule.tsx) — this filter only
+        // needs to stop OTHER COMPANIES' employees/job titles from leaking across tenants,
+        // which — until this fix — it didn't: these two were never added to this filtered
+        // response at all, so every request received every company's employees/job titles
+        // unfiltered via the raw `...state` spread below (harmless in practice only because
+        // every client-side consumer happens to filter by companyId itself; still a real
+        // cross-tenant leak over the wire).
+        // Head-Office employees (branchId null) stay visible to every branch — see
+        // employees's schema comment and InvoiceModule.tsx's eligibleSalesAssociates,
+        // which already depends on this — but a branch-restricted viewer must not see
+        // another branch's own staff roster (PII: email/phone, hire/termination dates).
+        employees: (state.employees || []).filter((e: any) =>
+          e.companyId === companyId && (req.allowedBranchIds === null || req.allowedBranchIds === undefined || e.branchId === null || e.branchId === undefined || req.allowedBranchIds.includes(e.branchId))
+        ),
+        jobTitles: (state.jobTitles || []).filter((jt: any) => jt.companyId === companyId),
         taxSlabs: (state.taxSlabs || []).filter((t: any) => t.companyId === companyId || t.companyId == null),
-        warehouses: (state.warehouses || []).filter((w: any) => w.companyId === companyId),
-        purchaseRequisitions: (state.purchaseRequisitions || []).filter((pr: any) => pr.companyId === companyId),
-        purchaseOrders: (state.purchaseOrders || []).filter((po: any) => po.companyId === companyId),
-        goodsReceiptNotes: (state.goodsReceiptNotes || []).filter((g: any) => g.companyId === companyId),
-        inventoryStocks: (state.inventoryStocks || []).filter((s: any) => s.companyId === companyId),
-        purchaseBills: (state.purchaseBills || []).filter((b: any) => b.companyId === companyId),
-        purchaseReturns: (state.purchaseReturns || []).filter((r: any) => r.companyId === companyId),
-        physicalStockTakes: (state.physicalStockTakes || []).filter((s: any) => s.companyId === companyId),
-        stockLedgerTransactions: (state.stockLedgerTransactions || []).filter((s: any) => s.companyId === companyId),
+        warehouses: (state.warehouses || []).filter((w: any) => w.companyId === companyId && branchOk(w.branchId)),
+        purchaseRequisitions: (state.purchaseRequisitions || []).filter((pr: any) => pr.companyId === companyId && branchOk(pr.branchId)),
+        purchaseOrders: (state.purchaseOrders || []).filter((po: any) => po.companyId === companyId && branchOk(po.branchId)),
+        goodsReceiptNotes: (state.goodsReceiptNotes || []).filter((g: any) => g.companyId === companyId && branchOkViaWarehouse(g.warehouseId)),
+        inventoryStocks: (state.inventoryStocks || []).filter((s: any) => s.companyId === companyId && branchOkViaWarehouse(s.warehouseId)),
+        purchaseBills: (state.purchaseBills || []).filter((b: any) => b.companyId === companyId && branchOk(b.branchId)),
+        purchaseReturns: (state.purchaseReturns || []).filter((r: any) => r.companyId === companyId && branchOkViaWarehouse(r.warehouseId)),
+        physicalStockTakes: (state.physicalStockTakes || []).filter((s: any) => s.companyId === companyId && branchOkViaWarehouse(s.warehouseId)),
+        stockLedgerTransactions: (state.stockLedgerTransactions || []).filter((s: any) => s.companyId === companyId && branchOkViaWarehouse(s.warehouseId)),
         roles: (state.roles || []).filter((r: any) => r.companyId === companyId),
+        branches: (state.branches || []).filter((b: any) => b.companyId === companyId),
         // userRoles is a plain (userId, roleId) join row with no companyId of its own —
         // scope it via which users actually belong to this company, the same way every
         // other field above is scoped, instead of returning every tenant's assignments.
         userRoles: (() => {
           const companyUserIds = new Set((state.users || []).filter((u: any) => u.companyId === companyId).map((u: any) => u.id));
           return (state.userRoles || []).filter((ur: any) => companyUserIds.has(ur.userId));
+        })(),
+        // Same reasoning as userRoles just above — userBranches has no companyId of its
+        // own, scope it via which users actually belong to this company.
+        userBranches: (() => {
+          const companyUserIds = new Set((state.users || []).filter((u: any) => u.companyId === companyId).map((u: any) => u.id));
+          return (state.userBranches || []).filter((ub: any) => companyUserIds.has(ub.userId));
         })(),
         users: (() => {
           const rolePermissionsById = new Map((state.roles || []).map((r: any) => [r.id, r.permissions]));

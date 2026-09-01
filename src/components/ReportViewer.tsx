@@ -84,6 +84,16 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
  const [selectedCustomerId, setSelectedCustomerId] = React.useState('ALL');
  const [selectedVendorId, setSelectedVendorId] = React.useState('ALL');
  const [selectedBankId, setSelectedBankId] = React.useState('');
+ // Branch focus — see SalesReportsModule.tsx's matching comment for the full reasoning.
+ // Scoped here to the reports that are naturally per-transaction aggregations (Sales VAT,
+ // Purchase VAT, Outstanding, Bank Ledger) — Trial Balance/P&L/Balance Sheet/VAT Return
+ // Summary/Investor Profit Share/Fiscal Month History stay company-wide, matching standard
+ // accounting practice for a single set of consolidated books, not an oversight.
+ const isBranchUnrestricted = db.currentUser?.isSuperAdmin === true || db.currentUser?.role === 'admin' || can('branches.viewAllBranches');
+ const myBranchIds = new Set((db.userBranches || []).filter(ub => ub.userId === db.currentUser?.id).map(ub => ub.branchId));
+ const companyBranches = (db.branches || []).filter(b => b.companyId === db.selectedCompanyId && b.isActive !== false && (isBranchUnrestricted || myBranchIds.has(b.id)));
+ const [selectedBranchId, setSelectedBranchId] = React.useState('ALL');
+ const branchMatches = (branchId: string | null | undefined) => selectedBranchId === 'ALL' || branchId == null || branchId === selectedBranchId;
 
  React.useEffect(() => {
  const activeBank = db.banks.find(b => b.companyId === db.selectedCompanyId && b.isActive) || db.banks.find(b => b.companyId === db.selectedCompanyId);
@@ -214,6 +224,7 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
  return db.invoices
  .filter(inv => {
  if (inv.companyId !== db.selectedCompanyId) return false;
+ if (!branchMatches((inv as any).branchId)) return false;
  const matchesDate = inv.date >= startDate && inv.date <= endDate;
  const matchesCust = selectedCustomerId === 'ALL' || inv.customerId === selectedCustomerId;
  return matchesDate && matchesCust && inv.status === 'Active';
@@ -242,6 +253,7 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
  return db.expenses
  .filter(exp => {
  if (exp.companyId !== db.selectedCompanyId) return false;
+ if (!branchMatches((exp as any).branchId)) return false;
  const matchesDate = exp.date >= startDate && exp.date <= endDate;
  const matchesVend = selectedVendorId === 'ALL' || exp.vendorId === selectedVendorId;
  return matchesDate && matchesVend && exp.status === 'Active';
@@ -278,6 +290,7 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
  const rawInvoices = db.invoices
  .filter(inv => {
  if (inv.companyId !== db.selectedCompanyId) return false;
+ if (!branchMatches((inv as any).branchId)) return false;
  if (inv.documentType === 'CreditNote') return false;
  const matchesDate = !startDate || !endDate || (inv.date >= startDate && inv.date <= endDate);
  const matchesCust = selectedCustomerId === 'ALL' || inv.customerId === selectedCustomerId;
@@ -309,6 +322,7 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
  const rawExpenses = db.expenses
  .filter(exp => {
  if (exp.companyId !== db.selectedCompanyId) return false;
+ if (!branchMatches((exp as any).branchId)) return false;
  const matchesDate = !startDate || !endDate || (exp.date >= startDate && exp.date <= endDate);
  const matchesVend = selectedVendorId === 'ALL' || exp.vendorId === selectedVendorId;
  const isOutstanding = exp.paymentStatus === 'Unpaid' || exp.paymentStatus === 'Partially Paid';
@@ -370,13 +384,13 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
  let bankNameStr = '';
 
  if (selectedBankId === 'ALL') {
- rawVouchers = db.vouchers.filter(v => v.companyId === db.selectedCompanyId);
+ rawVouchers = db.vouchers.filter(v => v.companyId === db.selectedCompanyId && branchMatches((v as any).branchId));
  startBal = db.banks.filter(b => b.companyId === db.selectedCompanyId).reduce((sum, b) => sum + b.openingBalance, 0);
  bankNameStr = t('All Banks Combined');
  } else {
  const selectedBank = db.banks.find(b => b.id === selectedBankId);
  if (!selectedBank || selectedBank.companyId !== db.selectedCompanyId) return { vouchers: [], endingBalance: 0, bankName: '' };
- rawVouchers = db.vouchers.filter(v => v.bankId === selectedBankId && v.companyId === db.selectedCompanyId);
+ rawVouchers = db.vouchers.filter(v => v.bankId === selectedBankId && v.companyId === db.selectedCompanyId && branchMatches((v as any).branchId));
  startBal = selectedBank.openingBalance;
  bankNameStr = selectedBank.bankName;
  }
@@ -819,6 +833,21 @@ const getFiscalMonthClosingHistoryData = () => {
  <option value="ALL">{t('All Banks Combined')}</option>
  {db.banks.filter(b => b.companyId === db.selectedCompanyId).map(b => (
  <option key={b.id} value={b.id}>{b.bankName} (Bal: {currencySymbol} {getBankBalance(db, b.id).toFixed(2)})</option>
+ ))}
+ </select>
+ </div>
+ )}
+ {companyBranches.length > 0 && (reportType === 'SalesVAT' || reportType === 'PurchaseVAT' || reportType === 'Outstanding' || reportType === 'BankLedger') && (
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Filter Branch')}</label>
+ <select
+ value={selectedBranchId}
+ onChange={(e) => setSelectedBranchId(e.target.value)}
+ className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
+ >
+ <option value="ALL">{t('All Branches')}</option>
+ {companyBranches.map(b => (
+ <option key={b.id} value={b.id}>{b.name}</option>
  ))}
  </select>
  </div>

@@ -49,9 +49,20 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
   const [selectedWarehouseId, setSelectedWarehouseId] = React.useState('ALL');
   const [selectedProductId, setSelectedProductId] = React.useState('ALL');
 
-  const companyWarehouses = (db.warehouses || []).filter((w: any) => w.companyId === companyId);
+  // Branch focus — see SalesReportsModule.tsx's matching comment for the full reasoning.
+  // Everything in this module is warehouse-scoped, not directly branch-scoped, so
+  // filtering companyWarehouses once here is enough — every downstream lookup already
+  // goes through a warehouseId membership check against this same (now narrowed) list.
+  const isBranchUnrestricted = db.currentUser?.isSuperAdmin === true || db.currentUser?.role === 'admin' || can('branches.viewAllBranches');
+  const myBranchIds = new Set((db.userBranches || []).filter(ub => ub.userId === db.currentUser?.id).map(ub => ub.branchId));
+  const companyBranches = (db.branches || []).filter(b => b.companyId === companyId && b.isActive !== false && (isBranchUnrestricted || myBranchIds.has(b.id)));
+  const [selectedBranchId, setSelectedBranchId] = React.useState('ALL');
+  const branchMatches = (branchId: string | null | undefined) => selectedBranchId === 'ALL' || branchId == null || branchId === selectedBranchId;
+
+  const companyWarehouses = (db.warehouses || []).filter((w: any) => w.companyId === companyId && branchMatches(w.branchId));
+  const companyWarehouseIds = new Set(companyWarehouses.map((w: any) => w.id));
   const companyProducts = (db.products || []).filter((p: any) => p.companyId === companyId);
-  const companyStocks = (db.inventoryStocks || []).filter((s: any) => s.companyId === companyId
+  const companyStocks = (db.inventoryStocks || []).filter((s: any) => s.companyId === companyId && companyWarehouseIds.has(s.warehouseId)
     && (selectedWarehouseId === 'ALL' || s.warehouseId === selectedWarehouseId));
 
   // 1. Stock Valuation — on-hand quantity valued at each product's average cost,
@@ -89,7 +100,7 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
 
   // 3. Low Stock — on-hand quantity below the configured reorder minimum, per warehouse.
   const getLowStockData = () => {
-    const links = (db.productWarehouses || []).filter((pw: any) => pw.companyId === companyId
+    const links = (db.productWarehouses || []).filter((pw: any) => pw.companyId === companyId && companyWarehouseIds.has(pw.warehouseId)
       && (selectedWarehouseId === 'ALL' || pw.warehouseId === selectedWarehouseId) && Number(pw.minLevel || 0) > 0);
     const rows = links
       .map((pw: any) => {
@@ -107,7 +118,7 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
   // 4. Stock Take Variance History — over/under counts from every completed physical
   // stock take in the period, not just the one live in-progress view Inventory shows.
   const getStockTakeVarianceHistoryData = () => {
-    const takes = (db.physicalStockTakes || []).filter((st: any) => st.companyId === companyId && st.status === 'Completed'
+    const takes = (db.physicalStockTakes || []).filter((st: any) => st.companyId === companyId && companyWarehouseIds.has(st.warehouseId) && st.status === 'Completed'
       && st.date >= startDate && st.date <= endDate && (selectedWarehouseId === 'ALL' || st.warehouseId === selectedWarehouseId));
     const rows: any[] = [];
     takes.forEach((st: any) => {
@@ -128,7 +139,7 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
   // row is already the authoritative record of what happened and when.
   const getStockMovementLedgerData = () => {
     const rows = (db.stockLedgerTransactions || [])
-      .filter((slt: any) => slt.companyId === companyId
+      .filter((slt: any) => slt.companyId === companyId && companyWarehouseIds.has(slt.warehouseId)
         && slt.date.slice(0, 10) >= startDate && slt.date.slice(0, 10) <= endDate
         && (selectedWarehouseId === 'ALL' || slt.warehouseId === selectedWarehouseId)
         && (selectedProductId === 'ALL' || slt.productId === selectedProductId))
@@ -176,6 +187,19 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
               <Filter className="w-3.5 h-3.5 text-indigo-600" /><span>{t('Statement Audit Controls & Filters')}</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              {/* ItemProfitability has no warehouse/branch granularity at all — averageCost
+                  etc. are tracked per-product company-wide, not per-location — so this
+                  filter is hidden there rather than shown but ineffective. */}
+              {companyBranches.length > 0 && reportType !== 'ItemProfitability' && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Filter Branch')}</label>
+                  <select value={selectedBranchId} onChange={e => { setSelectedBranchId(e.target.value); setSelectedWarehouseId('ALL'); }}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none">
+                    <option value="ALL">{t('All Branches')}</option>
+                    {companyBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                </div>
+              )}
               {(reportType === 'StockValuation' || reportType === 'LowStock' || reportType === 'StockTakeVarianceHistory' || reportType === 'StockMovementLedger') && (
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Filter Warehouse')}</label>

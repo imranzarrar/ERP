@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
 import React from 'react';
-import { useTranslation, translateMonthLabel } from '../hooks';
+import { useTranslation, translateMonthLabel, usePermissions } from '../hooks';
 import { DatabaseState, getActiveOpenMonth, getOpenMonths, calculateInvoiceTotals, getBankBalance, getInvoiceSign } from '../dbStore';
 import { AreaChart, Area, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
@@ -35,6 +35,13 @@ export default function Dashboard({ db, onNavigate, lastSyncTimes }: DashboardPr
  const { t, isRTL, lang } = useTranslation(db);
  const currentUser = db.currentUser || { id: '', username: 'User', role: 'user', isSuperAdmin: false, permissions: {} as any };
  const isAdmin = currentUser?.role === 'admin' || currentUser?.isSuperAdmin === true;
+ // Branch focus — see SalesReportsModule.tsx's matching comment for the full reasoning.
+ const { can } = usePermissions(currentUser);
+ const isBranchUnrestricted = isAdmin || can('branches.viewAllBranches');
+ const myBranchIds = new Set((db.userBranches || []).filter(ub => ub.userId === currentUser?.id).map(ub => ub.branchId));
+ const companyBranches = (db.branches || []).filter(b => b.companyId === db.selectedCompanyId && b.isActive !== false && (isBranchUnrestricted || myBranchIds.has(b.id)));
+ const [selectedBranchId, setSelectedBranchId] = React.useState('ALL');
+ const branchMatches = (branchId: string | null | undefined) => selectedBranchId === 'ALL' || branchId == null || branchId === selectedBranchId;
  const openMonth = getActiveOpenMonth(db);
  // Several fiscal months can be open concurrently now (cap of 3); openMonth is the oldest of
  // them (the only one currently eligible to close). Show a count when more than one is open
@@ -119,6 +126,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  const monthInvoices = db.invoices.filter(inv => {
  const invCompanyId = inv.companyId;
  if (invCompanyId !== db.selectedCompanyId) return false;
+ if (!branchMatches((inv as any).branchId)) return false;
 
  if (!matchesPeriod(inv.date)) return false;
 
@@ -129,6 +137,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  const monthExpenses = db.expenses.filter(exp => {
  const expCompanyId = exp.companyId;
  if (expCompanyId !== db.selectedCompanyId) return false;
+ if (!branchMatches((exp as any).branchId)) return false;
 
  if (!matchesPeriod(exp.date)) return false;
 
@@ -139,6 +148,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  const monthQuotations = db.quotations.filter(q => {
  const qCompanyId = q.companyId;
  if (qCompanyId !== db.selectedCompanyId) return false;
+ if (!branchMatches((q as any).branchId)) return false;
 
  if (!matchesPeriod(q.date)) return false;
 
@@ -150,6 +160,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
   const monthVouchers = db.vouchers.filter(v => {
     const vCompId = v.companyId;
     if (vCompId !== db.selectedCompanyId) return false;
+    if (!branchMatches((v as any).branchId)) return false;
     return matchesPeriod(v.date);
   });
 
@@ -164,6 +175,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
     .filter(inv => {
       const invCompanyId = inv.companyId;
       if (invCompanyId !== db.selectedCompanyId) return false;
+      if (!branchMatches((inv as any).branchId)) return false;
       // A Credit Note is never itself a receivable — it always carries amountPaid: 0
       // (schema default, never meaningful, see the note in InvoiceModule.tsx), so
       // `grandTotal - amountPaid` is its full positive amount, then getInvoiceSign flips
@@ -289,7 +301,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  .slice(-3);
  const trailingMonthlySales = closedMonthIds.map(monthId =>
  db.invoices
- .filter(inv => inv.companyId === db.selectedCompanyId && inv.status === 'Active' && inv.date.startsWith(monthId))
+ .filter(inv => inv.companyId === db.selectedCompanyId && branchMatches((inv as any).branchId) && inv.status === 'Active' && inv.date.startsWith(monthId))
  .reduce((sum, inv) => {
  const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId);
  return sum + totals.grandTotal * getInvoiceSign(inv);
@@ -300,7 +312,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  ? trailingMonthlySales.reduce((sum, v) => sum + v, 0) / trailingMonthlySales.length
  : 2500;
  const trailingMonthlyQuotations = closedMonthIds.map(monthId =>
- db.quotations.filter(q => q.companyId === db.selectedCompanyId && q.date.startsWith(monthId)).length
+ db.quotations.filter(q => q.companyId === db.selectedCompanyId && branchMatches((q as any).branchId) && q.date.startsWith(monthId)).length
  );
  const hasHistoricalQuotaTarget = trailingMonthlyQuotations.length > 0;
  const quotaTarget = hasHistoricalQuotaTarget
@@ -316,7 +328,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  const daysOutstanding = (dateStr: string) => Math.max(0, Math.floor((todayMs - new Date(`${dateStr}T00:00:00`).getTime()) / 86400000));
 
  const pendingInvoicesBase = db.invoices
- .filter(inv => inv.companyId === db.selectedCompanyId && inv.status === 'Active' && (inv.documentType === undefined || inv.documentType === 'Invoice'))
+ .filter(inv => inv.companyId === db.selectedCompanyId && branchMatches((inv as any).branchId) && inv.status === 'Active' && (inv.documentType === undefined || inv.documentType === 'Invoice'))
  .map(inv => {
  const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId);
  const due = totals.grandTotal - (inv.amountPaid || 0);
@@ -352,16 +364,16 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  };
 
  const pendingExpensesList = db.expenses
- .filter(exp => exp.companyId === db.selectedCompanyId && exp.status === 'Active' && exp.type === 'Actual')
+ .filter(exp => exp.companyId === db.selectedCompanyId && branchMatches((exp as any).branchId) && exp.status === 'Active' && exp.type === 'Actual')
  .map(exp => ({ exp, due: exp.amount - (exp.amountPaid || 0) }))
  .filter(x => x.due > 0.01)
  .sort((a, b) => a.exp.date.localeCompare(b.exp.date))
  .slice(0, 8);
  const pendingExpensesTotal = db.expenses
- .filter(exp => exp.companyId === db.selectedCompanyId && exp.status === 'Active' && exp.type === 'Actual')
+ .filter(exp => exp.companyId === db.selectedCompanyId && branchMatches((exp as any).branchId) && exp.status === 'Active' && exp.type === 'Actual')
  .reduce((sum, exp) => sum + Math.max(0, exp.amount - (exp.amountPaid || 0)), 0);
  const accrualsAwaitingSettlement = db.expenses.filter(exp =>
- exp.companyId === db.selectedCompanyId && exp.status === 'Active' && exp.type === 'Accrual' && !exp.accrualSettled
+ exp.companyId === db.selectedCompanyId && branchMatches((exp as any).branchId) && exp.status === 'Active' && exp.type === 'Accrual' && !exp.accrualSettled
  ).length;
 
  // Top Customers by Sales / Top Vendors by Expense — respects the active reporting period,
@@ -448,6 +460,18 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  >
  {t('This Year')}
  </button>
+ {companyBranches.length > 0 && (
+ <select
+ value={selectedBranchId}
+ onChange={(e) => setSelectedBranchId(e.target.value)}
+ className="bg-slate-800 border border-slate-700 text-slate-200 font-bold text-xs rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+ >
+ <option value="ALL">🏢 {t('All Branches')}</option>
+ {companyBranches.map(b => (
+ <option key={b.id} value={b.id}>{b.name}</option>
+ ))}
+ </select>
+ )}
  </div>
  </div>
  <div className="text-start sm:text-end hidden sm:block">

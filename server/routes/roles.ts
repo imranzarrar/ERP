@@ -57,7 +57,9 @@ router.post('/', async (req: any, res) => {
     res.json({ success: true, id: data.id });
   } catch (error: any) {
     // Postgres unique_violation on (company_id, name) — a friendly 409 instead of a raw 500.
-    if (error.code === '23505') {
+    // This project's drizzle-orm version wraps the real pg error under `.cause.code`, not
+    // `.code` directly (confirmed empirically elsewhere in this codebase) — check both.
+    if (error.code === '23505' || error.cause?.code === '23505') {
       return res.status(409).json({ error: 'A role with this name already exists for this company.' });
     }
     res.status(500).json({ error: error.message });

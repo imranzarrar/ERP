@@ -225,6 +225,8 @@ afterAll(async () => {
   await db.delete(schema.users).where(eq(schema.users.id, adminUserId));
   await db.delete(schema.users).where(eq(schema.users.id, staffUserId));
   await db.delete(schema.users).where(eq(schema.users.id, otherAdminUserId));
+  await db.delete(schema.documentCounters).where(eq(schema.documentCounters.companyId, companyId));
+  await db.delete(schema.documentCounters).where(eq(schema.documentCounters.companyId, otherCompanyId));
   await db.delete(schema.companies).where(eq(schema.companies.id, companyId));
   await db.delete(schema.companies).where(eq(schema.companies.id, otherCompanyId));
 });

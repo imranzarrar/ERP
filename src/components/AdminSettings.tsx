@@ -4,6 +4,7 @@ import { DatabaseState, saveDatabase, openNewMonth, closeMonth, SEED_BANKS, SEED
 import { CompanySetup, BankAccount, TaxSlab, DocumentTemplate, FiscalMonth, User, UserRole, Investor, Customer, Vendor, Role } from '../types';
 import { PermissionNode, buildPermissionTree, allPermissionNodeIds } from '../permissionSchema';
 import { THEME_PROFILES, applyTheme } from '../theme';
+import VatReturnsPanel from './VatReturnsPanel';
 import {
  Building,
  Wallet,
@@ -38,7 +39,7 @@ import {
  Sliders,
  ShoppingCart,
  ShieldCheck,
- Shield} from 'lucide-react';
+ Shield, MapPin, Hash, FileCheck} from 'lucide-react';
 import { ensureCompatibleImage } from '../imageUtils';
 import { DEFAULT_DOCUMENT_LAYOUT, DETAILED_TAX_INVOICE_LAYOUT, COL_SPAN_MD, COL_SPAN_PRINT } from '../documentTemplateDefaults';
 import { XMLParser } from 'fast-xml-parser';
@@ -313,6 +314,8 @@ const CATEGORY_GROUPS: { id: string; label: string; icon: any; subTabs: Settings
       { id: 'zatca', label: 'ZATCA Phase 2 E-Invoicing', icon: ShieldCheck, adminOnly: true },
       { id: 'banks', label: 'Bank Accounts', icon: Wallet, requiredPermission: 'banks.read' },
       { id: 'taxes', label: 'Tax Slabs', icon: Percent, requiredPermission: 'taxSlabs.read' },
+      { id: 'branches', label: 'Branches (Locations)', icon: MapPin, requiredPermission: 'branches.read' },
+      { id: 'numbering', label: 'Document Numbering', icon: Hash, requiredPermission: 'documentNumbering.read' },
     ]
   },
   {
@@ -347,6 +350,7 @@ const CATEGORY_GROUPS: { id: string; label: string; icon: any; subTabs: Settings
     subTabs: [
       { id: 'months', label: 'Month Opening / Closing', icon: Calendar, requiredPermission: ['fiscalMonths.open', 'fiscalMonths.close'] },
       { id: 'equity', label: 'Capital & Equity', icon: Coins, requiredPermission: 'investors.access' },
+      { id: 'taxReturns', label: 'VAT Returns (ZATCA Filing)', icon: FileCheck, requiredPermission: ['taxReturns.create', 'taxReturns.read', 'taxReturns.delete', 'taxReturns.file'] },
     ]
   },
   {
@@ -412,6 +416,9 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  const canTransferBanks = can('banks.transfer');
  const canCreateTaxSlabs = can('taxSlabs.create');
  const canUpdateTaxSlabs = can('taxSlabs.update');
+ const canUpdateBranches = can('branches.update');
+ const canDeleteBranches = can('branches.delete');
+ const canUpdateDocumentNumbering = can('documentNumbering.update');
  const canCreateTemplates = can('templates.create');
  const canUpdateTemplates = can('templates.update');
  const canDeleteTemplates = can('templates.delete');
@@ -1417,6 +1424,191 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  };
 
  // ----------------------------------------
+ // SUB-TAB: BRANCHES (LOCATIONS)
+ // ----------------------------------------
+ const companyBranches = (db.branches || []).filter(b => b.companyId === db.selectedCompanyId);
+ const [editingBranchId, setEditingBranchId] = React.useState<string | null>(null);
+ const emptyBranchForm = {
+   name: '', code: '', streetName: '', buildingNumber: '', district: '', city: '',
+   postalCode: '', countryCode: 'SA', phone: '', isDefault: false, isActive: true,
+   defaultWarehouseId: '',
+ };
+ const [branchForm, setBranchForm] = React.useState(emptyBranchForm);
+ // Only 'sales'-type, active warehouses are eligible — a branch's default is what an
+ // invoice/POS form auto-fills onto a sale, and a sale can never be posted against a
+ // 'backend' warehouse (server/lib/businessLogic.ts's assertSalesWarehouse enforces this
+ // too). Deliberately company-wide, not filtered to this branch's own branchId — a
+ // shared/unassigned warehouse (branchId null) can still be a specific branch's default.
+ const branchEligibleWarehouses = (db.warehouses || []).filter(w => w.companyId === db.selectedCompanyId && w.isActive !== false && w.type !== 'backend');
+
+ const startEditBranch = (b: any) => {
+   setEditingBranchId(b.id);
+   setBranchForm({
+     name: b.name || '', code: b.code || '', streetName: b.streetName || '', buildingNumber: b.buildingNumber || '',
+     district: b.district || '', city: b.city || '', postalCode: b.postalCode || '', countryCode: b.countryCode || 'SA',
+     phone: b.phone || '', isDefault: Boolean(b.isDefault), isActive: b.isActive !== false,
+     defaultWarehouseId: b.defaultWarehouseId || '',
+   });
+ };
+ const clearBranchForm = () => { setEditingBranchId(null); setBranchForm(emptyBranchForm); };
+
+ const [isBackfilling, setIsBackfilling] = React.useState(false);
+ const [backfillTargetBranchId, setBackfillTargetBranchId] = React.useState('');
+
+ // One-time (per company) cleanup action — every document created before this company
+ // adopted branches (invoices, quotations, vouchers, expenses, PRs, POs, purchase bills,
+ // warehouses) has a NULL branchId forever unless explicitly attributed to one now (see
+ // server/routes/branches.ts's POST /branches/backfill-unassigned). Never runs
+ // automatically — always an explicit admin choice, since silently reattributing
+ // historical documents to a branch they were never actually created under is a real,
+ // visible data change, not a cosmetic default.
+ const handleBackfillUnassigned = async (branchId: string) => {
+   if (!branchId) return triggerError('Choose a branch first.');
+   const branch = companyBranches.find(b => b.id === branchId);
+   if (!window.confirm(`Attribute every existing document (invoices, quotations, vouchers, expenses, purchase requisitions/orders/bills, warehouses) that has no branch yet to "${branch?.name}"? This only touches rows that are currently unassigned — nothing already attributed to a branch is changed.`)) return;
+   setIsBackfilling(true);
+   try {
+     const res = await fetch('/api/branches/backfill-unassigned', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ branchId }),
+     });
+     const data = await res.json().catch(() => ({}));
+     if (!res.ok || data.error) return triggerError(data.error || 'Failed to backfill unassigned documents.');
+     const counts = data.counts || {};
+     const summary = Object.entries(counts).filter(([, n]) => Number(n) > 0).map(([k, n]) => `${n} ${k}`).join(', ');
+     triggerSuccess(summary ? `Attributed to "${branch?.name}": ${summary}.` : `Nothing to backfill — every document already has a branch.`);
+     if (onRefreshDb) await onRefreshDb();
+   } catch (err: any) {
+     triggerError(err.message || 'Failed to backfill unassigned documents.');
+   } finally {
+     setIsBackfilling(false);
+   }
+ };
+
+ const handleSaveBranch = async (e: React.FormEvent) => {
+   e.preventDefault();
+   if (!branchForm.name.trim()) return triggerError('Branch name is required.');
+   if (!branchForm.code.trim()) return triggerError('Branch code is required.');
+   const isFirstBranch = !editingBranchId && companyBranches.length === 0;
+   try {
+     const res = await fetch('/api/branches', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({
+         id: editingBranchId || undefined,
+         ...branchForm,
+         // The very first branch a company creates becomes its default automatically —
+         // same convention already used for the first tax slab / first active bank.
+         isDefault: branchForm.isDefault || companyBranches.length === 0,
+         defaultWarehouseId: branchForm.defaultWarehouseId || null,
+       }),
+     });
+     const data = await res.json().catch(() => ({}));
+     if (!res.ok || data.error) return triggerError(data.error || 'Failed to save branch.');
+     triggerSuccess(editingBranchId ? `Branch "${branchForm.name}" updated.` : `Branch "${branchForm.name}" created.`);
+     clearBranchForm();
+     if (onRefreshDb) await onRefreshDb();
+     // Prompted only once, right when a company creates its very first branch — this is
+     // exactly the moment pre-existing documents become "unassigned" in a way that now
+     // matters (see the feature comment on handleBackfillUnassigned above).
+     if (isFirstBranch && data.id) {
+       if (window.confirm(`"${branchForm.name}" is this company's first branch. Attribute every existing document that has no branch yet (invoices, quotations, vouchers, expenses, purchase requisitions/orders/bills, warehouses) to it now? You can also do this later from this tab.`)) {
+         await handleBackfillUnassigned(data.id);
+       }
+     }
+   } catch (err: any) {
+     triggerError(err.message || 'Failed to save branch.');
+   }
+ };
+
+ const handleToggleBranchActive = async (id: string) => {
+   const b = companyBranches.find(x => x.id === id);
+   const isActive = b?.isActive !== false;
+   if (isActive && !window.confirm('Deactivate this branch? It will be hidden from new documents but its history stays intact. You can reactivate it anytime.')) return;
+   try {
+     const res = await fetch(`/api/branches/${id}/toggle-active`, { method: 'PATCH' });
+     const data = await res.json().catch(() => ({}));
+     if (!res.ok || data.error) return triggerError(data.error || 'Failed to update branch status.');
+     triggerSuccess(data.isActive ? 'Branch reactivated.' : 'Branch deactivated.');
+     if (onRefreshDb) await onRefreshDb();
+   } catch (err: any) {
+     triggerError(err.message || 'Failed to update branch status.');
+   }
+ };
+
+ // ----------------------------------------
+ // SUB-TAB: DOCUMENT NUMBERING
+ // ----------------------------------------
+ // Rules keyed by DOCUMENT_TYPE_REGISTRY's `key` (server/lib/documentNumbering.ts) — the
+ // registry itself (label/defaultPrefix per type) is fetched from the preview endpoint
+ // rather than duplicated here, so a future registry addition needs no frontend change.
+ const [numberingRegistry, setNumberingRegistry] = React.useState<{ key: string; label: string; defaultPrefix: string }[]>([]);
+ const [numberingPreview, setNumberingPreview] = React.useState<Record<string, string>>({});
+ const [numberingRules, setNumberingRules] = React.useState<Record<string, { prefix?: string; separator?: string; padWidth?: number; includeBranchCode?: boolean; resetFrequency?: 'never' | 'yearly' | 'monthly' }>>({});
+ const [numberingLoading, setNumberingLoading] = React.useState(false);
+
+ const loadNumberingSettings = React.useCallback(async () => {
+   if (!db.selectedCompanyId) return;
+   setNumberingLoading(true);
+   try {
+     const res = await fetch(`/api/companies/${db.selectedCompanyId}/numbering-preview`);
+     const data = await res.json().catch(() => ({}));
+     if (res.ok && !data.error) {
+       setNumberingRegistry(data.registry || []);
+       setNumberingPreview(data.preview || {});
+     }
+   } finally {
+     setNumberingLoading(false);
+   }
+   const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId);
+   setNumberingRules({ ...(activeCompany?.numberingPolicy || {}) });
+ }, [db.selectedCompanyId, db.companies]);
+
+ React.useEffect(() => {
+   if (activeTab === 'numbering') loadNumberingSettings();
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [activeTab, db.selectedCompanyId]);
+
+ const updateNumberingRule = (docType: string, patch: Partial<{ prefix: string; separator: string; padWidth: number; includeBranchCode: boolean; resetFrequency: 'never' | 'yearly' | 'monthly' }>) => {
+   setNumberingRules(prev => ({ ...prev, [docType]: { ...prev[docType], ...patch } }));
+ };
+
+ const handleSaveNumberingPolicy = async () => {
+   if (!db.selectedCompanyId) return;
+   try {
+     const res = await fetch(`/api/companies/${db.selectedCompanyId}/settings`, {
+       method: 'PATCH',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ numberingPolicy: numberingRules }),
+     });
+     const data = await res.json().catch(() => ({}));
+     if (!res.ok || data.error) return triggerError(data.error || 'Failed to update document numbering settings.');
+     triggerSuccess('Document numbering settings updated.');
+     if (onRefreshDb) await onRefreshDb();
+     loadNumberingSettings();
+   } catch (err: any) {
+     triggerError(err.message || 'Failed to update document numbering settings.');
+   }
+ };
+
+ // Surfaces (never silently resolves) any two types whose effective prefix would collide —
+ // e.g. debitNote/return both default to 'DN'. This is a pre-existing, true-to-today
+ // ambiguity in the underlying data, not something this UI introduces or should hide.
+ const numberingPrefixCollisions = React.useMemo(() => {
+   const byPrefix = new Map<string, string[]>();
+   for (const entry of numberingRegistry) {
+     const prefix = numberingRules[entry.key]?.prefix ?? entry.defaultPrefix;
+     byPrefix.set(prefix, [...(byPrefix.get(prefix) || []), entry.key]);
+   }
+   const collidingKeys = new Set<string>();
+   for (const keys of byPrefix.values()) {
+     if (keys.length > 1) keys.forEach(k => collidingKeys.add(k));
+   }
+   return collidingKeys;
+ }, [numberingRegistry, numberingRules]);
+
+ // ----------------------------------------
  // SUB-TAB: TEMPLATES
  // ----------------------------------------
  const [tmplForm, setTmplForm] = React.useState({
@@ -1837,6 +2029,16 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  role: 'user' as UserRole,
  companyId: db.selectedCompanyId,
  roleIds: [] as string[],
+ // Zero branchIds means company-wide (sees/can act on every branch) — that's the
+ // `branches.viewAllBranches` permission leaf's job (granted via a Role, same as any
+ // other leaf), not row presence here. A non-empty list restricts the user to exactly
+ // those branches; primaryBranchId picks their default focus among them.
+ branchIds: [] as string[],
+ primaryBranchId: '',
+ // Nullable link to the HR employees table — mandatory server-side only once the
+ // company has onboarded at least one active employee (server/routes/users.ts);
+ // empty string here means "not linked," same convention as primaryBranchId.
+ employeeId: '',
   });
 
   // The "Assigned Company" field above was a one-time useState initializer that never
@@ -1940,6 +2142,9 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  role: userForm.role,
  companyId: userForm.companyId || db.selectedCompanyId,
   roleIds: userForm.roleIds,
+  branchIds: userForm.branchIds,
+  primaryBranchId: userForm.primaryBranchId || undefined,
+  employeeId: userForm.employeeId || null,
  } as any;
 
  try {
@@ -1952,12 +2157,13 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  // POST /api/users already persisted the record — refetch from the server instead
  // of hand-merging a client-side copy through the full-blob /api/migrate sync.
  await onRefreshDb?.();
- if (body.droppedRoles?.length) {
- // A requested role belongs to a different company than this user and was NOT
- // assigned — the save itself still succeeded, but this must be loud, not a silent
- // {success:true} (see server/routes/users.ts) — a user left with fewer roles than
- // intended is a real access gap, not a cosmetic detail.
- triggerError('Account updated, but not all roles were assigned: ' + body.droppedRoles.map((d: any) => d.reason).join(' '));
+ if (body.droppedRoles?.length || body.droppedBranches?.length) {
+ // A requested role/branch belongs to a different company than this user and was
+ // NOT assigned — the save itself still succeeded, but this must be loud, not a
+ // silent {success:true} (see server/routes/users.ts) — a user left with fewer
+ // roles/branches than intended is a real access gap, not a cosmetic detail.
+ const reasons = [...(body.droppedRoles || []), ...(body.droppedBranches || [])].map((d: any) => d.reason).join(' ');
+ triggerError('Account updated, but not everything requested was assigned: ' + reasons);
  } else {
  triggerSuccess('Account details updated successfully.');
  }
@@ -1978,6 +2184,9 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  isActive: true, // Active by default
  uiLanguage: 'en',
   roleIds: userForm.roleIds,
+  branchIds: userForm.branchIds,
+  primaryBranchId: userForm.primaryBranchId || undefined,
+  employeeId: userForm.employeeId || null,
  };
 
  try {
@@ -1988,10 +2197,11 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  return;
  }
  await onRefreshDb?.();
- if (body.droppedRoles?.length) {
- // See the matching comment in the edit-user branch above — a dropped role means
- // this account has fewer permissions than what was actually requested.
- triggerError('Account created, but not all roles were assigned: ' + body.droppedRoles.map((d: any) => d.reason).join(' '));
+ if (body.droppedRoles?.length || body.droppedBranches?.length) {
+ // See the matching comment in the edit-user branch above — a dropped role/branch
+ // means this account has fewer permissions than what was actually requested.
+ const reasons = [...(body.droppedRoles || []), ...(body.droppedBranches || [])].map((d: any) => d.reason).join(' ');
+ triggerError('Account created, but not everything requested was assigned: ' + reasons);
  } else {
  triggerSuccess('Account created successfully.');
  }
@@ -2009,6 +2219,9 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  role: 'user',
  companyId: db.selectedCompanyId,
  roleIds: [],
+ branchIds: [],
+ primaryBranchId: '',
+ employeeId: '',
   });
  };
  const handleToggleUserActive = async (userId: string) => {
@@ -2679,7 +2892,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input type="checkbox" checked={(db.companies?.find(c => c.id === (db.selectedCompanyId))!).posSettings?.autoPrint ?? true} onChange={e => {
                     const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId)!;
-                    const newPosSettings = {...(activeCompany.posSettings || {}), autoPrint: e.target.checked, maxImageSizeKB: activeCompany.posSettings?.maxImageSizeKB || 500};
+                    const newPosSettings = {...(activeCompany.posSettings || {}), autoPrint: e.target.checked, maxImageSizeKB: activeCompany.posSettings?.maxImageSizeKB || 150};
                     handlePosSettingsChange(activeCompany.id, newPosSettings);
                   }} className="w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
                   <div>
@@ -2687,25 +2900,35 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
                     <div className="text-xs text-slate-500">Automatically print thermal receipts after payment</div>
                   </div>
                 </label>
-                
+
                 <div>
                   <label className="block text-sm font-bold text-slate-800 mb-2">Max POS Product Image Size (KB)</label>
-                  <input type="number" min="100" max="5000" value={(db.companies?.find(c => c.id === (db.selectedCompanyId))!).posSettings?.maxImageSizeKB || 500} onChange={e => {
+                  <input type="number" min="50" max="5000" value={(db.companies?.find(c => c.id === (db.selectedCompanyId))!).posSettings?.maxImageSizeKB || 150} onChange={e => {
                     const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId)!;
-                    const newPosSettings = {...(activeCompany.posSettings || {}), maxImageSizeKB: parseInt(e.target.value) || 500, autoPrint: activeCompany.posSettings?.autoPrint ?? true};
+                    const newPosSettings = {...(activeCompany.posSettings || {}), maxImageSizeKB: parseInt(e.target.value) || 150, autoPrint: activeCompany.posSettings?.autoPrint ?? true};
                     handlePosSettingsChange(activeCompany.id, newPosSettings);
                   }} className="w-full max-w-xs bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-600" />
-                  <p className="text-xs text-slate-500 mt-1">Recommended: 500KB to keep the database small.</p>
+                  <p className="text-xs text-slate-500 mt-1">Recommended: 150KB — these ride along on every page load for every user, so keeping them small matters.</p>
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-bold text-slate-800 mb-2">Max Image Dimensions (pixels)</label>
-                  <input type="number" min="100" max="2000" value={(db.companies?.find(c => c.id === (db.selectedCompanyId))!).posSettings?.maxImageDimensions || 800} onChange={e => {
+                  <input type="number" min="100" max="2000" value={(db.companies?.find(c => c.id === (db.selectedCompanyId))!).posSettings?.maxImageDimensions || 600} onChange={e => {
                     const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId)!;
-                    const newPosSettings = {...(activeCompany.posSettings || {}), maxImageDimensions: parseInt(e.target.value) || 800, autoPrint: activeCompany.posSettings?.autoPrint ?? true, maxImageSizeKB: activeCompany.posSettings?.maxImageSizeKB || 500};
+                    const newPosSettings = {...(activeCompany.posSettings || {}), maxImageDimensions: parseInt(e.target.value) || 600, autoPrint: activeCompany.posSettings?.autoPrint ?? true, maxImageSizeKB: activeCompany.posSettings?.maxImageSizeKB || 150};
                     handlePosSettingsChange(activeCompany.id, newPosSettings);
                   }} className="w-full max-w-xs bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-600" />
-                  <p className="text-xs text-slate-500 mt-1">Images larger than this (width/height) will be resized automatically.</p>
+                  <p className="text-xs text-slate-500 mt-1">Recommended: 600px — well above anything this app actually displays a product image at. Uploads larger than this are rejected, not resized.</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-slate-800 mb-2">Min Image Dimensions (pixels)</label>
+                  <input type="number" min="0" max="1000" value={(db.companies?.find(c => c.id === (db.selectedCompanyId))!).posSettings?.minImageDimensions ?? 150} onChange={e => {
+                    const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId)!;
+                    const newPosSettings = {...(activeCompany.posSettings || {}), minImageDimensions: parseInt(e.target.value) || 0, autoPrint: activeCompany.posSettings?.autoPrint ?? true, maxImageSizeKB: activeCompany.posSettings?.maxImageSizeKB || 150};
+                    handlePosSettingsChange(activeCompany.id, newPosSettings);
+                  }} className="w-full max-w-xs bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-600" />
+                  <p className="text-xs text-slate-500 mt-1">Recommended: 150px — rejects blurry/low-quality uploads scaled up from something tiny. Set to 0 to disable.</p>
                 </div>
               </div>
             </div>
@@ -2961,6 +3184,31 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
                  inventorySettings: {
                    prOptionality: companyForm.inventorySettings?.prOptionality || 'OPTIONAL',
                    isDsdAllowed: e.target.checked
+                 }
+               })}
+               className="sr-only peer"
+             />
+             <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+           </label>
+         </div>
+       </div>
+
+       <div className="space-y-1.5 flex flex-col justify-between">
+         <div className="flex items-center justify-between mt-1">
+           <div className="space-y-0.5">
+             <span className="text-[11px] font-bold text-slate-700">Enforce Stock Availability at Sale</span>
+             <p className="text-[9px] text-slate-400">Block a sale of a stock item once its resolved sales warehouse doesn't have enough quantity on hand, instead of silently allowing the balance to go to zero.</p>
+           </div>
+           <label className="relative inline-flex items-center cursor-pointer">
+             <input
+               type="checkbox"
+               checked={companyForm.inventorySettings?.enforceStockAvailability ?? false}
+               onChange={(e) => setCompanyForm({
+                 ...companyForm,
+                 inventorySettings: {
+                   prOptionality: companyForm.inventorySettings?.prOptionality || 'OPTIONAL',
+                   isDsdAllowed: companyForm.inventorySettings?.isDsdAllowed ?? true,
+                   enforceStockAvailability: e.target.checked
                  }
                })}
                className="sr-only peer"
@@ -3483,6 +3731,272 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  </div>
  )}
 
+ {/* TAB: BRANCHES (LOCATIONS) */}
+ {activeTab === 'branches' && (
+ <div className="space-y-6">
+ <div>
+ <h3 className="text-sm font-bold text-slate-900">{t('Branches (Locations)')}</h3>
+ <p className="text-[11px] text-slate-400">{t('Physical locations under this company. Each invoice/quotation can be attributed to one, and its ZATCA seller address on the e-invoice reflects that branch\'s own address when set.')}</p>
+ </div>
+
+ {canUpdateBranches && companyBranches.length > 0 && (
+ <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-100 flex flex-col md:flex-row md:items-center gap-3">
+ <div className="flex-1 space-y-0.5">
+ <span className="text-[11px] font-bold text-amber-800">{t('Backfill Unassigned Documents')}</span>
+ <p className="text-[10px] text-amber-700/80">{t('Attribute every existing document (invoices, quotations, vouchers, expenses, purchase requisitions/orders/bills, warehouses) that has no branch yet to one branch. Safe to re-run — only rows that are currently unassigned are touched.')}</p>
+ </div>
+ <div className="flex items-center gap-2 shrink-0">
+ <select
+ value={backfillTargetBranchId}
+ onChange={e => setBackfillTargetBranchId(e.target.value)}
+ className="bg-white border border-amber-200 rounded-xl px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-amber-500"
+ >
+ <option value="">{t('Choose branch...')}</option>
+ {companyBranches.map(b => (
+ <option key={b.id} value={b.id}>{b.name}</option>
+ ))}
+ </select>
+ <button
+ type="button"
+ disabled={isBackfilling || !backfillTargetBranchId}
+ onClick={() => handleBackfillUnassigned(backfillTargetBranchId)}
+ className="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl px-3 py-1.5 text-xs font-bold whitespace-nowrap"
+ >
+ {isBackfilling ? t('Working...') : t('Run Backfill')}
+ </button>
+ </div>
+ </div>
+ )}
+
+ <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+ <div className="lg:col-span-2 border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+ <table className="w-full text-xs">
+ <thead>
+ <tr className="bg-slate-50 text-slate-500">
+ <th className="p-3 text-start">{t('Name')}</th>
+ <th className="p-3 text-start">{t('Code')}</th>
+ <th className="p-3 text-start">{t('City')}</th>
+ <th className="p-3 text-center">{t('Status')}</th>
+ <th className="p-3 text-end">{t('Actions')}</th>
+ </tr>
+ </thead>
+ <tbody>
+ {companyBranches.length === 0 ? (
+ <tr><td colSpan={5} className="p-6 text-center text-slate-400">{t('No branches yet. A super-admin can create the first one.')}</td></tr>
+ ) : companyBranches.map(b => (
+ <tr key={b.id} className="border-b border-slate-100 last:border-0">
+ <td className="p-3 font-semibold text-slate-800">
+ {b.name}
+ {b.isDefault && <span className="ms-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">⭐ {t('Default')}</span>}
+ </td>
+ <td className="p-3 font-mono text-slate-600">{b.code}</td>
+ <td className="p-3 text-slate-600">{b.city || '-'}</td>
+ <td className="p-3 text-center">
+ {b.isActive === false
+ ? <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-slate-100 text-slate-500 border border-slate-200">{t('Inactive')}</span>
+ : <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">{t('Active')}</span>}
+ </td>
+ <td className="p-3 text-end">
+ <div className="flex justify-end gap-3">
+ {canUpdateBranches && (
+ <button type="button" onClick={() => startEditBranch(b)} className="text-[10px] font-bold text-indigo-600 hover:underline">{t('Edit')}</button>
+ )}
+ {canDeleteBranches && (
+ <button type="button" onClick={() => handleToggleBranchActive(b.id)} className="text-[10px] font-bold text-rose-500 hover:underline">
+ {b.isActive === false ? t('Reactivate') : t('Deactivate')}
+ </button>
+ )}
+ </div>
+ </td>
+ </tr>
+ ))}
+ </tbody>
+ </table>
+ </div>
+
+ {/* Add/Edit form. Creating a brand-new branch is deliberately super-admin-only —
+     a licensing decision, not a permission leaf (mirrors POST /api/companies) — but
+     an existing branch's own details are editable by anyone holding branches.update.
+     A non-super-admin with no branches yet to edit simply sees nothing here, which
+     is correct: there's nothing for them to do on this tab until one exists. */}
+ {(db.currentUser?.isSuperAdmin || (editingBranchId && canUpdateBranches)) && (
+ <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
+ <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3">
+ {editingBranchId ? t('Edit Branch') : t('Create New Branch')}
+ </h4>
+ <form onSubmit={handleSaveBranch} className="space-y-3">
+ <div className="grid grid-cols-2 gap-3">
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Branch Name')}</label>
+ <input type="text" required value={branchForm.name} onChange={e => setBranchForm({ ...branchForm, name: e.target.value })}
+ placeholder={t('e.g. Jeddah Branch')}
+ className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+ </div>
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Short Code')}</label>
+ <input type="text" required value={branchForm.code} onChange={e => setBranchForm({ ...branchForm, code: e.target.value.toUpperCase() })}
+ placeholder="JED" disabled={Boolean(editingBranchId)}
+ className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-400" />
+ </div>
+ </div>
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Street Name')}</label>
+ <input type="text" value={branchForm.streetName} onChange={e => setBranchForm({ ...branchForm, streetName: e.target.value })}
+ className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+ </div>
+ <div className="grid grid-cols-2 gap-3">
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Building Number')}</label>
+ <input type="text" value={branchForm.buildingNumber} onChange={e => setBranchForm({ ...branchForm, buildingNumber: e.target.value })}
+ className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+ </div>
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('District')}</label>
+ <input type="text" value={branchForm.district} onChange={e => setBranchForm({ ...branchForm, district: e.target.value })}
+ className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+ </div>
+ </div>
+ <div className="grid grid-cols-2 gap-3">
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('City')}</label>
+ <input type="text" value={branchForm.city} onChange={e => setBranchForm({ ...branchForm, city: e.target.value })}
+ className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+ </div>
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Postal Code')}</label>
+ <input type="text" value={branchForm.postalCode} onChange={e => setBranchForm({ ...branchForm, postalCode: e.target.value })}
+ className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+ </div>
+ </div>
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Phone')}</label>
+ <input type="text" value={branchForm.phone} onChange={e => setBranchForm({ ...branchForm, phone: e.target.value })}
+ className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+ </div>
+ <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer pt-1">
+ <input type="checkbox" checked={branchForm.isDefault} onChange={e => setBranchForm({ ...branchForm, isDefault: e.target.checked })}
+ className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5" />
+ <span>{t('Set as default for this company')}{companyBranches.length === 0 ? ` (${t('automatic — first branch')})` : ''}</span>
+ </label>
+ {branchEligibleWarehouses.length > 0 && (
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Default Sales Warehouse')}</label>
+ <select value={branchForm.defaultWarehouseId} onChange={e => setBranchForm({ ...branchForm, defaultWarehouseId: e.target.value })}
+ className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500">
+ <option value="">{t('None — fall back to company default')}</option>
+ {branchEligibleWarehouses.map(w => (
+ <option key={w.id} value={w.id}>{w.name}</option>
+ ))}
+ </select>
+ <p className="text-[10px] text-slate-400">{t('Auto-selected on a new Invoice/POS sale created under this branch, so staff never need to pick one manually.')}</p>
+ </div>
+ )}
+ <div className="flex gap-2 justify-end pt-1">
+ {editingBranchId && (
+ <button type="button" onClick={clearBranchForm} className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-xs">{t('Cancel')}</button>
+ )}
+ <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-4 py-1.5 text-xs font-bold flex items-center gap-1 shadow-sm">
+ <Plus className="w-3.5 h-3.5" /> {editingBranchId ? t('Save Branch') : t('Create Branch')}
+ </button>
+ </div>
+ </form>
+ </div>
+ )}
+ </div>
+ </div>
+ )}
+
+ {/* TAB: DOCUMENT NUMBERING */}
+ {activeTab === 'numbering' && (
+ <div className="space-y-6">
+ <div>
+ <h3 className="text-sm font-bold text-slate-900">{t('Document Numbering')}</h3>
+ <p className="text-[11px] text-slate-400">{t('How each document type\'s number is formatted for this company. The underlying sequence always counts company-wide, never per branch — a branch code, when enabled, only appears as cosmetic text in the printed number.')}</p>
+ </div>
+
+ {numberingLoading ? (
+ <div className="text-xs text-slate-400 p-6 text-center">{t('Loading...')}</div>
+ ) : (
+ <div className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+ <div className="overflow-x-auto">
+ <table className="w-full text-xs">
+ <thead>
+ <tr className="bg-slate-50 text-slate-500">
+ <th className="p-3 text-start">{t('Document Type')}</th>
+ <th className="p-3 text-start">{t('Prefix')}</th>
+ <th className="p-3 text-start">{t('Separator')}</th>
+ <th className="p-3 text-start">{t('Pad Width')}</th>
+ <th className="p-3 text-center">{t('Show Branch Code')}</th>
+ <th className="p-3 text-start">{t('Reset')}</th>
+ <th className="p-3 text-start">{t('Next Number Preview')}</th>
+ </tr>
+ </thead>
+ <tbody>
+ {numberingRegistry.map(entry => {
+ const rule = numberingRules[entry.key] || {};
+ const hasCollision = numberingPrefixCollisions.has(entry.key);
+ return (
+ <tr key={entry.key} className="border-b border-slate-100 last:border-0">
+ <td className="p-3 font-semibold text-slate-800">
+ {t(entry.label)}
+ {hasCollision && (
+ <span className="ms-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200" title={t('Another document type currently shares this same prefix')}>
+ ⚠ {t('Prefix collision')}
+ </span>
+ )}
+ </td>
+ <td className="p-2">
+ <input type="text" value={rule.prefix ?? entry.defaultPrefix}
+ onChange={e => updateNumberingRule(entry.key, { prefix: e.target.value.toUpperCase() })}
+ className="w-20 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+ </td>
+ <td className="p-2">
+ <input type="text" value={rule.separator ?? '-'} maxLength={3}
+ onChange={e => updateNumberingRule(entry.key, { separator: e.target.value })}
+ className="w-12 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+ </td>
+ <td className="p-2">
+ <input type="number" min={0} max={10} value={rule.padWidth ?? 0}
+ onChange={e => updateNumberingRule(entry.key, { padWidth: Math.max(0, parseInt(e.target.value) || 0) })}
+ className="w-16 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+ </td>
+ <td className="p-2 text-center">
+ <input type="checkbox" checked={rule.includeBranchCode ?? false}
+ onChange={e => updateNumberingRule(entry.key, { includeBranchCode: e.target.checked })}
+ className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5" />
+ </td>
+ <td className="p-2">
+ <select value={rule.resetFrequency ?? 'never'}
+ onChange={e => updateNumberingRule(entry.key, { resetFrequency: e.target.value as 'never' | 'yearly' | 'monthly' })}
+ className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500">
+ <option value="never">{t('Never')}</option>
+ <option value="yearly">{t('Yearly')}</option>
+ <option value="monthly">{t('Monthly')}</option>
+ </select>
+ </td>
+ <td className="p-3 font-mono text-slate-600">{numberingPreview[entry.key] || '—'}</td>
+ </tr>
+ );
+ })}
+ </tbody>
+ </table>
+ </div>
+ </div>
+ )}
+
+ <p className="text-[10px] text-slate-400">{t('Resets follow the document\'s own date, not today\'s date — a backdated document correctly still lands in its own period.')}</p>
+
+ {canUpdateDocumentNumbering && (
+ <div className="flex justify-end">
+ <button type="button" onClick={handleSaveNumberingPolicy}
+ className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl px-5 py-2 text-xs font-bold flex items-center gap-1.5 shadow-sm">
+ <Check className="w-3.5 h-3.5" /> {t('Save Changes')}
+ </button>
+ </div>
+ )}
+ </div>
+ )}
+
  {/* TAB: TEMPLATES */}
  {activeTab === 'templates' && (
   <div className="space-y-6 animate-fadeIn">
@@ -3714,6 +4228,34 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
                />
                <span>{t('Show IBAN / Bank Details')}</span>
               </label>
+              <div className="space-y-1 pt-1">
+               <span className="text-[10px] font-bold text-slate-400 block uppercase">{t('Box Frame Style')}</span>
+               <select
+                value={selectedBlock.props?.borderStyle || 'none'}
+                onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'borderStyle', e.target.value === 'none' ? undefined : e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
+               >
+                <option value="none">{t('Flat (No border) — Default')}</option>
+                <option value="solid">{t('Solid Card — matches Customer box')}</option>
+                <option value="dashed">{t('Dashed Box')}</option>
+               </select>
+               <p className="text-[9px] text-slate-400">{t('A Solid Card gives the Seller block the same bordered treatment as the Customer block beside it, for a matched, deliberate pair instead of two different styles side by side.')}</p>
+              </div>
+              <div className="space-y-1 pt-1">
+               <span className="text-[10px] font-bold text-slate-400 block uppercase">{t('Accent Highlights')}</span>
+               <select
+                value={selectedBlock.props?.accentColor || ''}
+                onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'accentColor', e.target.value || undefined)}
+                className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
+               >
+                <option value="">{t('Match Portal Theme — Default')}</option>
+                <option value="indigo">{t('Classic Indigo')}</option>
+                <option value="emerald">{t('Compliance Emerald')}</option>
+                <option value="slate">{t('Monochrome Slate')}</option>
+                <option value="amber">{t('Warm Amber')}</option>
+               </select>
+               <p className="text-[9px] text-slate-400">{t('Gives the seller name and VAT/CR their own fixed color instead of following the company’s portal-wide theme color — useful for a template with its own consistent brand accent.')}</p>
+              </div>
              </div>
             )}
 
@@ -3792,6 +4334,20 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
                />
                <span>{t('Created By User')}</span>
               </label>
+              <div className="space-y-1 pt-1">
+               <span className="text-[10px] font-bold text-slate-400 block uppercase">{t('Accent Highlights')}</span>
+               <select
+                value={selectedBlock.props?.accentColor || ''}
+                onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'accentColor', e.target.value || undefined)}
+                className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
+               >
+                <option value="">{t('Match Portal Theme — Default')}</option>
+                <option value="indigo">{t('Classic Indigo')}</option>
+                <option value="emerald">{t('Compliance Emerald')}</option>
+                <option value="slate">{t('Monochrome Slate')}</option>
+                <option value="amber">{t('Warm Amber')}</option>
+               </select>
+              </div>
              </div>
             )}
 
@@ -4143,6 +4699,16 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
                />
                <span>{t('Show Grand Total')}</span>
               </label>
+              <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+               <input
+                type="checkbox"
+                checked={selectedBlock.props?.anchorBottom === true}
+                onChange={(e) => handleUpdateBlockProp(selectedBlock.id, 'anchorBottom', e.target.checked)}
+                className="rounded border-slate-300 text-indigo-600 w-3.5 h-3.5"
+               />
+               <span>{t('Anchor Notes/QR/Totals to page bottom')}</span>
+              </label>
+              <p className="text-[9px] text-slate-400 -mt-1">{t('Makes the preview show a full A4-height page with this row pinned to the bottom, instead of sitting directly under a short items table. Preview only — never affects the actual printed page height.')}</p>
               <div className="space-y-1 pt-1">
                <span className="text-[10px] font-bold text-slate-400 block uppercase">{t('Accent Highlights')}</span>
                <select
@@ -4233,6 +4799,8 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
               >
                <option value="sans">{t('Modern Sans-Serif (Inter)')}</option>
+               <option value="helvetica">{t('Helvetica / Arial')}</option>
+               <option value="calibri">{t('Calibri')}</option>
                <option value="serif">{t('Traditional Serif (Lora)')}</option>
                <option value="display">{t('Bold Display (Space Grotesk)')}</option>
                <option value="mono">{t('Technical Mono (JetBrains Mono)')}</option>
@@ -4329,7 +4897,9 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
                onChange={(e) => handleUpdateTemplateProperty(tmpl.id, 'globalFontFamily', e.target.value)}
                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-800 focus:outline-none"
               >
-               <option value="sans">{t('Modern Sans-Serif (Inter) — recommended for invoices')}</option>
+               <option value="sans">{t('Modern Sans-Serif (Inter)')}</option>
+               <option value="helvetica">{t('Helvetica / Arial — global invoice standard')}</option>
+               <option value="calibri">{t('Calibri — Microsoft Office standard')}</option>
                <option value="serif">{t('Traditional Serif (Lora)')}</option>
                <option value="display">{t('Bold Display (Space Grotesk)')}</option>
                <option value="mono">{t('Technical Mono (JetBrains Mono)')}</option>
@@ -4441,6 +5011,8 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
            tmpl.globalFontFamily === 'serif' ? 'font-serif' :
            tmpl.globalFontFamily === 'display' ? 'font-display' :
            tmpl.globalFontFamily === 'mono' ? 'font-mono' :
+           tmpl.globalFontFamily === 'helvetica' ? 'font-helvetica' :
+           tmpl.globalFontFamily === 'calibri' ? 'font-calibri' :
            'font-sans'
          }`}>
           <div className="grid grid-cols-12 gap-x-4 gap-y-6 items-start">
@@ -5134,6 +5706,9 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  role: 'user',
  companyId: db.selectedCompanyId,
  roleIds: [],
+ branchIds: [],
+ primaryBranchId: '',
+ employeeId: '',
   });
  }}
  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[9px] font-bold uppercase transition"
@@ -5222,6 +5797,31 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  </div>
  </div>
 
+ {(() => {
+   const employeeCompanyId = userForm.companyId || db.selectedCompanyId;
+   const companyEmployees = (db.employees || []).filter(e => e.companyId === employeeCompanyId && e.isActive !== false);
+   if (companyEmployees.length === 0) return null;
+   return (
+     <div className="space-y-1">
+       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Linked Employee')} <span className="text-rose-500">*</span></label>
+       <select
+         required
+         value={userForm.employeeId}
+         onChange={(e) => setUserForm({ ...userForm, employeeId: e.target.value })}
+         className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-2xl px-2.5 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold cursor-pointer"
+       >
+         <option value="">{t('-- Choose Employee --')}</option>
+         {companyEmployees.map(emp => (
+           <option key={emp.id} value={emp.id}>{`${emp.employeeNumber} — ${emp.name}`}</option>
+         ))}
+       </select>
+       <p className="text-[9px] text-slate-400 leading-relaxed pt-0.5">
+         {t('This company uses HR employee onboarding — every login account must be linked to the onboarded employee it belongs to.')}
+       </p>
+     </div>
+   );
+ })()}
+
  {userForm.role === 'admin' ? (
  <div className="p-3 bg-rose-50 border border-rose-100 rounded-2xl text-[10px] text-rose-800 space-y-1">
  <p className="font-extrabold flex items-center gap-1">⭐ {t('Administrator Access')}</p>
@@ -5260,6 +5860,50 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
    )}
    <p className="text-[9px] text-slate-400 leading-relaxed pt-0.5">
      {t("A user with multiple roles gets the union of every assigned role's permissions — a page granted by more than one role just renders once.")}
+   </p>
+ </div>
+ )}
+
+ {userForm.role !== 'admin' && companyBranches.length > 0 && (
+ <div className="space-y-1">
+   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Assigned Branches')}</label>
+   <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-3 space-y-1.5 max-h-40 overflow-y-auto">
+     {companyBranches.map(b => (
+       <label key={b.id} className="flex items-center justify-between gap-2 text-xs text-slate-700 font-semibold cursor-pointer hover:text-indigo-600 transition">
+         <span className="flex items-center gap-2">
+           <input
+             type="checkbox"
+             checked={userForm.branchIds.includes(b.id)}
+             onChange={(e) => {
+               setUserForm(prev => {
+                 const branchIds = e.target.checked ? [...prev.branchIds, b.id] : prev.branchIds.filter(id => id !== b.id);
+                 // A cleared primary must not keep pointing at a branch no longer assigned.
+                 const primaryBranchId = branchIds.includes(prev.primaryBranchId) ? prev.primaryBranchId : (branchIds[0] || '');
+                 return { ...prev, branchIds, primaryBranchId };
+               });
+             }}
+             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 cursor-pointer"
+           />
+           {b.name}
+         </span>
+         {userForm.branchIds.includes(b.id) && (
+           <button
+             type="button"
+             onClick={() => setUserForm(prev => ({ ...prev, primaryBranchId: b.id }))}
+             className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full border shrink-0 ${
+               userForm.primaryBranchId === b.id
+                 ? 'bg-indigo-600 text-white border-indigo-600'
+                 : 'bg-white text-slate-400 border-slate-200 hover:text-indigo-600 hover:border-indigo-300'
+             }`}
+           >
+             {userForm.primaryBranchId === b.id ? `⭐ ${t('Primary')}` : t('Set Primary')}
+           </button>
+         )}
+       </label>
+     ))}
+   </div>
+   <p className="text-[9px] text-slate-400 leading-relaxed pt-0.5">
+     {t('Leave every branch unchecked for company-wide access (sees/can act on every branch) — restricting to specific branches only takes effect for a role that does NOT also grant "View & Act Across All Branches".')}
    </p>
  </div>
  )}
@@ -5349,6 +5993,9 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  role: u.role,
  companyId: u.companyId || db.selectedCompanyId,
   roleIds: (db.userRoles || []).filter(ur => ur.userId === u.id).map(ur => ur.roleId),
+  branchIds: (db.userBranches || []).filter(ub => ub.userId === u.id).map(ub => ub.branchId),
+  primaryBranchId: (db.userBranches || []).find(ub => ub.userId === u.id && ub.isPrimary)?.branchId || '',
+  employeeId: (u as any).employeeId || '',
                         });
  }}
  className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-all cursor-pointer"
@@ -5891,8 +6538,13 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  </div>
  )}
 
+ {/* TAB: VAT RETURNS (ZATCA FILING) */}
+ {activeTab === 'taxReturns' && (
+ <VatReturnsPanel db={db} />
+ )}
+
  {/* TAB: DATABASE PORTABILITY & SYNC */}
- 
+
  {activeTab === 'translations' && (() => {
    const getTranslationModule = (key: string): string => {
      const k = key.toLowerCase();

@@ -73,6 +73,29 @@ router.post('/', async (req: any, res) => {
       : 'user';
     const grantSuperAdmin = isSuperAdmin ? Boolean(data.isSuperAdmin) : false;
 
+    // Employee link — see users.employeeId's schema comment. Validated whenever
+    // provided (must belong to this company, must be active); mandatory for a
+    // genuinely NEW account only once the company has onboarded at least one active
+    // employee — mirrors the exact "mandatory once the company has adopted X" pattern
+    // already used for warehouses requiring a branch once one exists. A company with
+    // zero employees onboarded yet keeps today's exact behavior (fully optional).
+    if (data.employeeId) {
+      const [employee] = await db.select().from(schema.employees)
+        .where(and(eq(schema.employees.id, data.employeeId), eq(schema.employees.companyId, data.companyId)));
+      if (!employee) {
+        return res.status(404).json({ error: 'Employee not found for this company.' });
+      }
+      if (employee.isActive === false) {
+        return res.status(400).json({ error: `Employee "${employee.name}" (#${employee.employeeNumber}) is deactivated and cannot be linked to a new account.` });
+      }
+    } else if (!isUpdate) {
+      const [anyActiveEmployee] = await db.select({ id: schema.employees.id }).from(schema.employees)
+        .where(and(eq(schema.employees.companyId, data.companyId), eq(schema.employees.isActive, true)));
+      if (anyActiveEmployee) {
+        return res.status(400).json({ error: 'This company uses HR employee onboarding — select the employee this account belongs to.' });
+      }
+    }
+
     // Sanitize user payload for schema.users table
     const userRecord: any = {
       id: data.id,
@@ -84,6 +107,11 @@ router.post('/', async (req: any, res) => {
       isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
       uiLanguage: data.uiLanguage || 'en',
       isDeleted: data.isDeleted ? 1 : 0,
+      // Preserve the existing link on an edit that doesn't mention employeeId at all —
+      // omitting the field must never silently unlink an account from its employee,
+      // same reasoning as warehouses.isCompanyDefault's own "preserve unless explicitly
+      // sent" handling.
+      employeeId: data.employeeId !== undefined ? (data.employeeId || null) : (existingUser?.employeeId ?? null),
     };
     if (data.uid) userRecord.uid = data.uid;
     if (data.password) {
@@ -139,16 +167,79 @@ router.post('/', async (req: any, res) => {
       }
     }
 
+    // Sync branch assignments (many-to-many) — same reasoning and same
+    // drop-with-explanation pattern as roleIds just above: a branch can only ever be
+    // assigned to a user in the same company it belongs to. Zero rows (an empty/omitted
+    // branchIds array) means company-wide — that's the `branches.viewAllBranches`
+    // permission's job, not row presence here, so an explicit `[]` legitimately clears
+    // any prior branch restriction rather than being treated as "no change."
+    let droppedBranches: Array<{ branchId: string; reason: string }> = [];
+    if (Array.isArray(data.branchIds)) {
+      const requestedBranchIds: string[] = data.branchIds.filter((id: any) => typeof id === 'string' && id);
+      const validBranchRows = requestedBranchIds.length
+        ? await db.select().from(schema.branches).where(eq(schema.branches.companyId, userRecord.companyId))
+        : [];
+      let validBranchIds = new Set(validBranchRows.filter(b => requestedBranchIds.includes(b.id)).map(b => b.id));
+      const droppedBranchIds = requestedBranchIds.filter(id => !validBranchIds.has(id));
+      if (droppedBranchIds.length) {
+        const droppedBranchRows = await db.select().from(schema.branches).where(inArray(schema.branches.id, droppedBranchIds));
+        droppedBranches = droppedBranchIds.map(branchId => {
+          const found = droppedBranchRows.find((b: any) => b.id === branchId);
+          return {
+            branchId,
+            reason: found
+              ? `Branch "${found.name}" belongs to a different company and cannot be assigned to this user.`
+              : `Branch ${branchId} no longer exists.`,
+          };
+        });
+      }
+
+      // A branch-restricted caller (req.allowedBranchIds is a real array, not null — see
+      // isAuthenticated in server.ts) must never be able to assign a branch outside their
+      // own set, on ANYONE's account — including, most dangerously, their own: without
+      // this, a user holding only the delegated users.update permission could edit their
+      // own record and add themselves to every branch in the company, self-escalating
+      // req.allowedBranchIds on their very next request. Silently dropped, same pattern
+      // (and same reported-back shape) as the cross-company drop just above, rather than
+      // failing the whole save over it.
+      if (Array.isArray(req.allowedBranchIds)) {
+        const outOfScopeIds = Array.from(validBranchIds).filter(id => !req.allowedBranchIds.includes(id));
+        if (outOfScopeIds.length) {
+          const outOfScopeRows = await db.select().from(schema.branches).where(inArray(schema.branches.id, outOfScopeIds));
+          droppedBranches = droppedBranches.concat(outOfScopeIds.map(branchId => ({
+            branchId,
+            reason: `You are not assigned to branch "${outOfScopeRows.find((b: any) => b.id === branchId)?.name || branchId}" and cannot assign it to this user.`,
+          })));
+          validBranchIds = new Set(Array.from(validBranchIds).filter(id => req.allowedBranchIds.includes(id)));
+        }
+      }
+
+      // primaryBranchId must itself be one of the (valid) requested branches — a stray
+      // value pointing outside the set being assigned would otherwise mark isPrimary on
+      // a row that's never inserted, silently leaving the user with no primary at all.
+      const requestedPrimary = typeof data.primaryBranchId === 'string' ? data.primaryBranchId : null;
+      const primaryBranchId = requestedPrimary && validBranchIds.has(requestedPrimary)
+        ? requestedPrimary
+        : (validBranchIds.size ? Array.from(validBranchIds)[0] : null);
+
+      await db.delete(schema.userBranches).where(eq(schema.userBranches.userId, userRecord.id));
+      if (validBranchIds.size) {
+        await db.insert(schema.userBranches).values(
+          Array.from(validBranchIds).map(branchId => ({ userId: userRecord.id, branchId, isPrimary: branchId === primaryBranchId }))
+        );
+      }
+    }
+
     // Log the user creation/update
     await recordAuditLog(
       req,
       isUpdate ? 'UPDATE_USER' : 'CREATE_USER',
       'user',
       data.id,
-      { username: data.username, role: data.role, droppedRoles: droppedRoles.length ? droppedRoles : undefined }
+      { username: data.username, role: data.role, droppedRoles: droppedRoles.length ? droppedRoles : undefined, droppedBranches: droppedBranches.length ? droppedBranches : undefined }
     );
 
-    res.json({ success: true, droppedRoles: droppedRoles.length ? droppedRoles : undefined });
+    res.json({ success: true, droppedRoles: droppedRoles.length ? droppedRoles : undefined, droppedBranches: droppedBranches.length ? droppedBranches : undefined });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

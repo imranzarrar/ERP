@@ -7,7 +7,7 @@ import { getNextHashChainState, INITIAL_PREVIOUS_INVOICE_HASH } from '../lib/zat
 import { generateZatcaUblXml } from '../lib/zatca/xmlBuilder.js';
 import { ZatcaApiClient } from '../lib/zatca/apiClient.js';
 import { processInvoiceZatca } from '../lib/zatca/processInvoice.js';
-import { isAdminUser, isSuperAdminUser } from '../lib/authz.js';
+import { isAdminUser, isSuperAdminUser, branchAccessOk } from '../lib/authz.js';
 import { normalizePermissions } from '../../src/types.js';
 import { generateId } from '../../src/id.js';
 import { recordAuditLog } from '../lib/audit.js';
@@ -110,7 +110,7 @@ router.post('/submit-invoice/:invoiceId', async (req: any, res) => {
     // Reprocessing it here would mint a fresh chain identity for a document ZATCA has
     // already accepted under a different one, corrupting this app's own record of what
     // was actually cleared without ZATCA ever being told.
-    const [invoice] = await db.select({ zatcaStatus: schema.invoices.zatcaStatus, companyId: schema.invoices.companyId }).from(schema.invoices).where(eq(schema.invoices.id, invoiceId));
+    const [invoice] = await db.select({ zatcaStatus: schema.invoices.zatcaStatus, companyId: schema.invoices.companyId, branchId: schema.invoices.branchId }).from(schema.invoices).where(eq(schema.invoices.id, invoiceId));
     if (!invoice) {
       return res.status(404).json({ success: false, error: 'Invoice not found' });
     }
@@ -118,6 +118,12 @@ router.post('/submit-invoice/:invoiceId', async (req: any, res) => {
     // session's targetCompanyId, same as every other invoice-mutating route.
     if (!isSuperAdminUser(req.user) && invoice.companyId !== req.targetCompanyId) {
       return res.status(403).json({ success: false, error: 'Forbidden' });
+    }
+    // This route is explicitly usable by line staff (invoice.create/.update, not
+    // admin-gated — see the comment above) — a branch-restricted user must not be able to
+    // force a (re)submission of another branch's invoice to ZATCA.
+    if (!branchAccessOk(req, invoice.branchId)) {
+      return res.status(403).json({ success: false, error: 'Forbidden: you are not assigned to this branch.' });
     }
     if (invoice.zatcaStatus === 'CLEARED' || invoice.zatcaStatus === 'REPORTED') {
       return res.status(400).json({ success: false, error: 'This invoice has already been cleared/reported by ZATCA and cannot be resubmitted. Issue a Credit Note to reverse it instead.' });
@@ -172,9 +178,20 @@ router.use(async (req: any, res: any, next: any) => {
   * GET ZATCA onboarding status for all three environments, plus the taxpayer profile
   * and which environment is currently active for live invoice processing.
   */
-router.get('/company-status/:companyId', async (req, res) => {
+router.get('/company-status/:companyId', async (req: any, res) => {
   try {
     const { companyId } = req.params;
+    // The router-level admin/company-ownership gate above reads req.body/req.params for
+    // a companyId to check — but for a GET route, Express hasn't matched THIS route's own
+    // `:companyId` segment yet when that path-less `router.use()` middleware runs, so
+    // req.params.companyId is always undefined there and the mismatch check silently never
+    // fires. Every other route in this file passes companyId via the POST body (already
+    // populated before the middleware runs), so this GET-with-URL-param route is the only
+    // one that slips past it — checked explicitly here instead, same pattern as
+    // submit-invoice's own ownership check just above.
+    if (!isSuperAdminUser(req.user) && companyId !== req.targetCompanyId) {
+      return res.status(403).json({ error: 'Forbidden: company mismatch' });
+    }
     const [company] = await db.select().from(schema.companies).where(eq(schema.companies.id, companyId));
 
     if (!company) {
@@ -696,36 +713,6 @@ router.post('/request-production-csid', async (req, res) => {
       await logZatcaApiError(req, req.body.companyId, req.body.environment, 'requestProductionCsid', err);
     }
     res.status(err.status || 500).json({ error: err.message });
-  }
-});
-
-/**
- * POST Submit or re-submit invoice directly to ZATCA Phase 2
- */
-router.post('/submit-invoice/:invoiceId', async (req, res) => {
-  try {
-    const { invoiceId } = req.params;
-
-    // A CLEARED/REPORTED invoice is a permanent, ZATCA-confirmed record — its ICV/UUID/
-    // hash must never be touched again (see hashChain.ts's resubmission-identity logic).
-    // Reprocessing it here would mint a fresh chain identity for a document ZATCA has
-    // already accepted under a different one, corrupting this app's own record of what
-    // was actually cleared without ZATCA ever being told.
-    const [invoice] = await db.select({ zatcaStatus: schema.invoices.zatcaStatus }).from(schema.invoices).where(eq(schema.invoices.id, invoiceId));
-    if (!invoice) {
-      return res.status(404).json({ success: false, error: 'Invoice not found' });
-    }
-    if (invoice.zatcaStatus === 'CLEARED' || invoice.zatcaStatus === 'REPORTED') {
-      return res.status(400).json({ success: false, error: 'This invoice has already been cleared/reported by ZATCA and cannot be resubmitted. Issue a Credit Note to reverse it instead.' });
-    }
-
-    const result = await processInvoiceZatca(invoiceId);
-    if (result.error) {
-      return res.status(400).json({ success: false, error: result.error });
-    }
-    res.json(result);
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
   }
 });
 

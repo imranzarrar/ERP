@@ -2,8 +2,10 @@ import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, and, isNull, inArray } from 'drizzle-orm';
-import { getAndIncrementCounter, round2, round4, writeStockLedgerEntry } from '../lib/businessLogic.js';
-import { hasPermission } from '../lib/authz.js';
+import { round2, round4, writeStockLedgerEntry, assertQuarterNotFiled } from '../lib/businessLogic.js';
+import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
+import { hasPermission, resolveDocumentBranchId, branchAccessOk, branchAccessOkViaWarehouse } from '../lib/authz.js';
+import { toBaseQuantity, toBaseUnitCost } from '../lib/uomConversion.js';
 import { generateId } from '../../src/id.js';
 
 const router = express.Router();
@@ -12,8 +14,8 @@ const router = express.Router();
 // "next number" derived client-side from `array.length + 1001` (see InventoryModule.tsx
 // history) — reproducibly duplicated under concurrent creation, the same class of bug
 // already fixed for invoice/quotation/expense/voucher numbering. These routes reuse the
-// same `getAndIncrementCounter` (SELECT ... FOR UPDATE row lock scoped per-company)
-// mechanism so PR/PO/GRN numbering is safe under real concurrency too.
+// same `getAndIncrementDocumentNumber` (atomic upsert, company-wide, per-company-
+// configurable) mechanism so PR/PO/GRN numbering is safe under real concurrency too.
 
 // --- Purchase Requisitions ---
 router.post('/purchase-requisitions', async (req: any, res) => {
@@ -26,10 +28,16 @@ router.post('/purchase-requisitions', async (req: any, res) => {
       return res.status(400).json({ error: 'At least one requested item is required.' });
     }
     const companyId = req.targetCompanyId;
+    let branchId: string | null;
+    try {
+      branchId = await resolveDocumentBranchId(req, prData.branchId);
+    } catch (branchErr: any) {
+      return res.status(branchErr.status || 400).json({ error: branchErr.error || 'Invalid branch.' });
+    }
 
     const created = await db.transaction(async (tx) => {
-      const prCount = await getAndIncrementCounter(tx, companyId, 'pr');
-      const prNumber = `PR-${prCount}`;
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const prNumber = await getAndIncrementDocumentNumber(tx, companyId, 'pr', todayIso, branchId);
       const prId = generateId();
 
       const [newPr] = await tx.insert(schema.purchaseRequisitions).values({
@@ -40,6 +48,7 @@ router.post('/purchase-requisitions', async (req: any, res) => {
         status: 'Pending',
         notes: prData.notes || null,
         companyId,
+        branchId,
       }).returning();
 
       const itemRows = prData.items.map((item: any) => ({
@@ -82,6 +91,11 @@ router.put('/purchase-requisitions/:id', async (req: any, res) => {
       if (!pr) {
         const err: any = new Error('Purchase requisition not found.');
         err.status = 404;
+        throw err;
+      }
+      if (!branchAccessOk(req, pr.branchId)) {
+        const err: any = new Error('Forbidden: you are not assigned to this branch.');
+        err.status = 403;
         throw err;
       }
       if (pr.status !== 'Pending') {
@@ -134,6 +148,11 @@ router.patch('/purchase-requisitions/:id/withdraw', async (req: any, res) => {
         err.status = 404;
         throw err;
       }
+      if (!branchAccessOk(req, pr.branchId)) {
+        const err: any = new Error('Forbidden: you are not assigned to this branch.');
+        err.status = 403;
+        throw err;
+      }
       if (pr.status !== 'Pending') {
         const err: any = new Error(`Cannot withdraw a requisition that is not Pending (current status: ${pr.status}).`);
         err.status = 400;
@@ -177,6 +196,22 @@ router.post('/purchase-orders', async (req: any, res) => {
       return sum + lineTotal + tax;
     }, 0);
 
+    // If this PO is raised from a PR and no branch was explicitly requested, inherit the
+    // PR's own branch (same reasoning a Credit Note inherits its original invoice's) —
+    // otherwise resolve/validate independently, same choke-point as every other route.
+    let poBranchId: string | null;
+    try {
+      let requestedBranchId = poData.branchId;
+      if (!requestedBranchId && poData.requisitionId) {
+        const [linkedPr] = await db.select({ branchId: schema.purchaseRequisitions.branchId }).from(schema.purchaseRequisitions)
+          .where(and(eq(schema.purchaseRequisitions.id, poData.requisitionId), eq(schema.purchaseRequisitions.companyId, companyId)));
+        requestedBranchId = linkedPr?.branchId || undefined;
+      }
+      poBranchId = await resolveDocumentBranchId(req, requestedBranchId);
+    } catch (branchErr: any) {
+      return res.status(branchErr.status || 400).json({ error: branchErr.error || 'Invalid branch.' });
+    }
+
     const created = await db.transaction(async (tx) => {
       // If a requisition is referenced (regardless of prOptionality — a stale/rejected/
       // already-closed PR is never a valid source, in any mode), row-lock and validate it
@@ -197,8 +232,7 @@ router.post('/purchase-orders', async (req: any, res) => {
         }
       }
 
-      const poCount = await getAndIncrementCounter(tx, companyId, 'po');
-      const poNumber = `PO-${poCount}`;
+      const poNumber = await getAndIncrementDocumentNumber(tx, companyId, 'po', new Date().toISOString().slice(0, 10), poBranchId);
       const poId = generateId();
 
       const [newPo] = await tx.insert(schema.purchaseOrders).values({
@@ -211,6 +245,7 @@ router.post('/purchase-orders', async (req: any, res) => {
         deliveryDate: poData.deliveryDate ? new Date(poData.deliveryDate) : null,
         totalAmount: String(round2(totalAmount)),
         companyId,
+        branchId: poBranchId,
       }).returning();
 
       const itemRows = poData.items.map((item: any) => ({
@@ -220,6 +255,7 @@ router.post('/purchase-orders', async (req: any, res) => {
         quantityOrdered: String(item.quantityOrdered),
         unitPrice: String(item.unitPrice),
         taxRate: String(item.taxRate || 0),
+        unitOfMeasureId: item.unitOfMeasureId || null,
       }));
       const insertedItems = await tx.insert(schema.purchaseOrderItems).values(itemRows).returning();
 
@@ -292,8 +328,27 @@ router.post('/goods-receipt-notes', async (req: any, res) => {
         vendorId = po.vendorId;
       }
 
-      const grnCount = await getAndIncrementCounter(tx, companyId, 'grn');
-      const grnNumber = `GRN-${grnCount}`;
+      // goodsReceiptNotes has no branchId column of its own (schema.ts) — derived via
+      // warehouseId purely so includeBranchCode can format correctly if ever configured,
+      // same lookup pattern as server.ts's branchOkViaWarehouse read-path predicate. Also
+      // the ONLY place grnData.warehouseId is ever checked at all — previously unscoped
+      // by companyId entirely (a real cross-tenant gap: a crafted request could receive
+      // stock into another company's warehouse, with the resulting inventoryStocks/
+      // stockLedgerTransactions rows filed under THIS caller's companyId, corrupting both
+      // tenants' inventory records) and never checked against req.allowedBranchIds either.
+      const [grnWarehouse] = await tx.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses)
+        .where(and(eq(schema.warehouses.id, grnData.warehouseId), eq(schema.warehouses.companyId, companyId)));
+      if (!grnWarehouse) {
+        const err: any = new Error('Selected warehouse not found for this company.');
+        err.status = 400;
+        throw err;
+      }
+      if (!branchAccessOk(req, grnWarehouse.branchId)) {
+        const err: any = new Error('Forbidden: you are not assigned to this branch.');
+        err.status = 403;
+        throw err;
+      }
+      const grnNumber = await getAndIncrementDocumentNumber(tx, companyId, 'grn', new Date().toISOString().slice(0, 10), grnWarehouse?.branchId || null);
       const grnId = generateId();
 
       const [newGrn] = await tx.insert(schema.goodsReceiptNotes).values({
@@ -318,13 +373,20 @@ router.post('/goods-receipt-notes', async (req: any, res) => {
         taxRate: item.taxRate !== undefined ? String(item.taxRate) : '0.00',
         batchNumber: item.batchNumber || null,
         expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
+        unitOfMeasureId: item.unitOfMeasureId || null,
       }));
       const insertedItems = await tx.insert(schema.goodsReceiptNoteItems).values(itemRows).returning();
 
       // Update stock levels — lock each matching stock row before incrementing so two
       // concurrent GRNs touching the same product/warehouse/batch never lose an update
       // (read-then-write without a lock would let both read the same starting quantity).
+      // `quantityReceived`/`unitCost` on the item itself stay exactly as entered (whatever
+      // unit the line used, for billing/display); every inventory-quantity and averaging
+      // calculation below uses the base-unit-converted values instead.
       for (const item of grnData.items) {
+        const baseQtyReceived = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReceived));
+        const baseUnitCost = await toBaseUnitCost(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.unitCost));
+
         const batchCondition = item.batchNumber
           ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
           : isNull(schema.inventoryStocks.batchNumber);
@@ -339,8 +401,8 @@ router.post('/goods-receipt-notes', async (req: any, res) => {
           .for('update');
 
         const grnEndingQty = existingStock
-          ? round2(Number(existingStock.quantity) + Number(item.quantityReceived))
-          : round2(Number(item.quantityReceived));
+          ? round2(Number(existingStock.quantity) + baseQtyReceived)
+          : round2(baseQtyReceived);
 
         if (existingStock) {
           await tx.update(schema.inventoryStocks)
@@ -353,14 +415,14 @@ router.post('/goods-receipt-notes', async (req: any, res) => {
             warehouseId: grnData.warehouseId,
             batchNumber: item.batchNumber || null,
             expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
-            quantity: String(item.quantityReceived),
+            quantity: String(baseQtyReceived),
             companyId,
           });
         }
         await writeStockLedgerEntry(tx, {
           productId: item.productId, warehouseId: grnData.warehouseId, companyId,
           transactionType: 'GRN', referenceId: grnId, date: newGrn.date as Date,
-          quantityChange: Number(item.quantityReceived), endingQuantity: grnEndingQty,
+          quantityChange: baseQtyReceived, endingQuantity: grnEndingQty,
           batchNumber: item.batchNumber || null,
         });
 
@@ -375,9 +437,8 @@ router.post('/goods-receipt-notes', async (req: any, res) => {
         if (product) {
           const priorQty = Number(product.totalQuantityPurchased || 0);
           const priorAvg = Number(product.averageCost || 0);
-          const receivedQty = Number(item.quantityReceived);
-          const newQty = priorQty + receivedQty;
-          const newAvg = newQty > 0 ? round4((priorQty * priorAvg + receivedQty * Number(item.unitCost)) / newQty) : priorAvg;
+          const newQty = priorQty + baseQtyReceived;
+          const newAvg = newQty > 0 ? round4((priorQty * priorAvg + baseQtyReceived * baseUnitCost) / newQty) : priorAvg;
           await tx.update(schema.productsServices)
             .set({ averageCost: String(newAvg), totalQuantityPurchased: String(round2(newQty)) })
             .where(eq(schema.productsServices.id, item.productId));
@@ -395,22 +456,28 @@ router.post('/goods-receipt-notes', async (req: any, res) => {
         const priorGrnItems = await tx.select({
           productId: schema.goodsReceiptNoteItems.productId,
           quantityReceived: schema.goodsReceiptNoteItems.quantityReceived,
+          unitOfMeasureId: schema.goodsReceiptNoteItems.unitOfMeasureId,
         })
           .from(schema.goodsReceiptNoteItems)
           .innerJoin(schema.goodsReceiptNotes, eq(schema.goodsReceiptNoteItems.grnId, schema.goodsReceiptNotes.id))
           .where(and(eq(schema.goodsReceiptNotes.purchaseOrderId, linkedPo.id), eq(schema.goodsReceiptNotes.isReversed, false)));
 
+        // Ordered vs. received is compared in base-unit terms throughout — a PO line and
+        // its fulfilling GRN line(s) need not share the same unit (e.g. ordered in
+        // Cartons, received partly loose), so both sides are converted before comparing.
         const receivedByProduct = new Map<string, number>();
         for (const row of priorGrnItems) {
-          receivedByProduct.set(row.productId, (receivedByProduct.get(row.productId) || 0) + Number(row.quantityReceived));
+          const baseQty = await toBaseQuantity(tx, row.productId, row.unitOfMeasureId, companyId, Number(row.quantityReceived));
+          receivedByProduct.set(row.productId, (receivedByProduct.get(row.productId) || 0) + baseQty);
         }
 
         let fullyReceived = poItems.length > 0;
         let anyReceived = false;
         for (const poItem of poItems) {
           const received = receivedByProduct.get(poItem.productId) || 0;
+          const orderedBaseQty = await toBaseQuantity(tx, poItem.productId, poItem.unitOfMeasureId, companyId, Number(poItem.quantityOrdered));
           if (received > 0) anyReceived = true;
-          if (received < Number(poItem.quantityOrdered)) fullyReceived = false;
+          if (received < orderedBaseQty) fullyReceived = false;
         }
 
         const newStatus = fullyReceived ? 'Received' : (anyReceived ? 'Partially Received' : linkedPo.status);
@@ -455,6 +522,11 @@ router.post('/goods-receipt-notes/:id/reverse', async (req: any, res) => {
         err.status = 404;
         throw err;
       }
+      if (!(await branchAccessOkViaWarehouse(tx, req, grn.warehouseId))) {
+        const err: any = new Error('Forbidden: you are not assigned to this branch.');
+        err.status = 403;
+        throw err;
+      }
       if (grn.isReversed) {
         const err: any = new Error('This receipt has already been reversed.');
         err.status = 400;
@@ -476,8 +548,9 @@ router.post('/goods-receipt-notes/:id/reverse', async (req: any, res) => {
           ))
           .for('update');
         if (existingStock) {
+          const baseQtyReceived = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReceived));
           const priorQty = Number(existingStock.quantity);
-          const newQty = Math.max(0, round2(priorQty - Number(item.quantityReceived)));
+          const newQty = Math.max(0, round2(priorQty - baseQtyReceived));
           await tx.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
           await writeStockLedgerEntry(tx, {
             productId: item.productId, warehouseId: grn.warehouseId, companyId,
@@ -501,6 +574,7 @@ router.post('/goods-receipt-notes/:id/reverse', async (req: any, res) => {
           const remainingGrnItems = await tx.select({
             productId: schema.goodsReceiptNoteItems.productId,
             quantityReceived: schema.goodsReceiptNoteItems.quantityReceived,
+            unitOfMeasureId: schema.goodsReceiptNoteItems.unitOfMeasureId,
           })
             .from(schema.goodsReceiptNoteItems)
             .innerJoin(schema.goodsReceiptNotes, eq(schema.goodsReceiptNoteItems.grnId, schema.goodsReceiptNotes.id))
@@ -508,14 +582,16 @@ router.post('/goods-receipt-notes/:id/reverse', async (req: any, res) => {
 
           const receivedByProduct = new Map<string, number>();
           for (const row of remainingGrnItems) {
-            receivedByProduct.set(row.productId, (receivedByProduct.get(row.productId) || 0) + Number(row.quantityReceived));
+            const baseQty = await toBaseQuantity(tx, row.productId, row.unitOfMeasureId, companyId, Number(row.quantityReceived));
+            receivedByProduct.set(row.productId, (receivedByProduct.get(row.productId) || 0) + baseQty);
           }
           let fullyReceived = poItems.length > 0;
           let anyReceived = false;
           for (const poItem of poItems) {
             const received = receivedByProduct.get(poItem.productId) || 0;
+            const orderedBaseQty = await toBaseQuantity(tx, poItem.productId, poItem.unitOfMeasureId, companyId, Number(poItem.quantityOrdered));
             if (received > 0) anyReceived = true;
-            if (received < Number(poItem.quantityOrdered)) fullyReceived = false;
+            if (received < orderedBaseQty) fullyReceived = false;
           }
           // Cancelled stays Cancelled regardless of receipt reversal — reversing a receipt
           // never resurrects a PO the company deliberately called off.
@@ -561,6 +637,11 @@ router.patch('/purchase-requisitions/:id/status', async (req: any, res) => {
         err.status = 404;
         throw err;
       }
+      if (!branchAccessOk(req, pr.branchId)) {
+        const err: any = new Error('Forbidden: you are not assigned to this branch.');
+        err.status = 403;
+        throw err;
+      }
       if (pr.status !== 'Pending') {
         const err: any = new Error(`Cannot ${status.toLowerCase()} a requisition that is not Pending (current status: ${pr.status}).`);
         err.status = 400;
@@ -598,6 +679,11 @@ router.patch('/purchase-orders/:id/cancel', async (req: any, res) => {
       if (!po) {
         const err: any = new Error('Purchase order not found.');
         err.status = 404;
+        throw err;
+      }
+      if (!branchAccessOk(req, po.branchId)) {
+        const err: any = new Error('Forbidden: you are not assigned to this branch.');
+        err.status = 403;
         throw err;
       }
       if (po.status !== 'Sent') {
@@ -640,6 +726,23 @@ router.post('/stock-adjustments', async (req: any, res) => {
     const delta = Number(quantity);
 
     const stock = await db.transaction(async (tx) => {
+      // warehouseId was previously never checked against companyId or the caller's
+      // allowedBranchIds at all — a crafted request could adjust stock in (or create a
+      // new stock row for) another company's warehouse, filed under this caller's own
+      // companyId. Same fix as POST /goods-receipt-notes above.
+      const [warehouse] = await tx.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses)
+        .where(and(eq(schema.warehouses.id, warehouseId), eq(schema.warehouses.companyId, companyId)));
+      if (!warehouse) {
+        const err: any = new Error('Selected warehouse not found for this company.');
+        err.status = 400;
+        throw err;
+      }
+      if (!branchAccessOk(req, warehouse.branchId)) {
+        const err: any = new Error('Forbidden: you are not assigned to this branch.');
+        err.status = 403;
+        throw err;
+      }
+
       const batchCondition = batchNumber
         ? eq(schema.inventoryStocks.batchNumber, batchNumber)
         : isNull(schema.inventoryStocks.batchNumber);
@@ -717,7 +820,32 @@ router.post('/purchase-bills', async (req: any, res) => {
     }
     const companyId = req.targetCompanyId;
 
+    // If no branch was explicitly requested, inherit the first referenced GRN's own
+    // branch (derived via its warehouse — GRNs have no branchId column of their own, see
+    // schema.ts) — otherwise resolve/validate independently, same choke-point as every
+    // other document-creation route.
+    let billBranchId: string | null;
+    try {
+      let requestedBranchId = billData.branchId;
+      if (!requestedBranchId) {
+        const [firstGrn] = await db.select({ warehouseId: schema.goodsReceiptNotes.warehouseId }).from(schema.goodsReceiptNotes)
+          .where(and(eq(schema.goodsReceiptNotes.id, billData.grnIds[0]), eq(schema.goodsReceiptNotes.companyId, companyId)));
+        if (firstGrn?.warehouseId) {
+          const [wh] = await db.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses).where(and(eq(schema.warehouses.id, firstGrn.warehouseId), eq(schema.warehouses.companyId, companyId)));
+          requestedBranchId = wh?.branchId || undefined;
+        }
+      }
+      billBranchId = await resolveDocumentBranchId(req, requestedBranchId);
+    } catch (branchErr: any) {
+      return res.status(branchErr.status || 400).json({ error: branchErr.error || 'Invalid branch.' });
+    }
+
     const created = await db.transaction(async (tx) => {
+      // Purchase Bills always post as of today (date: new Date() below) — no client-
+      // supplied bill date exists, so this is a same-day check only, never a backdating
+      // scenario, unlike the invoice/expense sites which validate a client-chosen date.
+      await assertQuarterNotFiled(new Date().toISOString().slice(0, 10), companyId);
+
       const grns: any[] = [];
       let vendorId: string | null = null;
       for (const grnId of billData.grnIds) {
@@ -762,8 +890,7 @@ router.post('/purchase-bills', async (req: any, res) => {
       }
       const grandTotal = round2(subTotal + taxTotal);
 
-      const billCount = await getAndIncrementCounter(tx, companyId, 'bill');
-      const billNumber = `BILL-${billCount}`;
+      const billNumber = await getAndIncrementDocumentNumber(tx, companyId, 'bill', new Date().toISOString().slice(0, 10), billBranchId);
       const billId = generateId();
 
       const [newBill] = await tx.insert(schema.purchaseBills).values({
@@ -780,6 +907,7 @@ router.post('/purchase-bills', async (req: any, res) => {
         amountPaid: '0',
         bankId: billData.bankId || null,
         companyId,
+        branchId: billBranchId,
       }).returning();
 
       await tx.update(schema.goodsReceiptNotes)
@@ -816,10 +944,27 @@ router.put('/purchase-bills/:id', async (req: any, res) => {
         err.status = 404;
         throw err;
       }
+      if (!branchAccessOk(req, bill.branchId)) {
+        const err: any = new Error('Forbidden: you are not assigned to this branch.');
+        err.status = 403;
+        throw err;
+      }
       if (bill.status !== 'Unpaid') {
         const err: any = new Error(`Cannot edit a bill that is not Unpaid (current status: ${bill.status}).`);
         err.status = 400;
         throw err;
+      }
+      // A client-supplied bankId must actually belong to this company — same reasoning
+      // already applied elsewhere in this app (see transactions.ts's
+      // assertDocumentRefsOwnedByCompany) but never wired into this specific route.
+      if (billData?.bankId) {
+        const [bank] = await tx.select({ id: schema.bankAccounts.id }).from(schema.bankAccounts)
+          .where(and(eq(schema.bankAccounts.id, billData.bankId), eq(schema.bankAccounts.companyId, companyId)));
+        if (!bank) {
+          const err: any = new Error('Selected bank account was not found for this company.');
+          err.status = 400;
+          throw err;
+        }
       }
       const [newBill] = await tx.update(schema.purchaseBills)
         .set({
@@ -855,6 +1000,11 @@ router.post('/purchase-bills/:id/pay', async (req: any, res) => {
       if (!bill) {
         const err: any = new Error('Purchase bill not found.');
         err.status = 404;
+        throw err;
+      }
+      if (!branchAccessOk(req, bill.branchId)) {
+        const err: any = new Error('Forbidden: you are not assigned to this branch.');
+        err.status = 403;
         throw err;
       }
       if (bill.status === 'Cancelled') {
@@ -922,13 +1072,13 @@ router.post('/purchase-bills/:id/pay', async (req: any, res) => {
         status: newStatus,
       }).where(eq(schema.purchaseBills.id, id)).returning();
 
-      const vchCount = await getAndIncrementCounter(tx, companyId, 'voucher');
-      const voucherNumber = `VCH-${vchCount}`;
+      const voucherDate = date || new Date().toISOString().split('T')[0];
+      const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', voucherDate, bill.branchId);
       const [voucher] = await tx.insert(schema.vouchers).values({
         id: generateId(),
         voucherNumber,
         type: 'Payment',
-        date: date || new Date().toISOString().split('T')[0],
+        date: voucherDate,
         bankId: targetBankId,
         amount: String(amountToPost),
         description: `Payment voucher for purchase bill ${bill.billNumber} (${amountToPost.toFixed(2)})`,
@@ -937,6 +1087,8 @@ router.post('/purchase-bills/:id/pay', async (req: any, res) => {
         createdById: req.user.id,
         createdAt: new Date(),
         companyId,
+        // Always the bill's own branch, never independently picked.
+        branchId: bill.branchId,
       }).returning();
 
       return { bill: newBill, voucher };
@@ -971,6 +1123,11 @@ router.patch('/purchase-bills/:id/cancel', async (req: any, res) => {
       if (!bill) {
         const err: any = new Error('Purchase bill not found.');
         err.status = 404;
+        throw err;
+      }
+      if (!branchAccessOk(req, bill.branchId)) {
+        const err: any = new Error('Forbidden: you are not assigned to this branch.');
+        err.status = 403;
         throw err;
       }
       if (bill.status !== 'Unpaid') {
@@ -1026,6 +1183,11 @@ router.post('/purchase-returns', async (req: any, res) => {
         err.status = 404;
         throw err;
       }
+      if (!(await branchAccessOkViaWarehouse(tx, req, grn.warehouseId))) {
+        const err: any = new Error('Forbidden: you are not assigned to this branch.');
+        err.status = 403;
+        throw err;
+      }
       if (grn.isReversed) {
         const err: any = new Error('This receipt has been reversed and cannot be returned against.');
         err.status = 400;
@@ -1037,32 +1199,40 @@ router.post('/purchase-returns', async (req: any, res) => {
         productId: schema.purchaseReturnItems.productId,
         batchNumber: schema.purchaseReturnItems.batchNumber,
         quantityReturned: schema.purchaseReturnItems.quantityReturned,
+        unitOfMeasureId: schema.purchaseReturnItems.unitOfMeasureId,
       })
         .from(schema.purchaseReturnItems)
         .innerJoin(schema.purchaseReturns, eq(schema.purchaseReturnItems.returnId, schema.purchaseReturns.id))
         .where(and(eq(schema.purchaseReturns.grnId, grn.id), eq(schema.purchaseReturns.status, 'Active')));
 
+      // "Remaining returnable" is computed entirely in base-unit terms — the original GRN
+      // receipt, any prior returns against it, and this new return line can each use a
+      // different unit (e.g. received in Cartons, returned loose).
       const priorReturnedByKey = new Map<string, number>();
       for (const row of priorReturns) {
         const key = `${row.productId}|${row.batchNumber || ''}`;
-        priorReturnedByKey.set(key, (priorReturnedByKey.get(key) || 0) + Number(row.quantityReturned));
+        const baseQty = await toBaseQuantity(tx, row.productId, row.unitOfMeasureId, companyId, Number(row.quantityReturned));
+        priorReturnedByKey.set(key, (priorReturnedByKey.get(key) || 0) + baseQty);
       }
 
       for (const item of returnData.items) {
         const key = `${item.productId}|${item.batchNumber || ''}`;
         const receivedRow = grnItems.find((gi: any) => gi.productId === item.productId && (gi.batchNumber || '') === (item.batchNumber || ''));
-        const receivedQty = receivedRow ? Number(receivedRow.quantityReceived) : 0;
+        const receivedQty = receivedRow ? await toBaseQuantity(tx, item.productId, receivedRow.unitOfMeasureId, companyId, Number(receivedRow.quantityReceived)) : 0;
         const alreadyReturned = priorReturnedByKey.get(key) || 0;
         const availableToReturn = round2(receivedQty - alreadyReturned);
-        if (Number(item.quantityReturned) > availableToReturn + 0.001) {
-          const err: any = new Error(`Cannot return ${item.quantityReturned} units of this item — only ${availableToReturn} remain returnable from this receipt.`);
+        const returnBaseQty = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReturned));
+        if (returnBaseQty > availableToReturn + 0.001) {
+          const err: any = new Error(`Cannot return ${item.quantityReturned} units of this item — only ${availableToReturn} (base unit) remain returnable from this receipt.`);
           err.status = 400;
           throw err;
         }
       }
 
-      const returnCount = await getAndIncrementCounter(tx, companyId, 'return');
-      const returnNumber = `DN-${returnCount}`;
+      // purchaseReturns has no branchId column of its own — derived via the GRN's
+      // warehouseId, same as GRN numbering above.
+      const [returnWarehouse] = await tx.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses).where(eq(schema.warehouses.id, grn.warehouseId));
+      const returnNumber = await getAndIncrementDocumentNumber(tx, companyId, 'return', new Date().toISOString().slice(0, 10), returnWarehouse?.branchId || null);
       const returnId = generateId();
 
       const [newReturn] = await tx.insert(schema.purchaseReturns).values({
@@ -1083,10 +1253,12 @@ router.post('/purchase-returns', async (req: any, res) => {
         productId: item.productId,
         quantityReturned: String(item.quantityReturned),
         batchNumber: item.batchNumber || null,
+        unitOfMeasureId: item.unitOfMeasureId || null,
       }));
       const insertedItems = await tx.insert(schema.purchaseReturnItems).values(itemRows).returning();
 
       for (const item of returnData.items) {
+        const baseQtyReturned = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReturned));
         const batchCondition = item.batchNumber
           ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
           : isNull(schema.inventoryStocks.batchNumber);
@@ -1100,7 +1272,7 @@ router.post('/purchase-returns', async (req: any, res) => {
           .for('update');
         if (existingStock) {
           const priorQty = Number(existingStock.quantity);
-          const newQty = Math.max(0, round2(priorQty - Number(item.quantityReturned)));
+          const newQty = Math.max(0, round2(priorQty - baseQtyReturned));
           await tx.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
           await writeStockLedgerEntry(tx, {
             productId: item.productId, warehouseId: grn.warehouseId, companyId,
@@ -1142,6 +1314,11 @@ router.patch('/purchase-returns/:id/cancel', async (req: any, res) => {
         err.status = 404;
         throw err;
       }
+      if (!(await branchAccessOkViaWarehouse(tx, req, ret.warehouseId))) {
+        const err: any = new Error('Forbidden: you are not assigned to this branch.');
+        err.status = 403;
+        throw err;
+      }
       if (ret.status === 'Cancelled') {
         const err: any = new Error('This return has already been cancelled.');
         err.status = 400;
@@ -1150,6 +1327,7 @@ router.patch('/purchase-returns/:id/cancel', async (req: any, res) => {
 
       const items = await tx.select().from(schema.purchaseReturnItems).where(eq(schema.purchaseReturnItems.returnId, id));
       for (const item of items) {
+        const baseQtyReturned = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReturned));
         const batchCondition = item.batchNumber
           ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
           : isNull(schema.inventoryStocks.batchNumber);
@@ -1162,8 +1340,8 @@ router.patch('/purchase-returns/:id/cancel', async (req: any, res) => {
           ))
           .for('update');
         const cancelEndingQty = existingStock
-          ? round2(Number(existingStock.quantity) + Number(item.quantityReturned))
-          : round2(Number(item.quantityReturned));
+          ? round2(Number(existingStock.quantity) + baseQtyReturned)
+          : round2(baseQtyReturned);
 
         if (existingStock) {
           await tx.update(schema.inventoryStocks)
@@ -1175,14 +1353,14 @@ router.patch('/purchase-returns/:id/cancel', async (req: any, res) => {
             productId: item.productId,
             warehouseId: ret.warehouseId,
             batchNumber: item.batchNumber || null,
-            quantity: String(item.quantityReturned),
+            quantity: String(baseQtyReturned),
             companyId,
           });
         }
         await writeStockLedgerEntry(tx, {
           productId: item.productId, warehouseId: ret.warehouseId, companyId,
           transactionType: 'Return', referenceId: ret.id, date: new Date(),
-          quantityChange: Number(item.quantityReturned), endingQuantity: cancelEndingQty,
+          quantityChange: baseQtyReturned, endingQuantity: cancelEndingQty,
           batchNumber: item.batchNumber || null,
         });
       }
@@ -1219,8 +1397,23 @@ router.post('/stock-takes', async (req: any, res) => {
     const companyId = req.targetCompanyId;
 
     const created = await db.transaction(async (tx) => {
-      const stCount = await getAndIncrementCounter(tx, companyId, 'stockTake');
-      const referenceNumber = `ST-${stCount}`;
+      // physicalStockTakes has no branchId column of its own — derived via warehouseId,
+      // same pattern as GRN/Purchase Return numbering above. Also the only ownership check
+      // on stockTakeData.warehouseId anywhere in this route — previously unscoped by
+      // companyId entirely, same class of gap as GRN/stock-adjustments above.
+      const [stWarehouse] = await tx.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses)
+        .where(and(eq(schema.warehouses.id, stockTakeData.warehouseId), eq(schema.warehouses.companyId, companyId)));
+      if (!stWarehouse) {
+        const err: any = new Error('Selected warehouse not found for this company.');
+        err.status = 400;
+        throw err;
+      }
+      if (!branchAccessOk(req, stWarehouse.branchId)) {
+        const err: any = new Error('Forbidden: you are not assigned to this branch.');
+        err.status = 403;
+        throw err;
+      }
+      const referenceNumber = await getAndIncrementDocumentNumber(tx, companyId, 'stockTake', new Date().toISOString().slice(0, 10), stWarehouse?.branchId || null);
       const stockTakeId = generateId();
 
       const [newStockTake] = await tx.insert(schema.physicalStockTakes).values({
@@ -1248,6 +1441,10 @@ router.post('/stock-takes', async (req: any, res) => {
           ));
         const systemQuantity = existingStock ? Number(existingStock.quantity) : 0;
         const physicalQuantity = Number(item.physicalQuantity);
+        // `physicalQuantity` is stored exactly as counted (e.g. "3" when counting 3
+        // cartons, for display) — `variance` is computed against the base-unit-converted
+        // count, since `systemQuantity` above is always in base-unit terms.
+        const basePhysicalQuantity = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, physicalQuantity);
         itemRows.push({
           id: generateId(),
           stockTakeId,
@@ -1255,7 +1452,8 @@ router.post('/stock-takes', async (req: any, res) => {
           batchNumber: item.batchNumber || null,
           systemQuantity: String(systemQuantity),
           physicalQuantity: String(physicalQuantity),
-          variance: String(round2(physicalQuantity - systemQuantity)),
+          variance: String(round2(basePhysicalQuantity - systemQuantity)),
+          unitOfMeasureId: item.unitOfMeasureId || null,
         });
       }
       const insertedItems = await tx.insert(schema.physicalStockTakeItems).values(itemRows).returning();
@@ -1291,6 +1489,11 @@ router.post('/stock-takes/:id/finalize', async (req: any, res) => {
         err.status = 404;
         throw err;
       }
+      if (!(await branchAccessOkViaWarehouse(tx, req, stockTake.warehouseId))) {
+        const err: any = new Error('Forbidden: you are not assigned to this branch.');
+        err.status = 403;
+        throw err;
+      }
       if (stockTake.status !== 'Draft') {
         const err: any = new Error(`Cannot finalize a stock take that is not Draft (current status: ${stockTake.status}).`);
         err.status = 400;
@@ -1312,7 +1515,10 @@ router.post('/stock-takes/:id/finalize', async (req: any, res) => {
           ))
           .for('update');
         const currentQty = existingStock ? Number(existingStock.quantity) : 0;
-        const targetQty = Number(item.physicalQuantity);
+        // `physicalQuantity` is stored exactly as counted (whatever unit the line used);
+        // converted to base-unit terms here since that's the only quantity
+        // inventoryStocks ever holds.
+        const targetQty = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.physicalQuantity));
         if (round2(targetQty - currentQty) === 0) continue;
 
         const finalizedQty = Math.max(0, round2(targetQty));
@@ -1371,6 +1577,11 @@ router.patch('/stock-takes/:id/cancel', async (req: any, res) => {
       if (!stockTake) {
         const err: any = new Error('Stock take not found.');
         err.status = 404;
+        throw err;
+      }
+      if (!(await branchAccessOkViaWarehouse(tx, req, stockTake.warehouseId))) {
+        const err: any = new Error('Forbidden: you are not assigned to this branch.');
+        err.status = 403;
         throw err;
       }
       if (stockTake.status !== 'Draft') {

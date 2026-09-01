@@ -1,8 +1,10 @@
 
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, inArray } from 'drizzle-orm';
 import { generateId } from '../../src/id.js';
+import { getAndIncrementDocumentNumber } from './documentNumbering.js';
+import { toBaseQuantity, toBaseUnitCost } from './uomConversion.js';
 
 // Round-half-up to 2 decimals. Applied after every intermediate step in a money
 // calculation chain (not just once at the end via .toFixed(2)) so the value written to
@@ -49,23 +51,152 @@ export async function writeStockLedgerEntry(tx: any, params: {
   });
 }
 
+// Two-tier fallback for "which warehouse should this sale be attributed to/deducted
+// from": the invoice's own branch's configured default first, then the company's overall
+// default (warehouses.isCompanyDefault), else null (nowhere to resolve to — caller decides
+// whether that's acceptable, see resolveSaleWarehouse below). Never returns a 'backend'-type
+// or inactive warehouse — both are filtered out at the source (a branch/company default is
+// only ever allowed to be set to a 'sales'-type, active warehouse by the routes that set
+// those flags), so no extra type/active check is needed here.
+export async function resolveDefaultSaleWarehouseId(tx: any, companyId: string, branchId: string | null | undefined): Promise<string | null> {
+  if (branchId) {
+    const [branch] = await tx.select({ defaultWarehouseId: schema.branches.defaultWarehouseId })
+      .from(schema.branches).where(eq(schema.branches.id, branchId));
+    if (branch?.defaultWarehouseId) return branch.defaultWarehouseId;
+  }
+  const [companyDefault] = await tx.select({ id: schema.warehouses.id }).from(schema.warehouses)
+    .where(and(eq(schema.warehouses.companyId, companyId), eq(schema.warehouses.isCompanyDefault, true)));
+  return companyDefault?.id || null;
+}
+
+// "Sales should take place only from sales warehouses" as a real server-side rule, not
+// just a UI convention — called wherever a warehouseId is about to be persisted onto a
+// sale (an explicit client choice or an auto-resolved default alike).
+// allowedBranchIds mirrors req.allowedBranchIds exactly (null = unrestricted) — passed
+// through explicitly rather than the whole Express `req` so this lib file stays
+// decoupled from the request layer. Closes a real gap: an invoice's own branchId was
+// already correctly resolved/validated via resolveDocumentBranchId, but a client could
+// still pass an explicit warehouseId belonging to a DIFFERENT branch — the visible
+// document looks correctly attributed to the caller's own branch (so it passes every
+// other check and looks legitimate in reports), while the actual stock deduction
+// silently drains a different branch's inventory. Quieter and harder to notice than the
+// document-level branch spoofing this same audit pass found elsewhere.
+export async function assertSalesWarehouse(tx: any, warehouseId: string, companyId: string, allowedBranchIds?: string[] | null): Promise<void> {
+  const [warehouse] = await tx.select().from(schema.warehouses)
+    .where(and(eq(schema.warehouses.id, warehouseId), eq(schema.warehouses.companyId, companyId)));
+  if (!warehouse) { const err: any = new Error('Selected warehouse not found for this company.'); err.status = 404; throw err; }
+  if (warehouse.isActive === false) { const err: any = new Error(`Warehouse "${warehouse.name}" is deactivated and cannot be used for a sale.`); err.status = 400; throw err; }
+  if (warehouse.type !== 'sales') { const err: any = new Error(`Warehouse "${warehouse.name}" is a backend warehouse — sales can only be posted against a sales warehouse.`); err.status = 400; throw err; }
+  if (Array.isArray(allowedBranchIds) && !allowedBranchIds.includes(warehouse.branchId as any)) {
+    const err: any = new Error(`Warehouse "${warehouse.name}" belongs to a branch you are not assigned to.`); err.status = 403; throw err;
+  }
+}
+
+// Resolves the one warehouse an invoice/POS sale's stock-item lines will be deducted from,
+// requiring one only when actually needed. `items` are the raw line items as submitted
+// (already validated/typed by the caller) — this only needs each line's productId to know
+// whether the sale contains any true stock ('item' type, not free-typed, not 'service')
+// line at all; a services-only sale has nothing to deduct and never needs a warehouse.
+export async function resolveSaleWarehouse(
+  tx: any, companyId: string, branchId: string | null | undefined,
+  items: Array<{ productId?: string | null }>, explicitWarehouseId?: string | null,
+  allowedBranchIds?: string[] | null
+): Promise<string | null> {
+  const productIds = Array.from(new Set(items.map(i => i.productId).filter(Boolean))) as string[];
+  if (productIds.length === 0) return explicitWarehouseId || null;
+
+  const products = await tx.select({ id: schema.productsServices.id, type: schema.productsServices.type })
+    .from(schema.productsServices).where(inArray(schema.productsServices.id, productIds));
+  const hasStockItem = products.some((p: any) => p.type === 'item');
+  if (!hasStockItem) return explicitWarehouseId || null;
+
+  const warehouseId = explicitWarehouseId || await resolveDefaultSaleWarehouseId(tx, companyId, branchId);
+  if (!warehouseId) {
+    const err: any = new Error('This sale includes a stock item — configure a default sales warehouse for this branch or company (Master Entities > Warehouses), or select one on the sale itself.');
+    err.status = 400;
+    throw err;
+  }
+  await assertSalesWarehouse(tx, warehouseId, companyId, allowedBranchIds);
+  return warehouseId;
+}
+
+// Reads exactly the same inventoryStocks row deductStockForSale below reads/writes (the
+// unbatched bucket for this product+warehouse) — kept as its own query rather than folded
+// into deductStockForSale so the pre-flight availability check (assertStockAvailable) and
+// the actual deduction always agree on what "available" means, even though they run at
+// different points in a request.
+async function getUnbatchedStockQty(tx: any, companyId: string, productId: string, warehouseId: string): Promise<number> {
+  const [existingStock] = await tx.select({ quantity: schema.inventoryStocks.quantity }).from(schema.inventoryStocks)
+    .where(and(
+      eq(schema.inventoryStocks.productId, productId),
+      eq(schema.inventoryStocks.warehouseId, warehouseId),
+      eq(schema.inventoryStocks.companyId, companyId),
+      isNull(schema.inventoryStocks.batchNumber)
+    ));
+  return existingStock ? Number(existingStock.quantity) : 0;
+}
+
+// Opt-in guard (companies.inventorySettings.enforceStockAvailability, off by default —
+// see that field's comment in src/types.ts) — when enabled, a sale of a stock item is
+// rejected outright rather than silently clamping deducted stock at 0. Sums requested
+// quantity per product first (a product can appear on more than one line) so splitting one
+// oversell across two lines can't slip past a per-line check.
+export async function assertStockAvailable(
+  tx: any, companyId: string, warehouseId: string | null,
+  items: Array<{ productId?: string | null; quantity: number; unitOfMeasureId?: string | null }>
+): Promise<void> {
+  const [company] = await tx.select({ inventorySettings: schema.companies.inventorySettings }).from(schema.companies).where(eq(schema.companies.id, companyId));
+  if (!(company?.inventorySettings as any)?.enforceStockAvailability) return;
+  if (!warehouseId) return; // resolveSaleWarehouse already blocks this case when a stock item is present
+
+  // Converted to base-unit terms before summing — two lines of the same product entered
+  // in different units (e.g. 1 Carton-12 + 3 loose Piece) must combine correctly rather
+  // than being compared to on-hand stock in mismatched units.
+  const requestedByProduct = new Map<string, number>();
+  for (const item of items) {
+    if (!item.productId) continue;
+    const baseQty = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantity));
+    requestedByProduct.set(item.productId, (requestedByProduct.get(item.productId) || 0) + baseQty);
+  }
+  if (requestedByProduct.size === 0) return;
+
+  const productIds = Array.from(requestedByProduct.keys());
+  const products = await tx.select({ id: schema.productsServices.id, name: schema.productsServices.name, type: schema.productsServices.type })
+    .from(schema.productsServices).where(inArray(schema.productsServices.id, productIds));
+  const productById = new Map(products.map((p: any) => [p.id, p]));
+
+  for (const [productId, requestedQty] of requestedByProduct) {
+    const product = productById.get(productId) as any;
+    if (!product || product.type !== 'item') continue;
+    const available = await getUnbatchedStockQty(tx, companyId, productId, warehouseId);
+    if (requestedQty > available) {
+      const err: any = new Error(`Insufficient stock for "${product.name}": ${available} on hand at the selected warehouse, ${requestedQty} requested.`);
+      err.status = 400;
+      throw err;
+    }
+  }
+}
+
 // Deducts a sold quantity from inventoryStocks for one invoice/POS line and records the
 // movement in the stock ledger. Only applies to catalog-linked lines on true "item" type
 // products — a free-typed line (no productId) has nothing to deduct, and a "service" line
 // (productId set but type === 'service') has no physical stock at all, so both are no-ops
-// here rather than errors. Also no-ops when the product has no defaultWarehouseId
-// configured — there is nowhere to deduct from, and a sale must never be blocked by
-// incomplete inventory setup on a product. Clamped at 0 rather than allowed to go
-// negative, matching every other stock-mutating route in this app (GRN reversal, Purchase
-// Return, Stock Adjustment).
-export async function deductStockForSale(tx: any, companyId: string, productId: string, quantitySold: number, referenceId: string, date: Date) {
-  const [product] = await tx.select({
-    type: schema.productsServices.type,
-    defaultWarehouseId: schema.productsServices.defaultWarehouseId,
-  }).from(schema.productsServices).where(eq(schema.productsServices.id, productId)).for('update');
-  if (!product || product.type !== 'item' || !product.defaultWarehouseId) return;
+// here rather than errors. Also no-ops when no warehouseId is given (nothing was resolved
+// for this sale, e.g. a services-only invoice) — a sale must never be blocked by
+// incomplete inventory setup by itself (that's what assertStockAvailable's opt-in flag is
+// for). Clamped at 0 rather than allowed to go negative, matching every other
+// stock-mutating route in this app (GRN reversal, Purchase Return, Stock Adjustment).
+// `quantitySold` is in whatever unit the line was entered in (`unitOfMeasureId`, null =
+// the product's own base unit) — converted to base-unit terms here, once, before it ever
+// touches inventoryStocks/the ledger.
+export async function deductStockForSale(tx: any, companyId: string, productId: string, quantitySold: number, referenceId: string, date: Date, warehouseId?: string | null, unitOfMeasureId?: string | null) {
+  if (!warehouseId) return;
+  const [product] = await tx.select({ type: schema.productsServices.type })
+    .from(schema.productsServices).where(eq(schema.productsServices.id, productId)).for('update');
+  if (!product || product.type !== 'item') return;
 
-  const warehouseId = product.defaultWarehouseId;
+  const baseQuantitySold = await toBaseQuantity(tx, productId, unitOfMeasureId, companyId, quantitySold);
+
   const [existingStock] = await tx.select().from(schema.inventoryStocks)
     .where(and(
       eq(schema.inventoryStocks.productId, productId),
@@ -76,7 +207,7 @@ export async function deductStockForSale(tx: any, companyId: string, productId: 
     .for('update');
 
   const priorQty = existingStock ? Number(existingStock.quantity) : 0;
-  const newQty = Math.max(0, round2(priorQty - quantitySold));
+  const newQty = Math.max(0, round2(priorQty - baseQuantitySold));
 
   if (existingStock) {
     await tx.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
@@ -106,25 +237,34 @@ export function computePaymentStatus(amountPaid: number, total: number): 'Paid' 
   return 'Partially Paid';
 }
 
-// Must always be called with the transaction executor of an enclosing `db.transaction(...)`
-// block — the `SELECT ... FOR UPDATE` row lock this takes is only meaningful for the
-// lifetime of that transaction. Calling it with the bare `db` object (as this function
-// used to allow) provides no protection: the lock is released the instant the SELECT
-// statement completes, since there's no surrounding transaction to hold it open, and two
-// concurrent requests for the same company can both read the same counter value and both
-// commit N+1, producing duplicate invoice/quotation/expense/voucher numbers.
-export async function getAndIncrementCounter(tx: any, companyId: string, type: 'quotation' | 'invoice' | 'expense' | 'voucher' | 'pr' | 'po' | 'grn' | 'creditNote' | 'debitNote' | 'bill' | 'return' | 'stockTake') {
-  const [company] = await tx.select().from(schema.companies).where(eq(schema.companies.id, companyId)).for('update');
-  if (!company) throw new Error('Company not found');
-
-  const counters = (company.counters as any) || { quotation: 1001, invoice: 1001, expense: 1001, voucher: 1001, pr: 1001, po: 1001, grn: 1001, creditNote: 1001, debitNote: 1001 };
-  const currentCount = counters[type] || 1001;
-
-  counters[type] = currentCount + 1;
-
-  await tx.update(schema.companies).set({ counters }).where(eq(schema.companies.id, companyId));
-
-  return currentCount;
+// Per-line tax-slab-with-header-fallback invoice total computation — extracted from
+// POST /invoices (server/routes/transactions.ts) so the VAT Return feature's server-side
+// figure computation (server/lib/vatReturn.ts) uses the exact same formula the invoice
+// route itself persists with, instead of a second, driftable copy of this math. Callers
+// resolve the header/line tax percentages from schema.taxSlabs themselves (this function
+// takes plain numbers, no DB access) since the invoice route already has those rows loaded
+// for its own insert, and the VAT Return module loads them separately per company.
+export function computeInvoiceServerTotals(
+  items: { unitCost: number | string; quantity: number | string; discountAmount?: number | string; taxSlabId?: string | null }[],
+  headerPercentage: number,
+  discountPercentage: number,
+  lineSlabPercentageById: Map<string, number>
+): { itemsSubtotal: number; headerDiscount: number; discountedSubtotal: number; taxAmount: number; grandTotal: number } {
+  const itemsSubtotal = round2((items || []).reduce((acc: number, item: any) => {
+    const cost = round2(Math.max(0, round2(Number(item.unitCost)) - round2(Number(item.discountAmount || 0))));
+    return acc + round2(cost * Number(item.quantity));
+  }, 0));
+  const headerDiscount = round2(itemsSubtotal * (Number(discountPercentage || 0) / 100));
+  const shrinkFactor = itemsSubtotal > 0 ? (itemsSubtotal - headerDiscount) / itemsSubtotal : 1;
+  const discountedSubtotal = round2(Math.max(0, itemsSubtotal - headerDiscount));
+  const taxAmount = round2((items || []).reduce((acc: number, item: any) => {
+    const cost = round2(Math.max(0, round2(Number(item.unitCost)) - round2(Number(item.discountAmount || 0))));
+    const lineSubtotal = round2(round2(cost * Number(item.quantity)) * shrinkFactor);
+    const rate = item.taxSlabId && lineSlabPercentageById.has(item.taxSlabId) ? lineSlabPercentageById.get(item.taxSlabId)! : headerPercentage;
+    return acc + round2(lineSubtotal * (rate / 100));
+  }, 0));
+  const grandTotal = round2(discountedSubtotal + taxAmount);
+  return { itemsSubtotal, headerDiscount, discountedSubtotal, taxAmount, grandTotal };
 }
 
 export async function validateTransactionDate(date: string, companyId: string) {
@@ -170,6 +310,31 @@ export async function validateTransactionDate(date: string, companyId: string) {
   return { valid: true, month };
 }
 
+// Blocks a new/edited financial document from landing inside a quarter whose VAT Return
+// has already been marked ZATCA Filed (see server/routes/taxReturns.ts) — same 3-part
+// shape as validateTransactionDate above (derive the period, look it up, reject if
+// locked), and likewise thrown as a plain Error with .status attached rather than a
+// permission check: filing is a regulatory one-way door, no role can override it.
+export async function assertQuarterNotFiled(date: string, companyId: string): Promise<void> {
+  const year = Number(date.slice(0, 4));
+  const month = Number(date.slice(5, 7));
+  const quarter = Math.ceil(month / 3);
+  const [filedReturn] = await db.select({ referenceNumber: schema.taxReturns.referenceNumber })
+    .from(schema.taxReturns)
+    .where(and(
+      eq(schema.taxReturns.companyId, companyId),
+      eq(schema.taxReturns.year, year),
+      eq(schema.taxReturns.quarter, quarter),
+      eq(schema.taxReturns.status, 'Filed'),
+      eq(schema.taxReturns.isDeleted, false)
+    ));
+  if (filedReturn) {
+    const err = new Error(`This date falls within ${filedReturn.referenceNumber}, which has already been filed with ZATCA and is permanently locked. No new or edited Invoice, Credit/Debit Note, Expense, or Purchase Bill may be dated in a filed quarter.`);
+    (err as any).status = 400;
+    throw err;
+  }
+}
+
 export async function syncVoucherForExpense(tx: any, expenseId: string, companyId: string, data: any, userId: string) {
   const [existingVoucher] = await tx.select()
     .from(schema.vouchers)
@@ -207,8 +372,7 @@ export async function syncVoucherForExpense(tx: any, expenseId: string, companyI
           .where(eq(schema.vouchers.id, existingVoucher.id));
       }
     } else {
-      const vchCount = await getAndIncrementCounter(tx, companyId, 'voucher');
-      const voucherNumber = `VCH-${vchCount}`;
+      const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', data.date, data.branchId || null);
       await tx.insert(schema.vouchers).values({
         id: generateId(),
         voucherNumber,
@@ -220,6 +384,9 @@ export async function syncVoucherForExpense(tx: any, expenseId: string, companyI
         referenceType: 'Expense',
         referenceId: expenseId,
         companyId: companyId,
+        // Always inherited from the expense being settled, never picked independently —
+        // see schema.ts's vouchers.branchId comment.
+        branchId: data.branchId || null,
         createdById: userId,
         createdAt: new Date(),
       });
@@ -269,8 +436,7 @@ export async function syncVoucherForExpense(tx: any, expenseId: string, companyI
               : (data.date && data.date.startsWith(openMonth.id) ? data.date : openMonth.id + "-01");
           }
 
-          const vchCount = await getAndIncrementCounter(tx, companyId, 'voucher');
-          const voucherNumber = `VCH-${vchCount}`;
+          const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', finalReversalDate, existingVoucher.branchId || null);
           await tx.insert(schema.vouchers).values({
             id: generateId(),
             voucherNumber,
@@ -282,6 +448,7 @@ export async function syncVoucherForExpense(tx: any, expenseId: string, companyI
             referenceType: 'Expense',
             referenceId: expenseId,
             companyId: companyId,
+            branchId: existingVoucher.branchId || null,
             createdById: userId,
             createdAt: new Date(),
           });
@@ -330,19 +497,22 @@ export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyI
           .where(eq(schema.vouchers.id, existingVoucher.id));
       }
     } else {
-      const vchCount = await getAndIncrementCounter(tx, companyId, 'voucher');
-      const voucherNumber = `VCH-${vchCount}`;
+      const voucherDate = String(data.paymentDate || data.date);
+      const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', voucherDate, data.branchId || null);
       await tx.insert(schema.vouchers).values({
         id: generateId(),
         voucherNumber,
         type: 'Receipt',
-        date: String(data.paymentDate || data.date),
+        date: voucherDate,
         bankId: data.bankId,
         amount: data.amountPaid || data.amount,
         description: `Receipt voucher generated automatically for paid invoice ${data.invoiceNumber}`,
         referenceType: 'Invoice',
         referenceId: invoiceId,
         companyId: companyId,
+        // Always inherited from the invoice being settled, never picked independently —
+        // see schema.ts's vouchers.branchId comment.
+        branchId: data.branchId || null,
         createdById: userId,
         createdAt: new Date(),
       });
@@ -392,8 +562,7 @@ export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyI
               : (data.date && data.date.startsWith(openMonth.id) ? data.date : openMonth.id + "-01");
           }
 
-          const vchCount = await getAndIncrementCounter(tx, companyId, 'voucher');
-          const voucherNumber = `VCH-${vchCount}`;
+          const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', finalReversalDate, existingVoucher.branchId || null);
           await tx.insert(schema.vouchers).values({
             id: generateId(),
             voucherNumber,
@@ -405,6 +574,7 @@ export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyI
             referenceType: 'Invoice',
             referenceId: invoiceId,
             companyId: companyId,
+            branchId: existingVoucher.branchId || null,
             createdById: userId,
             createdAt: new Date(),
           });
@@ -472,8 +642,7 @@ export async function postCreditNoteReversalVoucher(tx: any, originalInvoiceId: 
       : (creditNoteDate && creditNoteDate.startsWith(openMonth.id) ? creditNoteDate : openMonth.id + "-01");
   }
 
-  const vchCount = await getAndIncrementCounter(tx, companyId, 'voucher');
-  const voucherNumber = `VCH-${vchCount}`;
+  const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', finalReversalDate, existingVoucher.branchId || null);
   await tx.insert(schema.vouchers).values({
     id: generateId(),
     voucherNumber,
@@ -485,6 +654,7 @@ export async function postCreditNoteReversalVoucher(tx: any, originalInvoiceId: 
     referenceType: 'Invoice',
     referenceId: originalInvoiceId,
     companyId: companyId,
+    branchId: existingVoucher.branchId || null,
     createdById: userId,
     createdAt: new Date(),
   });

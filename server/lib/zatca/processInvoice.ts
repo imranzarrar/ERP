@@ -98,6 +98,20 @@ export async function processInvoiceZatca(invoiceId: string) {
 
     const [config] = await db.select().from(schema.zatcaEnvironmentConfigs)
       .where(and(eq(schema.zatcaEnvironmentConfigs.companyId, companyId), eq(schema.zatcaEnvironmentConfigs.environment, environment)));
+    // Per-branch seller address override — each outlet's real address shown to the buyer/
+    // ZATCA, while the CSID/ICV chain stays shared for the whole company (confirmed
+    // unaffected: nothing below touches signing or hashChain.ts). Overridden per-field,
+    // not all-or-nothing, so a branch that's only set e.g. a different city doesn't lose
+    // the company's own street/building fallback for whatever it hasn't set.
+    const [branch] = (invoice as any).branchId
+      ? await db.select().from(schema.branches).where(eq(schema.branches.id, (invoice as any).branchId))
+      : [undefined];
+    const sellerStreet = branch?.streetName || config?.streetName || 'King Fahd Rd';
+    const sellerBuildingNumber = branch?.buildingNumber || config?.buildingNumber || '1234';
+    const sellerDistrict = branch?.district || config?.district || 'Olaya';
+    const sellerCity = branch?.city || config?.city || 'Riyadh';
+    const sellerPostalCode = branch?.postalCode || config?.postalCode || '12345';
+    const sellerCountryCode = branch?.countryCode || config?.countryCode || 'SA';
     const [customer] = invoice.customerId ? await db.select().from(schema.customers).where(eq(schema.customers.id, invoice.customerId)) : [undefined];
     const [taxSlab] = invoice.taxSlabId ? await db.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, invoice.taxSlabId)) : [undefined];
     // Credit/Debit Note support — this row's own documentType decides which UBL
@@ -269,12 +283,12 @@ export async function processInvoiceZatca(invoiceId: string) {
           name: company?.name || 'Company',
           tin: config?.tinNumber || '300000000000003',
           crNumber: config?.crNumber || '1010000000',
-          street: config?.streetName || 'King Fahd Rd',
-          buildingNumber: config?.buildingNumber || '1234',
-          district: config?.district || 'Olaya',
-          city: config?.city || 'Riyadh',
-          postalCode: config?.postalCode || '12345',
-          countryCode: config?.countryCode || 'SA',
+          street: sellerStreet,
+          buildingNumber: sellerBuildingNumber,
+          district: sellerDistrict,
+          city: sellerCity,
+          postalCode: sellerPostalCode,
+          countryCode: sellerCountryCode,
         },
         buyer: customer ? {
           name: customer.name,
@@ -314,10 +328,12 @@ export async function processInvoiceZatca(invoiceId: string) {
     // the same moment and independently conclude they're each the next link in the chain —
     // reproduced live: two invoices created back-to-back both landed on the identical ICV
     // and identical previousInvoiceHash, a genuine fork ZATCA's own chain-integrity model
-    // forbids. Locking the company row (the same row+pattern getAndIncrementCounter
-    // already uses for the invoice-number counter) serializes this per company: only one
-    // invoice at a time can claim "I'm next," and its claim is durably written before the
-    // lock releases, so the next concurrent caller genuinely sees it.
+    // forbids. Locking the company row serializes this per company: only one invoice at a
+    // time can claim "I'm next," and its claim is durably written before the lock releases,
+    // so the next concurrent caller genuinely sees it. This lock is exclusively ICV/PIH's
+    // own — the human-readable invoice-number counter (server/lib/documentNumbering.ts)
+    // lives in a separate table (documentCounters) with its own atomic upsert and never
+    // contends for this row; the two systems are deliberately disjoint.
     let icv = 0;
     let pih = '';
     let zatcaDoc!: ReturnType<typeof generateZatcaUblXml>;
@@ -394,12 +410,12 @@ export async function processInvoiceZatca(invoiceId: string) {
           name: company?.name || 'Company',
           tin: config?.tinNumber || '300000000000003',
           crNumber: config?.crNumber || '1010000000',
-          street: config?.streetName || 'King Fahd Rd',
-          buildingNumber: config?.buildingNumber || '1234',
-          district: config?.district || 'Olaya',
-          city: config?.city || 'Riyadh',
-          postalCode: config?.postalCode || '12345',
-          countryCode: config?.countryCode || 'SA',
+          street: sellerStreet,
+          buildingNumber: sellerBuildingNumber,
+          district: sellerDistrict,
+          city: sellerCity,
+          postalCode: sellerPostalCode,
+          countryCode: sellerCountryCode,
         },
         buyer: customer ? {
           name: customer.name,

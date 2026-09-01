@@ -51,6 +51,25 @@
      fonts have real Arabic coverage either.  */
   --font-arabic: "Cairo", "Inter", ui-sans-serif, system-ui, sans-serif;
 
+  /* Helvetica/Calibri — deliberately system fonts, not self-hosted webfonts like the
+     others above: Helvetica ships on macOS, Calibri ships on Windows (both installed on
+     the huge majority of real desktop OSes since ~2007), so neither needs an @import/
+     network fetch that could still be mid-download at print time (the exact failure mode
+     the other fonts' loading guards exist for). Windows has no real Helvetica, so its
+     stack falls back to Arial, which was drawn metric-compatible with Helvetica for
+     exactly this reason; macOS has no Calibri, so its stack falls back through Candara/
+     Segoe (Calibri's closest visual cousins) to Arial. Added for the "Tier-1" invoice
+     template — the single most globally standard invoice font pairing (see BACKLOG). */
+  /* "Cairo" appended as the last real fallback (not the bare "sans-serif" alone) on both
+     stacks below — Helvetica/Arial and Calibri have zero Arabic coverage, so a customer
+     name/address typed in Arabic on an otherwise-English Tier-1 invoice would otherwise
+     fall back to whatever Arabic font the viewer's OS happens to have (inconsistent
+     across machines/print drivers — the same problem --font-arabic above already solves
+     for whole-document Arabic). Cairo has no effect on Latin text (Helvetica/Arial still
+     win there); it only ever activates for the Arabic characters neither font can render. */
+  --font-helvetica: "Helvetica Neue", Helvetica, Arial, "Cairo", sans-serif;
+  --font-calibri: Calibri, Candara, Segoe, "Segoe UI", Optima, Arial, "Cairo", sans-serif;
+
   /* Bind theme variables dynamically to override standard color classes */
   --color-indigo-50: var(--primary-light);
   --color-indigo-100: var(--primary-mid-light);

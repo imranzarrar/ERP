@@ -39,6 +39,11 @@ interface ExpenseModuleProps {
 export default function ExpenseModule({ db, onPrintDoc, mode, onDone, onCreateNew, onRefreshDb }: ExpenseModuleProps) {
  const { t, isRTL, lang } = useTranslation(db);
  const currentUser = db.currentUser;
+ // The branch an admin configured as this user's primary in Staff Permissions
+ // (userBranches.isPrimary) — auto-selected on a fresh form below rather than left on
+ // the generic "Default (your primary branch)" placeholder, so a multi-branch user gets
+ // visual confirmation of which branch they're actually about to file under.
+ const myPrimaryBranchId = (db.userBranches || []).find(ub => ub.userId === currentUser?.id && ub.isPrimary)?.branchId || '';
  const isAdmin = currentUser?.role === 'admin' || currentUser?.isSuperAdmin === true;
  const userPermissions = normalizePermissions(currentUser?.permissions, currentUser?.role, currentUser?.isSuperAdmin);
  const openMonth = getActiveOpenMonth(db);
@@ -98,9 +103,10 @@ export default function ExpenseModule({ db, onPrintDoc, mode, onDone, onCreateNe
  setFormTaxSlabId(defaultTax);
  setFormBankId(defaultBank);
  setFormItems([{ description: '', unitCost: 0, quantity: 1 }]);
+ setFormBranchId(myPrimaryBranchId);
  }
  setPayingExpense(null);
- }, [db.selectedCompanyId, openMonth?.id]);
+ }, [db.selectedCompanyId, openMonth?.id, myPrimaryBranchId]);
 
  const triggerError = (msg: string) => {
  setError(msg);
@@ -146,6 +152,11 @@ export default function ExpenseModule({ db, onPrintDoc, mode, onDone, onCreateNe
  const [formClassification, setFormClassification] = React.useState<'Expense' | 'Asset'>('Expense');
  const [formAssetType, setFormAssetType] = React.useState<'Equipment' | 'Machinery' | 'Tools' | 'Computers' | 'Vehicles' | 'Furniture' | 'Other'>('Equipment');
  const [formAttachmentUrl, setFormAttachmentUrl] = React.useState('');
+ // Empty string means "let the server resolve it" (the creating user's primary branch,
+ // or null if branches aren't in use for this company) — see QuotationModule's matching
+ // field for the full reasoning.
+ const [formBranchId, setFormBranchId] = React.useState('');
+ const companyBranches = (db.branches || []).filter(b => b.companyId === db.selectedCompanyId && b.isActive !== false);
 // @ts-ignore
 const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipment' | 'Machinery' | 'Tools' | 'Computers' | 'Vehicles' | 'Furniture' | 'Other'>('Equipment');
  
@@ -264,7 +275,8 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  items: cleanItems,
  attachmentUrl: formAttachmentUrl,
  classification: formClassification,
- assetType: formClassification === 'Asset' ? formAssetType : undefined
+ assetType: formClassification === 'Asset' ? formAssetType : undefined,
+ branchId: formBranchId || undefined,
  };
 
  setIsSavingExpense(true);
@@ -740,6 +752,22 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  ))}
  </select>
  </div>
+
+ {companyBranches.length > 0 && (
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Branch')}</label>
+ <select
+ value={formBranchId}
+ onChange={(e) => setFormBranchId(e.target.value)}
+ className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none"
+ >
+ <option value="">{t('Default (your primary branch)')}</option>
+ {companyBranches.map(b => (
+ <option key={b.id} value={b.id}>{b.name}</option>
+ ))}
+ </select>
+ </div>
+ )}
 
  {/* Bank is Admin-only editable; staff see read-only bank */}
  <div className="space-y-1">

@@ -51,8 +51,26 @@ export default function SalesReportsModule({ db, defaultReportType, onPrintDoc }
     }
   }, [db.customers, companyId]);
 
+  // Branch focus — a convenience narrowing for a company-wide/viewAllBranches viewer to
+  // slice these reports down to one location at a time. Not a security boundary (that's
+  // already enforced server-side in /api/state — a branch-restricted user's db.invoices
+  // etc. never contain another branch's rows to begin with, regardless of this control);
+  // a document with no branchId at all (branch scoping not adopted, or predates it) always
+  // matches, same "null is visible to everyone" rule the server-side filter uses.
+  // Which branches this viewer can even pick from — an unrestricted viewer (admin/
+  // super-admin/branches.viewAllBranches) gets every branch in the company; a restricted
+  // viewer only gets their own assigned branches, so "All Branches" in the dropdown below
+  // means "all of MY branches", never a false promise of company-wide data they can't
+  // actually see (the server already never sends it, but offering it as a selectable
+  // option would be confusing regardless).
+  const isBranchUnrestricted = db.currentUser?.isSuperAdmin === true || db.currentUser?.role === 'admin' || can('branches.viewAllBranches');
+  const myBranchIds = new Set((db.userBranches || []).filter(ub => ub.userId === db.currentUser?.id).map(ub => ub.branchId));
+  const companyBranches = (db.branches || []).filter(b => b.companyId === companyId && b.isActive !== false && (isBranchUnrestricted || myBranchIds.has(b.id)));
+  const [selectedBranchId, setSelectedBranchId] = React.useState('ALL');
+  const branchMatches = (branchId: string | null | undefined) => selectedBranchId === 'ALL' || branchId == null || branchId === selectedBranchId;
+
   const companyCustomers = db.customers.filter(c => c.companyId === companyId);
-  const companyInvoices = db.invoices.filter(inv => inv.companyId === companyId);
+  const companyInvoices = db.invoices.filter(inv => inv.companyId === companyId && branchMatches((inv as any).branchId));
 
   // 1. Sales Register — every invoice in the period, full status detail.
   const getSalesRegisterData = () => {
@@ -115,7 +133,7 @@ export default function SalesReportsModule({ db, defaultReportType, onPrintDoc }
     const customer = db.customers.find(c => c.id === statementCustomerId);
     const custInvoices = companyInvoices.filter(inv => inv.customerId === statementCustomerId && inv.status === 'Active');
     const invoiceIds = new Set(custInvoices.map(inv => inv.id));
-    const receipts = db.vouchers.filter(v => v.companyId === companyId && v.type === 'Receipt' && v.referenceType === 'Invoice' && invoiceIds.has(v.referenceId));
+    const receipts = db.vouchers.filter(v => v.companyId === companyId && branchMatches((v as any).branchId) && v.type === 'Receipt' && v.referenceType === 'Invoice' && invoiceIds.has(v.referenceId));
 
     const entries: { date: string; type: string; docNumber: string; debit: number; credit: number }[] = [];
     custInvoices.forEach(inv => {
@@ -144,7 +162,7 @@ export default function SalesReportsModule({ db, defaultReportType, onPrintDoc }
 
   // 4. Quotation Conversion — funnel view of quotation outcomes in the period.
   const getQuotationConversionData = () => {
-    const quotations = db.quotations.filter(q => q.companyId === companyId && q.date >= startDate && q.date <= endDate
+    const quotations = db.quotations.filter(q => q.companyId === companyId && branchMatches((q as any).branchId) && q.date >= startDate && q.date <= endDate
       && (selectedCustomerId === 'ALL' || q.customerId === selectedCustomerId));
     const converted = quotations.filter(q => q.status === 'Converted' && !q.isCancelled).length;
     const cancelled = quotations.filter(q => q.isCancelled).length;
@@ -261,6 +279,19 @@ export default function SalesReportsModule({ db, defaultReportType, onPrintDoc }
                   <select value={statementCustomerId} onChange={e => setStatementCustomerId(e.target.value)}
                     className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none">
                     {companyCustomers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
+              {/* posShifts has no branchId yet (POS branch-awareness is a separate,
+                  larger effort — see BACKLOG item 82) — this filter is a no-op for that
+                  report type, so it's hidden there rather than shown but ineffective. */}
+              {companyBranches.length > 0 && reportType !== 'PosShiftSummary' && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Filter Branch')}</label>
+                  <select value={selectedBranchId} onChange={e => setSelectedBranchId(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none">
+                    <option value="ALL">{t('All Branches')}</option>
+                    {companyBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
                 </div>
               )}

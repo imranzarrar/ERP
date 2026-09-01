@@ -59,6 +59,13 @@ interface QuotationModuleProps {
 export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPrintDoc, mode, editId, onDone, onEdit, onCreateNew, onConverted }: QuotationModuleProps) {
  const { t, isRTL, lang } = useTranslation(db);
  const currentUser = db.currentUser;
+ // The branch an admin configured as this user's primary in Staff Permissions
+ // (userBranches.isPrimary) — auto-selected on a fresh form below rather than left on
+ // the generic "Default (your primary branch)" placeholder, so a multi-branch user gets
+ // visual confirmation of which branch they're actually about to file under. Empty for a
+ // user with no branch assignment at all (viewAllBranches/company-wide), who has no
+ // single default to pre-select — the placeholder stays correct for them.
+ const myPrimaryBranchId = (db.userBranches || []).find(ub => ub.userId === currentUser?.id && ub.isPrimary)?.branchId || '';
  const isAdmin = currentUser?.role === 'admin' || currentUser?.isSuperAdmin === true;
  const userPermissions = normalizePermissions(currentUser?.permissions, currentUser?.role, currentUser?.isSuperAdmin);
  const openMonth = getActiveOpenMonth(db, db.selectedCompanyId);
@@ -114,7 +121,8 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  setFormDate(initialDate);
  setFormCustomerId(defaultCust);
  setFormTaxSlabId(defaultTax);
- }, [mode, editId, db.selectedCompanyId, openMonth?.id]);
+ setFormBranchId(myPrimaryBranchId);
+ }, [mode, editId, db.selectedCompanyId, openMonth?.id, myPrimaryBranchId]);
 
  // Prefill the form once the record to edit has loaded from the server.
  React.useEffect(() => {
@@ -125,6 +133,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  setFormDate(q.date);
  setFormCustomerId(q.customerId);
  setFormTaxSlabId(q.taxSlabId);
+ setFormBranchId(q.branchId || '');
  setFormNotes(q.notes);
  setFormDiscountPercentage(q.discountPercentage || 0);
  setFormItems(q.items.map(item => ({
@@ -152,6 +161,12 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  const [formDate, setFormDate] = React.useState('');
  const [formCustomerId, setFormCustomerId] = React.useState('');
  const [formTaxSlabId, setFormTaxSlabId] = React.useState('');
+ // Empty string means "let the server resolve it" (the creating user's primary branch,
+ // or null if branches aren't in use for this company at all) — only meaningfully
+ // choosable here for a user assigned to more than one branch, or one with
+ // branches.viewAllBranches (who has no single default to fall back to server-side).
+ const [formBranchId, setFormBranchId] = React.useState('');
+ const companyBranches = (db.branches || []).filter(b => b.companyId === db.selectedCompanyId && b.isActive !== false);
  const [formNotes, setFormNotes] = React.useState('');
  const [formDiscountPercentage, setFormDiscountPercentage] = React.useState<number>(0);
  const [formItems, setFormItems] = React.useState<Omit<QuotationItem, 'id'>[]>([
@@ -181,13 +196,33 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  }>
  });
 
+ // See InvoiceModule.tsx's matching salesProducts memo for the full reasoning — one row
+ // per sellable product plus one extra row per active packaging/alternate unit.
  const salesProducts = React.useMemo(() => {
-   return (db.products || []).filter(p => {
+   const baseProducts = (db.products || []).filter(p => {
      const isCompMatch = !p.companyId || p.companyId === db.selectedCompanyId;
      const pType = (p.type || '').toLowerCase();
      return isCompMatch && pType !== 'purchase';
    });
- }, [db.products, db.selectedCompanyId]);
+   const rows: (typeof baseProducts[number] & { unitOfMeasureId?: string | null; conversionFactor?: number })[] = [...baseProducts];
+   for (const puc of (db.productUnitConversions || [])) {
+     if (puc.isActive === false) continue;
+     const product = baseProducts.find(p => p.id === puc.productId);
+     if (!product) continue;
+     const uom = (db.unitsOfMeasure || []).find(u => u.id === puc.unitOfMeasureId);
+     rows.push({
+       ...product,
+       name: `${product.name} (${uom ? uom.name : t('Packaging Unit')})`,
+       unitPrice: puc.salePrice ?? product.unitPrice,
+       unit: uom ? uom.code : product.unit,
+       barcode: puc.barcode || undefined,
+       sku: puc.sku || undefined,
+       unitOfMeasureId: puc.unitOfMeasureId,
+       conversionFactor: puc.conversionFactor,
+     });
+   }
+   return rows;
+ }, [db.products, db.productUnitConversions, db.unitsOfMeasure, db.selectedCompanyId, t]);
 
  // Navigate to the dedicated Add page for creation
  const handleInitiateCreate = () => {
@@ -255,7 +290,17 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
       description: item.description.trim(),
       unitCost: parseFloat(item.unitCost as any) || 0,
       quantity: parseFloat(item.quantity as any) || 1,
-      discountAmount: parseFloat(item.discountAmount as any) || 0
+      discountAmount: parseFloat(item.discountAmount as any) || 0,
+      taxSlabId: item.taxSlabId,
+      unit: item.unit,
+      // Pre-existing gap fixed alongside the packaging-units feature: this was never
+      // carried through from the line's own state (set by ItemCatalogSearch via
+      // handleSelectProduct) to the request payload, so a catalog-linked quotation line
+      // silently lost its product link before it was ever persisted — meaning a
+      // quotation-converted invoice's items always arrived with no productId, so neither
+      // stock deduction nor the averageSalePrice fold ever ran for that path.
+      productId: item.productId || undefined,
+      unitOfMeasureId: item.unitOfMeasureId || undefined,
     }));
 
     const qData = {
@@ -268,7 +313,8 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
       status: (view === "edit" && editingQuotationId) ? db.quotations.find(q => q.id === editingQuotationId)!.status : "Draft" as const,
       items: cleanItems,
       discountPercentage: formDiscountPercentage,
-      companyId: db.selectedCompanyId
+      companyId: db.selectedCompanyId,
+      branchId: formBranchId || undefined,
     };
 
     try {
@@ -954,6 +1000,22 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  </select>
  </div>
 
+ {companyBranches.length > 0 && (
+ <div className="lg:col-span-2 space-y-0.5">
+ <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Branch')}</label>
+ <select
+ value={formBranchId}
+ onChange={(e) => setFormBranchId(e.target.value)}
+ className="w-full bg-slate-50/70 hover:bg-white border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-medium focus:outline-none transition-all"
+ >
+ <option value="">{t('Default (your primary branch)')}</option>
+ {companyBranches.map(b => (
+ <option key={b.id} value={b.id}>{b.name}</option>
+ ))}
+ </select>
+ </div>
+ )}
+
  <div className="lg:col-span-2 space-y-0.5">
  <label className="text-[10px] font-bold text-rose-600 uppercase tracking-wider block">{t("Header Discount %")}</label>
  <input
@@ -1023,7 +1085,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  // itself the result of picking a match from the dropdown).
  handleUpdateLineItem(idx, 'productId', undefined);
  }}
- onSelectItem={(matched) => {
+ onSelectItem={(matched: any) => {
  handleUpdateLineItem(idx, 'unitCost', matched.unitPrice || 0);
  // 'No'/'Lumpsum' are the product Unit-of-Measure picker's non-ZATCA-code
  // placeholder values (MasterEntities.tsx) — fall back to 'PCE', matching
@@ -1031,6 +1093,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  const zatcaCode = matched.unit && matched.unit !== 'No' && matched.unit !== 'Lumpsum' ? matched.unit : 'PCE';
  handleUpdateLineItem(idx, 'unit', zatcaCode);
  handleUpdateLineItem(idx, 'productId', matched.id);
+ handleUpdateLineItem(idx, 'unitOfMeasureId', matched.unitOfMeasureId || undefined);
  }}
  className="w-full bg-slate-50/50 hover:bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
  />

@@ -170,6 +170,19 @@ export default function DocumentRenderer({
 
  const activeTemplate = companyTemplates.find(t => t.isActive) || companyTemplates[0];
  const [selectedTemplateId, setSelectedTemplateId] = React.useState<string>(activeTemplate?.id || '');
+
+ // `id="printable-document-content"` is not unique on the page — a real, confirmed bug:
+ // e.g. the Invoice View screen mounts its own DocumentRenderer instance in the
+ // background (rendering the company's ACTIVE template) at the same time this
+ // component's own "Document Print Engine" preview modal is open (rendering whatever
+ // template the user picked in the modal's dropdown, which can be a completely
+ // different one). document.getElementById always returns the FIRST matching element
+ // in document order — confirmed live, that's the hidden background instance, not this
+ // modal's own preview — so handlePrint() was silently printing whatever the OTHER
+ // instance happened to be showing, never the template actually selected here. A ref
+ // scoped to this component instance can't make that mistake regardless of how many
+ // other instances of this same id exist elsewhere on the page.
+ const printableRef = React.useRef<HTMLDivElement>(null);
  
  const currentTemplate = companyTemplates.find(t => t.id === selectedTemplateId) || activeTemplate;
  const isBilingualDoc = documentType === 'Quotation' || documentType === 'Invoice';
@@ -306,7 +319,7 @@ export default function DocumentRenderer({
 
  // Trigger browser print of the document container
  const handlePrint = () => {
- const printContent = document.getElementById('printable-document-content');
+ const printContent = printableRef.current;
  if (!printContent) return;
 
  const printWindow = window.open('', '', 'height=800,width=1000');
@@ -435,6 +448,15 @@ export default function DocumentRenderer({
   const docNum = isInvoice ? (doc as Invoice).invoiceNumber : (doc as Quotation).quotationNumber;
   const notes = doc.notes;
   const items = doc.items || [];
+  // The branch this document was created under (if any) — same data the ZATCA XML's
+  // seller address is built from (server/lib/zatca/processInvoice.ts), so the printed
+  // paper and the e-invoice XML always agree on which outlet's address is shown. Falls
+  // back to the company's own address (companySetup, used below) when unset — most
+  // companies never adopt branches at all, and this must stay a no-op for them.
+  const docBranch = (doc as any).branchId && db ? (db as any).branches?.find((b: any) => b.id === (doc as any).branchId) : undefined;
+  const branchAddressLine = docBranch
+   ? [docBranch.buildingNumber, docBranch.streetName, docBranch.district, docBranch.city, docBranch.postalCode].filter(Boolean).join(', ')
+   : undefined;
 
   // Credit/Debit Notes are rows in the same invoices table (documentType +
   // originalInvoiceId + creditNoteReason, see CLAUDE.md) — the printed document must
@@ -584,10 +606,26 @@ export default function DocumentRenderer({
       case 'serif': return 'font-serif';
       case 'mono': return 'font-mono';
       case 'display': return 'font-display';
+      case 'helvetica': return 'font-helvetica';
+      case 'calibri': return 'font-calibri';
       case 'sans':
       default:
         return 'font-sans';
     }
+  };
+
+  // Shared color-name -> text-class mapping, originally local to totals_summary — now
+  // reused by doc_details/company_details too, so a template like Tier-1 can give its
+  // title/seller-identity text its OWN brand accent (e.g. 'amber' as a warm copper
+  // stand-in — no new Tailwind color needed) independent of the company's portal-wide
+  // UI theme, instead of being stuck with theme.primaryText/theme.accentText everywhere.
+  const resolveAccentTextClass = (colorName: string | undefined, fallbackClass: string) => {
+   if (colorName === 'indigo') return 'text-indigo-600';
+   if (colorName === 'emerald') return 'text-emerald-600';
+   if (colorName === 'slate') return 'text-slate-700';
+   if (colorName === 'amber') return 'text-amber-600';
+   if (colorName === 'blue') return 'text-blue-600';
+   return fallbackClass;
   };
 
   const getBlockStyle = (block: any) => {
@@ -659,16 +697,43 @@ export default function DocumentRenderer({
       else if (fFamily === 'serif') classes.push('font-serif');
       else if (fFamily === 'display') classes.push('font-display');
       else if (fFamily === 'mono') classes.push('font-mono');
+      else if (fFamily === 'helvetica') classes.push('font-helvetica');
+      else if (fFamily === 'calibri') classes.push('font-calibri');
     }
     return classes.join(' ');
   };
 
   const activeBlocks = parsedLayout.filter(b => b.visible !== false);
 
-  return (
-   <div className={`flex flex-col h-full justify-between ${getGlobalFontClass()}`} id="printable-inner">
-    <div className={`grid grid-cols-12 gap-x-4 ${getGridGapClass()}`}>
-     {activeBlocks.map((block) => {
+  // Anchoring the notes/QR/totals row to the bottom of the page (rather than letting it
+  // sit directly under a short items table) needs two real siblings for `justify-between`
+  // to distribute space between — a single flat grid, as this used to be, can't do that.
+  // Opt-in only (a block must explicitly set anchorBottom) so every pre-existing template
+  // renders byte-for-byte the same as before.
+  const footerBlockIds = ['notes', 'qr_code', 'totals_summary', 'custom_footer'];
+  const anchorFooterToBottom = activeBlocks.some(b => footerBlockIds.includes(b.id) && b.props?.anchorBottom === true);
+  const mainBlocks = anchorFooterToBottom ? activeBlocks.filter(b => !footerBlockIds.includes(b.id)) : activeBlocks;
+  const footerBlocks = anchorFooterToBottom ? activeBlocks.filter(b => footerBlockIds.includes(b.id)) : [];
+  // On screen this is an approximate "looks like a full sheet" height (the on-screen
+  // width isn't literally physical inches, so exact precision doesn't matter there). The
+  // print:-scoped value is NOT a guess, and is NOT the raw paper height — using the raw
+  // height (e.g. 11.69in for A4) is exactly what caused the original phantom-blank-
+  // second-page bug documented on getPageSizeClass() above, because it's taller than
+  // what's actually left to fill once @page's own margin is subtracted. This starts from
+  // the real printable area (paper size minus BOTH top+bottom @page margins, matching
+  // handlePrint()'s own @page rule: A4 11.69in - 2*0.4in = 10.89in; thermal 6in - 2*0.1in
+  // = 5.8in) and then deliberately UNDERSHOOTS it by a safety margin (~0.3in) rather than
+  // using that exact theoretical maximum — confirmed live that using the exact 10.89in
+  // pushed just the last line (custom_footer's thank-you text) onto a real second page,
+  // almost certainly from the print engine's own inch-to-device-pixel rounding, not from
+  // this codebase's own CSS. Never round this back up to the exact printable value —
+  // some margin of safety here is the entire point, not a rough draft to be tightened.
+  const isThermal = currentTemplate?.pageSize?.includes('4in x 6in');
+  const anchorHeightClass = anchorFooterToBottom
+   ? (isThermal ? 'min-h-[3.5in] print:min-h-[5.5in]' : 'min-h-[11in] print:min-h-[10.5in]')
+   : '';
+
+  const renderBlock = (block: any) => {
       const blockColClass = `col-span-12 ${COL_SPAN_MD[block.w] || COL_SPAN_MD[12]} ${COL_SPAN_PRINT[block.w] || COL_SPAN_PRINT[12]}`;
 
       if (block.id === 'logo') {
@@ -722,11 +787,25 @@ export default function DocumentRenderer({
        // items table onto a second page before any real content was even rendered.
        const compact = block.props?.compact === true;
        const textAlignClass = block.props?.align === 'right' ? 'text-right' : block.props?.align === 'center' ? 'text-center' : '';
-       return (
-        <div key={block.id} className={`${blockColClass} text-slate-800 ${textAlignClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <h1 className={`${compact ? 'text-base' : 'text-xl'} font-bold ${theme.primaryText}`}>
+       // Undefined (every pre-existing template) preserves the exact old plain-text
+       // rendering — this only activates for a template that explicitly opts in
+       // (e.g. Tier-1), so a seller block can be given the same bordered-card
+       // treatment customer_info already has, for genuine seller/buyer visual parity
+       // rather than one side looking like a design afterthought next to the other.
+       const borderStyle = block.props?.borderStyle;
+       // Same accentColor override as doc_details/totals_summary — a template can give
+       // the seller's name/VAT/CR its own brand color instead of always inheriting the
+       // company's portal-wide UI theme colors (theme.primaryText/theme.accentText).
+       const sellerNameAccent = resolveAccentTextClass(block.props?.accentColor, theme.primaryText);
+       const sellerVatAccent = resolveAccentTextClass(block.props?.accentColor, theme.accentText);
+       const innerContent = (
+        <>
+         <h1 className={`${compact ? 'text-base' : 'text-xl'} font-bold ${sellerNameAccent}`}>
           {companySetup.name}
-          {isBilingual && (
+          {docBranch && (
+           <span className="ms-1.5 text-xs font-semibold text-slate-500 align-middle">— {docBranch.name}</span>
+          )}
+          {isBilingual && !borderStyle && (
            compact ? (
             <span className="ms-1.5 text-[9px] font-medium text-slate-400 align-middle">(البائع)</span>
            ) : (
@@ -735,25 +814,67 @@ export default function DocumentRenderer({
           )}
          </h1>
          {showAddress && (
-          <p className={`text-xs text-slate-500 whitespace-pre-line ${compact ? 'leading-snug mt-0.5 line-clamp-2' : 'leading-relaxed mt-1'} max-w-sm`}>{companySetup.address}</p>
+          <p className={`text-xs text-slate-500 whitespace-pre-line ${compact ? 'leading-snug mt-0.5 line-clamp-2' : 'leading-relaxed mt-1'} max-w-sm`}>{branchAddressLine || companySetup.address}</p>
          )}
-         <p className="text-xs text-slate-500 mt-0.5">{t('Phone')}: {companySetup.phone} | {t('Email')}: {companySetup.email}</p>
-         {showVat && companySetup.vatNumber && (
-          <p className={`text-xs font-semibold mt-0.5 ${theme.accentText}`}>
-           VAT Reg: <span className="font-mono">{companySetup.vatNumber}</span>
+         <p className="text-xs text-slate-500 mt-0.5">{t('Phone')}: {docBranch?.phone || companySetup.phone} | {t('Email')}: {companySetup.email}</p>
+         {/* Compact mode folds VAT+CR onto one line (matching customer_info's own
+             compact pattern exactly) instead of two separate lines — the seller card
+             was taking noticeably more vertical space than the buyer card right next
+             to it for no informational gain, since address/VAT/CR/phone is already
+             everything either party needs. */}
+         {showVat && (companySetup.vatNumber || companySetup.crNumber) && (
+          compact ? (
+           <p className={`text-xs font-semibold mt-0.5 ${sellerVatAccent}`}>
+            {companySetup.vatNumber && <span>VAT Reg: <span className="font-mono">{companySetup.vatNumber}</span></span>}
+            {companySetup.vatNumber && companySetup.crNumber && <span> | </span>}
+            {companySetup.crNumber && <span>{t('CR')}: <span className="font-mono">{companySetup.crNumber}</span></span>}
+           </p>
+          ) : (
+           <>
+            {companySetup.vatNumber && (
+             <p className={`text-xs font-semibold mt-0.5 ${sellerVatAccent}`}>
+              VAT Reg: <span className="font-mono">{companySetup.vatNumber}</span>
+              {isBilingual && (
+               <span className="ms-1 font-normal text-slate-400 text-[10px]">(الرقم الضريبي)</span>
+              )}
+             </p>
+            )}
+            {companySetup.crNumber && (
+             <p className={`text-xs font-semibold mt-0.5 ${sellerVatAccent}`}>
+              {t('CR')}: <span className="font-mono">{companySetup.crNumber}</span>
+              {isBilingual && (
+               <span className="ms-1 font-normal text-slate-400 text-[10px]">(السجل التجاري)</span>
+              )}
+             </p>
+            )}
+           </>
+          )
+         )}
+        </>
+       );
+       if (!borderStyle) {
+        return (
+         <div key={block.id} className={`${blockColClass} text-slate-800 ${textAlignClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
+          {innerContent}
+         </div>
+        );
+       }
+       // Card variant — same shape/spacing as customer_info's card (rounded-2xl,
+       // bg-white, border, shadow-sm, p-4) plus its matching "role" header row, so the
+       // two blocks read as one deliberate pair rather than mismatched treatments.
+       let cardClass = `${compact ? 'p-2.5' : 'p-4'} rounded-2xl bg-white text-xs `;
+       cardClass += borderStyle === 'dashed' ? 'border border-dashed border-slate-350' : 'border border-slate-150 shadow-sm';
+       return (
+        <div key={block.id} className={`${blockColClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
+         <div className={`${cardClass} ${textAlignClass}`}>
+          <div className={`flex justify-between items-center border-b border-slate-100 ${compact ? 'pb-1 mb-1' : 'pb-1.5 mb-2'}`}>
+           <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Seller')}</h3>
            {isBilingual && (
-            <span className="ms-1 font-normal text-slate-400 text-[10px]">(الرقم الضريبي)</span>
+            <span className="text-[10px] font-bold text-slate-400">البائع / Seller</span>
            )}
-          </p>
-         )}
-         {showVat && companySetup.crNumber && (
-          <p className={`text-xs font-semibold mt-0.5 ${theme.accentText}`}>
-           {t('CR')}: <span className="font-mono">{companySetup.crNumber}</span>
-           {isBilingual && (
-            <span className="ms-1 font-normal text-slate-400 text-[10px]">(السجل التجاري)</span>
-           )}
-          </p>
-         )}
+          </div>
+          {innerContent}
+         </div>
         </div>
        );
       }
@@ -793,9 +914,13 @@ export default function DocumentRenderer({
         : block.props.align === 'left' ? 'text-left'
         : block.props.align === 'center' ? 'text-center md:mx-auto print:mx-auto'
         : 'text-right md:ml-auto print:ml-auto';
+       // An explicit accentColor lets a template (e.g. Tier-1) give the title its own
+       // brand color regardless of the company's portal-wide UI theme — falls back to
+       // the existing theme-driven noteAccentText for every template that doesn't set it.
+       const titleAccentText = resolveAccentTextClass(block.props?.accentColor, noteAccentText);
        return (
         <div key={block.id} className={`${blockColClass} ${docDetailsPosClass} max-w-xs ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <h2 className={`${compact ? 'text-base' : 'text-2xl'} font-bold uppercase tracking-wider ${noteAccentText} mb-1`}>
+         <h2 className={`${compact ? 'text-base' : 'text-2xl'} font-bold uppercase tracking-wider ${titleAccentText} mb-1`}>
           {isCreditNote ? t('Credit Note') : isDebitNote ? t('Debit Note') : isInvoice ? t('Invoice') : t('Quotation')}
           {isBilingual && (
            compact ? (
@@ -1296,11 +1421,7 @@ export default function DocumentRenderer({
        // carry the same "this adjusts another invoice" visual cue.
        const accentColor = block.props?.accentColor || (isCreditNote ? 'amber' : isDebitNote ? 'blue' : 'indigo');
 
-       let totalAccentText = "text-indigo-600";
-       if (accentColor === 'emerald') totalAccentText = "text-emerald-600";
-       else if (accentColor === 'slate') totalAccentText = "text-slate-700";
-       else if (accentColor === 'amber') totalAccentText = "text-amber-600";
-       else if (accentColor === 'blue') totalAccentText = "text-blue-600";
+       const totalAccentText = resolveAccentTextClass(accentColor, "text-indigo-600");
 
        // Financial convention (and the pre-existing default) is right-aligned via
        // w-full max-w-sm md:ms-auto — proven working (this is what real generated
@@ -1466,10 +1587,20 @@ export default function DocumentRenderer({
        }
 
        return null;
-      })}
-     </div>
+  };
+
+  return (
+   <div className={`flex flex-col justify-between ${anchorHeightClass} ${getGlobalFontClass()}`} id="printable-inner">
+    <div className={`grid grid-cols-12 gap-x-4 ${getGridGapClass()}`}>
+     {mainBlocks.map(renderBlock)}
     </div>
-   );
+    {anchorFooterToBottom && (
+     <div className={`grid grid-cols-12 gap-x-4 ${getGridGapClass()}`}>
+      {footerBlocks.map(renderBlock)}
+     </div>
+    )}
+   </div>
+  );
   };
 
   const renderExpense = (exp: Expense) => {
@@ -2330,6 +2461,7 @@ export default function DocumentRenderer({
  <div className="p-3 md:p-5 bg-slate-100/50 overflow-x-auto print:p-0 w-full flex justify-center">
  <div style={{ zoom: zoomLevel }} className="print:!zoom-100">
             <div
+              ref={printableRef}
               id="printable-document-content"
  className={`bg-white shadow-lg border border-slate-200/60 p-8 md:p-12 text-slate-800 print:min-w-0 print:w-full print:p-0 md:mx-auto overflow-hidden ${isRTL ? '' : theme.accentFont} ${getPageSizeClass()}`}
  // Arabic/Urdu documents always render in the bilingual-capable Cairo/Noto stack

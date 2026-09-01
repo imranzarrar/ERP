@@ -53,9 +53,20 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
     }
   }, [db.vendors, companyId]);
 
-  const companyExpenses = db.expenses.filter(e => e.companyId === companyId);
-  const companyPOs = (db.purchaseOrders || []).filter((po: any) => po.companyId === companyId);
-  const companyGRNs = (db.goodsReceiptNotes || []).filter((g: any) => g.companyId === companyId);
+  // Branch focus — see SalesReportsModule.tsx's matching comment for the full reasoning
+  // (a convenience narrowing on top of the already-secure server-side filter, never the
+  // security boundary itself). GRNs have no branchId of their own — derived via warehouse.
+  const isBranchUnrestricted = db.currentUser?.isSuperAdmin === true || db.currentUser?.role === 'admin' || can('branches.viewAllBranches');
+  const myBranchIds = new Set((db.userBranches || []).filter(ub => ub.userId === db.currentUser?.id).map(ub => ub.branchId));
+  const companyBranches = (db.branches || []).filter(b => b.companyId === companyId && b.isActive !== false && (isBranchUnrestricted || myBranchIds.has(b.id)));
+  const [selectedBranchId, setSelectedBranchId] = React.useState('ALL');
+  const branchMatches = (branchId: string | null | undefined) => selectedBranchId === 'ALL' || branchId == null || branchId === selectedBranchId;
+  const branchIdByWarehouseId = new Map((db.warehouses || []).map((w: any) => [w.id, w.branchId]));
+  const branchMatchesViaWarehouse = (warehouseId: string | null | undefined) => branchMatches(warehouseId ? branchIdByWarehouseId.get(warehouseId) : undefined);
+
+  const companyExpenses = db.expenses.filter(e => e.companyId === companyId && branchMatches((e as any).branchId));
+  const companyPOs = (db.purchaseOrders || []).filter((po: any) => po.companyId === companyId && branchMatches(po.branchId));
+  const companyGRNs = (db.goodsReceiptNotes || []).filter((g: any) => g.companyId === companyId && branchMatchesViaWarehouse(g.warehouseId));
 
   // 1. Purchase Register — every expense in the period.
   const getPurchaseRegisterData = () => {
@@ -76,10 +87,10 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
     if (!statementVendorId) return { entries: [], endingBalance: 0, vendorName: '' };
     const vendor = db.vendors.find(v => v.id === statementVendorId);
     const vendExpenses = companyExpenses.filter(e => e.vendorId === statementVendorId && e.status === 'Active');
-    const vendBills = (db.purchaseBills || []).filter((b: any) => b.companyId === companyId && b.vendorId === statementVendorId && b.status !== 'Cancelled');
+    const vendBills = (db.purchaseBills || []).filter((b: any) => b.companyId === companyId && branchMatches(b.branchId) && b.vendorId === statementVendorId && b.status !== 'Cancelled');
     const expenseIds = new Set(vendExpenses.map(e => e.id));
     const billIds = new Set(vendBills.map((b: any) => b.id));
-    const payments = db.vouchers.filter(v => v.companyId === companyId && v.type === 'Payment'
+    const payments = db.vouchers.filter(v => v.companyId === companyId && branchMatches((v as any).branchId) && v.type === 'Payment'
       && ((v.referenceType === 'Expense' && expenseIds.has(v.referenceId)) || (v.referenceType === 'PurchaseBill' && billIds.has(v.referenceId))));
 
     const entries: { date: string; type: string; docNumber: string; debit: number; credit: number }[] = [];
@@ -183,6 +194,16 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Vendor (required)')}</label>
                   <select value={statementVendorId} onChange={e => setStatementVendorId(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none">
                     {companyVendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                  </select>
+                </div>
+              )}
+              {companyBranches.length > 0 && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Filter Branch')}</label>
+                  <select value={selectedBranchId} onChange={e => setSelectedBranchId(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none">
+                    <option value="ALL">{t('All Branches')}</option>
+                    {companyBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
                 </div>
               )}

@@ -21,6 +21,7 @@ let taxSlabId: string;
 let customerId: string;
 let bankId: string;
 let productId: string;
+let warehouseId: string;
 let adminSessionId: string;
 let adminUserId: string;
 const createdInvoiceIds: string[] = [];
@@ -90,6 +91,15 @@ beforeAll(async () => {
     id: productId, name: 'Test Widget', description: 'x', unitPrice: '10.00', type: 'item', companyId,
   });
 
+  // A catalog-linked ('item' type) line now requires a resolvable sales warehouse
+  // (server/lib/businessLogic.ts's resolveSaleWarehouse) — a company default is enough
+  // since this file never exercises branch-specific routing, only the averageSalePrice
+  // fold-in itself.
+  warehouseId = generateId();
+  await db.insert(schema.warehouses).values({
+    id: warehouseId, name: 'Main Store', code: 'MAIN', isActive: true, companyId, type: 'sales', isCompanyDefault: true,
+  });
+
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
   adminUserId = generateId();
   const adminUsername = `avgsale_admin_${adminUserId.slice(0, 8)}`;
@@ -110,6 +120,9 @@ afterAll(async () => {
     await db.delete(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, inv.id));
   }
   await db.delete(schema.invoices).where(eq(schema.invoices.companyId, companyId));
+  await db.delete(schema.stockLedgerTransactions).where(eq(schema.stockLedgerTransactions.companyId, companyId));
+  await db.delete(schema.inventoryStocks).where(eq(schema.inventoryStocks.companyId, companyId));
+  await db.delete(schema.warehouses).where(eq(schema.warehouses.companyId, companyId));
   await db.delete(schema.productsServices).where(eq(schema.productsServices.companyId, companyId));
   await db.delete(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, companyId));
   await db.delete(schema.customers).where(eq(schema.customers.companyId, companyId));
@@ -117,6 +130,7 @@ afterAll(async () => {
   await db.delete(schema.fiscalMonths).where(eq(schema.fiscalMonths.companyId, companyId));
   await db.delete(schema.auditLogs).where(eq(schema.auditLogs.companyId, companyId));
   await db.delete(schema.users).where(eq(schema.users.id, adminUserId));
+  await db.delete(schema.documentCounters).where(eq(schema.documentCounters.companyId, companyId));
   await db.delete(schema.companies).where(eq(schema.companies.id, companyId));
 });
 

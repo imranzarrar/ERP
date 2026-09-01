@@ -1,12 +1,14 @@
 import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
-import { eq, and, ne, sql, or, isNull } from 'drizzle-orm';
+import { eq, and, ne, sql, or, isNull, inArray } from 'drizzle-orm';
 import { normalizePermissions } from '../../src/types.js';
-import { isSuperAdminUser, isAdminUser, hasPermission, assertOwnsRow } from '../lib/authz.js';
+import { isSuperAdminUser, isAdminUser, hasPermission, assertOwnsRow, branchAccessOk } from '../lib/authz.js';
 import { generateId } from '../../src/id.js';
 import { validateBuyerFields } from '../lib/zatca/validators.js';
 import { isValidZatcaUnitCode } from '../../src/zatcaUnitCodes.js';
+import { previewNextDocumentNumbers, DOCUMENT_TYPE_REGISTRY } from '../lib/documentNumbering.js';
+import { imageSize } from 'image-size';
 
 const router = express.Router();
 
@@ -197,6 +199,8 @@ router.post('/products', async (req: any, res) => {
       if (!assertOwnsRow(existing, req)) {
         return res.status(403).json({ error: 'Forbidden: this product belongs to another company' });
       }
+    } else {
+      data.id = generateId();
     }
     if (existing) {
       if (!permissions.products.update.enabled) {
@@ -210,11 +214,45 @@ router.post('/products', async (req: any, res) => {
     }
 
     data.companyId = req.targetCompanyId;
+
+    // The client (MasterEntities.tsx) already enforces size/dimension limits before
+    // upload, but that's a UI convenience only — a direct API call bypasses it entirely,
+    // and base64Image has no length limit at the DB column level. Re-checked here against
+    // the same per-company posSettings the client reads, so the limit is actually
+    // enforced, not just suggested. Only runs when base64Image is being set/changed — an
+    // update that doesn't touch the image (data.base64Image undefined) skips this
+    // entirely, same "don't re-validate what wasn't sent" convention as other upsert
+    // routes in this file.
+    if (typeof data.base64Image === 'string' && data.base64Image) {
+      const [company] = await db.select({ posSettings: schema.companies.posSettings }).from(schema.companies).where(eq(schema.companies.id, data.companyId));
+      const posSettings = (company?.posSettings as any) || {};
+      const maxSizeKB = posSettings.maxImageSizeKB || 150;
+      const maxDim = posSettings.maxImageDimensions || 600;
+      const minDim = posSettings.minImageDimensions ?? 150;
+
+      const base64Data = data.base64Image.includes(',') ? data.base64Image.split(',')[1] : data.base64Image;
+      const buffer = Buffer.from(base64Data, 'base64');
+      if (buffer.length > maxSizeKB * 1024) {
+        return res.status(400).json({ error: `Product image is too large (max ${maxSizeKB}KB).` });
+      }
+      try {
+        const { width, height } = imageSize(buffer);
+        if (width > maxDim || height > maxDim) {
+          return res.status(400).json({ error: `Product image dimensions too large (max ${maxDim}x${maxDim}px).` });
+        }
+        if (minDim && (width < minDim || height < minDim)) {
+          return res.status(400).json({ error: `Product image dimensions too small (min ${minDim}x${minDim}px).` });
+        }
+      } catch {
+        return res.status(400).json({ error: 'Could not read product image — file may be corrupt or an unsupported format.' });
+      }
+    }
+
     await db.insert(schema.productsServices).values(data).onConflictDoUpdate({
       target: schema.productsServices.id,
       set: data
     });
-    res.json({ success: true });
+    res.json({ success: true, id: data.id });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -323,6 +361,21 @@ router.patch('/companies/:id/settings', async (req: any, res) => {
     if (body.inventorySettings !== undefined) update.inventorySettings = body.inventorySettings;
     // POS Configuration tab (handlePosSettingsChange)
     if (body.posSettings !== undefined) update.posSettings = body.posSettings;
+    // Document Numbering tab — its own permission leaf (documentNumbering.update), not
+    // covered by companyProfile.update/isFullAdminTier above, mirroring the zatcaEnabled
+    // guardrail below: a delegated profile-editor must not be able to smuggle a numbering
+    // policy change through this same endpoint just because they can edit the company
+    // profile. Never touches companies.counters (server/lib/documentNumbering.ts's lazy
+    // seed reads that separately, once, and never writes it).
+    if (body.numberingPolicy !== undefined) {
+      if (!hasPermission(req.user, 'documentNumbering.update')) {
+        return res.status(403).json({ error: 'Forbidden: editing document numbering requires the Document Numbering permission.' });
+      }
+      if (body.numberingPolicy !== null && typeof body.numberingPolicy !== 'object') {
+        return res.status(400).json({ error: 'numberingPolicy must be an object.' });
+      }
+      update.numberingPolicy = body.numberingPolicy;
+    }
     // ZATCA master switch (handleToggleZatcaEnabled) — deliberately NOT covered by
     // companyProfile.update. ZATCA has real legal/compliance exposure regardless of who's
     // asking (see CLAUDE.md's ZATCA section and the permission-crud-model skill's
@@ -345,6 +398,25 @@ router.patch('/companies/:id/settings', async (req: any, res) => {
 
     await db.update(schema.companies).set(update).where(eq(schema.companies.id, id));
     res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Read-only, display-only preview of "what would the next number look like right now" per
+// document type — never increments anything (mirrors hashChain.ts's getNextHashChainState
+// unlocked/display-only pattern). Gated on documentNumbering.read, separately from update.
+router.get('/companies/:id/numbering-preview', async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    if (!isSuperAdminUser(req.user) && id !== req.targetCompanyId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    if (!hasPermission(req.user, 'documentNumbering.read')) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const preview = await previewNextDocumentNumbers(id);
+    res.json({ registry: DOCUMENT_TYPE_REGISTRY, preview });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -718,6 +790,8 @@ router.post('/units-of-measure', async (req: any, res) => {
       if (!assertOwnsRow(existing, req)) {
         return res.status(403).json({ error: 'Forbidden: this unit belongs to another company' });
       }
+    } else {
+      data.id = generateId();
     }
     if (existing) {
       if (!permissions.units.update.enabled) {
@@ -735,7 +809,7 @@ router.post('/units-of-measure', async (req: any, res) => {
       target: schema.unitsOfMeasure.id,
       set: data
     });
-    res.json({ success: true });
+    res.json({ success: true, id: data.id });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -761,6 +835,183 @@ router.patch('/units-of-measure/:id/toggle-active', async (req: any, res) => {
   }
 });
 
+// --- Job Titles (HR) — e.g. "Sales Associate", "Cashier". Deliberately distinct from
+// the `roles` table (RBAC permission bundles) — see jobTitles's schema comment. ---
+router.get('/job-titles', async (req: any, res) => {
+  try {
+    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+    if (!permissions.jobTitles.read.enabled) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const companyId = req.targetCompanyId;
+    const titles = await db.select().from(schema.jobTitles).where(eq(schema.jobTitles.companyId, companyId));
+    res.json(titles);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/job-titles', async (req: any, res) => {
+  try {
+    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+    const data = { ...req.body };
+    if (!data.title || !String(data.title).trim()) {
+      return res.status(400).json({ error: 'A job title is required.' });
+    }
+
+    let existing: typeof schema.jobTitles.$inferSelect | undefined;
+    if (data.id) {
+      [existing] = await db.select().from(schema.jobTitles).where(eq(schema.jobTitles.id, data.id));
+      if (!assertOwnsRow(existing, req)) {
+        return res.status(403).json({ error: 'Forbidden: this job title belongs to another company' });
+      }
+    } else {
+      data.id = generateId();
+    }
+    if (existing) {
+      if (!permissions.jobTitles.update.enabled) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+      if (existing.isActive === false) {
+        return res.status(400).json({ error: 'Cannot edit a deactivated job title. Reactivate it first.' });
+      }
+    } else if (!permissions.jobTitles.create.enabled) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    data.companyId = req.targetCompanyId;
+    data.title = String(data.title).trim();
+    data.description = data.description ? String(data.description).trim() || null : null;
+    try {
+      await db.insert(schema.jobTitles).values(data).onConflictDoUpdate({
+        target: schema.jobTitles.id,
+        set: data
+      });
+    } catch (dbError: any) {
+      if (dbError.code === '23505' || dbError.cause?.code === '23505') {
+        return res.status(400).json({ error: `"${data.title}" already exists as an active job title for this company.` });
+      }
+      throw dbError;
+    }
+    res.json({ success: true, id: data.id });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.patch('/job-titles/:id/toggle-active', async (req: any, res) => {
+  try {
+    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+    if (!permissions.jobTitles.delete.enabled) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { id } = req.params;
+    const [existing] = await db.select().from(schema.jobTitles)
+      .where(and(eq(schema.jobTitles.id, id), eq(schema.jobTitles.companyId, req.targetCompanyId)));
+    if (!existing) {
+      return res.status(404).json({ error: 'Job title not found.' });
+    }
+    const nextActive = existing.isActive === false;
+    await db.update(schema.jobTitles).set({ isActive: nextActive }).where(eq(schema.jobTitles.id, id));
+    res.json({ success: true, isActive: nextActive });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Product Unit Conversions (packaging/alternate units, e.g. "Carton-12") ---
+// Gated on the existing products.create/.update leaves, not a new permission leaf — this
+// is product-master data, the same authority as editing the product itself. See
+// productUnitConversions's schema comment for the full model.
+router.get('/product-unit-conversions', async (req: any, res) => {
+  try {
+    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+    if (!permissions.products.read.enabled) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const companyId = req.targetCompanyId;
+    const conversions = await db.select().from(schema.productUnitConversions).where(eq(schema.productUnitConversions.companyId, companyId));
+    res.json(conversions);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/product-unit-conversions', async (req: any, res) => {
+  try {
+    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+    const data = { ...req.body };
+
+    if (!data.productId || !data.unitOfMeasureId) {
+      return res.status(400).json({ error: 'A product and a unit of measure are required.' });
+    }
+    const factor = Number(data.conversionFactor);
+    if (!Number.isFinite(factor) || factor <= 0) {
+      return res.status(400).json({ error: 'Conversion factor must be a positive number.' });
+    }
+
+    let existing: typeof schema.productUnitConversions.$inferSelect | undefined;
+    if (data.id) {
+      [existing] = await db.select().from(schema.productUnitConversions).where(eq(schema.productUnitConversions.id, data.id));
+      if (!assertOwnsRow(existing, req)) {
+        return res.status(403).json({ error: 'Forbidden: this packaging unit belongs to another company' });
+      }
+    } else {
+      data.id = generateId();
+    }
+    if (existing) {
+      if (!permissions.products.update.enabled) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+    } else if (!permissions.products.create.enabled) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    data.companyId = req.targetCompanyId;
+    // A product's own base unit can never also be one of its packaging/alternate units —
+    // that would make "1 Carton = 1 Piece" a nonsensical second identity for the same unit.
+    const [product] = await db.select({ unit: schema.productsServices.unit }).from(schema.productsServices)
+      .where(and(eq(schema.productsServices.id, data.productId), eq(schema.productsServices.companyId, data.companyId)));
+    if (!product) {
+      return res.status(404).json({ error: 'Product not found for this company.' });
+    }
+
+    await db.insert(schema.productUnitConversions).values(data).onConflictDoUpdate({
+      target: schema.productUnitConversions.id,
+      set: data
+    });
+    res.json({ success: true, id: data.id });
+  } catch (error: any) {
+    // This drizzle-orm version wraps the real pg error under `.cause`, not `.code`
+    // directly (confirmed against a live unique-violation) — checking both keeps this
+    // correct regardless of drizzle version drift.
+    if (error.code === '23505' || error.cause?.code === '23505') {
+      return res.status(400).json({ error: 'This product already has an active packaging unit configured for that unit of measure.' });
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.patch('/product-unit-conversions/:id/toggle-active', async (req: any, res) => {
+  try {
+    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+    if (!permissions.products.update.enabled) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { id } = req.params;
+    const [existing] = await db.select().from(schema.productUnitConversions)
+      .where(and(eq(schema.productUnitConversions.id, id), eq(schema.productUnitConversions.companyId, req.targetCompanyId)));
+    if (!existing) {
+      return res.status(404).json({ error: 'Packaging unit not found.' });
+    }
+    const nextActive = existing.isActive === false;
+    await db.update(schema.productUnitConversions).set({ isActive: nextActive }).where(eq(schema.productUnitConversions.id, id));
+    res.json({ success: true, isActive: nextActive });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // --- Warehouses ---
 router.get('/warehouses', async (req: any, res) => {
   try {
@@ -769,7 +1020,12 @@ router.get('/warehouses', async (req: any, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const companyId = req.targetCompanyId;
-    const warehousesList = await db.select().from(schema.warehouses).where(eq(schema.warehouses.companyId, companyId));
+    const conditions = [eq(schema.warehouses.companyId, companyId)];
+    if (Array.isArray(req.allowedBranchIds)) {
+      if (req.allowedBranchIds.length === 0) return res.json([]);
+      conditions.push(inArray(schema.warehouses.branchId, req.allowedBranchIds));
+    }
+    const warehousesList = await db.select().from(schema.warehouses).where(and(...conditions));
     res.json(warehousesList);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -787,6 +1043,9 @@ router.post('/warehouses', async (req: any, res) => {
       if (!assertOwnsRow(existing, req)) {
         return res.status(403).json({ error: 'Forbidden: this warehouse belongs to another company' });
       }
+      if (existing && !branchAccessOk(req, existing.branchId)) {
+        return res.status(403).json({ error: 'Forbidden: you are not assigned to this branch.' });
+      }
     } else {
       data.id = generateId();
     }
@@ -802,10 +1061,82 @@ router.post('/warehouses', async (req: any, res) => {
     }
 
     data.companyId = req.targetCompanyId;
-    await db.insert(schema.warehouses).values(data).onConflictDoUpdate({
-      target: schema.warehouses.id,
-      set: data
-    });
+
+    // data.branchId was previously written verbatim with no ownership check at all — not
+    // even that it belongs to this company, let alone the caller's own allowedBranchIds.
+    // A branch-restricted user could otherwise create/reassign a warehouse under a branch
+    // (or even, before the companyId check below, potentially a branch id copied from a
+    // completely different company) they have no business touching.
+    if (data.branchId) {
+      const [targetBranch] = await db.select({ id: schema.branches.id }).from(schema.branches)
+        .where(and(eq(schema.branches.id, data.branchId), eq(schema.branches.companyId, data.companyId)));
+      if (!targetBranch) {
+        return res.status(404).json({ error: 'Selected branch not found for this company.' });
+      }
+    }
+    if (!branchAccessOk(req, data.branchId || null)) {
+      return res.status(403).json({ error: 'Forbidden: you are not assigned to this branch.' });
+    }
+
+    // Once a company has adopted branches, a brand-new warehouse must belong to one —
+    // otherwise it silently becomes permanently unscoped, exactly the gap the backfill
+    // action below exists to fix for pre-existing data. Only enforced on genuinely new
+    // warehouses (not edits to an existing, possibly still-unbackfilled one) and only
+    // once the company actually has an active branch — a company that has never adopted
+    // branches at all keeps today's exact behavior (branchId stays optional).
+    if (!existing && !data.branchId) {
+      const [anyBranch] = await db.select({ id: schema.branches.id }).from(schema.branches)
+        .where(and(eq(schema.branches.companyId, data.companyId), eq(schema.branches.isActive, true)));
+      if (anyBranch) {
+        return res.status(400).json({ error: 'This company uses branches — select a branch for the new warehouse.' });
+      }
+    }
+
+    const effectiveType = data.type || existing?.type || 'sales';
+
+    // "Every company needs at least one default warehouse" (product decision) is enforced
+    // pragmatically here, not by a NOT-NULL constraint the company can't satisfy at
+    // creation time: a company's very first warehouse auto-becomes its default the same
+    // way branches.ts auto-defaults a company's first branch, unless it's a 'backend'
+    // warehouse (which can never be a default) or the caller already decided otherwise.
+    // When the field isn't sent at all on an edit, preserve whatever this warehouse's
+    // flag already was — omitting it must never silently un-default a warehouse.
+    let becomingDefault: boolean;
+    if (data.isCompanyDefault === true || data.isCompanyDefault === false) {
+      becomingDefault = data.isCompanyDefault;
+    } else if (existing) {
+      becomingDefault = existing.isCompanyDefault === true;
+    } else {
+      becomingDefault = false;
+      if (effectiveType === 'sales') {
+        const [anyWarehouse] = await db.select({ id: schema.warehouses.id }).from(schema.warehouses)
+          .where(eq(schema.warehouses.companyId, data.companyId));
+        if (!anyWarehouse) becomingDefault = true;
+      }
+    }
+    if (becomingDefault && effectiveType !== 'sales') {
+      return res.status(400).json({ error: 'Only a sales warehouse can be set as the company default.' });
+    }
+    data.isCompanyDefault = becomingDefault;
+
+    if (becomingDefault) {
+      // Swap pattern — same as branches.ts's isDefault handling: atomically un-default
+      // any other warehouse this company currently has flagged before setting this one,
+      // so the partial unique index never sees two "true" rows at once.
+      await db.transaction(async (tx) => {
+        await tx.update(schema.warehouses).set({ isCompanyDefault: false })
+          .where(and(eq(schema.warehouses.companyId, data.companyId), eq(schema.warehouses.isCompanyDefault, true)));
+        await tx.insert(schema.warehouses).values(data).onConflictDoUpdate({
+          target: schema.warehouses.id,
+          set: data
+        });
+      });
+    } else {
+      await db.insert(schema.warehouses).values(data).onConflictDoUpdate({
+        target: schema.warehouses.id,
+        set: data
+      });
+    }
     res.json({ success: true, id: data.id });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -843,7 +1174,18 @@ router.get('/product-warehouses', async (req: any, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const companyId = req.targetCompanyId;
-    const mappings = await db.select().from(schema.productWarehouses).where(eq(schema.productWarehouses.companyId, companyId));
+    let mappings = await db.select().from(schema.productWarehouses).where(eq(schema.productWarehouses.companyId, companyId));
+    // productWarehouses has no branchId of its own — derived via warehouseId, same
+    // pattern as GET /api/state's own branchOkViaWarehouse scoping for this exact table
+    // (server.ts), which this standalone REST endpoint had no equivalent of until now.
+    if (Array.isArray(req.allowedBranchIds)) {
+      const allowedWarehouses = req.allowedBranchIds.length
+        ? await db.select({ id: schema.warehouses.id }).from(schema.warehouses)
+            .where(and(eq(schema.warehouses.companyId, companyId), inArray(schema.warehouses.branchId, req.allowedBranchIds)))
+        : [];
+      const allowedWarehouseIds = new Set(allowedWarehouses.map(w => w.id));
+      mappings = mappings.filter(m => allowedWarehouseIds.has(m.warehouseId));
+    }
     res.json(mappings);
   } catch (error: any) {
     res.status(500).json({ error: error.message });

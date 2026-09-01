@@ -40,6 +40,12 @@ A one-off Node script used to cross-reference "keys the code calls" against "key
 
 **Lesson**: never `.trim()` a translation key when comparing against the database. If an audit script reports a key "missing" that you're confident already has a translation, check for a whitespace/punctuation mismatch before writing new content for it.
 
-## 7. The in-app "Auto-Translate" button is not a safety net
+## 7. An escaped apostrophe inside a single-quoted key breaks the grep-based audit
+
+The audit script's extraction regex (`audit-script.md` step 1) is `t\('[^']*'\)` — it matches up to the *first* unescaped `'`. A call like `t('...branch\'s own address...')` or `t('...we\'ll send...')` has an escaped `\'` inside the string, which the regex doesn't know to skip: it stops early, so the match either fails silently or captures a truncated/wrong substring. The key never makes it into `keys.txt`, so it's never checked against the database — it just silently renders in English forever, with the audit script reporting a clean "zero missing" result right next to it. This bit `LoginScreen.tsx`'s `we\'ll` string in one pass, then bit two more strings (`branch\'s`, `PR\'s`) in the very next pass, because the first fix didn't change the audit method, only patched the one string found by other means.
+
+**Lesson**: after running the standard extraction regex, run a second, targeted pass specifically for this blind spot: `grep -oE "t\('[^']*\\\\'[^']*'\)"` (or the equivalent for double-quoted calls) across every changed file, and add anything it finds to the key list by hand. Do this as a standing second step, not just when a translation is reported missing — the standard audit will never catch it on its own, no matter how many times it's re-run.
+
+## 8. The in-app "Auto-Translate" button is not a safety net
 
 `AdminSettings.tsx`'s `handleAutoTranslate` calls `POST /api/translate-all` (`server.ts`), which checks `SEED_TRANSLATIONS` offline first, then falls back to the Gemini API (`gemini-3.6-flash`) for anything still missing — but only if `GEMINI_API_KEY` is set in the environment. It is not set in this project's `.env`. Clicking the button does nothing for genuinely new keys and gives no clear signal about why. Don't point a user at this button as "the fix" for a missing-translation report, and don't assume a key will eventually get filled in by it — write the content directly.

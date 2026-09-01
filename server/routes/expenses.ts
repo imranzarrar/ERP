@@ -1,12 +1,13 @@
 import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
-import { eq, and, desc } from 'drizzle-orm';
-import { getAndIncrementCounter, validateTransactionDate, syncVoucherForExpense, round2, computePaymentStatus } from '../lib/businessLogic.js';
+import { eq, and, desc, inArray, sql } from 'drizzle-orm';
+import { validateTransactionDate, syncVoucherForExpense, round2, computePaymentStatus, assertQuarterNotFiled } from '../lib/businessLogic.js';
+import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { normalizePermissions } from '../../src/types.js';
 import { parseLimitOffset } from '../lib/pagination.js';
 import { generateId } from '../../src/id.js';
-import { assertOwnsRow } from '../lib/authz.js';
+import { assertOwnsRow, resolveDocumentBranchId, branchAccessOk } from '../lib/authz.js';
 
 const router = express.Router();
 
@@ -18,7 +19,15 @@ router.get('/', async (req: any, res) => {
     }
     const companyId = req.targetCompanyId;
     const { limit, offset } = parseLimitOffset(req);
-    const expenses = await db.select().from(schema.expenses).where(eq(schema.expenses.companyId, companyId))
+    const conditions = [eq(schema.expenses.companyId, companyId)];
+    // Branch-restricted callers (req.allowedBranchIds is a real array, not null — see
+    // isAuthenticated in server.ts) must only see their own branch's expenses, same rule
+    // GET /api/state already applies to this table via its own branchOk closure — this
+    // standalone REST endpoint had no equivalent check at all until now.
+    if (Array.isArray(req.allowedBranchIds)) {
+      conditions.push(req.allowedBranchIds.length > 0 ? inArray(schema.expenses.branchId, req.allowedBranchIds) : sql`false`);
+    }
+    const expenses = await db.select().from(schema.expenses).where(and(...conditions))
       .orderBy(desc(schema.expenses.createdAt)).limit(limit).offset(offset);
     res.json(expenses);
   } catch (error: any) {
@@ -40,6 +49,9 @@ router.post('/', async (req: any, res) => {
       [existing] = await db.select().from(schema.expenses).where(eq(schema.expenses.id, data.id));
       if (!assertOwnsRow(existing, req)) {
         return res.status(403).json({ error: 'Forbidden: this expense belongs to another company' });
+      }
+      if (existing && !branchAccessOk(req, existing.branchId)) {
+        return res.status(403).json({ error: 'Forbidden: you are not assigned to this branch.' });
       }
     }
     if (existing) {
@@ -70,6 +82,13 @@ router.post('/', async (req: any, res) => {
     delete data.createdAt;
 
     data.companyId = req.targetCompanyId;
+    // Branch is immutable after creation, same choke-point pattern as Quotation/Invoice
+    // (server/routes/transactions.ts) — resolved/validated before the transaction opens.
+    try {
+      data.branchId = existing ? existing.branchId : await resolveDocumentBranchId(req, data.branchId);
+    } catch (branchErr: any) {
+      return res.status(branchErr.status || 400).json({ error: branchErr.error || 'Invalid branch.' });
+    }
     // paymentStatus is a derived fact of amountPaid vs. amount, not a client-asserted
     // string — recomputing it here closes the door on an arbitrary/typo'd status value.
     const totalAmount = round2(Number(data.amount || 0));
@@ -80,12 +99,12 @@ router.post('/', async (req: any, res) => {
 
     await db.transaction(async (tx) => {
       await validateTransactionDate(data.date, data.companyId);
+      await assertQuarterNotFiled(data.date, data.companyId);
       const isNew = !data.id;
       const expenseId = data.id || generateId();
 
       if (isNew) {
-        const expCount = await getAndIncrementCounter(tx, data.companyId, 'expense');
-        data.expenseNumber = `EXP-${expCount}`;
+        data.expenseNumber = await getAndIncrementDocumentNumber(tx, data.companyId, 'expense', data.date, data.branchId);
         data.createdById = req.user.id;
         data.createdAt = new Date();
       } else if (existing) {
@@ -138,6 +157,7 @@ router.post('/:id/pay', async (req: any, res) => {
       const [expense] = await tx.select().from(schema.expenses)
         .where(and(eq(schema.expenses.id, id), eq(schema.expenses.companyId, companyId))).for('update');
       if (!expense) throw new Error('Expense not found.');
+      if (!branchAccessOk(req, expense.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
       if (expense.status === 'Cancelled') throw new Error('Cancelled expenses cannot be paid.');
       if (expense.paymentStatus === 'Paid') throw new Error('Expense is already paid.');
 
@@ -196,8 +216,7 @@ router.post('/:id/pay', async (req: any, res) => {
       // Payment voucher (only if Actual type; accrual settlement handles its own voucher
       // when actual is posted) — matches dbStore.markExpensePaid exactly.
       if (expense.type === 'Actual') {
-        const vchCount = await getAndIncrementCounter(tx, companyId, 'voucher');
-        const voucherNumber = `VCH-${vchCount}`;
+        const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', date, expense.branchId);
         const [voucher] = await tx.insert(schema.vouchers).values({
           id: generateId(),
           voucherNumber,
@@ -211,6 +230,8 @@ router.post('/:id/pay', async (req: any, res) => {
           createdById: req.user.id,
           createdAt: new Date(),
           companyId,
+          // Always the expense's own branch, never independently picked.
+          branchId: expense.branchId,
         }).returning();
         createdVoucher = voucher;
       }
@@ -242,6 +263,7 @@ router.post('/:id/cancel', async (req: any, res) => {
       const [expense] = await tx.select().from(schema.expenses)
         .where(and(eq(schema.expenses.id, id), eq(schema.expenses.companyId, companyId)));
       if (!expense) throw new Error('Expense not found.');
+      if (!branchAccessOk(req, expense.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
       if (expense.status === 'Cancelled') throw new Error('Expense is already cancelled.');
 
       const openMonths = await tx.select().from(schema.fiscalMonths)
@@ -270,8 +292,7 @@ router.post('/:id/cancel', async (req: any, res) => {
       const [activePayment] = await tx.select().from(schema.vouchers)
         .where(and(eq(schema.vouchers.referenceId, id), eq(schema.vouchers.referenceType, 'Expense'), eq(schema.vouchers.type, 'Payment')));
       if (activePayment) {
-        const vchCount = await getAndIncrementCounter(tx, companyId, 'voucher');
-        const voucherNumber = `VCH-${vchCount}`;
+        const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', finalReversalDate, activePayment.branchId || expense.branchId);
         await tx.insert(schema.vouchers).values({
           id: generateId(),
           voucherNumber,
@@ -285,6 +306,7 @@ router.post('/:id/cancel', async (req: any, res) => {
           createdById: req.user.id,
           createdAt: new Date(),
           companyId,
+          branchId: activePayment.branchId || expense.branchId || null,
         });
       }
     });

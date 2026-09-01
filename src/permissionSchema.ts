@@ -250,6 +250,19 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
     ]
   },
   {
+    // A quarterly VAT filing record, not generic CRUD — no `update` leaf exists because
+    // there is no in-place edit path at all (Generate/Delete/File only). `file` is its
+    // own leaf, deliberately separate from `create`/`delete`, for the same reason
+    // fiscalMonths.close is separate from .open: filing is the materially bigger,
+    // permanently irreversible action and deserves its own grant.
+    id: 'taxReturns', groupId: 'financial_config', label: 'VAT Returns (ZATCA Filing)', leaves: [
+      { key: 'create', label: 'Generate VAT Returns' },
+      { key: 'read', label: 'View VAT Returns' },
+      { key: 'delete', label: 'Delete Generated/Unfiled VAT Returns' },
+      { key: 'file', label: 'Mark VAT Returns as ZATCA Filed (Permanent)' },
+    ]
+  },
+  {
     id: 'banks', groupId: 'financial_config', label: 'Bank Accounts Access', leaves: [
       { key: 'create', label: 'Add Bank Accounts' },
       { key: 'read', label: 'View Bank Accounts' },
@@ -279,6 +292,53 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
       { key: 'update', label: 'Edit Tax Slabs' },
       // No delete leaf: there's no mechanism to remove/deactivate a tax slab today (only
       // set-default exists). Add one here, alongside the actual route, if that changes.
+    ]
+  },
+  {
+    // Per-company document-numbering policy (prefix/separator/padding/branch-code display/
+    // reset frequency for every document type — server/lib/documentNumbering.ts). Its own
+    // leaf rather than folding into companyProfile.update: a company might want to delegate
+    // "who can change how invoice numbers look" independently of "who can edit our address/
+    // logo/branding," the same reasoning branches got its own module for.
+    id: 'documentNumbering', groupId: 'financial_config', label: 'Document Numbering', leaves: [
+      { key: 'read', label: 'View Document Numbering Settings' },
+      { key: 'update', label: 'Edit Document Numbering Settings' },
+    ]
+  },
+  {
+    // Branch (physical location) management. Deliberately no `create` leaf at all —
+    // creating a branch is a licensing decision, hardcoded to isSuperAdminUser() in
+    // server/routes/branches.ts, mirroring how POST /api/companies itself is gated; a
+    // company admin can edit/deactivate/view branches but never mint a new one.
+    // `viewAllBranches` is a standalone flag (not CRUD): holding it means a user's
+    // reads/writes are not narrowed to their assigned branch(es) at all — same
+    // union-of-roles resolution as every other leaf, so a user with ANY role granting
+    // this sees every branch regardless of what userBranches rows exist for them.
+    id: 'branches', groupId: 'governance', label: 'Branches (Locations)', leaves: [
+      { key: 'read', label: 'View Branches' },
+      { key: 'update', label: 'Edit Branches' },
+      { key: 'delete', label: 'Deactivate Branches' },
+      { key: 'viewAllBranches', label: 'View & Act Across All Branches (not just assigned ones)' },
+    ]
+  },
+  {
+    // "Job Title" (Sales Associate, Cashier, ...) — deliberately a separate module/
+    // concept from the `roles` module above (RBAC permission bundles for ERP login
+    // accounts). A job title is who someone IS for HR/business purposes; a Role is what
+    // an ERP account is allowed to click. Never conflate the two.
+    id: 'jobTitles', groupId: 'governance', label: 'Job Titles', leaves: [
+      { key: 'create', label: 'Create Job Titles' },
+      { key: 'read', label: 'View Job Titles' },
+      { key: 'update', label: 'Edit Job Titles' },
+      { key: 'delete', label: 'Deactivate Job Titles' },
+    ]
+  },
+  {
+    id: 'employees', groupId: 'governance', label: 'Employees (HR)', leaves: [
+      { key: 'create', label: 'Onboard Employees' },
+      { key: 'read', label: 'View Employees' },
+      { key: 'update', label: 'Edit Employees' },
+      { key: 'delete', label: 'Deactivate Employees' },
     ]
   },
   {

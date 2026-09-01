@@ -25,6 +25,7 @@ let customerId: string;
 let bankId: string;
 let taxSlabId: string;
 let productId: string;
+let warehouseId: string;
 let shiftId: string;
 let currentMonthId: string;
 let createdInvoiceId: string | undefined;
@@ -83,6 +84,14 @@ beforeAll(async () => {
     id: productId, name: 'Test Widget', description: 'Test Widget', unitPrice: '100', type: 'item', unit: 'KGM', companyId,
   });
 
+  // A stock ('item' type) sale now requires a resolvable sales warehouse
+  // (server/lib/businessLogic.ts's resolveSaleWarehouse) — a company default is enough
+  // since this file only exercises the ZATCA pipeline reach-through, not warehouse routing.
+  warehouseId = generateId();
+  await db.insert(schema.warehouses).values({
+    id: warehouseId, name: 'Main Store', code: 'MAIN', isActive: true, companyId, type: 'sales', isCompanyDefault: true,
+  });
+
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
   adminUserId = generateId();
   const adminUsername = `poszatca_admin_${adminUserId.slice(0, 8)}`;
@@ -92,8 +101,13 @@ beforeAll(async () => {
   });
   adminSessionId = await login(adminUsername);
 
-  const now = new Date();
-  currentMonthId = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  // Derived from the same UTC clock as the invoice's own `date` (below, via
+  // toISOString().split('T')[0]) — using local getFullYear()/getMonth() here instead
+  // produced a real flake for any timezone ahead of UTC (e.g. AST, UTC+3) during the
+  // few hours after local midnight but before UTC's own day rolls over, since the
+  // invoice's UTC-dated day could then fall in the *previous* UTC month while this row
+  // was keyed to the new local month.
+  currentMonthId = new Date().toISOString().slice(0, 7);
   await db.insert(schema.fiscalMonths).values({ id: currentMonthId, name: 'Test Month', status: 'Open', companyId });
 
   shiftId = generateId();
@@ -113,10 +127,14 @@ afterAll(async () => {
   await db.delete(schema.auditLogs).where(eq(schema.auditLogs.userId, adminUserId));
   await db.delete(schema.auditLogs).where(eq(schema.auditLogs.companyId, companyId));
   await db.delete(schema.users).where(eq(schema.users.id, adminUserId));
+  await db.delete(schema.stockLedgerTransactions).where(eq(schema.stockLedgerTransactions.companyId, companyId));
+  await db.delete(schema.inventoryStocks).where(eq(schema.inventoryStocks.companyId, companyId));
+  await db.delete(schema.warehouses).where(eq(schema.warehouses.id, warehouseId));
   await db.delete(schema.productsServices).where(eq(schema.productsServices.id, productId));
   await db.delete(schema.taxSlabs).where(eq(schema.taxSlabs.id, taxSlabId));
   await db.delete(schema.bankAccounts).where(eq(schema.bankAccounts.id, bankId));
   await db.delete(schema.customers).where(eq(schema.customers.id, customerId));
+  await db.delete(schema.documentCounters).where(eq(schema.documentCounters.companyId, companyId));
   await db.delete(schema.companies).where(eq(schema.companies.id, companyId));
 });
 

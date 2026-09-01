@@ -35,7 +35,7 @@ export default function PosModule({ db, onUpdateDbLocal, onRefreshDb, currentUse
   const currency = activeCompany?.currency || 'SAR';
   const { t, isRTL } = useTranslation(db);
   const activeCompanyId = db.selectedCompanyId;
-  const posSettings = db.companies?.find(c => c.id === activeCompanyId)?.posSettings || { autoPrint: true, maxImageSizeKB: 500 };
+  const posSettings = db.companies?.find(c => c.id === activeCompanyId)?.posSettings || { autoPrint: true, maxImageSizeKB: 150 };
 
   const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
   const fetchMonths = async () => {
@@ -223,7 +223,32 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
   const products = (db.products || []).filter((p: ProductService) => p.companyId === activeCompanyId);
   const categories = ['All', ...Array.from(new Set(products.map((p: ProductService) => p.category).filter(Boolean)))];
 
-  const filteredProductServices = products.filter((p: ProductService) => {
+  // Product grid tiles: one per sellable product (its base unit), plus one extra tile per
+  // active packaging/alternate unit it has configured (see ProductUnitConversion) —
+  // each carrying that unit's OWN barcode/sku/price, so typing a carton's own barcode
+  // into search resolves straight to the carton tile. Same flattening approach as
+  // InvoiceModule.tsx/QuotationModule.tsx's salesProducts memo.
+  const posCatalogTiles = React.useMemo(() => {
+    const tiles: (ProductService & { unitOfMeasureId?: string | null; conversionFactor?: number })[] = [...products];
+    for (const puc of (db.productUnitConversions || [])) {
+      if (puc.isActive === false) continue;
+      const product = products.find((p: ProductService) => p.id === puc.productId);
+      if (!product) continue;
+      const uom = (db.unitsOfMeasure || []).find((u: any) => u.id === puc.unitOfMeasureId);
+      tiles.push({
+        ...product,
+        name: `${product.name} (${uom ? uom.name : t('Packaging Unit')})`,
+        unitPrice: puc.salePrice ?? product.unitPrice,
+        barcode: puc.barcode || undefined,
+        sku: puc.sku || undefined,
+        unitOfMeasureId: puc.unitOfMeasureId,
+        conversionFactor: puc.conversionFactor,
+      });
+    }
+    return tiles;
+  }, [products, db.productUnitConversions, db.unitsOfMeasure, t]);
+
+  const filteredProductServices = posCatalogTiles.filter((p) => {
     if (selectedCategory !== 'All' && p.category !== selectedCategory) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -232,14 +257,20 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
     return true;
   });
 
-  const handleAddToCart = (product: ProductService) => {
+  const handleAddToCart = (product: ProductService & { unitOfMeasureId?: string | null; conversionFactor?: number }) => {
     const qty = isReturnMode ? -1 : 1;
+    // A packaging-unit tile and its product's own base-unit tile share the same
+    // productId but represent different units — they must stay separate cart lines,
+    // not merge into one (merging would silently discard which unit was actually sold).
     setCart(prev => {
-      const existing = prev.find(item => item.productId === product.id);
+      const existing = prev.find(item => item.productId === product.id && (item.unitOfMeasureId || null) === (product.unitOfMeasureId || null));
       if (existing) {
-        return prev.map(item => item.productId === product.id ? { ...item, quantity: item.quantity + qty, total: (item.quantity + qty) * item.unitPrice } : item);
+        return prev.map(item => item === existing ? { ...item, quantity: item.quantity + qty, total: (item.quantity + qty) * item.unitPrice } : item);
       }
-      return [...prev, { productId: product.id, productName: product.name, quantity: qty, unitPrice: product.unitPrice, discount: 0, total: qty * product.unitPrice }];
+      return [...prev, {
+        productId: product.id, productName: product.name, quantity: qty, unitPrice: product.unitPrice, discount: 0, total: qty * product.unitPrice,
+        unitOfMeasureId: product.unitOfMeasureId || undefined, conversionFactor: product.conversionFactor,
+      }];
     });
   };
 
@@ -401,7 +432,11 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
     // previously carried no unit at all onto the ZATCA XML.
     const items = cart.map(item => {
       const product = (db.products || []).find((p: any) => p.id === item.productId);
-      const zatcaUnit = product?.unit && product.unit !== 'No' && product.unit !== 'Lumpsum' ? product.unit : 'PCE';
+      // A packaging-unit line uses THAT unit's own code (already a real ZATCA code —
+      // see units_of_measure.code's schema comment) instead of the base product's.
+      const packagingUnit = item.unitOfMeasureId ? (db.unitsOfMeasure || []).find((u: any) => u.id === item.unitOfMeasureId) : null;
+      const rawUnit = packagingUnit ? packagingUnit.code : product?.unit;
+      const zatcaUnit = rawUnit && rawUnit !== 'No' && rawUnit !== 'Lumpsum' ? rawUnit : 'PCE';
       return {
         id: generateId(),
         description: item.productName || item.productId,
@@ -411,6 +446,7 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
         taxSlabId: posTaxSlabId,
         unit: zatcaUnit,
         productId: item.productId,
+        unitOfMeasureId: item.unitOfMeasureId || undefined,
       };
     });
 

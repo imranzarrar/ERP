@@ -23,6 +23,7 @@ import InventoryReportsModule from './components/InventoryReportsModule';
 import LoginScreen from './components/LoginScreen';
 import ResetPasswordScreen from './components/ResetPasswordScreen';
 import InventoryModule from './components/InventoryModule';
+import EmployeesModule from './components/EmployeesModule';
 
 // Importing Icons
 import {
@@ -162,7 +163,10 @@ export default function App() {
       physicalStockTakes: data.physicalStockTakes || [],
       productCategories: data.productCategories || [],
       unitsOfMeasure: data.unitsOfMeasure || [],
+      productUnitConversions: data.productUnitConversions || [],
       productWarehouses: data.productWarehouses || [],
+      jobTitles: data.jobTitles || [],
+      employees: data.employees || [],
       // Same gap, same fix — Roles/RBAC and per-company tax slabs were also never copied
       // from the server response here, so `db.taxSlabs` stayed pinned to dbStore.ts's
       // hardcoded SEED_TAX_SLABS default forever (never the company's real slabs), and
@@ -170,6 +174,8 @@ export default function App() {
       taxSlabs: data.taxSlabs || [],
       roles: data.roles || [],
       userRoles: data.userRoles || [],
+      branches: data.branches || [],
+      userBranches: data.userBranches || [],
       currentUser: loggedUser || prev.currentUser,
       selectedCompanyId,
       companySetup,
@@ -261,10 +267,19 @@ export default function App() {
               physicalStockTakes: data.physicalStockTakes || [],
               productCategories: data.productCategories || [],
               unitsOfMeasure: data.unitsOfMeasure || [],
+              // Same gap already fixed once for this exact refresh path (see the comment
+              // above this block) — productUnitConversions was missed here specifically
+              // because this block's indentation differs from the initial-load effect's,
+              // so an earlier exact-string replace_all only patched that one, not this one.
+              productUnitConversions: data.productUnitConversions || [],
               productWarehouses: data.productWarehouses || [],
+              jobTitles: data.jobTitles || [],
+              employees: data.employees || [],
               taxSlabs: data.taxSlabs || [],
               roles: data.roles || [],
               userRoles: data.userRoles || [],
+              branches: data.branches || [],
+              userBranches: data.userBranches || [],
               currentUser: loggedUser || prev.currentUser,
               selectedCompanyId,
             };
@@ -635,6 +650,24 @@ type NavSection = {
       ]
     },
     {
+      title: t('Human Resources'),
+      // Its own top-level group, not squeezed into Master Registries — HR is a distinct
+      // bounded context this app has never had, and a future Timekeeping/Attendance
+      // module will grow into this same group, same reasoning Inventory Management
+      // already got its own top-level section.
+      items: [
+        {
+          id: 'hr-employees', label: t('Employees'), icon: Briefcase, adminOnly: false,
+          subItems: [
+            { id: 'employees', label: t('Employees'), permissionKey: 'employees.read' },
+            { id: 'employees-add', label: t('New Employee'), permissionKey: 'employees.create' },
+            { id: 'job-titles', label: t('Job Titles'), permissionKey: 'jobTitles.read' },
+            { id: 'job-titles-add', label: t('New Job Title'), permissionKey: 'jobTitles.create' }
+          ]
+        }
+      ]
+    },
+    {
       title: t('Intelligence & Reports'),
       // Four category accordions, not one long flat list — a flat list would have grown
       // to 24 individual entries as the report catalog expanded, easily the longest
@@ -802,6 +835,18 @@ type NavSection = {
   const handleNavigate = (tabId: string, preserveEditTarget: boolean = false) => {
  const resolvedTabId = tabId.startsWith('settings-') ? 'settings' : tabId;
  if (!isTabAllowed(resolvedTabId)) return;
+ // Every module below (InvoiceModule, QuotationModule, MasterEntities, etc.) renders
+ // straight off the App-level `db` prop and has no fetch-on-mount of its own — `db` is
+ // only ever populated from the server at initial login and via triggerDbRefresh() calls
+ // sprinkled after specific write actions. Before this call, clicking a left-nav item
+ // only flipped local UI state (activeTab/editTarget/accordion) and reused whatever `db`
+ // already held, so a record created elsewhere (another branch/user, or out-of-band)
+ // stayed invisible until a full browser reload re-ran that one-time initial fetch —
+ // confirmed live: a freshly-created invoice didn't appear in the Invoices list until F5.
+ // Fire-and-forget: navigation must stay instant, and every render below already
+ // tolerates `db` updating a moment after mount (that's exactly how triggerDbRefresh
+ // already works everywhere else it's called).
+ triggerDbRefresh();
  if (!preserveEditTarget) setEditTarget(null);
  if (tabId !== 'invoices-view') setViewTarget(null);
  if (tabId.startsWith('settings-')) {
@@ -1526,6 +1571,16 @@ type NavSection = {
            onRefreshDb={triggerDbRefresh}
            onPrintDoc={(type, data) => setPrintDoc({ type, data })}
            defaultTab={activeTab === 'inventory' ? 'stock' : (activeTab.replace('inventory-', '') as any)}
+         />
+       )}
+
+       {(activeTab.startsWith('employees') || activeTab.startsWith('job-titles')) && (
+         <EmployeesModule
+           db={activeDb}
+           onUpdateDbLocal={handleUpdateDbLocal}
+           onRefreshDb={triggerDbRefresh}
+           currentUser={currentUser}
+           defaultTab={activeTab as any}
          />
        )}
 

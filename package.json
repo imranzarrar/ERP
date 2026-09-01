@@ -34,6 +34,7 @@
     "express-session": "^1.19.0",
     "fast-xml-parser": "^5.9.3",
     "html2canvas-pro": "^2.3.8",
+    "image-size": "^2.0.2",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.546.0",
     "motion": "^12.42.2",

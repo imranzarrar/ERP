@@ -21,9 +21,25 @@ export const companies = pgTable('companies', {
   portalTitle: text('portal_title'),
   portalSubtitle: text('portal_subtitle'),
   counters: jsonb('counters'),
+  // Per-company, per-document-type number formatting (prefix/separator/padding/branch-code
+  // display/reset frequency). Unstructured JSONB, keyed by DOCUMENT_TYPE_REGISTRY's `key`
+  // (server/lib/documentNumbering.ts) — absent key or absent field means "use that type's
+  // registry default," which is what makes every existing company (numberingPolicy: null)
+  // produce byte-identical output to the old hardcoded template. Purely a display/formatting
+  // concern — the actual sequential count lives in documentCounters below, and this column
+  // has no relationship to ZATCA's ICV/PIH chain (zatcaChainState), which is the only
+  // mechanism ZATCA's sequential-integrity requirement actually depends on.
+  numberingPolicy: jsonb('numbering_policy'),
   posSettings: jsonb('pos_settings'),
   isInventoryModuleEnabled: boolean('is_inventory_module_enabled').default(false),
   inventorySettings: jsonb('inventory_settings'),
+  // { employeeNumberPadWidth?: 4 | 5, employeeNumberStart?: number } — see
+  // server/lib/employeeNumbering.ts. padWidth defaults to 4 when absent; start only
+  // matters the first time this company's employee counter is ever created (lets a
+  // company migrating from another HRIS continue an existing numbering sequence instead
+  // of restarting at 1). Same unstructured-JSONB-settings convention as posSettings/
+  // inventorySettings above.
+  hrSettings: jsonb('hr_settings'),
   // zatcaEnvironment selects which environment is currently active for live invoice
   // processing. Everything else ZATCA-related — including taxpayer registration facts
   // (TIN/CR/address) — lives per-environment in zatcaEnvironmentConfigs below, because
@@ -113,6 +129,14 @@ export const users = pgTable('users', {
   isActive: boolean('is_active').default(true),
   uiLanguage: text('ui_language').default('en'),
   isDeleted: integer('is_deleted').default(0),
+  // Nullable at the DB level for the same reason `email` above is — every account that
+  // predates this feature has none, and test fixtures inserting directly must keep
+  // working. "Mandatory" is an application-layer rule instead: POST /api/users requires
+  // this for a genuinely NEW account once the company has onboarded at least one active
+  // employee (server/routes/users.ts) — mirrors the exact "mandatory once the company has
+  // adopted X" pattern already used for warehouses requiring a branch once one exists.
+  // See employees table's own comment for why this FK only ever points one direction.
+  employeeId: uuid('employee_id').references(() => employees.id),
 }, (table) => ({
   companyIdIdx: index('users_company_id_idx').on(table.companyId),
   emailIdx: index('users_email_idx').on(table.email),
@@ -210,8 +234,170 @@ export const warehouses = pgTable('warehouses', {
   address: text('address'),
   isActive: boolean('is_active').default(true),
   companyId: uuid('company_id').notNull().references(() => companies.id),
+  // Nullable — GRN/Purchase Returns/Physical Stock Takes already carry a warehouseId,
+  // so their branch is DERIVED via this join rather than storing a second, independently-
+  // driftable branchId directly on each of those tables (see BACKLOG item 77's plan).
+  branchId: uuid('branch_id').references(() => branches.id),
+  // 'sales': a front-of-house/location warehouse a sale can be attributed to and deducted
+  // from. 'backend': a distribution/storage warehouse (e.g. a central DC feeding several
+  // branches) that receives stock but is never itself a sale's source — enforced server-side
+  // (assertSalesWarehouse in businessLogic.ts), not just a UI convention. Defaults to
+  // 'sales' so every pre-existing warehouse keeps behaving exactly as it did before this
+  // column existed (any warehouse could be sold from).
+  type: text('type').notNull().default('sales'), // 'sales' | 'backend'
+  // The one warehouse a sale falls back to when its branch has no defaultWarehouseId of
+  // its own (or the invoice has no branch at all) — see branches.defaultWarehouseId's
+  // comment for the two-tier resolution order. Must be a 'sales'-type warehouse; enforced
+  // in the warehouse upsert route, not just here.
+  isCompanyDefault: boolean('is_company_default').default(false),
 }, (table) => ({
   companyIdx: index('warehouses_company_idx').on(table.companyId),
+  uniqueCompanyDefault: uniqueIndex('warehouses_company_default_unique').on(table.companyId).where(sql`is_company_default = true`),
+}));
+
+// A physical location under one company (Riyadh, Jeddah, ...) — company-wide config
+// (tax slabs, product catalog, templates, roles) stays shared across all of a company's
+// branches; only transactional documents and the ZATCA seller address get scoped/
+// overridden per branch. Branch *creation* is deliberately not permission-gated at all
+// (see server/routes/branches.ts) — it's a licensing decision, hardcoded to super-admin
+// only, mirroring how POST /api/companies itself is gated. The address fields here are
+// used to override the seller's PostalAddress on this branch's invoices' ZATCA XML,
+// falling back per-field to the company's zatcaEnvironmentConfigs address when a branch
+// hasn't set its own (see processInvoiceZatca in server/lib/zatca/processInvoice.ts).
+export const branches = pgTable('branches', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  name: text('name').notNull(),
+  // Short code embedded in a future branch-scoped document-numbering scheme (e.g. the
+  // 'JED' in INV-JED-1042) — not yet wired into numbering itself, which stays the
+  // existing company-wide sequence until that phase lands; kept here now so the column
+  // exists once a branch is created rather than needing a later migration.
+  code: text('code').notNull(),
+  streetName: text('street_name'),
+  buildingNumber: text('building_number'),
+  district: text('district'),
+  city: text('city'),
+  postalCode: text('postal_code'),
+  countryCode: text('country_code').default('SA'),
+  phone: text('phone'),
+  isActive: boolean('is_active').default(true),
+  isDefault: boolean('is_default').default(false),
+  // The sales warehouse a document at this branch should default to (auto-filled, still
+  // editable) — first tier of the resolution order in businessLogic.ts's
+  // resolveSaleWarehouseId; falls back to the company's own default warehouse when this
+  // is unset. Nullable/additive like everything else on this table's rollout — a branch
+  // with no warehouses configured yet simply has no default. Must reference a 'sales'-type
+  // warehouse, enforced in the branch upsert route, not by a DB-level check (the type
+  // lives on a different table).
+  defaultWarehouseId: uuid('default_warehouse_id').references(() => warehouses.id),
+}, (table) => ({
+  companyIdIdx: index('branches_company_id_idx').on(table.companyId),
+  unique_default_branch: uniqueIndex('unique_default_branch').on(table.companyId).where(sql`is_default = true`),
+}));
+
+// Many-to-many: a staff member can legitimately be assigned to more than one branch (not
+// just one "home" branch) — some roles genuinely work across locations. Zero rows for a
+// user means company-wide (sees/can act on every branch, same as an admin), gated by the
+// `branches.viewAllBranches` permission leaf, not by row presence here. `isPrimary` gives
+// a multi-branch user a deterministic default focus at login instead of relying on
+// query-result ordering — mirrors userRoles' shape exactly.
+export const userBranches = pgTable('user_branches', {
+  userId: uuid('user_id').notNull().references(() => users.id),
+  branchId: uuid('branch_id').notNull().references(() => branches.id),
+  isPrimary: boolean('is_primary').default(false),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.userId, table.branchId] }),
+  userIdIdx: index('user_branches_user_id_idx').on(table.userId),
+  branchIdIdx: index('user_branches_branch_id_idx').on(table.branchId),
+  unique_primary_branch: uniqueIndex('unique_primary_user_branch').on(table.userId).where(sql`is_primary = true`),
+}));
+
+// A company-scoped job title/position (Sales Associate, Cashier, Warehouse Supervisor)
+// — deliberately named "Job Title", not "Role", to stay unambiguous against the
+// unrelated `roles` table above (RBAC permission bundles for ERP login accounts). A job
+// title is who someone IS for HR/business purposes; a Role is what an ERP account is
+// allowed to click. The two must never be confused in code or naming.
+export const jobTitles = pgTable('job_titles', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  title: text('title').notNull(), // e.g. "Sales Associate", "Cashier", "Warehouse Supervisor"
+  // Optional free-text explanation of what the role covers — companies rename/redefine
+  // job titles over time (the title text itself is editable, see the route's upsert), so
+  // this is just supporting context, never matched/validated against anything.
+  description: text('description'),
+  // Controls whether employees holding this title are offered on the Invoice's Sales
+  // Associate picker — a flag on the TITLE, not a hardcoded string match against "Sales
+  // Associate", so a company phrasing it differently ("Sales Rep", "Account Manager")
+  // can still mark it eligible. The column just means "counts as sales staff for
+  // attribution/bonus purposes," not "exclusively for invoices," in case another
+  // document type wants the same picker later.
+  isSalesRole: boolean('is_sales_role').default(false),
+  isActive: boolean('is_active').default(true),
+}, (table) => ({
+  companyIdx: index('job_titles_company_idx').on(table.companyId),
+  uniqueTitle: uniqueIndex('job_titles_unique').on(table.companyId, table.title).where(sql`is_active = true`),
+}));
+
+// The HR foundation this app has never had: a real employee roster, independent of
+// `users` (ERP login accounts). Not every employee needs ERP access (a shop-floor worker
+// onboarded for payroll/attendance purposes may never log in); not every login is tied
+// to a real employee today (every account predates this feature). `users.employeeId`
+// below is the ONLY direction this relationship goes — employees never reference users —
+// so a future Timekeeping module can key every clock-in/out record on `employeeId`
+// without caring whether that employee ever had a login.
+export const employees = pgTable('employees', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  // System-generated at onboarding (server/lib/employeeNumbering.ts), never free-typed —
+  // always digits-only by construction, stored as text to preserve leading zeros
+  // ("0042"). A permanent identifier: never reused, never reassigned, immutable after
+  // creation, survives termination — the same "assigned once, never re-derived" contract
+  // as an invoice number.
+  employeeNumber: text('employee_number').notNull(),
+  name: text('name').notNull(),
+  jobTitleId: uuid('job_title_id').notNull().references(() => jobTitles.id),
+  // Nullable = "Head Office / company-wide" (the onboarding default), same nullable/
+  // additive convention as every other branch-scoped column this app already has
+  // (quotations.branchId etc.) — an employee can be onboarded before any branch
+  // assignment is decided, then moved to a specific branch later via a plain edit.
+  branchId: uuid('branch_id').references(() => branches.id),
+  email: text('email'),
+  phone: text('phone'),
+  hireDate: text('hire_date'), // YYYY-MM-DD, same text-date convention as invoices.date
+  isActive: boolean('is_active').default(true),
+  terminationDate: text('termination_date'),
+  createdAt: timestamp('created_at').notNull(),
+}, (table) => ({
+  companyIdx: index('employees_company_idx').on(table.companyId),
+  uniqueEmployeeNumber: uniqueIndex('employees_number_unique').on(table.companyId, table.employeeNumber),
+}));
+
+// The hot, concurrently-incremented state behind every document's human-readable number
+// (INV-1042, QT-1001, ...) — see companies.numberingPolicy above and
+// server/lib/documentNumbering.ts for the formatting/registry side. Deliberately company-
+// wide only: no branchId column at all. Tier-1 ERPs (SAP/Oracle/Dynamics) keep this count
+// at the legal-entity level for every document type because tax authorities treat any
+// per-location fragmentation of a sequence as an audit red flag — a branch code can still
+// appear as a cosmetic, printed element (numberingPolicy.includeBranchCode), but it never
+// creates a second, independent count. Moved off companies.counters specifically so this
+// table's own row lock (acquired implicitly by the INSERT ... ON CONFLICT upsert in
+// getAndIncrementDocumentNumber) is entirely disjoint from processInvoiceZatca's ICV/PIH
+// reservation, which locks the companies row itself (server/lib/zatca/processInvoice.ts) —
+// these two systems must never contend for the same lock.
+export const documentCounters = pgTable('document_counters', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  docType: text('doc_type').notNull(), // any key from DOCUMENT_TYPE_REGISTRY (server/lib/documentNumbering.ts) — plain text, not an enum, so a future new document type is a registry-array addition, never a migration
+  // 'NONE' ('never' resets) | 'YYYY' (yearly) | 'YYYY-MM' (monthly) — derived from the
+  // document's own date, never wall-clock time. A non-null sentinel ('NONE') instead of an
+  // actual NULL deliberately, so (companyId, docType, periodKey) can be a plain unique index
+  // target for `onConflictDoUpdate` — Postgres treats NULL <> NULL in a unique index, which
+  // would let two "never resets" rows for the same (companyId, docType) coexist instead of
+  // colliding, reopening the exact race this table exists to close.
+  periodKey: text('period_key').notNull().default('NONE'),
+  currentValue: integer('current_value').notNull().default(1000), // pre-increment; first issued number is currentValue + 1
+}, (table) => ({
+  lookupIdx: uniqueIndex('document_counters_lookup_idx').on(table.companyId, table.docType, table.periodKey),
 }));
 
 export const productsServices = pgTable('products_services', {
@@ -329,6 +515,41 @@ export const fiscalMonths = pgTable('fiscal_months', {
   pk: primaryKey({ columns: [table.id, table.companyId] }),
 }));
 
+// A quarterly VAT filing record (server/routes/taxReturns.ts) — a governance/compliance
+// document, not a report: 'Generated' captures a frozen server-computed snapshot,
+// 'Filed' is a manual attestation (there is no live ZATCA API for VAT return submission,
+// only for e-invoicing) that permanently locks the row AND blocks new/edited Invoices,
+// Credit/Debit Notes, Expenses, and Purchase Bills from landing in that quarter
+// (server/lib/businessLogic.ts's assertQuarterNotFiled). Unlike fiscalMonths, each
+// Generate inserts a NEW row rather than upserting in place — a Generated-but-unfiled
+// return can be soft-deleted and the quarter regenerated, so multiple historical
+// (soft-deleted) attempts for one quarter can coexist; only a Filed row is truly final.
+export const taxReturns = pgTable('tax_returns', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  year: integer('year').notNull(),
+  quarter: integer('quarter').notNull(), // 1-4, calendar quarter (KSA fiscal year = Jan-Dec)
+  referenceNumber: text('reference_number').notNull(), // `Q${quarter}-${year}`, computed at insert — deliberately NOT routed through documentNumbering.ts's counter (see that file's own registry comment); this format is fixed/calendar-derived, not a configurable per-company policy.
+  startDate: text('start_date').notNull(), // YYYY-MM-DD — persisted rather than re-derived, so a snapshot always records exactly what it was computed against
+  endDate: text('end_date').notNull(),
+  status: text('status').notNull().default('Generated'), // 'Generated' | 'Filed' only — isDeleted below is orthogonal, same convention as quotations.isCancelled being separate from status
+  isDeleted: boolean('is_deleted').default(false).notNull(),
+  // Frozen computed numbers — mirrors fiscalMonths.closedPnL exactly, no duplicate flat
+  // decimal columns. Shape: { salesSubtotal, outputVat, purchasesSubtotal, inputVat,
+  // netVatPayable, breakdown: { salesCount, expenseCount, billCount } }.
+  figuresSnapshot: jsonb('figures_snapshot').notNull(),
+  generatedAt: timestamp('generated_at').notNull(),
+  generatedById: uuid('generated_by_id').notNull().references(() => users.id),
+  filedAt: timestamp('filed_at'),
+  filedById: uuid('filed_by_id').references(() => users.id),
+}, (table) => ({
+  companyIdIdx: index('tax_returns_company_id_idx').on(table.companyId),
+  // A Filed row's isDeleted can never become true (the delete route rejects Filed rows
+  // outright — see taxReturns.ts), so this alone protects a Filed row from ever being
+  // superseded; no need for an additional `OR status = 'Filed'` clause.
+  uniqueActivePerQuarter: uniqueIndex('tax_returns_company_quarter_unique').on(table.companyId, table.year, table.quarter).where(sql`is_deleted = false`),
+}));
+
 export const quotations = pgTable('quotations', {
   id: uuid('id').primaryKey(),
   quotationNumber: text('quotation_number').notNull(),
@@ -347,6 +568,11 @@ export const quotations = pgTable('quotations', {
   // phase it was in when cancelled, instead of overloading `status` with a value that
   // collides with the phase flow.
   isCancelled: boolean('is_cancelled').default(false),
+  // Nullable: pre-multi-branch rows, and companies that never create a branch, stay NULL
+  // forever — branch scoping is additive, never required. Set at creation time from the
+  // creating user's resolved branch focus (server/routes/transactions.ts), never edited
+  // afterward.
+  branchId: uuid('branch_id').references(() => branches.id),
 }, (table) => ({
   companyIdIdx: index('quotations_company_id_idx').on(table.companyId),
 }));
@@ -365,12 +591,28 @@ export const quotationItems = pgTable('quotation_items', {
   // ItemCatalogSearch, not free-typed. See invoiceItems.productId's comment for why this
   // exists and how it's used (average sale price).
   productId: uuid('product_id').references(() => productsServices.id),
+  // Nullable: null means the product's own base unit. `unit` above stays the ZATCA XML
+  // code string exactly as before this column existed — when this is set, `unit` is
+  // derived from THIS unitOfMeasure's own zatcaCode instead of the base product's, but the
+  // two remain independent columns so no existing ZATCA logic changes shape. Quotations
+  // never touch inventory, so this is carried purely for display/carry-through into the
+  // invoice this quotation converts to.
+  unitOfMeasureId: uuid('unit_of_measure_id').references(() => unitsOfMeasure.id),
 });
 
 export const posShifts = pgTable('pos_shifts', {
   id: uuid('id').primaryKey(),
   companyId: uuid('company_id').notNull().references(() => companies.id),
   userId: uuid('user_id').notNull().references(() => users.id),
+  // Nullable, additive — same convention as every other branchId column (see
+  // quotations.branchId's comment): a shift opened before this company adopted branches,
+  // or by a company that never has, simply has no branch. Resolved/validated at shift-open
+  // time the same way every other document-creation route resolves one (see
+  // resolveDocumentBranchId in server/routes/pos.ts's POST /shifts), then immutable for
+  // the shift's lifetime — added specifically because a branch-restricted cashier's own
+  // shift (cash drawer, sales history) must not be visible/actionable by another branch's
+  // staff, which had no column to enforce that against at all until now.
+  branchId: uuid('branch_id').references(() => branches.id),
   startTime: timestamp('start_time').notNull(),
   endTime: timestamp('end_time'),
   startCash: decimal('start_cash', { precision: 14, scale: 2 }).notNull(),
@@ -423,6 +665,30 @@ export const invoices = pgTable('invoices', {
   documentType: text('document_type').notNull().default('Invoice'), // 'Invoice' | 'CreditNote' | 'DebitNote'
   originalInvoiceId: uuid('original_invoice_id').references((): any => invoices.id),
   creditNoteReason: text('credit_note_reason'),
+  // Nullable, additive — see quotations.branchId's comment. A Credit/Debit Note always
+  // inherits its original invoice's branchId (server/routes/transactions.ts), never
+  // picked independently, so a reversal's ZATCA seller address always matches the
+  // document it's reversing. Used by processInvoiceZatca to override the seller's
+  // PostalAddress per-field with this branch's own address when set.
+  branchId: uuid('branch_id').references(() => branches.id),
+  // The single sales warehouse this whole invoice's stock-item lines are deducted from —
+  // one warehouse per document (mirrors goodsReceiptNotes.warehouseId), not per line; a
+  // sale split across two physical warehouses isn't a real scenario this app models.
+  // Resolved server-side at creation (resolveSaleWarehouseId in businessLogic.ts: the
+  // invoice's branch's own default, else the company's default) unless the client
+  // explicitly picks one, and required whenever the invoice has at least one true stock
+  // ('item' type) line — a services-only invoice never needs one. Nullable because a
+  // services-only invoice, or a legacy pre-this-feature invoice, has nothing to deduct.
+  // Credit/Debit Notes inherit it from their original invoice, same as branchId.
+  warehouseId: uuid('warehouse_id').references(() => warehouses.id),
+  // Nullable, additive, optional forever (not "required once X exists" like branchId/
+  // warehouseId above) — see quotations.branchId's comment for the general pattern.
+  // Purely an attribution field (which employee gets credit for this sale, e.g. for a
+  // sales-bonus calculation elsewhere) — never validated beyond "belongs to this company
+  // and is active," never affects totals/tax/ZATCA XML. Only offered on the invoice form
+  // when the company has at least one active employee whose job title is flagged
+  // isSalesRole — see jobTitles.isSalesRole's comment.
+  salesAssociateId: uuid('sales_associate_id').references(() => employees.id),
 }, (table) => ({
   companyIdIdx: index('invoices_company_id_idx').on(table.companyId),
 }));
@@ -476,6 +742,13 @@ export const invoiceItems = pgTable('invoice_items', {
   // fold into averageCost — see that column's comment). A free-typed line with no
   // productId simply never contributes to the average; it doesn't error or block the sale.
   productId: uuid('product_id').references(() => productsServices.id),
+  // Nullable: null means the product's own base unit. `unit` above stays the ZATCA XML
+  // code string, independently populated (from THIS unitOfMeasure's own zatcaCode when
+  // set) — the two columns are deliberately kept separate so existing ZATCA XML logic is
+  // untouched. `quantity`/`unitCost` above are always expressed in THIS unit for billing/
+  // display; server/lib/uomConversion.ts converts to base-unit terms before
+  // deductStockForSale or the averageSalePrice fold ever run.
+  unitOfMeasureId: uuid('unit_of_measure_id').references(() => unitsOfMeasure.id),
 });
 
 export const expenses = pgTable('expenses', {
@@ -503,6 +776,8 @@ export const expenses = pgTable('expenses', {
   isPosSale: boolean('is_pos_sale').default(false),
   shiftId: uuid('shift_id').references(() => posShifts.id),
   attachmentUrl: text('attachment_url'),
+  // Nullable, additive — see quotations.branchId's comment.
+  branchId: uuid('branch_id').references(() => branches.id),
 }, (table) => ({
   companyIdIdx: index('expenses_company_id_idx').on(table.companyId),
   originAccrualFk: index('expenses_origin_accrual_idx').on(table.originAccrualId),
@@ -561,6 +836,11 @@ export const vouchers = pgTable('vouchers', {
   isPosSale: boolean('is_pos_sale').default(false),
   shiftId: uuid('shift_id').references(() => posShifts.id),
   attachmentUrl: text('attachment_url'),
+  // Nullable, always system-inherited from the source document (Invoice/Expense/
+  // PurchaseBill) a voucher is posted against — never picked independently, since a
+  // voucher/payment receipt should always attribute to the same branch as what it
+  // settles. See quotations.branchId's comment for the general nullable/additive pattern.
+  branchId: uuid('branch_id').references(() => branches.id),
 }, (table) => ({
   companyIdIdx: index('vouchers_company_id_idx').on(table.companyId),
   referenceIdIdx: index('vouchers_reference_id_idx').on(table.referenceId),
@@ -594,6 +874,11 @@ export const posHeldInvoices = pgTable('pos_held_invoices', {
   id: uuid('id').primaryKey(),
   shiftId: uuid('shift_id').references(() => posShifts.id).notNull(),
   companyId: uuid('company_id').notNull().references(() => companies.id),
+  // Denormalized from the owning shift's own branchId at creation time (never trusted
+  // from the client) — same "carry your own branchId rather than forcing every reader to
+  // join back to a parent" convention every other transactional table in this app already
+  // follows (invoices, quotations, expenses, vouchers all carry their own branchId too).
+  branchId: uuid('branch_id').references(() => branches.id),
   customerId: uuid('customer_id').references(() => customers.id),
   items: jsonb('items').notNull(),
   createdAt: timestamp('created_at').notNull(),
@@ -667,10 +952,49 @@ export const inventoryStocks = pgTable('inventory_stocks', {
 export const unitsOfMeasure = pgTable('units_of_measure', {
   id: uuid('id').primaryKey(),
   name: text('name').notNull(), // e.g., 'Piece', 'Box'
-  code: text('code').notNull(), // e.g., 'Pcs', 'Box'
+  // A real UN/ECE Rec 20 code (server/routes/masterEntities.ts's POST /units-of-measure
+  // enforces this via isValidZatcaUnitCode, src/zatcaUnitCodes.ts) — NOT an arbitrary
+  // business label. This is already what invoiceItems/quotationItems.unit is populated
+  // from, so a packaging unit (e.g. "Carton") just picks whichever existing code is the
+  // closest fit (e.g. 'SET' or 'C62') like any other unit does — no separate ZATCA-mapping
+  // column needed.
+  code: text('code').notNull(),
   isActive: boolean('is_active').default(true),
   companyId: uuid('company_id').notNull().references(() => companies.id),
 });
+
+// A product's packaging/alternate units — e.g. "Cell 4 AMP" (base unit: Piece) also sold/
+// bought as "Carton-12" (1 Carton = 12 Piece). Inventory (inventoryStocks/
+// stockLedgerTransactions) and averageCost/averageSalePrice are always kept in the
+// product's own base unit (productsServices.unit) regardless of which unit a transaction
+// was entered in — see server/lib/uomConversion.ts, the one place every stock-mutating
+// route converts through before touching quantity/cost. Deliberately NOT a second product/
+// catalog row (a "kit" model) — this is one physical item just packaged differently, not a
+// bundle of distinct products, so one product master with alternate units is the right
+// shape (matches how SAP/Odoo/NetSuite model case-pack conversions).
+export const productUnitConversions = pgTable('product_unit_conversions', {
+  id: uuid('id').primaryKey(),
+  productId: uuid('product_id').notNull().references(() => productsServices.id),
+  unitOfMeasureId: uuid('unit_of_measure_id').notNull().references(() => unitsOfMeasure.id),
+  conversionFactor: decimal('conversion_factor', { precision: 12, scale: 4 }).notNull(),
+  // This packaging level's own scannable barcode/SKU — a carton is a real, independently
+  // identifiable retail/warehouse unit, not just a quantity multiplier on the base item.
+  barcode: text('barcode'),
+  sku: text('sku'),
+  // Deliberately independent of productsServices.unitPrice * conversionFactor — bulk
+  // pricing is a real business decision (a case discount, or a premium for split units),
+  // never auto-derived. Nullable: a packaging unit not meant to be bought/sold on its own
+  // (only used for counting) simply has no price configured for that side.
+  purchasePrice: decimal('purchase_price', { precision: 12, scale: 2 }),
+  salePrice: decimal('sale_price', { precision: 12, scale: 2 }),
+  isActive: boolean('is_active').default(true),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+}, (table) => ({
+  companyIdx: index('product_unit_conversions_company_idx').on(table.companyId),
+  productIdx: index('product_unit_conversions_product_idx').on(table.productId),
+  barcodeIdx: index('product_unit_conversions_barcode_idx').on(table.barcode),
+  uniqueProductUnit: uniqueIndex('product_unit_conversions_unique').on(table.productId, table.unitOfMeasureId).where(sql`is_active = true`),
+}));
 
 // 2d. Product-Warehouse Junction Table
 export const productWarehouses = pgTable('product_warehouses', {
@@ -705,6 +1029,9 @@ export const purchaseRequisitions = pgTable('purchase_requisitions', {
   status: text('status').default('Draft').notNull(), // 'Draft', 'Pending', 'Approved', 'Rejected', 'Closed'
   notes: text('notes'),
   companyId: uuid('company_id').notNull().references(() => companies.id),
+  // Direct branchId (unlike GRN/Returns/StockTakes, a PR has no warehouseId to derive
+  // branch from) — nullable, additive, see quotations.branchId's comment.
+  branchId: uuid('branch_id').references(() => branches.id),
 });
 
 export const purchaseRequisitionItems = pgTable('purchase_requisition_items', {
@@ -726,6 +1053,7 @@ export const purchaseOrders = pgTable('purchase_orders', {
   deliveryDate: timestamp('delivery_date'),
   totalAmount: decimal('total_amount', { precision: 12, scale: 2 }).notNull(),
   companyId: uuid('company_id').notNull().references(() => companies.id),
+  branchId: uuid('branch_id').references(() => branches.id),
 });
 
 export const purchaseOrderItems = pgTable('purchase_order_items', {
@@ -735,6 +1063,11 @@ export const purchaseOrderItems = pgTable('purchase_order_items', {
   quantityOrdered: decimal('quantity_ordered', { precision: 12, scale: 3 }).notNull(),
   unitPrice: decimal('unit_price', { precision: 12, scale: 2 }).notNull(),
   taxRate: decimal('tax_rate', { precision: 5, scale: 2 }).default('0.00'),
+  // Nullable: null means the product's own base unit (productsServices.unit), matching the
+  // nullable/additive convention used throughout this schema. When set, `quantityOrdered`
+  // is expressed in THIS unit — server/lib/uomConversion.ts converts to base-unit terms
+  // wherever this line is compared against a GRN's own (possibly different-unit) receipt.
+  unitOfMeasureId: uuid('unit_of_measure_id').references(() => unitsOfMeasure.id),
 });
 
 // 6. Goods Receipt Notes (GRN)
@@ -766,6 +1099,11 @@ export const goodsReceiptNoteItems = pgTable('goods_receipt_note_items', {
   taxRate: decimal('tax_rate', { precision: 5, scale: 2 }).default('0.00'),
   batchNumber: text('batch_number'),
   expiryDate: timestamp('expiry_date'),
+  // Nullable: null means the product's own base unit — see purchaseOrderItems.
+  // unitOfMeasureId's comment. `quantityReceived`/`unitCost` above are always expressed in
+  // THIS unit; server/lib/uomConversion.ts converts to base-unit quantity/cost before this
+  // receipt ever touches inventoryStocks/stockLedgerTransactions/averageCost.
+  unitOfMeasureId: uuid('unit_of_measure_id').references(() => unitsOfMeasure.id),
 });
 
 // 7. Purchase Bills / Invoices
@@ -783,6 +1121,7 @@ export const purchaseBills = pgTable('purchase_bills', {
   amountPaid: decimal('amount_paid', { precision: 12, scale: 2 }).default('0').notNull(),
   bankId: uuid('bank_id').references(() => bankAccounts.id),
   companyId: uuid('company_id').notNull().references(() => companies.id),
+  branchId: uuid('branch_id').references(() => branches.id),
 });
 
 // 8. Purchase Returns (Debit Notes)
@@ -804,6 +1143,11 @@ export const purchaseReturnItems = pgTable('purchase_return_items', {
   productId: uuid('product_id').notNull().references(() => productsServices.id),
   quantityReturned: decimal('quantity_returned', { precision: 12, scale: 3 }).notNull(),
   batchNumber: text('batch_number'),
+  // Nullable: null means the product's own base unit — see purchaseOrderItems.
+  // unitOfMeasureId's comment. `quantityReturned` is always expressed in THIS unit;
+  // converted to base-unit terms before touching inventoryStocks, and when checked against
+  // the source GRN's own remaining-returnable quantity (which may itself be a different unit).
+  unitOfMeasureId: uuid('unit_of_measure_id').references(() => unitsOfMeasure.id),
 });
 
 // 9. Physical Stock Takes
@@ -826,6 +1170,12 @@ export const physicalStockTakeItems = pgTable('physical_stock_take_items', {
   systemQuantity: decimal('system_quantity', { precision: 12, scale: 3 }).notNull(),
   physicalQuantity: decimal('physical_quantity', { precision: 12, scale: 3 }).notNull(),
   variance: decimal('variance', { precision: 12, scale: 3 }).notNull(),
+  // Nullable: null means the product's own base unit — see purchaseOrderItems.
+  // unitOfMeasureId's comment. `physicalQuantity` (the counted amount, e.g. "3 full
+  // cartons") is expressed in THIS unit; `systemQuantity`/`variance` stay in base-unit
+  // terms exactly as today, and the finalize route converts physicalQuantity to base-unit
+  // before writing it as the new inventoryStocks quantity.
+  unitOfMeasureId: uuid('unit_of_measure_id').references(() => unitsOfMeasure.id),
 });
 
 // 10. Stock Ledger / Transaction Log (audit trail for all movements)

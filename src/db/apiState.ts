@@ -11,6 +11,8 @@ export async function getFullState() {
     const users = await db.select().from(schema.users);
     const roles = await db.select().from(schema.roles);
     const userRoles = await db.select().from(schema.userRoles);
+    const branches = await db.select().from(schema.branches);
+    const userBranches = await db.select().from(schema.userBranches);
     const templates = await db.select().from(schema.documentTemplates);
     const taxSlabs = await db.select().from(schema.taxSlabs);
     const products = await db.select().from(schema.productsServices);
@@ -64,7 +66,16 @@ export async function getFullState() {
     // Advanced Catalog Master Tables
     const productCategories = await db.select().from(schema.productCategories);
     const unitsOfMeasure = await db.select().from(schema.unitsOfMeasure);
+    const productUnitConversionsRaw = await db.select().from(schema.productUnitConversions);
+    const productUnitConversions = productUnitConversionsRaw.map(c => ({
+      ...c,
+      conversionFactor: Number(c.conversionFactor),
+      purchasePrice: c.purchasePrice !== null ? Number(c.purchasePrice) : null,
+      salePrice: c.salePrice !== null ? Number(c.salePrice) : null,
+    }));
     const productWarehouses = await db.select().from(schema.productWarehouses);
+    const jobTitles = await db.select().from(schema.jobTitles);
+    const employees = await db.select().from(schema.employees);
 
     const quotationsWithItems = quotations.map(q => ({
       ...q,
@@ -191,6 +202,8 @@ export async function getFullState() {
       users,
       roles,
       userRoles,
+      branches,
+      userBranches,
       templates,
       taxSlabs: taxSlabs.map(t => ({...t, percentage: Number(t.percentage)})),
       products: products.map(p => ({...p, unitPrice: Number(p.unitPrice)})),
@@ -235,7 +248,10 @@ export async function getFullState() {
       stockLedgerTransactions: stockLedgerTransactionsMapped,
       productCategories,
       unitsOfMeasure,
+      productUnitConversions,
       productWarehouses,
+      jobTitles,
+      employees,
     };
   } catch (err: any) {
     console.error("[Database] PostgreSQL connection failed or is down:", err.message);

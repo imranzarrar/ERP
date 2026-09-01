@@ -7,6 +7,18 @@ export interface CatalogItem {
   unitPrice?: number;
   description?: string;
   unit?: string;
+  // Base-product barcode/SKU — matched exactly (not substring) against the typed/scanned
+  // query, so a barcode scanner (which types the code then presses Enter) resolves
+  // directly to this item regardless of what its name is.
+  barcode?: string | null;
+  sku?: string | null;
+  // Set only on a synthetic row representing one of this product's packaging/alternate
+  // units (see ProductUnitConversion) — callers build one extra CatalogItem per active
+  // packaging unit, each carrying that packaging level's OWN barcode/sku/price so it
+  // resolves to itself when scanned, not silently falls through to the base product.
+  // null/undefined on the base-unit row itself.
+  unitOfMeasureId?: string | null;
+  conversionFactor?: number;
 }
 
 interface ItemCatalogSearchProps {
@@ -47,10 +59,18 @@ export default function ItemCatalogSearch({
   const [coords, setCoords] = React.useState({ top: 0, left: 0, width: 0 });
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  const query = value.trim().toLowerCase();
-  const filtered = query
-    ? items.filter(it => it.name.toLowerCase().includes(query))
-    : items;
+  const trimmed = value.trim();
+  const query = trimmed.toLowerCase();
+  // A barcode/SKU is matched exactly, never as a substring — a scanner types the full
+  // code and hits Enter, so an exact hit (base product OR one of its packaging units,
+  // each a separate row — see CatalogItem's comment) takes priority over name search
+  // entirely, resolving straight to that one item instead of a filtered list.
+  const codeHits = trimmed
+    ? items.filter(it => it.barcode === trimmed || (it.sku && it.sku.toLowerCase() === query))
+    : [];
+  const filtered = codeHits.length > 0
+    ? codeHits
+    : (query ? items.filter(it => it.name.toLowerCase().includes(query)) : items);
 
   const measure = React.useCallback(() => {
     const el = inputRef.current;

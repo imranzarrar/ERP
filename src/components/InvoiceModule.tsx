@@ -65,6 +65,11 @@ interface InvoiceModuleProps {
 export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrintDoc, mode, onDone, onCreateNew, onViewInvoice }: InvoiceModuleProps) {
  const { t, isRTL, lang } = useTranslation(db);
  const currentUser = db.currentUser;
+ // The branch an admin configured as this user's primary in Staff Permissions
+ // (userBranches.isPrimary) — auto-selected on a fresh form below rather than left on
+ // the generic "Default (your primary branch)" placeholder, so a multi-branch user gets
+ // visual confirmation of which branch they're actually about to file under.
+ const myPrimaryBranchId = (db.userBranches || []).find(ub => ub.userId === currentUser?.id && ub.isPrimary)?.branchId || '';
  const isAdmin = currentUser?.role === 'admin' || currentUser?.isSuperAdmin === true;
  const userPermissions = normalizePermissions(currentUser?.permissions, currentUser?.role, currentUser?.isSuperAdmin);
  const openMonth = getActiveOpenMonth(db, db.selectedCompanyId);
@@ -148,8 +153,9 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  setFormTaxSlabId(defaultTax);
  setFormBankId(defaultBank);
  setFormItems([{ description: '', unitCost: 0, quantity: 1, discountAmount: 0, taxSlabId: defaultTax }]);
+ setFormBranchId(myPrimaryBranchId);
  }
- }, [db.selectedCompanyId, openMonth?.id]);
+ }, [db.selectedCompanyId, openMonth?.id, myPrimaryBranchId]);
 
  const triggerError = (msg: string) => {
  setError(msg);
@@ -173,18 +179,99 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  const [formItems, setFormItems] = React.useState<Omit<InvoiceItem, 'id'>[]>([
  { description: '', unitCost: 0, quantity: 1, discountAmount: 0 }
  ]);
+ // Empty string means "let the server resolve it" (the creating user's primary branch,
+ // or null if branches aren't in use for this company) — see QuotationModule's matching
+ // field for the full reasoning.
+ const [formBranchId, setFormBranchId] = React.useState('');
+ const companyBranches = (db.branches || []).filter(b => b.companyId === db.selectedCompanyId && b.isActive !== false);
+
+ // Empty string means "let the server resolve it" — same reasoning as formBranchId
+ // above: the branch's own configured default sales warehouse, else the company's
+ // overall default, else nowhere (only an actual problem if the invoice has a stock
+ // item — server/lib/businessLogic.ts's resolveSaleWarehouse enforces that). A
+ // 'backend'-type warehouse is never offered here — a sale can't be posted against one.
+ const [formWarehouseId, setFormWarehouseId] = React.useState('');
+ const companySalesWarehouses = (db.warehouses || []).filter(w => w.companyId === db.selectedCompanyId && w.isActive !== false && w.type !== 'backend');
+ // Mirrors the server's own two-tier resolution order (resolveDefaultSaleWarehouseId) so
+ // the field shown here is exactly what would be auto-picked if left untouched — purely a
+ // display convenience, the server always re-resolves/re-validates independently.
+ const resolvedDefaultWarehouseId = React.useMemo(() => {
+   const branchDefault = formBranchId ? (db.branches || []).find(b => b.id === formBranchId)?.defaultWarehouseId : undefined;
+   if (branchDefault) return branchDefault;
+   return (db.warehouses || []).find(w => w.companyId === db.selectedCompanyId && w.isCompanyDefault)?.id || '';
+ }, [db.branches, db.warehouses, db.selectedCompanyId, formBranchId]);
+
+ // Re-derives the auto-selected warehouse whenever the branch changes (including the
+ // initial branch auto-select above), mirroring the server's own resolution order —
+ // staff can still override it afterward, same as any other pre-filled field.
+ React.useEffect(() => {
+ if (view !== 'create') return;
+ setFormWarehouseId(resolvedDefaultWarehouseId);
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [formBranchId, view]);
+
+ // Optional attribution field — which employee gets credit for this sale (e.g. for a
+ // sales-bonus calculation). Never affects totals/tax/ZATCA XML. Branch-scoped so a
+ // cashier restricted to one branch (out of possibly dozens) never has to search a
+ // company-wide roster: an employee based at Head Office (branchId null) is always
+ // offered everywhere, alongside only the currently selected branch's own staff.
+ const [formSalesAssociateId, setFormSalesAssociateId] = React.useState('');
+ const eligibleSalesAssociates = React.useMemo(() => {
+   return (db.employees || []).filter(e => {
+     if (e.companyId !== db.selectedCompanyId || e.isActive === false) return false;
+     const jobTitle = (db.jobTitles || []).find(jt => jt.id === e.jobTitleId);
+     if (!jobTitle?.isSalesRole) return false;
+     return e.branchId === null || e.branchId === undefined || e.branchId === formBranchId;
+   });
+ }, [db.employees, db.jobTitles, db.selectedCompanyId, formBranchId]);
+
+ // Re-narrows live when the branch selector changes, mirroring formWarehouseId above —
+ // if the previously picked associate is no longer eligible for the newly selected
+ // branch (e.g. they belong to a different branch), clear the stale selection rather
+ // than silently submitting it.
+ React.useEffect(() => {
+   if (formSalesAssociateId && !eligibleSalesAssociates.some(e => e.id === formSalesAssociateId)) {
+     setFormSalesAssociateId('');
+   }
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [formBranchId]);
 
  // Autocomplete support
  const [activeAutocompleteIdx, setActiveAutocompleteIdx] = React.useState<number | null>(null);
  const [autocompleteFilter, setAutocompleteFilter] = React.useState('');
 
+ // Flattened catalog rows for ItemCatalogSearch: one row per sellable product (its base
+ // unit), plus one extra row per active packaging/alternate unit it has configured (see
+ // ProductUnitConversion) — each carrying that unit's OWN barcode/sku/price so scanning a
+ // carton's own barcode resolves straight to the carton, not the base product. `id` stays
+ // the real productId on every row (packaging rows just add unitOfMeasureId/
+ // conversionFactor) so onSelectItem below always sets the correct productId regardless
+ // of which row was picked.
  const salesProducts = React.useMemo(() => {
-   return (db.products || []).filter(p => {
+   const baseProducts = (db.products || []).filter(p => {
      const isCompMatch = !p.companyId || p.companyId === db.selectedCompanyId;
      const pType = (p.type || '').toLowerCase();
      return isCompMatch && pType !== 'purchase';
    });
- }, [db.products, db.selectedCompanyId]);
+   const rows: (typeof baseProducts[number] & { unitOfMeasureId?: string | null; conversionFactor?: number })[] = [...baseProducts];
+   for (const puc of (db.productUnitConversions || [])) {
+     if (puc.isActive === false) continue;
+     const product = baseProducts.find(p => p.id === puc.productId);
+     if (!product) continue;
+     const uom = (db.unitsOfMeasure || []).find(u => u.id === puc.unitOfMeasureId);
+     rows.push({
+       ...product,
+       name: `${product.name} (${uom ? uom.name : t('Packaging Unit')})`,
+       unitPrice: puc.salePrice ?? product.unitPrice,
+       unit: uom ? uom.code : product.unit,
+       barcode: puc.barcode || undefined,
+       sku: puc.sku || undefined,
+       unitOfMeasureId: puc.unitOfMeasureId,
+       conversionFactor: puc.conversionFactor,
+     });
+   }
+   return rows;
+ }, [db.products, db.productUnitConversions, db.unitsOfMeasure, db.selectedCompanyId, t]);
 
  // Navigate to the dedicated Add page for creation
  const handleInitiateCreate = () => {
@@ -242,7 +329,17 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  unitCost: parseFloat(item.unitCost as any) || 0,
  quantity: parseFloat(item.quantity as any) || 1,
  discountAmount: parseFloat(item.discountAmount as any) || 0,
- taxSlabId: item.taxSlabId || formTaxSlabId
+ taxSlabId: item.taxSlabId || formTaxSlabId,
+ unit: item.unit,
+ // Pre-existing gap fixed alongside the warehouse feature: this was never carried
+ // through from the line's own state (set by ItemCatalogSearch via handleSelectProduct)
+ // to the request payload, so a catalog-linked line on a manually-created invoice
+ // silently lost its product link — the server's isNewInvoice && item.productId branch
+ // (server/routes/transactions.ts) never ran, meaning no stock deduction and no
+ // averageSalePrice update ever happened for a regular (non-POS, non-quotation-converted)
+ // invoice, no matter how the product was selected on the form.
+ productId: item.productId || undefined,
+ unitOfMeasureId: item.unitOfMeasureId || undefined,
  }));
 
  const resolvedCustomerId = formCustomerId || db.customers.find(c => c.isSystem && (c.companyId === db.selectedCompanyId || !c.companyId))?.id || db.customers.find(c => c.companyId === db.selectedCompanyId || !c.companyId)?.id || db.customers[0]?.id || '';
@@ -261,7 +358,10 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  items: cleanItems,
  discountPercentage: formDiscountPercentage,
  attachmentUrl: formAttachmentUrl,
- amountPaid: formPaymentStatus === 'Paid' ? totals.grandTotal : 0
+ amountPaid: formPaymentStatus === 'Paid' ? totals.grandTotal : 0,
+ branchId: formBranchId || undefined,
+ warehouseId: formWarehouseId || undefined,
+ salesAssociateId: formSalesAssociateId || undefined,
  };
 
  // Bring Invoice save up to the same standard QuotationModule's handleSaveQuotation
@@ -899,6 +999,54 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  </select>
  </div>
 
+ {companyBranches.length > 0 && (
+ <div className="lg:col-span-2 space-y-0.5">
+ <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Branch')}</label>
+ <select
+ value={formBranchId}
+ onChange={(e) => setFormBranchId(e.target.value)}
+ className="w-full bg-slate-50/70 hover:bg-white border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-medium focus:outline-none transition-all"
+ >
+ <option value="">{t('Default (your primary branch)')}</option>
+ {companyBranches.map(b => (
+ <option key={b.id} value={b.id}>{b.name}</option>
+ ))}
+ </select>
+ </div>
+ )}
+
+ {companySalesWarehouses.length > 0 && (
+ <div className="lg:col-span-2 space-y-0.5">
+ <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Sales Warehouse')}</label>
+ <select
+ value={formWarehouseId}
+ onChange={(e) => setFormWarehouseId(e.target.value)}
+ className="w-full bg-slate-50/70 hover:bg-white border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-medium focus:outline-none transition-all"
+ >
+ <option value="">{t('Default (branch/company default)')}</option>
+ {companySalesWarehouses.map(w => (
+ <option key={w.id} value={w.id}>{w.name}</option>
+ ))}
+ </select>
+ </div>
+ )}
+
+ {eligibleSalesAssociates.length > 0 && (
+ <div className="lg:col-span-2 space-y-0.5">
+ <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Sales Associate')}</label>
+ <select
+ value={formSalesAssociateId}
+ onChange={(e) => setFormSalesAssociateId(e.target.value)}
+ className="w-full bg-slate-50/70 hover:bg-white border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-medium focus:outline-none transition-all"
+ >
+ <option value="">{t('None')}</option>
+ {eligibleSalesAssociates.map(e => (
+ <option key={e.id} value={e.id}>{`${e.employeeNumber} — ${e.name}`}</option>
+ ))}
+ </select>
+ </div>
+ )}
+
  {/* Bank configuration is Admin-only editable; staff see read-only bank */}
  <div className="lg:col-span-3 space-y-0.5">
  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Post Inflow Bank")}</label>
@@ -1038,7 +1186,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  // itself the result of picking a match from the dropdown).
  handleUpdateLineItem(idx, 'productId', undefined);
  }}
- onSelectItem={(matched) => {
+ onSelectItem={(matched: any) => {
  handleUpdateLineItem(idx, 'unitCost', matched.unitPrice || 0);
  // matched.unit can be 'No' (None/Default) or 'Lumpsum' (MasterEntities.tsx's
  // product Unit-of-Measure picker) — neither is a real ZATCA code, so this falls
@@ -1047,6 +1195,9 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  const zatcaCode = matched.unit && matched.unit !== 'No' && matched.unit !== 'Lumpsum' ? matched.unit : 'PCE';
  handleUpdateLineItem(idx, 'unit', zatcaCode);
  handleUpdateLineItem(idx, 'productId', matched.id);
+ // Set only when a packaging-unit row was picked (see salesProducts's comment) —
+ // undefined/null on a base-unit row, matching "no alternate unit" everywhere else.
+ handleUpdateLineItem(idx, 'unitOfMeasureId', matched.unitOfMeasureId || undefined);
  }}
  className="w-full bg-slate-50/50 hover:bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
  />

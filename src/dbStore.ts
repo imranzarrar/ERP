@@ -28,13 +28,18 @@ import {
   InventoryStock,
   ProductCategory,
   UnitOfMeasure,
+  ProductUnitConversion,
   ProductWarehouse,
+  JobTitle,
+  Employee,
   Role,
   UserRoleAssignment,
   PurchaseBill,
   PurchaseReturn,
   PhysicalStockTake,
-  StockLedgerTransaction
+  StockLedgerTransaction,
+  Branch,
+  UserBranchAssignment
 } from './types';
 import { generateId } from './id';
 export { generateId };
@@ -45,6 +50,8 @@ export interface DatabaseState {
   users: User[];
   roles?: Role[];
   userRoles?: UserRoleAssignment[];
+  branches?: Branch[];
+  userBranches?: UserBranchAssignment[];
   currentUser: User;
   companySetup: CompanySetup;
   templates: DocumentTemplate[];
@@ -75,6 +82,9 @@ export interface DatabaseState {
   stockLedgerTransactions?: StockLedgerTransaction[];
   productCategories?: ProductCategory[];
   unitsOfMeasure?: UnitOfMeasure[];
+  productUnitConversions?: ProductUnitConversion[];
+  jobTitles?: JobTitle[];
+  employees?: Employee[];
   productWarehouses?: ProductWarehouse[];
   counters: {
     quotation: number;

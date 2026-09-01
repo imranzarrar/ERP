@@ -142,6 +142,11 @@ export interface User {
   isActive?: boolean;
   uiLanguage?: "en" | "ar" | "ur";
   isDeleted?: number;
+  // Nullable: null for every account that predates HR onboarding. See Employee's own
+  // comment — this is the only direction the link goes (Employees never reference
+  // Users). Mandatory for a genuinely new account only once the company has onboarded
+  // at least one active employee (server/routes/users.ts).
+  employeeId?: string | null;
 }
 
 export interface CompanySetup {
@@ -163,6 +168,11 @@ export interface CompanySetup {
     autoPrint: boolean;
     maxImageSizeKB: number;
     maxImageDimensions?: number;
+    // Rejects images that are too SMALL (blurry/low-quality when scaled up for print or
+    // POS display) — the counterpart to maxImageDimensions above, which only ever guarded
+    // against too-large. Optional/undefined means "no minimum," preserving old behavior
+    // for any company that hasn't set one.
+    minImageDimensions?: number;
     defaultReceiptTemplate?: string;
   };
   counters?: {
@@ -175,6 +185,12 @@ export interface CompanySetup {
   inventorySettings?: {
     prOptionality: 'MANDATORY' | 'OPTIONAL' | 'BYPASSED';
     isDsdAllowed: boolean;
+    // When true, a sale (Invoice/POS/Credit Note line) referencing a stock ('item' type)
+    // product is rejected if its resolved sales warehouse doesn't have enough quantity on
+    // hand — see assertStockAvailable in server/lib/businessLogic.ts. Defaults to false
+    // (off) so every existing company keeps today's behavior of allowing a sale to clamp
+    // stock at 0 rather than being blocked by it.
+    enforceStockAvailability?: boolean;
   };
   // zatcaEnvironment selects which environment is active for live invoice processing.
   // Taxpayer identity (TIN/CR/address) and all onboarding credentials/state live
@@ -185,6 +201,17 @@ export interface CompanySetup {
   // regardless of environment. Defaults false for new companies; auto-enabled when
   // the active environment finishes onboarding, or toggled manually by a Super Admin.
   zatcaEnabled?: boolean;
+  // Per-document-type number formatting override, keyed by DOCUMENT_TYPE_REGISTRY's `key`
+  // (server/lib/documentNumbering.ts). Absent key or absent field = use that type's
+  // registry default — every existing company has this unset, which is the entire
+  // backward-compatibility guarantee for today's exact hardcoded number format.
+  numberingPolicy?: Record<string, {
+    prefix?: string;
+    separator?: string;
+    padWidth?: number;
+    includeBranchCode?: boolean;
+    resetFrequency?: 'never' | 'yearly' | 'monthly';
+  }>;
 }
 
 export interface DocumentTemplate {
@@ -354,6 +381,12 @@ export interface QuotationItem {
   taxRate?: number; // Optional line-item tax rate override
   unit?: string; // ZATCA UN/ECE Rec 20 unit code (see src/zatcaUnitCodes.ts), inherited from the matched product
   productId?: string; // Set only when this line was selected via ItemCatalogSearch, not free-typed
+  // Nullable: null/undefined means the product's own base unit. See
+  // ProductUnitConversion's comment for the full packaging-unit model. Carried through
+  // (not converted) into the invoice this quotation converts to — quotations never touch
+  // inventory themselves.
+  unitOfMeasureId?: string | null;
+  conversionFactor?: number; // client-side display convenience only, see PosCartItem's comment
 }
 
 export interface Quotation {
@@ -376,6 +409,7 @@ export interface Quotation {
   // Converted). A quotation displays as "Cancelled" whenever this is true, regardless of
   // what phase it was in when cancelled — see POST /quotations/:id/cancel.
   isCancelled?: boolean;
+  branchId?: string | null;
 }
 
 export interface InvoiceItem {
@@ -388,6 +422,12 @@ export interface InvoiceItem {
   taxRate?: number; // Optional line-item tax rate override
   unit?: string; // ZATCA UN/ECE Rec 20 unit code (see src/zatcaUnitCodes.ts), inherited from the matched product
   productId?: string; // Set only when this line was selected via ItemCatalogSearch, not free-typed
+  // Nullable: null/undefined means the product's own base unit. See
+  // ProductUnitConversion's comment for the full packaging-unit model. `quantity`/
+  // `unitCost` above are always expressed in THIS unit; the server converts to base-unit
+  // terms before touching inventory/averages.
+  unitOfMeasureId?: string | null;
+  conversionFactor?: number; // client-side display convenience only, see PosCartItem's comment
 }
 
 export interface Invoice {
@@ -425,6 +465,12 @@ export interface Invoice {
   documentType?: 'Invoice' | 'CreditNote' | 'DebitNote';
   originalInvoiceId?: string | null;
   creditNoteReason?: string | null;
+  branchId?: string | null;
+  warehouseId?: string | null;
+  // Nullable, optional forever — which employee gets credit for this sale (e.g. for a
+  // sales-bonus calculation elsewhere). Never affects totals/tax/ZATCA XML. See
+  // JobTitle.isSalesRole's comment for how eligible employees are determined.
+  salesAssociateId?: string | null;
 }
 
 export interface ExpenseItem {
@@ -507,6 +553,7 @@ export interface Voucher {
   isPosSale?: boolean;
   shiftId?: string;
   attachmentUrl?: string;
+  branchId?: string | null;
 }
 
 export interface Investor {
@@ -566,6 +613,13 @@ export interface PosCartItem {
   taxAmount?: number;
   total?: number;
   productName?: string;
+  // Nullable: null/undefined means the product's own base unit. See
+  // ProductUnitConversion's comment for the full packaging-unit model.
+  unitOfMeasureId?: string | null;
+  // Client-side convenience only (never sent to the server as-is) — lets the cart display
+  // "this line = N base units" without a round-trip; the server always re-resolves the
+  // factor independently server/lib/uomConversion.ts.
+  conversionFactor?: number;
 }
 
 export interface PosHeldInvoice {
@@ -585,6 +639,32 @@ export interface Warehouse {
   address?: string;
   isActive?: boolean;
   companyId: string;
+  branchId?: string | null;
+  type?: 'sales' | 'backend';
+  isCompanyDefault?: boolean;
+}
+
+export interface Branch {
+  id: string;
+  companyId: string;
+  name: string;
+  code: string;
+  streetName?: string | null;
+  buildingNumber?: string | null;
+  district?: string | null;
+  city?: string | null;
+  postalCode?: string | null;
+  countryCode?: string | null;
+  phone?: string | null;
+  isActive?: boolean;
+  isDefault?: boolean;
+  defaultWarehouseId?: string | null;
+}
+
+export interface UserBranchAssignment {
+  userId: string;
+  branchId: string;
+  isPrimary?: boolean;
 }
 
 export interface PurchaseRequisitionItem {
@@ -615,6 +695,7 @@ export interface PurchaseOrderItem {
   unitPrice: number;
   taxRate?: number;
   productName?: string;
+  unitOfMeasureId?: string | null; // null/undefined = the product's own base unit
 }
 
 export interface PurchaseOrder {
@@ -640,6 +721,7 @@ export interface GoodsReceiptNoteItem {
   batchNumber?: string;
   expiryDate?: string;
   productName?: string;
+  unitOfMeasureId?: string | null; // null/undefined = the product's own base unit
 }
 
 export interface GoodsReceiptNote {
@@ -682,6 +764,7 @@ export interface PurchaseReturnItem {
   productId: string;
   quantityReturned: number;
   batchNumber?: string;
+  unitOfMeasureId?: string | null; // null/undefined = the product's own base unit
 }
 
 export interface PurchaseReturn {
@@ -703,8 +786,9 @@ export interface PhysicalStockTakeItem {
   productId: string;
   batchNumber?: string;
   systemQuantity: number;
-  physicalQuantity: number;
-  variance: number;
+  physicalQuantity: number; // stored exactly as counted, in whatever unit this line used
+  variance: number; // computed against the base-unit-converted physicalQuantity
+  unitOfMeasureId?: string | null; // null/undefined = the product's own base unit
 }
 
 export interface PhysicalStockTake {
@@ -759,6 +843,60 @@ export interface UnitOfMeasure {
   code: string;
   isActive?: boolean;
   companyId: string;
+}
+
+// A product's packaging/alternate unit — e.g. "Cell 4 AMP" (base unit: Piece) also sold/
+// bought as "Carton-12" (1 Carton = 12 Piece), with its own barcode/SKU/price. Inventory
+// is always kept in the product's own base unit (productsServices.unit) regardless of
+// which unit a transaction was entered in — see server/lib/uomConversion.ts.
+export interface ProductUnitConversion {
+  id: string;
+  productId: string;
+  unitOfMeasureId: string;
+  conversionFactor: number; // 1 of this unit = N base units
+  barcode?: string | null;
+  sku?: string | null;
+  purchasePrice?: number | null; // independent of productsServices.unitPrice * conversionFactor
+  salePrice?: number | null;
+  isActive?: boolean;
+  companyId: string;
+}
+
+// "Job Title" (Sales Associate, Cashier, ...) — deliberately distinct from `Role` (RBAC
+// permission bundles for ERP login accounts, see UserRole/Role elsewhere in this file).
+// A job title is who someone IS for HR/business purposes; a Role is what an ERP account
+// is allowed to click. Never conflate the two.
+export interface JobTitle {
+  id: string;
+  companyId: string;
+  title: string;
+  description?: string | null;
+  // Controls whether employees holding this title are offered on the Invoice's Sales
+  // Associate picker — a flag on the title, not a hardcoded string match, so a company
+  // phrasing it differently ("Sales Rep", "Account Manager") can still mark it eligible.
+  isSalesRole?: boolean;
+  isActive?: boolean;
+}
+
+// The HR foundation: a real employee roster, independent of `User` (ERP login accounts).
+// Not every employee needs ERP access; not every login is tied to a real employee today.
+// `User.employeeId` is the only direction this relationship goes.
+export interface Employee {
+  id: string;
+  companyId: string;
+  // System-generated at onboarding, digits-only, immutable after creation (e.g. "0042").
+  employeeNumber: string;
+  name: string;
+  jobTitleId: string;
+  // Nullable = Head Office / company-wide (the onboarding default) — see
+  // schema.ts's employees.branchId comment.
+  branchId?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  hireDate?: string | null; // YYYY-MM-DD
+  isActive?: boolean;
+  terminationDate?: string | null;
+  createdAt?: string;
 }
 
 export interface ProductWarehouse {

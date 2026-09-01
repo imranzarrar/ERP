@@ -184,7 +184,7 @@ describe('PUT /api/pos/shifts/:id', () => {
       method: 'PUT',
       body: JSON.stringify({ status: 'closed', endTime: new Date().toISOString(), endCash: 9999, expectedCash: 9999 }),
     });
-    expect(status).toBe(200); // route reports success but the WHERE clause matches 0 rows
+    expect(status).toBe(404); // the route now checks existence+ownership explicitly and 404s, rather than silently no-oping a WHERE clause that matches 0 rows
     const [row] = await db.select().from(schema.posShifts).where(eq(schema.posShifts.id, shiftId));
     expect(Number(row.endCash)).toBe(150); // unchanged from the previous test
   });
@@ -242,9 +242,9 @@ describe('POST/GET/DELETE /api/pos/held-invoices', () => {
   it('does not let a different company delete (resume) a held invoice it does not own', async () => {
     const heldId = createdHeldInvoiceIds[0];
     const { status } = await api(otherCompanySessionId, `/api/pos/held-invoices/${heldId}`, { method: 'DELETE' });
-    expect(status).toBe(200); // route reports success but the WHERE clause matches 0 rows
+    expect(status).toBe(404); // the route now checks existence+ownership explicitly and 404s, rather than silently no-oping a WHERE clause that matches 0 rows
     const [row] = await db.select().from(schema.posHeldInvoices).where(eq(schema.posHeldInvoices.id, heldId));
-    expect(row).toBeTruthy(); // still present — the foreign-company delete was a no-op
+    expect(row).toBeTruthy(); // still present — the foreign-company delete was rejected, not silently ignored
   });
 
   it('rejects deleting (resuming) a held invoice without pos.access permission', async () => {

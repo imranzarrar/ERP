@@ -154,8 +154,15 @@ export default function InventoryModule({
   const [prForm, setPrForm] = React.useState({
     requestedBy: currentUser?.username || '',
     notes: '',
+    branchId: '',
     items: [] as Array<{ productId: string; quantity: number; purpose: string }>
   });
+  const companyBranches = (db.branches || []).filter(b => b.companyId === db.selectedCompanyId && b.isActive !== false);
+  // The branch an admin configured as this user's primary in Staff Permissions
+  // (userBranches.isPrimary) — auto-selected on a fresh PR/PO form rather than left on the
+  // generic "Default (your primary branch)" placeholder, so a multi-branch user gets visual
+  // confirmation of which branch they're actually about to file under.
+  const myPrimaryBranchId = (db.userBranches || []).find((ub: any) => ub.userId === currentUser?.id && ub.isPrimary)?.branchId || '';
   const [newPrItem, setNewPrItem] = React.useState({ productId: '', quantity: 1, purpose: '' });
 
   // PO Form State
@@ -164,9 +171,11 @@ export default function InventoryModule({
     requisitionId: '', // Optional
     deliveryDate: '',
     notes: '',
-    items: [] as Array<{ productId: string; quantityOrdered: number; unitPrice: number; taxRate: number }>
+    branchId: '',
+    items: [] as Array<{ productId: string; quantityOrdered: number; unitPrice: number; taxRate: number; unitOfMeasureId?: string }>
   });
-  const [newPoItem, setNewPoItem] = React.useState({ productId: '', quantityOrdered: 1, unitPrice: 0, taxRate: defaultTaxRate });
+  const [newPoItem, setNewPoItem] = React.useState({ productId: '', quantityOrdered: 1, unitPrice: 0, taxRate: defaultTaxRate, unitOfMeasureId: '' });
+  const [poBarcodeInput, setPoBarcodeInput] = React.useState('');
 
   // GRN Form State
   const [grnForm, setGrnForm] = React.useState({
@@ -178,9 +187,10 @@ export default function InventoryModule({
     notes: '',
     vehicleNumber: '',
     driverName: '',
-    items: [] as Array<{ productId: string; quantityReceived: number; unitCost: number; taxRate: number; batchNumber: string; expiryDate: string }>
+    items: [] as Array<{ productId: string; quantityReceived: number; unitCost: number; taxRate: number; batchNumber: string; expiryDate: string; unitOfMeasureId?: string }>
   });
-  const [newGrnItem, setNewGrnItem] = React.useState({ productId: '', quantityReceived: 1, unitCost: 0, taxRate: defaultTaxRate, batchNumber: '', expiryDate: '' });
+  const [newGrnItem, setNewGrnItem] = React.useState({ productId: '', quantityReceived: 1, unitCost: 0, taxRate: defaultTaxRate, batchNumber: '', expiryDate: '', unitOfMeasureId: '' });
+  const [grnBarcodeInput, setGrnBarcodeInput] = React.useState('');
 
   // Warehouse Form State
   const [warehouseForm, setWarehouseForm] = React.useState({ name: '', code: '', address: '' });
@@ -203,9 +213,10 @@ export default function InventoryModule({
   const [returnForm, setReturnForm] = React.useState({
     grnId: '',
     notes: '',
-    items: [] as Array<{ productId: string; quantityReturned: number; batchNumber: string }>
+    items: [] as Array<{ productId: string; quantityReturned: number; batchNumber: string; unitOfMeasureId?: string }>
   });
-  const [newReturnItem, setNewReturnItem] = React.useState({ productId: '', quantityReturned: 1, batchNumber: '' });
+  const [newReturnItem, setNewReturnItem] = React.useState({ productId: '', quantityReturned: 1, batchNumber: '', unitOfMeasureId: '' });
+  const [returnBarcodeInput, setReturnBarcodeInput] = React.useState('');
 
   // Physical Stock Take Form State — systemQuantity is always snapshotted server-side,
   // never entered here; this only collects what was physically counted.
@@ -213,9 +224,31 @@ export default function InventoryModule({
     warehouseId: warehouses[0]?.id || '',
     performedBy: currentUser?.username || '',
     notes: '',
-    items: [] as Array<{ productId: string; physicalQuantity: number; batchNumber: string }>
+    items: [] as Array<{ productId: string; physicalQuantity: number; batchNumber: string; unitOfMeasureId?: string }>
   });
-  const [newStockTakeItem, setNewStockTakeItem] = React.useState({ productId: '', physicalQuantity: 0, batchNumber: '' });
+  const [newStockTakeItem, setNewStockTakeItem] = React.useState({ productId: '', physicalQuantity: 0, batchNumber: '', unitOfMeasureId: '' });
+  const [stockTakeBarcodeInput, setStockTakeBarcodeInput] = React.useState('');
+
+  // Shared barcode/SKU resolver for the four forms above — mirrors
+  // server/lib/uomConversion.ts's resolveProductByCode exactly, but resolves entirely
+  // client-side against already-loaded db state (no round-trip needed): an active
+  // packaging unit's own barcode/sku first, then the base product's own barcode/sku.
+  const resolveProductByCode = React.useCallback((code: string): { productId: string; unitOfMeasureId: string | null; purchasePrice: number | null; salePrice: number | null } | null => {
+    const trimmed = code.trim();
+    if (!trimmed) return null;
+    const conversionHit = (db.productUnitConversions || []).find(puc =>
+      puc.isActive !== false && (puc.barcode === trimmed || (puc.sku && puc.sku.toLowerCase() === trimmed.toLowerCase()))
+    );
+    if (conversionHit) {
+      return {
+        productId: conversionHit.productId, unitOfMeasureId: conversionHit.unitOfMeasureId,
+        purchasePrice: conversionHit.purchasePrice ?? null, salePrice: conversionHit.salePrice ?? null,
+      };
+    }
+    const baseHit = (db.products || []).find((p: any) => p.barcode === trimmed || (p.sku && p.sku.toLowerCase() === trimmed.toLowerCase()));
+    if (!baseHit) return null;
+    return { productId: baseHit.id, unitOfMeasureId: null, purchasePrice: baseHit.unitPrice, salePrice: baseHit.unitPrice };
+  }, [db.productUnitConversions, db.products]);
 
   // Automatically update activeSubTab if defaultTab changes
   React.useEffect(() => {
@@ -321,7 +354,7 @@ export default function InventoryModule({
 
   // Create OR edit a PR — goes through the real backend routes (POST for a new PR, PUT
   // for editing an existing Pending one). PR numbers are generated by a per-company
-  // `SELECT ... FOR UPDATE` counter (server/lib/businessLogic.ts's getAndIncrementCounter),
+  // atomic counter (server/lib/documentNumbering.ts's getAndIncrementDocumentNumber),
   // instead of the previous `array.length + 1001` client-side guess, which two concurrent
   // submissions could both compute identically and thus duplicate.
   const handleCreatePr = async (e: React.FormEvent) => {
@@ -337,6 +370,7 @@ export default function InventoryModule({
           prData: {
             requestedBy: prForm.requestedBy,
             notes: prForm.notes,
+            branchId: prForm.branchId || undefined,
             items: prForm.items
           }
         })
@@ -355,7 +389,7 @@ export default function InventoryModule({
       }));
 
       triggerSuccess(isEdit ? t('Purchase requisition updated successfully.') : t('Purchase requisition submitted successfully.'));
-      setPrForm({ requestedBy: currentUser?.username || '', notes: '', items: [] });
+      setPrForm({ requestedBy: currentUser?.username || '', notes: '', branchId: myPrimaryBranchId, items: [] });
       setEditingPrId(null);
       setIsCreatingPr(false);
       setViewingPr(null);
@@ -433,7 +467,7 @@ export default function InventoryModule({
       ...prev,
       items: [...prev.items, { ...newPoItem }]
     }));
-    setNewPoItem({ productId: '', quantityOrdered: 1, unitPrice: 0, taxRate: defaultTaxRate });
+    setNewPoItem({ productId: '', quantityOrdered: 1, unitPrice: 0, taxRate: defaultTaxRate, unitOfMeasureId: '' });
   };
 
   const removePoItem = (index: number) => {
@@ -482,6 +516,7 @@ export default function InventoryModule({
             requisitionId: poForm.requisitionId || undefined,
             deliveryDate: poForm.deliveryDate || undefined,
             notes: poForm.notes,
+            branchId: poForm.branchId || undefined,
             items: poForm.items
           }
         })
@@ -503,7 +538,7 @@ export default function InventoryModule({
       }));
 
       triggerSuccess(t('Purchase order issued successfully.'));
-      setPoForm({ vendorId: '', requisitionId: '', deliveryDate: '', notes: '', items: [] });
+      setPoForm({ vendorId: '', requisitionId: '', deliveryDate: '', notes: '', branchId: myPrimaryBranchId, items: [] });
       setIsCreatingPo(false);
     } catch (err: any) {
       triggerError(err?.message || t('Failed to issue purchase order.'));
@@ -545,7 +580,7 @@ export default function InventoryModule({
       ...prev,
       items: [...prev.items, { ...newGrnItem }]
     }));
-    setNewGrnItem({ productId: '', quantityReceived: 1, unitCost: 0, taxRate: defaultTaxRate, batchNumber: '', expiryDate: '' });
+    setNewGrnItem({ productId: '', quantityReceived: 1, unitCost: 0, taxRate: defaultTaxRate, batchNumber: '', expiryDate: '', unitOfMeasureId: '' });
   };
 
   const removeGrnItem = (index: number) => {
@@ -872,7 +907,7 @@ export default function InventoryModule({
   const addReturnItem = () => {
     if (!newReturnItem.productId || newReturnItem.quantityReturned <= 0) return;
     setReturnForm(prev => ({ ...prev, items: [...prev.items, { ...newReturnItem }] }));
-    setNewReturnItem({ productId: '', quantityReturned: 1, batchNumber: '' });
+    setNewReturnItem({ productId: '', quantityReturned: 1, batchNumber: '', unitOfMeasureId: '' });
   };
   const removeReturnItem = (index: number) => {
     setReturnForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }));
@@ -928,7 +963,7 @@ export default function InventoryModule({
   const addStockTakeItem = () => {
     if (!newStockTakeItem.productId) return;
     setStockTakeForm(prev => ({ ...prev, items: [...prev.items, { ...newStockTakeItem }] }));
-    setNewStockTakeItem({ productId: '', physicalQuantity: 0, batchNumber: '' });
+    setNewStockTakeItem({ productId: '', physicalQuantity: 0, batchNumber: '', unitOfMeasureId: '' });
   };
   const removeStockTakeItem = (index: number) => {
     setStockTakeForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }));
@@ -1058,7 +1093,7 @@ export default function InventoryModule({
               )}
               {activeSubTab === 'pr' && can('inventory.pr') && (
                 <button
-                  onClick={() => setIsCreatingPr(true)}
+                  onClick={() => { setPrForm(prev => ({ ...prev, branchId: myPrimaryBranchId })); setIsCreatingPr(true); }}
                   className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 text-sm shadow-sm transition"
                 >
                   <Plus className="h-4 w-4" />
@@ -1067,7 +1102,7 @@ export default function InventoryModule({
               )}
               {activeSubTab === 'po' && can('inventory.po') && (
                 <button
-                  onClick={() => setIsCreatingPo(true)}
+                  onClick={() => { setPoForm(prev => ({ ...prev, branchId: myPrimaryBranchId })); setIsCreatingPo(true); }}
                   className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 text-sm shadow-sm transition"
                 >
                   <Plus className="h-4 w-4" />
@@ -1987,7 +2022,7 @@ export default function InventoryModule({
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <h3 className="text-lg font-bold text-gray-900">{editingPrId ? t('Edit Purchase Requisition (PR)') : t('Create Purchase Requisition (PR)')}</h3>
               <button
-                onClick={() => { setIsCreatingPr(false); setEditingPrId(null); setPrForm({ requestedBy: currentUser?.username || '', notes: '', items: [] }); }}
+                onClick={() => { setIsCreatingPr(false); setEditingPrId(null); setPrForm({ requestedBy: currentUser?.username || '', notes: '', branchId: myPrimaryBranchId, items: [] }); }}
                 className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition"
               >
                 {t('Back to List')}
@@ -2017,6 +2052,21 @@ export default function InventoryModule({
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-indigo-500"
                     />
                   </div>
+                  {companyBranches.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('Branch')}</label>
+                      <select
+                        value={prForm.branchId}
+                        onChange={(e) => setPrForm({ ...prForm, branchId: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-indigo-500"
+                      >
+                        <option value="">{t('Default (your primary branch)')}</option>
+                        {companyBranches.map(b => (
+                          <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 {/* Add Item Form */}
@@ -2111,7 +2161,7 @@ export default function InventoryModule({
               <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
                 <button
                   type="button"
-                  onClick={() => { setIsCreatingPr(false); setEditingPrId(null); setPrForm({ requestedBy: currentUser?.username || '', notes: '', items: [] }); }}
+                  onClick={() => { setIsCreatingPr(false); setEditingPrId(null); setPrForm({ requestedBy: currentUser?.username || '', notes: '', branchId: myPrimaryBranchId, items: [] }); }}
                   className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
                 >
                   {t('Cancel')}
@@ -2193,11 +2243,44 @@ export default function InventoryModule({
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                     />
                   </div>
+                  {companyBranches.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('Branch')}</label>
+                      <select
+                        value={poForm.branchId}
+                        onChange={(e) => setPoForm({ ...poForm, branchId: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                      >
+                        <option value="">{t('Default (your primary branch, or linked PR\'s)')}</option>
+                        {companyBranches.map(b => (
+                          <option key={b.id} value={b.id}>{b.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 {/* Add Item Form */}
                 <div className="border border-gray-100 rounded-xl p-4 bg-gray-50/50 space-y-3 mt-4">
                   <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wider">{t('Add Material & Pricing')}</h4>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">{t('Scan Barcode / SKU')}</label>
+                    <input
+                      type="text"
+                      placeholder={t('Scan or type a barcode — resolves the product and its unit automatically')}
+                      value={poBarcodeInput}
+                      onChange={(e) => setPoBarcodeInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter') return;
+                        e.preventDefault();
+                        const resolved = resolveProductByCode(poBarcodeInput);
+                        if (!resolved) { triggerError(t('No product matches that barcode/SKU.')); return; }
+                        setNewPoItem({ ...newPoItem, productId: resolved.productId, unitOfMeasureId: resolved.unitOfMeasureId || '', unitPrice: resolved.purchasePrice ?? newPoItem.unitPrice });
+                        setPoBarcodeInput('');
+                      }}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                    />
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
                     <div className="sm:col-span-4">
                       <label className="block text-xs font-semibold text-gray-500 mb-1">{t('Select Product')}</label>
@@ -2205,9 +2288,10 @@ export default function InventoryModule({
                         value={newPoItem.productId}
                         onChange={(e) => {
                           const selectedProd = products.find(prod => prod.id === e.target.value);
-                          setNewPoItem({ 
-                            ...newPoItem, 
+                          setNewPoItem({
+                            ...newPoItem,
                             productId: e.target.value,
+                            unitOfMeasureId: '',
                             unitPrice: Number(selectedProd?.unitPrice || 0)
                           });
                         }}
@@ -2217,6 +2301,20 @@ export default function InventoryModule({
                         {products.map(p => (
                           <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
+                      </select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-semibold text-gray-500 mb-1">{t('Unit')}</label>
+                      <select
+                        value={newPoItem.unitOfMeasureId}
+                        onChange={(e) => setNewPoItem({ ...newPoItem, unitOfMeasureId: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                      >
+                        <option value="">{t('Base Unit')}</option>
+                        {(db.productUnitConversions || []).filter(puc => puc.productId === newPoItem.productId && puc.isActive !== false).map(puc => {
+                          const uom = (db.unitsOfMeasure || []).find(u => u.id === puc.unitOfMeasureId);
+                          return <option key={puc.id} value={puc.unitOfMeasureId}>{uom ? uom.name : t('Unit')} (×{puc.conversionFactor})</option>;
+                        })}
                       </select>
                     </div>
                     <div className="sm:col-span-2">
@@ -2533,15 +2631,31 @@ export default function InventoryModule({
                   <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wider">
                     {grnForm.isDsd ? t('Add Delivery Product & Batch') : t('Adjust/Add Incoming Delivery Item')}
                   </h4>
+                  <input
+                    type="text"
+                    placeholder={t('Scan or type a barcode — resolves the product and its unit automatically')}
+                    value={grnBarcodeInput}
+                    onChange={(e) => setGrnBarcodeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return;
+                      e.preventDefault();
+                      const resolved = resolveProductByCode(grnBarcodeInput);
+                      if (!resolved) { triggerError(t('No product matches that barcode/SKU.')); return; }
+                      setNewGrnItem({ ...newGrnItem, productId: resolved.productId, unitOfMeasureId: resolved.unitOfMeasureId || '', unitCost: resolved.purchasePrice ?? newGrnItem.unitCost, taxRate: 15 });
+                      setGrnBarcodeInput('');
+                    }}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                  />
                   <div className="grid grid-cols-1 sm:grid-cols-7 gap-3">
                     <div className="sm:col-span-2">
                       <select
                         value={newGrnItem.productId}
                         onChange={(e) => {
                           const selectedProd = products.find(prod => prod.id === e.target.value);
-                          setNewGrnItem({ 
-                            ...newGrnItem, 
+                          setNewGrnItem({
+                            ...newGrnItem,
                             productId: e.target.value,
+                            unitOfMeasureId: '',
                             unitCost: Number(selectedProd?.unitPrice || 0),
                             taxRate: 15
                           });
@@ -2552,6 +2666,19 @@ export default function InventoryModule({
                         {products.map(p => (
                           <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
+                      </select>
+                    </div>
+                    <div>
+                      <select
+                        value={newGrnItem.unitOfMeasureId}
+                        onChange={(e) => setNewGrnItem({ ...newGrnItem, unitOfMeasureId: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                      >
+                        <option value="">{t('Base Unit')}</option>
+                        {(db.productUnitConversions || []).filter(puc => puc.productId === newGrnItem.productId && puc.isActive !== false).map(puc => {
+                          const uom = (db.unitsOfMeasure || []).find(u => u.id === puc.unitOfMeasureId);
+                          return <option key={puc.id} value={puc.unitOfMeasureId}>{uom ? uom.name : t('Unit')} (×{puc.conversionFactor})</option>;
+                        })}
                       </select>
                     </div>
                     <div>
@@ -3126,13 +3253,39 @@ export default function InventoryModule({
 
                 <div className="border-t border-gray-100 pt-4">
                   <h4 className="text-xs font-bold text-gray-700 uppercase mb-2">{t('Returned Items')}</h4>
+                  <input
+                    type="text"
+                    placeholder={t('Scan or type a barcode — resolves the product and its unit automatically')}
+                    value={returnBarcodeInput}
+                    onChange={(e) => setReturnBarcodeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return;
+                      e.preventDefault();
+                      const resolved = resolveProductByCode(returnBarcodeInput);
+                      if (!resolved) { triggerError(t('No product matches that barcode/SKU.')); return; }
+                      setNewReturnItem({ ...newReturnItem, productId: resolved.productId, unitOfMeasureId: resolved.unitOfMeasureId || '' });
+                      setReturnBarcodeInput('');
+                    }}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs mb-2"
+                  />
                   <div className="grid grid-cols-12 gap-2 items-end mb-3">
-                    <div className="col-span-6 space-y-1">
+                    <div className="col-span-4 space-y-1">
                       <label className="text-[9px] font-bold text-gray-400 uppercase">{t('Product')}</label>
-                      <select value={newReturnItem.productId} onChange={(e) => setNewReturnItem({ ...newReturnItem, productId: e.target.value })}
+                      <select value={newReturnItem.productId} onChange={(e) => setNewReturnItem({ ...newReturnItem, productId: e.target.value, unitOfMeasureId: '' })}
                         className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs">
                         <option value="">{t('Select product')}</option>
                         {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="col-span-2 space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase">{t('Unit')}</label>
+                      <select value={newReturnItem.unitOfMeasureId} onChange={(e) => setNewReturnItem({ ...newReturnItem, unitOfMeasureId: e.target.value })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs">
+                        <option value="">{t('Base Unit')}</option>
+                        {(db.productUnitConversions || []).filter(puc => puc.productId === newReturnItem.productId && puc.isActive !== false).map(puc => {
+                          const uom = (db.unitsOfMeasure || []).find(u => u.id === puc.unitOfMeasureId);
+                          return <option key={puc.id} value={puc.unitOfMeasureId}>{uom ? uom.name : t('Unit')} (×{puc.conversionFactor})</option>;
+                        })}
                       </select>
                     </div>
                     <div className="col-span-3 space-y-1">
@@ -3302,13 +3455,39 @@ export default function InventoryModule({
                 <div className="border-t border-gray-100 pt-4">
                   <h4 className="text-xs font-bold text-gray-700 uppercase mb-2">{t('Counted Items')}</h4>
                   <p className="text-[10px] text-gray-400 mb-2">{t('The current system quantity is snapshotted automatically when you add an item — you only enter what was physically counted.')}</p>
+                  <input
+                    type="text"
+                    placeholder={t('Scan or type a barcode — resolves the product and its unit automatically')}
+                    value={stockTakeBarcodeInput}
+                    onChange={(e) => setStockTakeBarcodeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return;
+                      e.preventDefault();
+                      const resolved = resolveProductByCode(stockTakeBarcodeInput);
+                      if (!resolved) { triggerError(t('No product matches that barcode/SKU.')); return; }
+                      setNewStockTakeItem({ ...newStockTakeItem, productId: resolved.productId, unitOfMeasureId: resolved.unitOfMeasureId || '' });
+                      setStockTakeBarcodeInput('');
+                    }}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs mb-2"
+                  />
                   <div className="grid grid-cols-12 gap-2 items-end mb-3">
-                    <div className="col-span-6 space-y-1">
+                    <div className="col-span-4 space-y-1">
                       <label className="text-[9px] font-bold text-gray-400 uppercase">{t('Product')}</label>
-                      <select value={newStockTakeItem.productId} onChange={(e) => setNewStockTakeItem({ ...newStockTakeItem, productId: e.target.value })}
+                      <select value={newStockTakeItem.productId} onChange={(e) => setNewStockTakeItem({ ...newStockTakeItem, productId: e.target.value, unitOfMeasureId: '' })}
                         className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs">
                         <option value="">{t('Select product')}</option>
                         {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="col-span-2 space-y-1">
+                      <label className="text-[9px] font-bold text-gray-400 uppercase">{t('Unit')}</label>
+                      <select value={newStockTakeItem.unitOfMeasureId} onChange={(e) => setNewStockTakeItem({ ...newStockTakeItem, unitOfMeasureId: e.target.value })}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs">
+                        <option value="">{t('Base Unit')}</option>
+                        {(db.productUnitConversions || []).filter(puc => puc.productId === newStockTakeItem.productId && puc.isActive !== false).map(puc => {
+                          const uom = (db.unitsOfMeasure || []).find(u => u.id === puc.unitOfMeasureId);
+                          return <option key={puc.id} value={puc.unitOfMeasureId}>{uom ? uom.name : t('Unit')} (×{puc.conversionFactor})</option>;
+                        })}
                       </select>
                     </div>
                     <div className="col-span-3 space-y-1">

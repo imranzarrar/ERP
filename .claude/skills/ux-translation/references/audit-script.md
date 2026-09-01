@@ -10,7 +10,11 @@ grep -ohE "\bt\('[^']*'\)|\bt\(\"[^\"]*\"\)" <file1> <file2> ... \
   | sort -u > keys.txt
 ```
 
-This only catches `t('literal string')` calls. It will **not** catch `t(someVariable)`.
+This only catches `t('literal string')` calls. It will **not** catch `t(someVariable)`, and it will also silently mis-extract (or drop) any literal that contains an escaped apostrophe — `t('...branch\'s own...')` stops the regex at the escaped `\'`, not the string's real closing quote. Run a second, targeted pass for exactly that case and add anything it finds to `keys.txt` by hand — see `known-bugs.md` #7, which has bitten this project twice already. A single regex for this is fiddly to get right (a first attempt at one was itself wrong and matched nothing — verify whatever you write against a file you know contains the pattern before trusting it); this two-stage pipeline is simpler and confirmed working:
+
+```bash
+grep -n "t('" <file1> <file2> ... | grep -F "\\'"
+```
 
 ## Step 2 — append dynamic keys by hand
 

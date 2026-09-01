@@ -128,12 +128,16 @@ export async function migrateDataToPostgres(data: any, ctx: MigrateContext = {})
         currency: c.currency || 'SAR',
         portalTitle: c.portalTitle,
         portalSubtitle: c.portalSubtitle,
-        // counters intentionally omitted: it is exclusively owned by the row-locked
-        // getAndIncrementCounter() path (server/lib/businessLogic.ts). Including a
-        // client's in-memory snapshot here lets a stale tab's next unrelated save
-        // silently roll the shared document-number counter backward, causing a later
-        // real invoice/quotation/etc. to be issued with a number already in use
-        // (confirmed root cause of duplicate invoiceNumber rows for a live company).
+        // counters intentionally omitted: it is a frozen historical artifact now, read
+        // exactly once per (company, docType, period) as the lazy-seed value the first time
+        // getAndIncrementDocumentNumber (server/lib/documentNumbering.ts) sees that
+        // combination, and never written to by that path. The live, concurrently-safe
+        // counter state lives in the documentCounters table instead. Including a client's
+        // in-memory snapshot of `counters` here lets a stale tab's next unrelated save
+        // silently roll the legacy seed value backward, causing a later real invoice/
+        // quotation/etc. to be issued with a number already in use (confirmed root cause of
+        // duplicate invoiceNumber rows for a live company, back when this blob was still the
+        // live counter).
         posSettings: c.posSettings,
         isInventoryModuleEnabled: c.isInventoryModuleEnabled ?? false,
         zatcaEnabled: c.zatcaEnabled ?? false,
