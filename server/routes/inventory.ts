@@ -2,7 +2,7 @@ import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, and, isNull, inArray } from 'drizzle-orm';
-import { round2, round4, writeStockLedgerEntry, assertQuarterNotFiled } from '../lib/businessLogic.js';
+import { round2, round4, writeStockLedgerEntry, assertQuarterNotFiled, assertProductsOwnedByCompany } from '../lib/businessLogic.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { hasPermission, resolveDocumentBranchId, branchAccessOk, branchAccessOkViaWarehouse } from '../lib/authz.js';
 import { toBaseQuantity, toBaseUnitCost } from '../lib/uomConversion.js';
@@ -36,6 +36,7 @@ router.post('/purchase-requisitions', async (req: any, res) => {
     }
 
     const created = await db.transaction(async (tx) => {
+      await assertProductsOwnedByCompany(tx, companyId, prData.items.map((it: any) => it.productId));
       const todayIso = new Date().toISOString().slice(0, 10);
       const prNumber = await getAndIncrementDocumentNumber(tx, companyId, 'pr', todayIso, branchId);
       const prId = generateId();
@@ -103,6 +104,7 @@ router.put('/purchase-requisitions/:id', async (req: any, res) => {
         err.status = 400;
         throw err;
       }
+      await assertProductsOwnedByCompany(tx, companyId, prData.items.map((it: any) => it.productId));
 
       const [newPr] = await tx.update(schema.purchaseRequisitions)
         .set({ notes: prData.notes !== undefined ? prData.notes : pr.notes })
@@ -232,6 +234,18 @@ router.post('/purchase-orders', async (req: any, res) => {
         }
       }
 
+      // vendorId/productId were previously only checked for truthiness, never that they
+      // belong to this company — same class of gap found and fixed across every other
+      // creation route in this pass.
+      const [vendor] = await tx.select({ id: schema.vendors.id }).from(schema.vendors)
+        .where(and(eq(schema.vendors.id, poData.vendorId), eq(schema.vendors.companyId, companyId)));
+      if (!vendor) {
+        const err: any = new Error('Selected vendor not found for this company.');
+        err.status = 400;
+        throw err;
+      }
+      await assertProductsOwnedByCompany(tx, companyId, poData.items.map((it: any) => it.productId));
+
       const poNumber = await getAndIncrementDocumentNumber(tx, companyId, 'po', new Date().toISOString().slice(0, 10), poBranchId);
       const poId = generateId();
 
@@ -326,7 +340,18 @@ router.post('/goods-receipt-notes', async (req: any, res) => {
         }
         linkedPo = po;
         vendorId = po.vendorId;
+      } else if (grnData.isDsd) {
+        // Non-DSD path inherits vendorId from an already company-checked PO above — DSD
+        // takes it straight from the client and it was never validated at all.
+        const [vendor] = await tx.select({ id: schema.vendors.id }).from(schema.vendors)
+          .where(and(eq(schema.vendors.id, vendorId), eq(schema.vendors.companyId, companyId)));
+        if (!vendor) {
+          const err: any = new Error('Selected vendor not found for this company.');
+          err.status = 400;
+          throw err;
+        }
       }
+      await assertProductsOwnedByCompany(tx, companyId, grnData.items.map((it: any) => it.productId));
 
       // goodsReceiptNotes has no branchId column of its own (schema.ts) — derived via
       // warehouseId purely so includeBranchCode can format correctly if ever configured,
@@ -742,6 +767,7 @@ router.post('/stock-adjustments', async (req: any, res) => {
         err.status = 403;
         throw err;
       }
+      await assertProductsOwnedByCompany(tx, companyId, [productId]);
 
       const batchCondition = batchNumber
         ? eq(schema.inventoryStocks.batchNumber, batchNumber)
@@ -1413,6 +1439,7 @@ router.post('/stock-takes', async (req: any, res) => {
         err.status = 403;
         throw err;
       }
+      await assertProductsOwnedByCompany(tx, companyId, stockTakeData.items.map((it: any) => it.productId));
       const referenceNumber = await getAndIncrementDocumentNumber(tx, companyId, 'stockTake', new Date().toISOString().slice(0, 10), stWarehouse?.branchId || null);
       const stockTakeId = generateId();
 

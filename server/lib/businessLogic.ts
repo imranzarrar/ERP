@@ -69,6 +69,29 @@ export async function resolveDefaultSaleWarehouseId(tx: any, companyId: string, 
   return companyDefault?.id || null;
 }
 
+// Every route that inserts a line-item keyed by productId (PR/PO/GRN items, stock
+// adjustments/takes, invoice/quotation items) took it straight from the client with no
+// check that it belongs to this company at all — found during a second, independent
+// isolation audit pass after the first pass's fixes had already landed. A crafted
+// request could reference another company's real product id, creating stock/ledger/
+// line-item rows under THIS company's companyId that point at a foreign product —
+// polluting this company's own records and leaking the other company's product
+// name/pricing through any report or error message that joins productId back to
+// productsServices without its own companyId filter. One shared check for every call
+// site rather than re-deriving it per route.
+export async function assertProductsOwnedByCompany(tx: any, companyId: string, productIds: (string | null | undefined)[]): Promise<void> {
+  const ids = Array.from(new Set(productIds.filter(Boolean))) as string[];
+  if (ids.length === 0) return;
+  const rows = await tx.select({ id: schema.productsServices.id }).from(schema.productsServices)
+    .where(and(inArray(schema.productsServices.id, ids), eq(schema.productsServices.companyId, companyId)));
+  const foundIds = new Set(rows.map((r: any) => r.id));
+  if (ids.some(id => !foundIds.has(id))) {
+    const err: any = new Error('One or more selected products were not found for this company.');
+    err.status = 400;
+    throw err;
+  }
+}
+
 // "Sales should take place only from sales warehouses" as a real server-side rule, not
 // just a UI convention — called wherever a warehouseId is about to be persisted onto a
 // sale (an explicit client choice or an auto-resolved default alike).

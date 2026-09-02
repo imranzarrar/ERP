@@ -1211,6 +1211,24 @@ router.post('/product-warehouses', async (req: any, res) => {
 
     data.companyId = req.targetCompanyId;
 
+    // productId/warehouseId were previously never checked against companyId at all —
+    // same class of gap as GRN/stock-adjustments/stock-takes found and fixed elsewhere
+    // in this pass. A crafted request could set stock policy (min/max, bin location) for
+    // another company's warehouse, or reference another company's product.
+    if (data.productId) {
+      const [product] = await db.select({ id: schema.productsServices.id }).from(schema.productsServices)
+        .where(and(eq(schema.productsServices.id, data.productId), eq(schema.productsServices.companyId, data.companyId)));
+      if (!product) return res.status(404).json({ error: 'Selected product not found for this company.' });
+    }
+    if (data.warehouseId) {
+      const [warehouse] = await db.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses)
+        .where(and(eq(schema.warehouses.id, data.warehouseId), eq(schema.warehouses.companyId, data.companyId)));
+      if (!warehouse) return res.status(404).json({ error: 'Selected warehouse not found for this company.' });
+      if (!branchAccessOk(req, warehouse.branchId)) {
+        return res.status(403).json({ error: 'Forbidden: you are not assigned to this branch.' });
+      }
+    }
+
     await db.insert(schema.productWarehouses).values(data).onConflictDoUpdate({
       target: schema.productWarehouses.id,
       set: data

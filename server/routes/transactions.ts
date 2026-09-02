@@ -2,7 +2,7 @@ import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, inArray, and, desc, or, isNull } from 'drizzle-orm';
-import { validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, postCreditNoteReversalVoucher, round2, round4, computePaymentStatus, computeInvoiceServerTotals, deductStockForSale, assertQuarterNotFiled, resolveSaleWarehouse, assertStockAvailable } from '../lib/businessLogic.js';
+import { validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, postCreditNoteReversalVoucher, round2, round4, computePaymentStatus, computeInvoiceServerTotals, deductStockForSale, assertQuarterNotFiled, resolveSaleWarehouse, assertStockAvailable, assertProductsOwnedByCompany } from '../lib/businessLogic.js';
 import { toBaseQuantity, toBaseUnitCost, loadZatcaCodesByUnitId } from '../lib/uomConversion.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { isStillChainTip, setHashChainState, ZatcaEnvironment } from '../lib/zatca/hashChain.js';
@@ -98,6 +98,11 @@ router.post('/quotations', async (req: any, res) => {
       if (!assertOwnsRow(existing, req)) {
         return res.status(403).json({ error: 'Forbidden: this quotation belongs to another company' });
       }
+      // This is the main upsert route (also used for edits) — the dedicated PUT/cancel/
+      // convert routes for the same table all check branch ownership, this one didn't.
+      if (existing && !branchAccessOk(req, existing.branchId)) {
+        return res.status(403).json({ error: 'Forbidden: you are not assigned to this branch.' });
+      }
     }
     if (existing) {
       if (!permissions.quotation.update.enabled) return res.status(403).json({ error: 'Forbidden' });
@@ -134,6 +139,7 @@ router.post('/quotations', async (req: any, res) => {
       // 1. Business logic
       const companyId = req.targetCompanyId;
       await validateTransactionDate(qData.date, companyId);
+      await assertProductsOwnedByCompany(tx, companyId, (items || []).map((it: any) => it.productId));
 
       // 2. Increment Counter if new
       let qNumber = qData.quotationNumber;
@@ -203,6 +209,8 @@ router.put('/quotations/:id', async (req: any, res) => {
       if (qData.date) {
         await validateTransactionDate(qData.date, companyId);
       }
+
+      await assertProductsOwnedByCompany(tx, companyId, (items || []).map((it: any) => it.productId));
 
       const refError = await assertDocumentRefsOwnedByCompany(tx, companyId, {
         customerId: qData.customerId,
@@ -301,6 +309,11 @@ router.post('/quotations/:id/convert', async (req: any, res) => {
 
       // 4. Fetch / calculate Items
       const itemsToInsert = customItems || await tx.select().from(schema.quotationItems).where(eq(schema.quotationItems.quotationId, id));
+      // Only customItems needs checking — the fallback (the quotation's own persisted
+      // items) was already validated when the quotation itself was created/edited.
+      if (customItems) {
+        await assertProductsOwnedByCompany(tx, companyId, customItems.map((it: any) => it.productId));
+      }
 
       // Resolve the sales warehouse this new invoice's stock lines will deduct from —
       // required only if the quotation actually carries a stock item, same rule as the
@@ -451,6 +464,11 @@ router.post('/invoices', async (req: any, res) => {
       if (!assertOwnsRow(existingInvoice, req)) {
         return res.status(403).json({ error: 'Forbidden: this invoice belongs to another company' });
       }
+      // This is the main upsert route (also used for edits) — the dedicated /note, /paid,
+      // and /cancel routes for the same table all check branch ownership, this one didn't.
+      if (existingInvoice && !branchAccessOk(req, existingInvoice.branchId)) {
+        return res.status(403).json({ error: 'Forbidden: you are not assigned to this branch.' });
+      }
       // Regulatory rule, not a permission check: once ZATCA has a submission in flight
       // or cleared/reported an invoice, its content is immutable — no role or permission
       // can override this. Applies regardless of `invoice.create`/`invoice.update` above.
@@ -505,6 +523,7 @@ router.post('/invoices', async (req: any, res) => {
       const companyId = req.targetCompanyId;
       await validateTransactionDate(invData.date, companyId);
       await assertQuarterNotFiled(invData.date, companyId);
+      await assertProductsOwnedByCompany(tx, companyId, (items || []).map((it: any) => it.productId));
 
       // 2. Increment Counter if new
       if (isNewInvoice) {
@@ -993,7 +1012,23 @@ router.post('/investors', async (req: any, res) => {
 
     const data = req.body;
     const iData = { ...data };
-    
+
+    // Unlike every other upsert route in this app, this one had no ownership check at
+    // all before the update branch of onConflictDoUpdate could fire — investors.id is a
+    // client-supplied primary key with no server-side default, so a Company B caller
+    // could target Company A's real investor id and have its name/equity/capital fields
+    // (and companyId itself) silently overwritten. Same assertOwnsRow + generateId
+    // pattern as every other upsert route in this file.
+    let existing: typeof schema.investors.$inferSelect | undefined;
+    if (iData.id) {
+      [existing] = await db.select().from(schema.investors).where(eq(schema.investors.id, iData.id));
+      if (!assertOwnsRow(existing, req)) {
+        return res.status(403).json({ error: 'Forbidden: this investor belongs to another company' });
+      }
+    } else {
+      iData.id = generateId();
+    }
+
     iData.companyId = req.targetCompanyId;
 
     if (iData.createdAt) iData.createdAt = new Date(iData.createdAt);
