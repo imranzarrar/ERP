@@ -47,7 +47,7 @@ async function createPr(status: 'Pending' | 'Draft' = 'Pending') {
   const prId = generateId();
   await db.insert(schema.purchaseRequisitions).values({
     id: prId,
-    prNumber: `PR-TEST-${prId.slice(0, 8)}`,
+    prNumber: `PR-TEST-${prId}`,
     requestedBy: 'Automated Test',
     date: new Date(),
     status,
@@ -66,7 +66,7 @@ async function createPo(status: 'Sent' | 'Cancelled' | 'Received' = 'Sent') {
   const poId = generateId();
   await db.insert(schema.purchaseOrders).values({
     id: poId,
-    poNumber: `PO-TEST-${poId.slice(0, 8)}`,
+    poNumber: `PO-TEST-${poId}`,
     vendorId,
     date: new Date(),
     status,
@@ -95,14 +95,14 @@ beforeAll(async () => {
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
 
   adminUserId = generateId();
-  const adminUsername = `invtest_admin_${adminUserId.slice(0, 8)}`;
+  const adminUsername = `invtest_admin_${adminUserId}`;
   await db.insert(schema.users).values({
     id: adminUserId, username: adminUsername, password: passwordHash,
     role: 'admin', companyId, isSuperAdmin: false, uiLanguage: 'en',
   });
 
   staffUserId = generateId();
-  const staffUsername = `invtest_staff_${staffUserId.slice(0, 8)}`;
+  const staffUsername = `invtest_staff_${staffUserId}`;
   await db.insert(schema.users).values({
     id: staffUserId, username: staffUsername, password: passwordHash,
     role: 'user', companyId, isSuperAdmin: false, uiLanguage: 'en',

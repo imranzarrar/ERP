@@ -50,7 +50,7 @@ beforeAll(async () => {
   } as any);
 
   adminId = generateId();
-  adminUsername = `migratecounters_admin_${adminId.slice(0, 8)}`;
+  adminUsername = `migratecounters_admin_${adminId}`;
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
   await db.insert(schema.users).values({
     id: adminId, username: adminUsername, password: passwordHash,

@@ -118,7 +118,7 @@ beforeAll(async () => {
   }
 
   adminUserId = generateId();
-  const adminUsername = `saleswh_admin_${adminUserId.slice(0, 8)}`;
+  const adminUsername = `saleswh_admin_${adminUserId}`;
   await db.insert(schema.users).values({ id: adminUserId, username: adminUsername, password: passwordHash, role: 'admin', companyId, isSuperAdmin: false, uiLanguage: 'en' });
   adminSessionId = await login(adminUsername);
 
@@ -143,7 +143,7 @@ beforeAll(async () => {
   await db.insert(schema.productsServices).values({ id: noWhStockProductId, name: 'Stock Widget', description: 'x', unitPrice: '10.00', type: 'item', companyId: noWarehouseCompanyId });
 
   noWhAdminUserId = generateId();
-  const noWhAdminUsername = `nowh_admin_${noWhAdminUserId.slice(0, 8)}`;
+  const noWhAdminUsername = `nowh_admin_${noWhAdminUserId}`;
   await db.insert(schema.users).values({ id: noWhAdminUserId, username: noWhAdminUsername, password: passwordHash, role: 'admin', companyId: noWarehouseCompanyId, isSuperAdmin: false, uiLanguage: 'en' });
   noWhAdminSessionId = await login(noWhAdminUsername);
 });
@@ -427,7 +427,7 @@ describe('POST /api/branches/backfill-unassigned', () => {
       currency: 'SAR', counters: {}, zatcaEnabled: false, themeId: 'classic-executive',
     });
     backfillAdminUserId = generateId();
-    const backfillAdminUsername = `backfill_admin_${backfillAdminUserId.slice(0, 8)}`;
+    const backfillAdminUsername = `backfill_admin_${backfillAdminUserId}`;
     await db.insert(schema.users).values({ id: backfillAdminUserId, username: backfillAdminUsername, password: passwordHash, role: 'admin', companyId: backfillCompanyId, isSuperAdmin: false, uiLanguage: 'en' });
     backfillAdminSessionId = await login(backfillAdminUsername);
 

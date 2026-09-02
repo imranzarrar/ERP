@@ -50,14 +50,14 @@ beforeAll(async () => {
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
 
   ownerUserId = generateId();
-  const ownerUsername = `synctest_owner_${ownerUserId.slice(0, 8)}`;
+  const ownerUsername = `synctest_owner_${ownerUserId}`;
   await db.insert(schema.users).values({
     id: ownerUserId, username: ownerUsername, password: passwordHash,
     role: 'admin', companyId: companyAId, isSuperAdmin: false, uiLanguage: 'en',
   });
 
   otherCompanyUserId = generateId();
-  const otherUsername = `synctest_other_${otherCompanyUserId.slice(0, 8)}`;
+  const otherUsername = `synctest_other_${otherCompanyUserId}`;
   await db.insert(schema.users).values({
     id: otherCompanyUserId, username: otherUsername, password: passwordHash,
     role: 'admin', companyId: companyBId, isSuperAdmin: false, uiLanguage: 'en',

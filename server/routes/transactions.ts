@@ -278,7 +278,14 @@ router.post('/quotations/:id/convert', async (req: any, res) => {
     if (!permissions.invoice.create.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     const { id } = req.params;
-    const { invoiceDate, bankId, paymentStatus, customItems, customDiscountPercentage, customTaxSlabId, customCustomerId, customNotes, createdById } = req.body;
+    // createdById is never taken from the client — every other document-creation route in
+    // this file uses req.user.id for exactly this reason (a client-supplied value here
+    // would let a caller misattribute the resulting invoice's authorship to an arbitrary
+    // user id, including one from a different company). Found by a static isolation check
+    // (scripts/check-data-isolation.mjs) after this route had been trusting req.body's own
+    // createdById for an unknown amount of time.
+    const { invoiceDate, bankId, paymentStatus, customItems, customDiscountPercentage, customTaxSlabId, customCustomerId, customNotes } = req.body;
+    const createdById = req.user.id;
 
     await db.transaction(async (tx) => {
       // 1. Fetch quotation

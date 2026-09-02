@@ -37,7 +37,7 @@ async function makeCompany(name: string) {
     name,
     address: 'Test Address',
     phone: '0000000000',
-    email: `${id.slice(0, 8)}@example.com`,
+    email: `${id}@example.com`,
     logoUrl: '',
     customHeader: '',
     customFooter: '',
@@ -62,7 +62,7 @@ beforeAll(async () => {
   // test is about the non-super-admin case, which is where the real vulnerability was.
   userAId = generateId();
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
-  const username = `attacker_${userAId.slice(0, 8)}`;
+  const username = `attacker_${userAId}`;
   await db.insert(schema.users).values({
     id: userAId,
     username,
@@ -161,7 +161,7 @@ describe('Cross-company hijack — invoices (transactions.ts)', () => {
     const bBankId = generateId();
     await db.insert(schema.bankAccounts).values({ id: bBankId, bankName: 'B Bank', accountNumber: '1', accountTitle: 'B', openingBalance: '0', companyId: companyBId });
     const bUserId = generateId();
-    await db.insert(schema.users).values({ id: bUserId, username: `bowner_${bUserId.slice(0, 8)}`, password: 'x', role: 'admin', companyId: companyBId, isSuperAdmin: false });
+    await db.insert(schema.users).values({ id: bUserId, username: `bowner_${bUserId}`, password: 'x', role: 'admin', companyId: companyBId, isSuperAdmin: false });
 
     const bInvoiceId = generateId();
     await db.insert(schema.invoices).values({
@@ -192,7 +192,7 @@ describe('Cross-company hijack — quotations (transactions.ts)', () => {
     const bTaxSlabId = generateId();
     await db.insert(schema.taxSlabs).values({ id: bTaxSlabId, name: 'B Slab Q', percentage: '15', companyId: companyBId });
     const bUserId = generateId();
-    await db.insert(schema.users).values({ id: bUserId, username: `bowner2_${bUserId.slice(0, 8)}`, password: 'x', role: 'admin', companyId: companyBId, isSuperAdmin: false });
+    await db.insert(schema.users).values({ id: bUserId, username: `bowner2_${bUserId}`, password: 'x', role: 'admin', companyId: companyBId, isSuperAdmin: false });
 
     const bQuotationId = generateId();
     await db.insert(schema.quotations).values({
@@ -225,7 +225,7 @@ describe('Cross-company hijack — expenses (expenses.ts)', () => {
     const bBankId = generateId();
     await db.insert(schema.bankAccounts).values({ id: bBankId, bankName: 'B Bank E', accountNumber: '2', accountTitle: 'B', openingBalance: '0', companyId: companyBId });
     const bUserId = generateId();
-    await db.insert(schema.users).values({ id: bUserId, username: `bowner3_${bUserId.slice(0, 8)}`, password: 'x', role: 'admin', companyId: companyBId, isSuperAdmin: false });
+    await db.insert(schema.users).values({ id: bUserId, username: `bowner3_${bUserId}`, password: 'x', role: 'admin', companyId: companyBId, isSuperAdmin: false });
 
     const bExpenseId = generateId();
     await db.insert(schema.expenses).values({

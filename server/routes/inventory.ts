@@ -1219,6 +1219,12 @@ router.post('/purchase-returns', async (req: any, res) => {
         err.status = 400;
         throw err;
       }
+      // Belt-and-suspenders alongside the received-quantity check below (lines ~1244-1256
+      // already reject returning more than was actually received against this GRN, which
+      // in practice also rejects any productId that was never received at all — but that's
+      // an indirect consequence of the quantity math, not an explicit ownership check, and
+      // doesn't cover a zero-quantity line). Found by a static isolation check.
+      await assertProductsOwnedByCompany(tx, companyId, returnData.items.map((it: any) => it.productId));
 
       const grnItems = await tx.select().from(schema.goodsReceiptNoteItems).where(eq(schema.goodsReceiptNoteItems.grnId, grn.id));
       const priorReturns = await tx.select({

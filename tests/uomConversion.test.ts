@@ -89,7 +89,7 @@ beforeAll(async () => {
 
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
   adminUserId = generateId();
-  const adminUsername = `uomtest_admin_${adminUserId.slice(0, 8)}`;
+  const adminUsername = `uomtest_admin_${adminUserId}`;
   await db.insert(schema.users).values({ id: adminUserId, username: adminUsername, password: passwordHash, role: 'admin', companyId, isSuperAdmin: false, uiLanguage: 'en' });
   adminSessionId = await login(adminUsername);
 });

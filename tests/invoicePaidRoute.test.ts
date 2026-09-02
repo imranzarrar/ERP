@@ -169,7 +169,7 @@ beforeAll(async () => {
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
 
   adminUserId = generateId();
-  const adminUsername = `paidtest_admin_${adminUserId.slice(0, 8)}`;
+  const adminUsername = `paidtest_admin_${adminUserId}`;
   await db.insert(schema.users).values({
     id: adminUserId, username: adminUsername, password: passwordHash,
     role: 'admin', companyId, isSuperAdmin: false, uiLanguage: 'en',
@@ -179,14 +179,14 @@ beforeAll(async () => {
   // invoice.create for this shape (see src/types.ts), exercising the route's own
   // 403 gate independently of the admin bypass.
   staffUserId = generateId();
-  const staffUsername = `paidtest_staff_${staffUserId.slice(0, 8)}`;
+  const staffUsername = `paidtest_staff_${staffUserId}`;
   await db.insert(schema.users).values({
     id: staffUserId, username: staffUsername, password: passwordHash,
     role: 'staff', companyId, isSuperAdmin: false, uiLanguage: 'en',
   });
 
   otherAdminUserId = generateId();
-  const otherAdminUsername = `paidtest_otheradmin_${otherAdminUserId.slice(0, 8)}`;
+  const otherAdminUsername = `paidtest_otheradmin_${otherAdminUserId}`;
   await db.insert(schema.users).values({
     id: otherAdminUserId, username: otherAdminUsername, password: passwordHash,
     role: 'admin', companyId: otherCompanyId, isSuperAdmin: false, uiLanguage: 'en',

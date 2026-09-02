@@ -71,21 +71,21 @@ beforeAll(async () => {
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
 
   ownerUserId = generateId();
-  const ownerUsername = `useradmin_owner_${ownerUserId.slice(0, 8)}`;
+  const ownerUsername = `useradmin_owner_${ownerUserId}`;
   await db.insert(schema.users).values({
     id: ownerUserId, username: ownerUsername, password: passwordHash,
     role: 'admin', companyId: companyAId, isSuperAdmin: false, uiLanguage: 'en',
   });
 
   targetUserId = generateId();
-  const targetUsername = `useradmin_target_${targetUserId.slice(0, 8)}`;
+  const targetUsername = `useradmin_target_${targetUserId}`;
   await db.insert(schema.users).values({
     id: targetUserId, username: targetUsername, password: passwordHash,
     role: 'user', companyId: companyAId, isSuperAdmin: false, uiLanguage: 'en', isActive: true,
   });
 
   otherCompanyUserId = generateId();
-  const otherUsername = `useradmin_other_${otherCompanyUserId.slice(0, 8)}`;
+  const otherUsername = `useradmin_other_${otherCompanyUserId}`;
   await db.insert(schema.users).values({
     id: otherCompanyUserId, username: otherUsername, password: passwordHash,
     role: 'admin', companyId: companyBId, isSuperAdmin: false, uiLanguage: 'en',
@@ -203,8 +203,8 @@ describe('POST /api/users — cross-company role assignment', () => {
     const { status, body } = await api(ownerSessionId, '/api/users', {
       method: 'POST',
       body: JSON.stringify({
-        id: newUserId, username: `crosscompany_ok_${newUserId.slice(0, 8)}`,
-        email: `${newUserId.slice(0, 8)}@example.com`, password: 'Pw_2026!', role: 'user',
+        id: newUserId, username: `crosscompany_ok_${newUserId}`,
+        email: `${newUserId}@example.com`, password: 'Pw_2026!', role: 'user',
         companyId: companyAId, roleIds: [roleAId],
       }),
     });
@@ -221,8 +221,8 @@ describe('POST /api/users — cross-company role assignment', () => {
     const { status, body } = await api(ownerSessionId, '/api/users', {
       method: 'POST',
       body: JSON.stringify({
-        id: newUserId, username: `crosscompany_drop_${newUserId.slice(0, 8)}`,
-        email: `${newUserId.slice(0, 8)}@example.com`, password: 'Pw_2026!', role: 'user',
+        id: newUserId, username: `crosscompany_drop_${newUserId}`,
+        email: `${newUserId}@example.com`, password: 'Pw_2026!', role: 'user',
         companyId: companyAId, roleIds: [roleBId],
       }),
     });

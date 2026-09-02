@@ -47,7 +47,7 @@ beforeAll(async () => {
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
   userId = generateId();
   await db.insert(schema.users).values({
-    id: userId, username: `race_test_${userId.slice(0, 8)}`, password: passwordHash,
+    id: userId, username: `race_test_${userId}`, password: passwordHash,
     role: 'admin', companyId, isSuperAdmin: false, uiLanguage: 'en',
   });
 

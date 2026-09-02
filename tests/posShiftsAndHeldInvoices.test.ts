@@ -64,7 +64,7 @@ beforeAll(async () => {
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
 
   adminUserId = generateId();
-  const adminUsername = `postest_admin_${adminUserId.slice(0, 8)}`;
+  const adminUsername = `postest_admin_${adminUserId}`;
   await db.insert(schema.users).values({
     id: adminUserId, username: adminUsername, password: passwordHash,
     role: 'admin', companyId, isSuperAdmin: false, uiLanguage: 'en',
@@ -74,14 +74,14 @@ beforeAll(async () => {
   // normalizePermissions falls into its fail-closed default (everything disabled),
   // exercising this route's 403 path without needing extra Role fixture rows.
   restrictedUserId = generateId();
-  const restrictedUsername = `postest_restricted_${restrictedUserId.slice(0, 8)}`;
+  const restrictedUsername = `postest_restricted_${restrictedUserId}`;
   await db.insert(schema.users).values({
     id: restrictedUserId, username: restrictedUsername, password: passwordHash,
     role: 'user', companyId, isSuperAdmin: false, uiLanguage: 'en',
   });
 
   otherCompanyAdminUserId = generateId();
-  const otherUsername = `postest_other_${otherCompanyAdminUserId.slice(0, 8)}`;
+  const otherUsername = `postest_other_${otherCompanyAdminUserId}`;
   await db.insert(schema.users).values({
     id: otherCompanyAdminUserId, username: otherUsername, password: passwordHash,
     role: 'admin', companyId: otherCompanyId, isSuperAdmin: false, uiLanguage: 'en',

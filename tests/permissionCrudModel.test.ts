@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import bcrypt from 'bcrypt';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, and } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { generateId } from '../src/id.js';
@@ -63,7 +63,7 @@ beforeAll(async () => {
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
 
   adminUserId = generateId();
-  const adminUsername = `permcrud_admin_${adminUserId.slice(0, 8)}`;
+  const adminUsername = `permcrud_admin_${adminUserId}`;
   await db.insert(schema.users).values({
     id: adminUserId, username: adminUsername, password: passwordHash,
     role: 'admin', companyId, isSuperAdmin: false, uiLanguage: 'en',
@@ -76,7 +76,7 @@ beforeAll(async () => {
   });
 
   scopedUserId = generateId();
-  const scopedUsername = `permcrud_scoped_${scopedUserId.slice(0, 8)}`;
+  const scopedUsername = `permcrud_scoped_${scopedUserId}`;
   await db.insert(schema.users).values({
     id: scopedUserId, username: scopedUsername, password: passwordHash,
     role: 'user', companyId, isSuperAdmin: false, uiLanguage: 'en',
@@ -298,7 +298,7 @@ describe('Staff enrollment: delegated users.create cannot mint an admin account'
       method: 'POST',
       body: JSON.stringify({
         id: generateId(),
-        username: `permcrud_delegated_hire_${generateId().slice(0, 8)}`,
+        username: `permcrud_delegated_hire_${generateId()}`,
         password: TEST_PASSWORD,
         email: 'hire@example.com',
         role: 'admin',        // attempted escalation
@@ -322,7 +322,7 @@ describe('Staff enrollment: delegated users.create cannot mint an admin account'
     await setRolePermissions({ users: { create: { enabled: false }, read: { enabled: true }, update: { enabled: true }, delete: { enabled: true } } });
     const res = await api(scopedSessionId, '/api/users', {
       method: 'POST',
-      body: JSON.stringify({ username: `permcrud_blocked_${generateId().slice(0, 8)}`, password: TEST_PASSWORD, email: 'blocked@example.com' }),
+      body: JSON.stringify({ username: `permcrud_blocked_${generateId()}`, password: TEST_PASSWORD, email: 'blocked@example.com' }),
     });
     expect(res.status).toBe(403);
   });
@@ -395,7 +395,14 @@ describe('Fiscal months: open and close are separately-grantable authorities', (
     });
     expect(closeRes.status).toBe(403);
 
-    await db.delete(schema.fiscalMonths).where(eq(schema.fiscalMonths.id, '2026-09'));
+    // Scoped to this test's own company — both API calls above expect 403 (no
+    // permission), so no row should exist for THIS company either way, but this must
+    // never touch another company's '2026-09' row. An unscoped delete here (matching
+    // only fiscalMonths.id) previously wiped out every other test file's fiscal month
+    // for the current calendar month whenever they happened to run in the same vitest
+    // batch — a real cross-file interference bug, not the "flaky test infra" it looked
+    // like from the failure side (see BACKLOG.md).
+    await db.delete(schema.fiscalMonths).where(and(eq(schema.fiscalMonths.id, '2026-09'), eq(schema.fiscalMonths.companyId, companyId)));
   });
 });
 

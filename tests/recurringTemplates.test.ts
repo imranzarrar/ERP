@@ -57,7 +57,7 @@ beforeAll(async () => {
 
   adminUserId = generateId();
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
-  const adminUsername = `rectemplate_admin_${adminUserId.slice(0, 8)}`;
+  const adminUsername = `rectemplate_admin_${adminUserId}`;
   await db.insert(schema.users).values({ id: adminUserId, username: adminUsername, password: passwordHash, role: 'admin', companyId, isSuperAdmin: false });
 
   const loginRes = await fetch(`${BASE_URL}/api/login`, {
@@ -186,7 +186,7 @@ describe('Accrual entry edit/delete', () => {
     const today = new Date().toISOString().split('T')[0];
     await db.insert(schema.expenses).values({
       id,
-      expenseNumber: `EXP-ACC-${id.slice(0, 8)}`,
+      expenseNumber: `EXP-ACC-${id}`,
       date: today,
       vendorId,
       taxSlabId,

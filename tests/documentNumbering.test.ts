@@ -67,12 +67,12 @@ beforeAll(async () => {
 
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
   adminUserId = generateId();
-  const adminUsername = `docnum_admin_${adminUserId.slice(0, 8)}`;
+  const adminUsername = `docnum_admin_${adminUserId}`;
   await db.insert(schema.users).values({ id: adminUserId, username: adminUsername, password: passwordHash, role: 'admin', companyId, isSuperAdmin: false, uiLanguage: 'en' });
   adminSessionId = await login(adminUsername);
 
   staffUserId = generateId();
-  const staffUsername = `docnum_staff_${staffUserId.slice(0, 8)}`;
+  const staffUsername = `docnum_staff_${staffUserId}`;
   await db.insert(schema.users).values({ id: staffUserId, username: staffUsername, password: passwordHash, role: 'user', companyId, isSuperAdmin: false, uiLanguage: 'en' });
   staffSessionId = await login(staffUsername);
 

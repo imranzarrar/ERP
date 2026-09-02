@@ -60,28 +60,28 @@ beforeAll(async () => {
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
 
   adminAUserId = generateId();
-  const adminAUsername = `settingstest_adminA_${adminAUserId.slice(0, 8)}`;
+  const adminAUsername = `settingstest_adminA_${adminAUserId}`;
   await db.insert(schema.users).values({
     id: adminAUserId, username: adminAUsername, password: passwordHash,
     role: 'admin', companyId: companyAId, isSuperAdmin: false, uiLanguage: 'en',
   });
 
   adminBUserId = generateId();
-  const adminBUsername = `settingstest_adminB_${adminBUserId.slice(0, 8)}`;
+  const adminBUsername = `settingstest_adminB_${adminBUserId}`;
   await db.insert(schema.users).values({
     id: adminBUserId, username: adminBUsername, password: passwordHash,
     role: 'admin', companyId: companyBId, isSuperAdmin: false, uiLanguage: 'en',
   });
 
   superAdminUserId = generateId();
-  const superAdminUsername = `settingstest_super_${superAdminUserId.slice(0, 8)}`;
+  const superAdminUsername = `settingstest_super_${superAdminUserId}`;
   await db.insert(schema.users).values({
     id: superAdminUserId, username: superAdminUsername, password: passwordHash,
     role: 'super-admin', companyId: companyAId, isSuperAdmin: true, uiLanguage: 'en',
   });
 
   plainUserId = generateId();
-  const plainUsername = `settingstest_plain_${plainUserId.slice(0, 8)}`;
+  const plainUsername = `settingstest_plain_${plainUserId}`;
   await db.insert(schema.users).values({
     id: plainUserId, username: plainUsername, password: passwordHash,
     role: 'user', companyId: companyAId, isSuperAdmin: false, uiLanguage: 'en',

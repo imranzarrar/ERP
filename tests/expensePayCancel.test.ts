@@ -54,7 +54,7 @@ async function insertExpense(overrides: Partial<typeof schema.expenses.$inferIns
   const today = new Date().toISOString().split('T')[0];
   await db.insert(schema.expenses).values({
     id,
-    expenseNumber: `EXP-TEST-${id.slice(0, 8)}`,
+    expenseNumber: `EXP-TEST-${id}`,
     date: today,
     vendorId,
     taxSlabId,
@@ -98,15 +98,15 @@ beforeAll(async () => {
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
 
   adminUserId = generateId();
-  const adminUsername = `exppay_admin_${adminUserId.slice(0, 8)}`;
+  const adminUsername = `exppay_admin_${adminUserId}`;
   await db.insert(schema.users).values({ id: adminUserId, username: adminUsername, password: passwordHash, role: 'admin', companyId, isSuperAdmin: false });
 
   staffUserId = generateId();
-  const staffUsername = `exppay_staff_${staffUserId.slice(0, 8)}`;
+  const staffUsername = `exppay_staff_${staffUserId}`;
   await db.insert(schema.users).values({ id: staffUserId, username: staffUsername, password: passwordHash, role: 'staff', companyId, isSuperAdmin: false });
 
   otherCompanyUserId = generateId();
-  const otherUsername = `exppay_other_${otherCompanyUserId.slice(0, 8)}`;
+  const otherUsername = `exppay_other_${otherCompanyUserId}`;
   await db.insert(schema.users).values({ id: otherCompanyUserId, username: otherUsername, password: passwordHash, role: 'admin', companyId: otherCompanyId, isSuperAdmin: false });
 
   adminSessionId = await login(adminUsername);

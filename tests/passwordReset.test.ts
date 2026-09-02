@@ -74,14 +74,14 @@ beforeAll(async () => {
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
 
   ownerUserId = generateId();
-  const ownerUsername = `pwreset_owner_${ownerUserId.slice(0, 8)}`;
+  const ownerUsername = `pwreset_owner_${ownerUserId}`;
   await db.insert(schema.users).values({
     id: ownerUserId, username: ownerUsername, email: 'owner@example.com', password: passwordHash,
     role: 'admin', companyId, isSuperAdmin: false, uiLanguage: 'en',
   });
 
   resettableUserId = generateId();
-  const resettableUsername = `pwreset_target_${resettableUserId.slice(0, 8)}`;
+  const resettableUsername = `pwreset_target_${resettableUserId}`;
   await db.insert(schema.users).values({
     id: resettableUserId, username: resettableUsername, email: 'target@example.com', password: passwordHash,
     role: 'user', companyId, isSuperAdmin: false, uiLanguage: 'en', isActive: true,
@@ -194,7 +194,7 @@ describe('POST /api/users — email is mandatory going forward', () => {
       method: 'POST',
       body: JSON.stringify({
         id: generateId(),
-        username: `pwreset_noemail_${generateId().slice(0, 8)}`,
+        username: `pwreset_noemail_${generateId()}`,
         password: 'Whatever123!',
         role: 'user',
         companyId,
@@ -210,7 +210,7 @@ describe('POST /api/users — email is mandatory going forward', () => {
       method: 'POST',
       body: JSON.stringify({
         id: generateId(),
-        username: `pwreset_bademail_${generateId().slice(0, 8)}`,
+        username: `pwreset_bademail_${generateId()}`,
         email: 'not-an-email',
         password: 'Whatever123!',
         role: 'user',
@@ -224,7 +224,7 @@ describe('POST /api/users — email is mandatory going forward', () => {
 
   it('creates a user with a valid email and persists it', async () => {
     const newUserId = generateId();
-    const username = `pwreset_withemail_${newUserId.slice(0, 8)}`;
+    const username = `pwreset_withemail_${newUserId}`;
     const { status, body } = await api(ownerSessionId, '/api/users', {
       method: 'POST',
       body: JSON.stringify({

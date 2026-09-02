@@ -75,7 +75,7 @@ beforeAll(async () => {
 
   userId = generateId();
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
-  const username = `unitcodetest_${userId.slice(0, 8)}`;
+  const username = `unitcodetest_${userId}`;
   await db.insert(schema.users).values({ id: userId, username, password: passwordHash, role: 'admin', companyId, isSuperAdmin: false });
 
   const loginRes = await fetch(`${BASE_URL}/api/login`, {

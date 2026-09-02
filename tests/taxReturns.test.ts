@@ -121,7 +121,7 @@ beforeAll(async () => {
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
 
   adminUserId = generateId();
-  const adminUsername = `taxret_admin_${adminUserId.slice(0, 8)}`;
+  const adminUsername = `taxret_admin_${adminUserId}`;
   await db.insert(schema.users).values({ id: adminUserId, username: adminUsername, password: passwordHash, role: 'admin', companyId, isSuperAdmin: false, uiLanguage: 'en' });
   adminSessionId = await login(adminUsername);
 
@@ -129,7 +129,7 @@ beforeAll(async () => {
   const readOnlyRoleId = generateId();
   await db.insert(schema.roles).values({ id: readOnlyRoleId, companyId, name: 'TaxReturns Read Only', permissions: { taxReturns: { read: { enabled: true } } } });
   readOnlyUserId = generateId();
-  const readOnlyUsername = `taxret_ro_${readOnlyUserId.slice(0, 8)}`;
+  const readOnlyUsername = `taxret_ro_${readOnlyUserId}`;
   await db.insert(schema.users).values({ id: readOnlyUserId, username: readOnlyUsername, password: passwordHash, role: 'user', companyId, isSuperAdmin: false, uiLanguage: 'en' });
   await db.insert(schema.userRoles).values({ userId: readOnlyUserId, roleId: readOnlyRoleId });
   readOnlySessionId = await login(readOnlyUsername);
@@ -138,18 +138,18 @@ beforeAll(async () => {
   const createReadRoleId = generateId();
   await db.insert(schema.roles).values({ id: createReadRoleId, companyId, name: 'TaxReturns Create Read', permissions: { taxReturns: { create: { enabled: true }, read: { enabled: true } } } });
   createReadUserId = generateId();
-  const createReadUsername = `taxret_cr_${createReadUserId.slice(0, 8)}`;
+  const createReadUsername = `taxret_cr_${createReadUserId}`;
   await db.insert(schema.users).values({ id: createReadUserId, username: createReadUsername, password: passwordHash, role: 'user', companyId, isSuperAdmin: false, uiLanguage: 'en' });
   await db.insert(schema.userRoles).values({ userId: createReadUserId, roleId: createReadRoleId });
   createReadSessionId = await login(createReadUsername);
 
   seqAdminUserId = generateId();
-  const seqAdminUsername = `taxret_seq_${seqAdminUserId.slice(0, 8)}`;
+  const seqAdminUsername = `taxret_seq_${seqAdminUserId}`;
   await db.insert(schema.users).values({ id: seqAdminUserId, username: seqAdminUsername, password: passwordHash, role: 'admin', companyId: seqCompanyId, isSuperAdmin: false, uiLanguage: 'en' });
   seqAdminSessionId = await login(seqAdminUsername);
 
   zatcaPendingAdminUserId = generateId();
-  const zatcaPendingAdminUsername = `taxret_zp_${zatcaPendingAdminUserId.slice(0, 8)}`;
+  const zatcaPendingAdminUsername = `taxret_zp_${zatcaPendingAdminUserId}`;
   await db.insert(schema.users).values({ id: zatcaPendingAdminUserId, username: zatcaPendingAdminUsername, password: passwordHash, role: 'admin', companyId: zatcaPendingCompanyId, isSuperAdmin: false, uiLanguage: 'en' });
   zatcaPendingAdminSessionId = await login(zatcaPendingAdminUsername);
   zatcaPendingTaxSlabId = generateId();
@@ -371,7 +371,7 @@ describe('Unreported ZATCA invoices block both Generate and File', () => {
   it('generate is rejected while an Active invoice in the quarter has not completed ZATCA submission', async () => {
     pendingInvoiceId = generateId();
     await db.insert(schema.invoices).values({
-      id: pendingInvoiceId, invoiceNumber: `PENDING-${pendingInvoiceId.slice(0, 8)}`,
+      id: pendingInvoiceId, invoiceNumber: `PENDING-${pendingInvoiceId}`,
       date: `${pendingYear}-02-15`, customerId: zatcaPendingCustomerId, taxSlabId: zatcaPendingTaxSlabId, bankId: zatcaPendingBankId, notes: '', status: 'Active',
       paymentStatus: 'Unpaid', createdById: zatcaPendingAdminUserId, createdAt: new Date(), amountPaid: '0',
       companyId: zatcaPendingCompanyId, documentType: 'Invoice', zatcaStatus: 'NOT_SUBMITTED',

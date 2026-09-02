@@ -85,14 +85,14 @@ beforeAll(async () => {
   // Super-admin's own HOME company is A - the exact scenario in the real bug report:
   // logged-in user's own companyId differs from the company they actively switch to.
   superAdminId = generateId();
-  const superAdminUsername = `scopetest_super_${superAdminId.slice(0, 8)}`;
+  const superAdminUsername = `scopetest_super_${superAdminId}`;
   await db.insert(schema.users).values({
     id: superAdminId, username: superAdminUsername, password: passwordHash,
     role: 'admin', companyId: companyAId, isSuperAdmin: true, uiLanguage: 'en',
   });
 
   scopedAdminId = generateId();
-  const scopedAdminUsername = `scopetest_admin_${scopedAdminId.slice(0, 8)}`;
+  const scopedAdminUsername = `scopetest_admin_${scopedAdminId}`;
   await db.insert(schema.users).values({
     id: scopedAdminId, username: scopedAdminUsername, password: passwordHash,
     role: 'admin', companyId: companyAId, isSuperAdmin: false, uiLanguage: 'en',

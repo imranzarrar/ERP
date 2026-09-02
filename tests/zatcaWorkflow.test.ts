@@ -89,7 +89,7 @@ beforeAll(async () => {
 
   userId = generateId();
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
-  const username = `autotest_${userId.slice(0, 8)}`;
+  const username = `autotest_${userId}`;
   await db.insert(schema.users).values({
     id: userId,
     username,

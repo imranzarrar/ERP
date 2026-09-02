@@ -49,7 +49,7 @@ beforeAll(async () => {
 
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
   superAdminUserId = generateId();
-  const superAdminUsername = `newcotest_super_${superAdminUserId.slice(0, 8)}`;
+  const superAdminUsername = `newcotest_super_${superAdminUserId}`;
   await db.insert(schema.users).values({
     id: superAdminUserId, username: superAdminUsername, password: passwordHash,
     role: 'super-admin', companyId: superAdminHomeCompanyId, isSuperAdmin: true, uiLanguage: 'en',
