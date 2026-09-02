@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation, usePermissions } from '../hooks';
 import { DatabaseState } from '../dbStore';
+import { getMonthToDateRange } from '../dateUtils';
 import { Printer, Filter } from 'lucide-react';
 
 type ReportType = 'StockValuation' | 'ItemProfitability' | 'LowStock' | 'StockTakeVarianceHistory' | 'StockMovementLedger';
@@ -44,8 +45,8 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
   const currencySymbol = db.companySetup?.currency || 'SAR';
   const companyId = db.selectedCompanyId;
 
-  const [startDate, setStartDate] = React.useState('2026-06-01');
-  const [endDate, setEndDate] = React.useState('2026-06-30');
+  const [startDate, setStartDate] = React.useState(() => getMonthToDateRange().start);
+  const [endDate, setEndDate] = React.useState(() => getMonthToDateRange().end);
   const [selectedWarehouseId, setSelectedWarehouseId] = React.useState('ALL');
   const [selectedProductId, setSelectedProductId] = React.useState('ALL');
 

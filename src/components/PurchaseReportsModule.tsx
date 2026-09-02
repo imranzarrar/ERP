@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation, usePermissions } from '../hooks';
 import { DatabaseState } from '../dbStore';
+import { getMonthToDateRange } from '../dateUtils';
 import { Printer, Filter } from 'lucide-react';
 
 type ReportType = 'PurchaseRegister' | 'VendorStatement' | 'PoStatus' | 'GrnPoVariance';
@@ -41,8 +42,8 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
   const currencySymbol = db.companySetup?.currency || 'SAR';
   const companyId = db.selectedCompanyId;
 
-  const [startDate, setStartDate] = React.useState('2026-06-01');
-  const [endDate, setEndDate] = React.useState('2026-06-30');
+  const [startDate, setStartDate] = React.useState(() => getMonthToDateRange().start);
+  const [endDate, setEndDate] = React.useState(() => getMonthToDateRange().end);
   const [selectedVendorId, setSelectedVendorId] = React.useState('ALL');
   const [statementVendorId, setStatementVendorId] = React.useState('');
   const companyVendors = db.vendors.filter(v => v.companyId === companyId);

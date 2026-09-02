@@ -2,6 +2,7 @@ import React from 'react';
 import { useTranslation } from '../hooks';
 import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, getDefaultTaxSlabId, calculateInvoiceTotals } from '../dbStore';
 import { generateId } from '../id';
+import { getMonthToDateRange } from '../dateUtils';
 import { Expense, ExpenseItem, Vendor, TaxSlab, BankAccount, User, normalizePermissions } from '../types';
 import ItemCatalogSearch from './ItemCatalogSearch';
 import {
@@ -57,25 +58,10 @@ export default function ExpenseModule({ db, onPrintDoc, mode, onDone, onCreateNe
  const [currentPage, setCurrentPage] = React.useState(1);
  const itemsPerPage = 20;
 
- // List Filters
- const [filterStartDate, setFilterStartDate] = React.useState<string>(openMonth ? `${openMonth.id}-01` : '');
- const [filterEndDate, setFilterEndDate] = React.useState<string>(() => {
- if (!openMonth) return '';
- const parts = openMonth.id.split('-');
- const lastDay = new Date(Number(parts[0]), Number(parts[1]), 0).getDate();
- return `${openMonth.id}-${lastDay.toString().padStart(2, '0')}`;
- });
+ // List Filters — default to start of the current month through today.
+ const [filterStartDate, setFilterStartDate] = React.useState<string>(() => getMonthToDateRange().start);
+ const [filterEndDate, setFilterEndDate] = React.useState<string>(() => getMonthToDateRange().end);
  const [filterStatus, setFilterStatus] = React.useState<'All' | 'Unpaid'>('All');
-
- // Update filters if openMonth changes
- React.useEffect(() => {
- if (openMonth) {
- setFilterStartDate(`${openMonth.id}-01`);
- const parts = openMonth.id.split('-');
- const lastDay = new Date(Number(parts[0]), Number(parts[1]), 0).getDate();
- setFilterEndDate(`${openMonth.id}-${lastDay.toString().padStart(2, '0')}`);
- }
- }, [openMonth?.id]);
 
 
  // Notifications

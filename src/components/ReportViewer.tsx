@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation, usePermissions } from '../hooks';
 import { DatabaseState, calculateInvoiceTotals, getBankBalance, generateBankLedger, getInvoiceSign } from '../dbStore';
+import { getMonthToDateRange } from '../dateUtils';
 import {
  FileText,
  Calendar,
@@ -78,8 +79,8 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
  .some(list => Array.isArray(list) && list.length >= RECORD_LIST_CAP);
 
  // Universal Filter States
- const [startDate, setStartDate] = React.useState('2026-06-01');
- const [endDate, setEndDate] = React.useState('2026-06-30');
+ const [startDate, setStartDate] = React.useState(() => getMonthToDateRange().start);
+ const [endDate, setEndDate] = React.useState(() => getMonthToDateRange().end);
  const [accountingBasis, setAccountingBasis] = React.useState<'Accrual' | 'Cash'>('Accrual');
  const [selectedCustomerId, setSelectedCustomerId] = React.useState('ALL');
  const [selectedVendorId, setSelectedVendorId] = React.useState('ALL');

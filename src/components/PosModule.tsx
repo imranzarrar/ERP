@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { DatabaseState, calculateInvoiceTotals, getDefaultTaxSlabId } from '../dbStore';
+import { getMonthToDateRange } from '../dateUtils';
 import { ProductService, Customer, PosShift, PosHeldInvoice, PosCartItem, TaxSlab, Invoice, BankAccount } from '../types';
 import { Search, ShoppingCart, ShoppingBag, Trash2, Printer, Check, X, Pause, Play, Users, CreditCard, Banknote, UserPlus, LogOut, PackageSearch, Tag, Receipt, Maximize, Minimize } from 'lucide-react';
 import { useTranslation, usePermissions } from '../hooks';
@@ -1000,10 +1001,8 @@ function PosShiftsHistory({ db, activeCompanyId, currentUser }: any) {
   const currency = activeCompany?.currency || 'SAR';
   const [viewMode, setViewMode] = useState<'shifts' | 'audit'>('shifts');
 
-  const today = new Date();
-  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  const [fromDate, setFromDate] = useState(firstDayOfMonth.toISOString().split('T')[0]);
-  const [toDate, setToDate] = useState(today.toISOString().split('T')[0]);
+  const [fromDate, setFromDate] = useState(() => getMonthToDateRange().start);
+  const [toDate, setToDate] = useState(() => getMonthToDateRange().end);
 
   const shifts = useMemo(() => {
     const start = new Date(fromDate);

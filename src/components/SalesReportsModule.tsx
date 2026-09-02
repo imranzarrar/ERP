@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation, usePermissions } from '../hooks';
 import { DatabaseState, calculateInvoiceTotals, getInvoiceSign } from '../dbStore';
+import { getMonthToDateRange } from '../dateUtils';
 import { Printer, Filter } from 'lucide-react';
 
 type ReportType = 'SalesRegister' | 'ItemWiseSales' | 'CustomerStatement' | 'QuotationConversion' | 'SalesByStaff' | 'PosShiftSummary';
@@ -38,8 +39,8 @@ export default function SalesReportsModule({ db, defaultReportType, onPrintDoc }
   const currencySymbol = db.companySetup?.currency || 'SAR';
   const companyId = db.selectedCompanyId;
 
-  const [startDate, setStartDate] = React.useState('2026-06-01');
-  const [endDate, setEndDate] = React.useState('2026-06-30');
+  const [startDate, setStartDate] = React.useState(() => getMonthToDateRange().start);
+  const [endDate, setEndDate] = React.useState(() => getMonthToDateRange().end);
   const [selectedCustomerId, setSelectedCustomerId] = React.useState('ALL');
   // Required (no 'ALL' default) — a running-balance statement only makes sense for one
   // customer at a time, unlike every other report here.

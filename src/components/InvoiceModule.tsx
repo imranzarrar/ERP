@@ -3,6 +3,7 @@ import { useTranslation } from '../hooks';
 // from 'react';
 import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, getDefaultTaxSlabId, calculateInvoiceTotals } from '../dbStore';
 import { generateId } from '../id';
+import { getMonthToDateRange } from '../dateUtils';
 import { Invoice, InvoiceItem, Customer, TaxSlab, BankAccount, User, normalizePermissions } from '../types';
 import StatusPill, { StatusPillTone } from './StatusPill';
 import ItemCatalogSearch from './ItemCatalogSearch';
@@ -83,9 +84,9 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  const [currentPage, setCurrentPage] = React.useState(1);
  const itemsPerPage = 20;
 
- // List Filters
- const [filterStartDate, setFilterStartDate] = React.useState<string>('');
- const [filterEndDate, setFilterEndDate] = React.useState<string>("");
+ // List Filters — default to start of the current month through today.
+ const [filterStartDate, setFilterStartDate] = React.useState<string>(() => getMonthToDateRange().start);
+ const [filterEndDate, setFilterEndDate] = React.useState<string>(() => getMonthToDateRange().end);
  const [filterStatus, setFilterStatus] = React.useState<'All' | 'Unpaid'>('All');
  const [filterZatcaStatus, setFilterZatcaStatus] = React.useState<string>('All');
  const [filterDocType, setFilterDocType] = React.useState<'All' | 'Invoice' | 'CreditNote' | 'DebitNote'>('All');
