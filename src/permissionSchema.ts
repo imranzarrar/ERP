@@ -187,6 +187,14 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
     ]
   },
   {
+    id: 'modifierGroups', groupId: 'master_registries', label: 'Modifier Groups', hidden: true, leaves: [
+      { key: 'create', label: 'Create Modifier Groups', fallbackFrom: 'products.create' },
+      { key: 'read', label: 'View Modifier Groups', fallbackFrom: 'products.read' },
+      { key: 'update', label: 'Edit Modifier Groups', fallbackFrom: 'products.update' },
+      { key: 'delete', label: 'Deactivate Modifier Groups', fallbackFrom: 'products.delete' },
+    ]
+  },
+  {
     id: 'warehouses', groupId: 'master_registries', label: 'Warehouses', hidden: true, leaves: [
       { key: 'create', label: 'Create Warehouses', fallbackFrom: 'products.create' },
       { key: 'read', label: 'View Warehouses', fallbackFrom: 'products.read' },

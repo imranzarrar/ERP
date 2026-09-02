@@ -222,6 +222,12 @@ export const productCategories = pgTable('product_categories', {
   salesGlGroup: text('sales_gl_group'),       // e.g. '4000 - Product Sales' (Revenue)
   cogsGlGroup: text('cogs_gl_group'),         // e.g. '5000 - Cost of Goods Sold' (Expense)
   isActive: boolean('is_active').default(true),
+  // POS presentation only — deliberately reusing this same accounting category rather
+  // than a second "POS category" concept, since in practice they're almost always the
+  // same groupings (e.g. "Coffee", "Bakery"). None of these three affect GL mapping.
+  posTabColor: text('pos_tab_color'), // nullable hex; null falls back to the brand accent
+  posTabOrder: integer('pos_tab_order'), // nullable; lower shows first, null sorts last (alphabetically)
+  showOnPosTabs: boolean('show_on_pos_tabs').default(true), // lets an internal/accounting-only category opt out of the cashier's tab strip
   companyId: uuid('company_id').notNull().references(() => companies.id),
 }, (table) => ({
   parentCategoryFk: index('product_categories_parent_idx').on(table.parentCategoryId),
@@ -428,6 +434,12 @@ export const productsServices = pgTable('products_services', {
   averageSalePrice: decimal('average_sale_price', { precision: 12, scale: 4 }).default('0'),
   totalQuantityPurchased: decimal('total_quantity_purchased', { precision: 14, scale: 3 }).default('0'),
   totalQuantitySold: decimal('total_quantity_sold', { precision: 14, scale: 3 }).default('0'),
+  // Nullable — null means this item is not shown on the POS Terminal's priority grid
+  // (still reachable there via its category tab or search). A pure POS-presentation
+  // ordering hint, unrelated to isPosItem (which controls whether the item is sellable
+  // via POS at all) — set from the "Arrange POS Grid" panel in POS Terminal Settings,
+  // never affects invoices/quotations/reports.
+  posGridPosition: integer('pos_grid_position'),
   companyId: uuid('company_id').notNull().references(() => companies.id),
 }, (table) => ({
   companyIdIdx: index('products_services_company_id_idx').on(table.companyId),
@@ -962,6 +974,48 @@ export const unitsOfMeasure = pgTable('units_of_measure', {
   isActive: boolean('is_active').default(true),
   companyId: uuid('company_id').notNull().references(() => companies.id),
 });
+
+// POS-only, optional per product (e.g. "Size", "Milk") — a product with zero rows in
+// productModifierGroups below has no modifiers, the default/untouched state for every
+// existing product. Selections made from these are resolved to plain description text +
+// a final unitCost on the POS cart line BEFORE it ever becomes an invoice_items row, so
+// invoices/quotations/reports/ZATCA never need to know this concept exists — see
+// PosModule.tsx's handleAddToCart.
+export const modifierGroups = pgTable('modifier_groups', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  name: text('name').notNull(), // e.g. "Size", "Milk", "Extra Shot"
+  isRequired: boolean('is_required').notNull().default(false),
+  isActive: boolean('is_active').default(true),
+  sortOrder: integer('sort_order'),
+}, (table) => ({
+  companyIdIdx: index('modifier_groups_company_id_idx').on(table.companyId),
+}));
+
+export const modifierChoices = pgTable('modifier_choices', {
+  id: uuid('id').primaryKey(),
+  modifierGroupId: uuid('modifier_group_id').references(() => modifierGroups.id).notNull(),
+  label: text('label').notNull(), // e.g. "Medium", "Oat Milk"
+  priceDelta: decimal('price_delta', { precision: 10, scale: 2 }).notNull().default('0'),
+  sortOrder: integer('sort_order'),
+}, (table) => ({
+  groupIdIdx: index('modifier_choices_group_id_idx').on(table.modifierGroupId),
+}));
+
+// Which modifier groups attach to which product, and their display order in the POS
+// modal. No companyId of its own (same convention as invoiceItems/quotationItems) —
+// isolation is enforced at write time by checking both productId and modifierGroupId
+// belong to the caller's own company (assertModifierGroupsOwnedByCompany + the existing
+// assertProductsOwnedByCompany), not by a column on this join table.
+export const productModifierGroups = pgTable('product_modifier_groups', {
+  id: uuid('id').primaryKey(),
+  productId: uuid('product_id').references(() => productsServices.id).notNull(),
+  modifierGroupId: uuid('modifier_group_id').references(() => modifierGroups.id).notNull(),
+  sortOrder: integer('sort_order'),
+}, (table) => ({
+  productIdIdx: index('product_modifier_groups_product_id_idx').on(table.productId),
+  uniquePair: uniqueIndex('product_modifier_groups_unique').on(table.productId, table.modifierGroupId),
+}));
 
 // A product's packaging/alternate units — e.g. "Cell 4 AMP" (base unit: Piece) also sold/
 // bought as "Carton-12" (1 Carton = 12 Piece). Inventory (inventoryStocks/

@@ -32,6 +32,7 @@ import {
   ProductWarehouse,
   JobTitle,
   Employee,
+  ModifierGroup,
   Role,
   UserRoleAssignment,
   PurchaseBill,
@@ -85,6 +86,7 @@ export interface DatabaseState {
   productUnitConversions?: ProductUnitConversion[];
   jobTitles?: JobTitle[];
   employees?: Employee[];
+  modifierGroups?: ModifierGroup[];
   productWarehouses?: ProductWarehouse[];
   counters: {
     quotation: number;

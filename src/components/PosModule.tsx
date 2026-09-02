@@ -224,6 +224,23 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
   const products = (db.products || []).filter((p: ProductService) => p.companyId === activeCompanyId);
   const categories = ['All', ...Array.from(new Set(products.map((p: ProductService) => p.category).filter(Boolean)))];
 
+  // Grid density — configurable per company (Settings & Companies -> POS Terminal
+  // Settings), not a fixed Tailwind breakpoint. Undefined means "use the Standard
+  // preset," preserving the old fixed look for any company that hasn't configured this.
+  const gridColumns = posSettings.gridColumns || 5;
+  const gridRows = posSettings.gridRows || 4;
+  const gridCapacity = gridColumns * gridRows;
+  // The modifier-group definitions for this company, keyed by id, for quick lookup when
+  // a tile is tapped (see handleAddToCart below).
+  const modifierGroupsById = React.useMemo(() => {
+    const map = new Map<string, any>();
+    for (const g of (db.modifierGroups || [])) map.set(g.id, g);
+    return map;
+  }, [db.modifierGroups]);
+  const [pendingModifierProduct, setPendingModifierProduct] = useState<(ProductService & { unitOfMeasureId?: string | null; conversionFactor?: number }) | null>(null);
+  const [pendingModifierChoices, setPendingModifierChoices] = useState<Record<string, string>>({});
+  React.useEffect(() => { setPendingModifierChoices({}); }, [pendingModifierProduct]);
+
   // Product grid tiles: one per sellable product (its base unit), plus one extra tile per
   // active packaging/alternate unit it has configured (see ProductUnitConversion) —
   // each carrying that unit's OWN barcode/sku/price, so typing a carton's own barcode
@@ -249,30 +266,74 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
     return tiles;
   }, [products, db.productUnitConversions, db.unitsOfMeasure, t]);
 
-  const filteredProductServices = posCatalogTiles.filter((p) => {
-    if (selectedCategory !== 'All' && p.category !== selectedCategory) return false;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      return p.name.toLowerCase().includes(q) || (p.sku && p.sku.toLowerCase().includes(q)) || (p.barcode && p.barcode.toLowerCase().includes(q));
+  const filteredProductServices = React.useMemo(() => {
+    const matches = posCatalogTiles.filter((p) => {
+      if (selectedCategory !== 'All' && p.category !== selectedCategory) return false;
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        return p.name.toLowerCase().includes(q) || (p.sku && p.sku.toLowerCase().includes(q)) || (p.barcode && p.barcode.toLowerCase().includes(q));
+      }
+      return true;
+    });
+    // The default "All" view (no category picked, not searching) is the priority grid:
+    // only items with a posGridPosition set, sorted by it, capped to the configured
+    // density — the ~30-of-40-items curation this exists for. Picking a specific
+    // category, or searching, reaches every matching item regardless of grid placement
+    // (both already existed before this feature and are left exactly as they were).
+    if (selectedCategory === 'All' && !searchQuery) {
+      return matches
+        .filter((p: any) => p.posGridPosition != null)
+        .sort((a: any, b: any) => a.posGridPosition - b.posGridPosition)
+        .slice(0, gridCapacity);
     }
-    return true;
-  });
+    return matches;
+  }, [posCatalogTiles, selectedCategory, searchQuery, gridCapacity]);
 
-  const handleAddToCart = (product: ProductService & { unitOfMeasureId?: string | null; conversionFactor?: number }) => {
+  // A stable string identifying one specific modifier selection combo, so two
+  // differently-customized lines of the same product never merge into one (an empty
+  // selection — the overwhelming majority of items, which have no modifiers — always
+  // produces the same empty key, so today's merge-by-productId behavior is unchanged
+  // for every existing/non-modified item).
+  const modifierKey = (selections?: PosCartItem['selectedModifiers']) =>
+    (selections || []).map(s => `${s.groupName}:${s.choiceLabel}`).sort().join('|');
+
+  const addResolvedItemToCart = (
+    product: ProductService & { unitOfMeasureId?: string | null; conversionFactor?: number },
+    selections?: PosCartItem['selectedModifiers']
+  ) => {
     const qty = isReturnMode ? -1 : 1;
+    const deltaTotal = (selections || []).reduce((s, m) => s + (m.priceDelta || 0), 0);
+    const unitPrice = product.unitPrice + deltaTotal;
+    const displayName = selections && selections.length
+      ? `${product.name} (${selections.map(s => s.choiceLabel).join(', ')})`
+      : product.name;
+    const key = modifierKey(selections);
     // A packaging-unit tile and its product's own base-unit tile share the same
     // productId but represent different units — they must stay separate cart lines,
     // not merge into one (merging would silently discard which unit was actually sold).
+    // Same reasoning extends to two different modifier selections of one product.
     setCart(prev => {
-      const existing = prev.find(item => item.productId === product.id && (item.unitOfMeasureId || null) === (product.unitOfMeasureId || null));
+      const existing = prev.find(item => item.productId === product.id
+        && (item.unitOfMeasureId || null) === (product.unitOfMeasureId || null)
+        && modifierKey(item.selectedModifiers) === key);
       if (existing) {
         return prev.map(item => item === existing ? { ...item, quantity: item.quantity + qty, total: (item.quantity + qty) * item.unitPrice } : item);
       }
       return [...prev, {
-        productId: product.id, productName: product.name, quantity: qty, unitPrice: product.unitPrice, discount: 0, total: qty * product.unitPrice,
+        productId: product.id, productName: displayName, quantity: qty, unitPrice, discount: 0, total: qty * unitPrice,
         unitOfMeasureId: product.unitOfMeasureId || undefined, conversionFactor: product.conversionFactor,
+        selectedModifiers: selections && selections.length ? selections : undefined,
       }];
     });
+  };
+
+  const handleAddToCart = (product: ProductService & { unitOfMeasureId?: string | null; conversionFactor?: number }) => {
+    const groupIds = (product.modifierGroupIds || []).filter(id => modifierGroupsById.has(id));
+    if (groupIds.length > 0) {
+      setPendingModifierProduct(product);
+      return;
+    }
+    addResolvedItemToCart(product);
   };
 
   const handleUpdateCartItem = (productId: string, delta: number) => {
@@ -564,24 +625,34 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
           </button>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-          {categories.map((c: string) => (
-            <button 
-              key={c}
-              onClick={() => setSelectedCategory(c)}
-              className={`px-4 py-2 rounded-xl font-bold whitespace-nowrap transition-all ${selectedCategory === c ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-            >
-              {c === 'All' ? t('All') : c}
-            </button>
-          ))}
+          {categories.map((c: string) => {
+            // p.category is a free-typed string, matched by name against
+            // productCategories (which is what carries the POS tab color) — best-effort
+            // only; a category with no matching row (or no color set) falls back to the
+            // brand indigo used before this feature existed.
+            const catRow = c !== 'All' ? (db.productCategories || []).find((pc: any) => pc.name === c) : null;
+            const tabColor = catRow?.posTabColor;
+            const isActive = selectedCategory === c;
+            return (
+              <button
+                key={c}
+                onClick={() => setSelectedCategory(c)}
+                style={isActive && tabColor ? { backgroundColor: tabColor } : undefined}
+                className={`px-4 py-2 rounded-xl font-bold whitespace-nowrap transition-all ${isActive ? (tabColor ? 'text-white' : 'bg-indigo-600 text-white') : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              >
+                {c === 'All' ? t('Favorites') : c}
+              </button>
+            );
+          })}
         </div>
       </div>
-      
+
       {/* ProductService Grid */}
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${gridColumns}, 1fr)` }}>
           {filteredProductServices.map((p: ProductService) => (
-            <button 
-              key={p.id} 
+            <button
+              key={p.id}
               onClick={() => handleAddToCart(p)}
               className="bg-white border border-slate-200 rounded-2xl overflow-hidden hover:shadow-lg hover:border-indigo-300 transition-all text-left flex flex-col h-48 active:scale-95"
             >
@@ -720,6 +791,76 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
       </div>
       {renderProductServiceGrid()}
       {renderCart()}
+
+      {/* POS MODIFIER MODAL — shown when a tapped product has attached modifier groups
+          (Size, Milk, Extra Shot…). Required groups block Confirm until chosen; optional
+          groups can be skipped entirely (no delta applied). See addResolvedItemToCart. */}
+      {pendingModifierProduct && (() => {
+        const product = pendingModifierProduct;
+        const groups = (product.modifierGroupIds || [])
+          .map(id => modifierGroupsById.get(id))
+          .filter(Boolean)
+          .sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+        const allRequiredMet = groups.every((g: any) => !g.isRequired || pendingModifierChoices[g.id]);
+        const handleConfirm = () => {
+          const selections = groups
+            .filter((g: any) => pendingModifierChoices[g.id])
+            .map((g: any) => {
+              const choice = g.choices.find((c: any) => c.id === pendingModifierChoices[g.id]);
+              return choice ? { groupName: g.name, choiceLabel: choice.label, priceDelta: Number(choice.priceDelta) || 0 } : null;
+            })
+            .filter(Boolean) as PosCartItem['selectedModifiers'];
+          addResolvedItemToCart(product, selections);
+          setPendingModifierProduct(null);
+        };
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setPendingModifierProduct(null)}>
+            <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <div className="font-extrabold text-slate-900 text-lg">{product.name}</div>
+                  <div className="text-slate-400 text-xs font-bold">{t('From')} {currency} {Number(product.unitPrice || 0).toFixed(2)}</div>
+                </div>
+                <button onClick={() => setPendingModifierProduct(null)} className="p-1.5 bg-slate-100 rounded-full text-slate-500 hover:bg-slate-200">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              {groups.map((g: any) => (
+                <div key={g.id} className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-bold text-slate-800 text-sm">{g.name}</span>
+                    <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${g.isRequired ? 'bg-rose-50 text-rose-600' : 'bg-slate-100 text-slate-500'}`}>
+                      {g.isRequired ? t('Required') : t('Optional')}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {g.choices.map((c: any) => {
+                      const selected = pendingModifierChoices[g.id] === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setPendingModifierChoices(prev => ({ ...prev, [g.id]: selected ? '' : c.id }))}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${selected ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-indigo-300'}`}
+                        >
+                          {c.label}{Number(c.priceDelta) ? ` (${Number(c.priceDelta) > 0 ? '+' : ''}${Number(c.priceDelta).toFixed(2)})` : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              <button
+                onClick={handleConfirm}
+                disabled={!allRequiredMet}
+                className="w-full mt-2 py-3 rounded-xl font-extrabold text-sm bg-indigo-600 text-white disabled:bg-slate-200 disabled:text-slate-400 transition-colors"
+              >
+                {allRequiredMet ? t('Add to Order') : t('Choose required options above')}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* HOLD MODAL */}
       {showHoldModal && (

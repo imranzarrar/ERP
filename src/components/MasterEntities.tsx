@@ -129,6 +129,8 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
   const [prodMinLevel, setProdMinLevel] = React.useState('');
   const [prodMaxLevel, setProdMaxLevel] = React.useState('');
   const [prodReorderLeadTime, setProdReorderLeadTime] = React.useState('');
+  const [prodGridPosition, setProdGridPosition] = React.useState('');
+  const [prodModifierGroupIds, setProdModifierGroupIds] = React.useState<string[]>([]);
 
   // Category fields
   const [catName, setCatName] = React.useState('');
@@ -205,6 +207,8 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
     setProdMinLevel('');
     setProdMaxLevel('');
     setProdReorderLeadTime('');
+    setProdGridPosition('');
+    setProdModifierGroupIds([]);
     setAddPucUnitId('');
     setAddPucFactor('');
     setAddPucBarcode('');
@@ -442,7 +446,9 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  binLocation: prodBinLocation,
  minLevel: prodMinLevel ? String(prodMinLevel) : null,
  maxLevel: prodMaxLevel ? String(prodMaxLevel) : null,
- reorderLeadTime: prodReorderLeadTime
+ reorderLeadTime: prodReorderLeadTime,
+ posGridPosition: prodGridPosition ? parseInt(prodGridPosition, 10) : null,
+ modifierGroupIds: prodModifierGroupIds,
  };
  newDb.products[idx] = savedProd;
  }
@@ -465,6 +471,8 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
       minLevel: prodMinLevel ? String(prodMinLevel) : null,
       maxLevel: prodMaxLevel ? String(prodMaxLevel) : null,
       reorderLeadTime: prodReorderLeadTime,
+      posGridPosition: prodGridPosition ? parseInt(prodGridPosition, 10) : null,
+      modifierGroupIds: prodModifierGroupIds,
  companyId: db.selectedCompanyId
  };
  newDb.products.push(savedProd);
@@ -891,6 +899,8 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
      setProdMinLevel(entity.minLevel ? String(entity.minLevel) : '');
      setProdMaxLevel(entity.maxLevel ? String(entity.maxLevel) : '');
      setProdReorderLeadTime(entity.reorderLeadTime || '');
+     setProdGridPosition(entity.posGridPosition != null ? String(entity.posGridPosition) : '');
+     setProdModifierGroupIds(Array.isArray(entity.modifierGroupIds) ? entity.modifierGroupIds : []);
 
      // Load associated warehouse links
      const associated = db.productWarehouses.filter((pw: any) => pw.productId === entity.id);
@@ -1588,6 +1598,30 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('SKU')}</label>
                         <input type="text" placeholder="Stock Keeping Unit" value={prodSku} onChange={(e) => setProdSku(e.target.value)} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
                       </div>
+                      {prodIsPos && (
+                        <div className="col-span-2 md:col-span-1 space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('POS Grid Position')}</label>
+                          <input type="number" min="1" placeholder={t('Not on priority grid')} value={prodGridPosition} onChange={(e) => setProdGridPosition(e.target.value)} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
+                          <p className="text-[10px] text-slate-400">{t('Lower shows first on the POS Terminal grid. Leave blank to keep this item off the priority grid (still reachable via category/search).')}</p>
+                        </div>
+                      )}
+                      {prodIsPos && (db.modifierGroups || []).length > 0 && (
+                        <div className="col-span-2 space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('POS Modifiers (optional)')}</label>
+                          <div className="flex flex-wrap gap-2 bg-white border border-slate-200 rounded-xl p-3">
+                            {(db.modifierGroups || []).filter((g: any) => g.isActive !== false).map((g: any) => {
+                              const checked = prodModifierGroupIds.includes(g.id);
+                              return (
+                                <label key={g.id} className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold cursor-pointer border ${checked ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+                                  <input type="checkbox" checked={checked} onChange={() => setProdModifierGroupIds(prev => checked ? prev.filter(id => id !== g.id) : [...prev, g.id])} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5" />
+                                  {g.name}{g.isRequired ? ' *' : ''}
+                                </label>
+                              );
+                            })}
+                          </div>
+                          <p className="text-[10px] text-slate-400">{t('A customer picks one of these on the POS Terminal before this item is added to the sale. Leave all unchecked for a plain item with no customization.')}</p>
+                        </div>
+                      )}
                       <div className="col-span-2 space-y-1">
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Product Image (Base64)')}</label>
                         <input type="file" accept="image/*" onChange={(e) => {

@@ -50,6 +50,21 @@ function buildZatcaError(step: string, message: string, httpStatus?: number, res
   return err;
 }
 
+// Node's fetch (undici) throws a bare `TypeError: fetch failed` — with the actual reason
+// (DNS lookup, connection refused, timeout) buried in `err.cause`, never in `err.message`
+// — for any genuine network-connectivity failure (no internet, ZATCA gateway unreachable,
+// DNS down). Surfacing that raw "fetch failed" string to a company admin as the recorded
+// ZATCA error (previously what every catch block below did verbatim) is meaningless to a
+// non-technical reader. This only rewrites *that* specific class of failure to something
+// a human can act on; a real ZATCA-returned error (wrong OTP, rejected invoice, malformed
+// response) keeps its own specific message untouched, since that detail is what someone
+// diagnosing a genuine rejection actually needs.
+function describeFetchFailure(err: any): string {
+  const isNetworkFailure = err instanceof TypeError && err.message === 'fetch failed';
+  if (!isNetworkFailure) return err?.message;
+  return 'Unable to connect to the ZATCA server. Check the network connection and try again.';
+}
+
 export class ZatcaApiClient {
   private environment: 'sandbox' | 'simulation' | 'production';
   private baseUrl: string;
@@ -126,7 +141,7 @@ export class ZatcaApiClient {
       // above) carry zatcaResponseBody/zatcaHttpStatus for the caller to log —
       // rethrow them as-is instead of re-wrapping, which would discard that detail.
       // Only genuine network/parse failures (no zatcaStep) get wrapped here.
-      throw err.zatcaStep ? err : buildZatcaError('requestComplianceCsid', `ZATCA Compliance CSID request failed: ${err.message}`);
+      throw err.zatcaStep ? err : buildZatcaError('requestComplianceCsid', `ZATCA Compliance CSID request failed: ${describeFetchFailure(err)}`);
     }
   }
 
@@ -172,7 +187,7 @@ export class ZatcaApiClient {
       };
     } catch (err: any) {
       console.error('[ZATCA API] Compliance check failed:', err.message);
-      throw new Error(`ZATCA compliance check failed: ${err.message}`);
+      throw new Error(`ZATCA compliance check failed: ${describeFetchFailure(err)}`);
     }
   }
 
@@ -222,7 +237,7 @@ export class ZatcaApiClient {
       };
     } catch (err: any) {
       console.error('[ZATCA API] Production CSID request failed:', err.message);
-      throw err.zatcaStep ? err : buildZatcaError('requestProductionCsid', `ZATCA Production CSID request failed: ${err.message}`);
+      throw err.zatcaStep ? err : buildZatcaError('requestProductionCsid', `ZATCA Production CSID request failed: ${describeFetchFailure(err)}`);
     }
   }
 
@@ -272,7 +287,7 @@ export class ZatcaApiClient {
       };
     } catch (err: any) {
       console.error('[ZATCA API] Invoice clearance failed:', err.message);
-      throw err.zatcaStep ? err : buildZatcaError('clearStandardInvoice', `ZATCA invoice clearance failed: ${err.message}`);
+      throw err.zatcaStep ? err : buildZatcaError('clearStandardInvoice', `ZATCA invoice clearance failed: ${describeFetchFailure(err)}`);
     }
   }
 
@@ -316,7 +331,7 @@ export class ZatcaApiClient {
       };
     } catch (err: any) {
       console.error('[ZATCA API] Invoice reporting failed:', err.message);
-      throw err.zatcaStep ? err : buildZatcaError('reportSimplifiedInvoice', `ZATCA invoice reporting failed: ${err.message}`);
+      throw err.zatcaStep ? err : buildZatcaError('reportSimplifiedInvoice', `ZATCA invoice reporting failed: ${describeFetchFailure(err)}`);
     }
   }
 }

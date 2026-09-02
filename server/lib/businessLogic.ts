@@ -92,6 +92,23 @@ export async function assertProductsOwnedByCompany(tx: any, companyId: string, p
   }
 }
 
+// Same shape and reasoning as assertProductsOwnedByCompany above, for the one other
+// place this feature accepts an array of foreign keys from the client in one call: a
+// product's attached POS modifier groups (modifierGroupIds). Without this, a crafted
+// request could attach another company's modifier group id to your own product.
+export async function assertModifierGroupsOwnedByCompany(tx: any, companyId: string, modifierGroupIds: (string | null | undefined)[]): Promise<void> {
+  const ids = Array.from(new Set(modifierGroupIds.filter(Boolean))) as string[];
+  if (ids.length === 0) return;
+  const rows = await tx.select({ id: schema.modifierGroups.id }).from(schema.modifierGroups)
+    .where(and(inArray(schema.modifierGroups.id, ids), eq(schema.modifierGroups.companyId, companyId)));
+  const foundIds = new Set(rows.map((r: any) => r.id));
+  if (ids.some(id => !foundIds.has(id))) {
+    const err: any = new Error('One or more selected modifier groups were not found for this company.');
+    err.status = 400;
+    throw err;
+  }
+}
+
 // "Sales should take place only from sales warehouses" as a real server-side rule, not
 // just a UI convention — called wherever a warehouseId is about to be persisted onto a
 // sale (an explicit client choice or an auto-resolved default alike).

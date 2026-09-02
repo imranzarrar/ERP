@@ -174,6 +174,13 @@ export interface CompanySetup {
     // for any company that hasn't set one.
     minImageDimensions?: number;
     defaultReceiptTemplate?: string;
+    // POS Terminal grid density — how many priority tiles show at once on the Terminal
+    // tab before a cashier needs to switch category or search. Undefined means "use the
+    // Standard preset" (5x4=20), preserving today's fixed-breakpoint look for any company
+    // that hasn't configured this yet.
+    gridColumns?: number;
+    gridRows?: number;
+    gridDensityPreset?: 'compact' | 'standard' | 'dense' | 'custom';
   };
   counters?: {
     quotation: number;
@@ -286,6 +293,30 @@ export interface ProductService {
   averageSalePrice?: number;
   totalQuantityPurchased?: number;
   totalQuantitySold?: number;
+  // POS grid priority — null/undefined means "not on the priority grid," see
+  // schema.ts's productsServices.posGridPosition comment.
+  posGridPosition?: number | null;
+  // IDs of ModifierGroup rows attached to this product (via productModifierGroups),
+  // in display order. Empty/undefined means this product has no modifiers — the
+  // default state, unrelated to isPosItem.
+  modifierGroupIds?: string[];
+}
+
+export interface ModifierChoice {
+  id: string;
+  label: string;
+  priceDelta: number;
+  sortOrder?: number | null;
+}
+
+export interface ModifierGroup {
+  id: string;
+  companyId?: string;
+  name: string;
+  isRequired: boolean;
+  isActive?: boolean;
+  sortOrder?: number | null;
+  choices: ModifierChoice[];
 }
 
 export interface Customer {
@@ -620,6 +651,13 @@ export interface PosCartItem {
   // "this line = N base units" without a round-trip; the server always re-resolves the
   // factor independently server/lib/uomConversion.ts.
   conversionFactor?: number;
+  // Set only when this line was added via the POS modifier modal (see PosModifierModal
+  // in PosModule.tsx). unitPrice above already has every chosen priceDelta folded in —
+  // this is display/receipt detail only, and is what productName's "(...)" suffix is
+  // built from. Never sent as its own field to the server: by the time this line becomes
+  // an invoice_items row, it's already just productName (as description) + unitPrice,
+  // exactly like a free-typed line — see CLAUDE.md/the modifier-groups plan for why.
+  selectedModifiers?: Array<{ groupName: string; choiceLabel: string; priceDelta: number }>;
 }
 
 export interface PosHeldInvoice {
@@ -835,6 +873,11 @@ export interface ProductCategory {
   cogsGlGroup?: string;
   isActive?: boolean;
   companyId: string;
+  // POS presentation only — see schema.ts's productCategories comment. None of these
+  // affect the GL mapping fields above.
+  posTabColor?: string | null;
+  posTabOrder?: number | null;
+  showOnPosTabs?: boolean;
 }
 
 export interface UnitOfMeasure {

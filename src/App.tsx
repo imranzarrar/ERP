@@ -24,6 +24,7 @@ import LoginScreen from './components/LoginScreen';
 import ResetPasswordScreen from './components/ResetPasswordScreen';
 import InventoryModule from './components/InventoryModule';
 import EmployeesModule from './components/EmployeesModule';
+import ModifierGroupsModule from './components/ModifierGroupsModule';
 
 // Importing Icons
 import {
@@ -176,6 +177,7 @@ export default function App() {
       userRoles: data.userRoles || [],
       branches: data.branches || [],
       userBranches: data.userBranches || [],
+      modifierGroups: data.modifierGroups || [],
       currentUser: loggedUser || prev.currentUser,
       selectedCompanyId,
       companySetup,
@@ -280,6 +282,7 @@ export default function App() {
               userRoles: data.userRoles || [],
               branches: data.branches || [],
               userBranches: data.userBranches || [],
+              modifierGroups: data.modifierGroups || [],
               currentUser: loggedUser || prev.currentUser,
               selectedCompanyId,
             };
@@ -637,7 +640,9 @@ type NavSection = {
             { id: 'categories', label: t('Product Categories'), permissionKey: 'categories.read' },
             { id: 'categories-add', label: t('New Category'), permissionKey: 'categories.create' },
             { id: 'units', label: t('Units of Measure'), permissionKey: 'units.read' },
-            { id: 'units-add', label: t('New Unit'), permissionKey: 'units.create' }
+            { id: 'units-add', label: t('New Unit'), permissionKey: 'units.create' },
+            { id: 'modifier-groups', label: t('Modifier Groups'), permissionKey: 'modifierGroups.read' },
+            { id: 'modifier-groups-add', label: t('New Modifier Group'), permissionKey: 'modifierGroups.create' }
           ]
         },
         {
@@ -1355,6 +1360,7 @@ type NavSection = {
  activeTab === 'categories-add' ? (editTarget?.module === 'categories' ? t('Edit Category') : t('New Category')) :
  activeTab === 'units' ? t('Units of Measure') :
  activeTab === 'units-add' ? (editTarget?.module === 'units' ? t('Edit Unit') : t('New Unit')) :
+ activeTab === 'modifier-groups' || activeTab === 'modifier-groups-add' ? t('Modifier Groups') :
  activeTab === 'warehouses' ? t('Physical Warehouses') :
  activeTab === 'warehouses-add' ? (editTarget?.module === 'warehouses' ? t('Edit Warehouse') : t('New Warehouse')) :
  activeTab === 'quotations' ? t('Quotation Book') :
@@ -1397,6 +1403,7 @@ type NavSection = {
   {activeTab === 'products' && t('Define standard plywood/acrylic specifications, custom cuts, and pricing tiers.')}
  {activeTab === 'categories' && t('Define product hierarchy and Map material types to specific GL accounting groups.')}
  {activeTab === 'units' && t('Configure standardized weights, dimensions, volumes, and UoM conversion units.')}
+ {(activeTab === 'modifier-groups' || activeTab === 'modifier-groups-add') && t('Reusable POS customization options — Size, Milk, Extra Shot — attached optionally to whichever products need them.')}
  {activeTab === 'warehouses' && t('Setup and govern multiple physical storage locations, distribution centers, and shop floors.')}
  {activeTab === 'settings' && t('Administrative settings, company config, and month closures.')}
  </p>
@@ -1581,6 +1588,15 @@ type NavSection = {
            onRefreshDb={triggerDbRefresh}
            currentUser={currentUser}
            defaultTab={activeTab as any}
+         />
+       )}
+
+       {(activeTab === 'modifier-groups' || activeTab === 'modifier-groups-add') && (
+         <ModifierGroupsModule
+           db={activeDb}
+           onUpdateDbLocal={handleUpdateDbLocal}
+           onRefreshDb={triggerDbRefresh}
+           currentUser={currentUser}
          />
        )}
 

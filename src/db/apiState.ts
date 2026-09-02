@@ -77,6 +77,25 @@ export async function getFullState() {
     const jobTitles = await db.select().from(schema.jobTitles);
     const employees = await db.select().from(schema.employees);
 
+    const modifierGroupsRaw = await db.select().from(schema.modifierGroups);
+    const modifierGroupIdsAll = modifierGroupsRaw.map(g => g.id);
+    const modifierChoicesRaw = modifierGroupIdsAll.length
+      ? await db.select().from(schema.modifierChoices).where(inArray(schema.modifierChoices.modifierGroupId, modifierGroupIdsAll))
+      : [];
+    const modifierGroups = modifierGroupsRaw.map(g => ({
+      ...g,
+      choices: modifierChoicesRaw
+        .filter(c => c.modifierGroupId === g.id)
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+        .map(c => ({ ...c, priceDelta: Number(c.priceDelta) })),
+    }));
+    const productModifierGroupsRaw = await db.select().from(schema.productModifierGroups);
+    const modifierGroupIdsByProduct = new Map<string, string[]>();
+    for (const link of productModifierGroupsRaw.slice().sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))) {
+      if (!modifierGroupIdsByProduct.has(link.productId)) modifierGroupIdsByProduct.set(link.productId, []);
+      modifierGroupIdsByProduct.get(link.productId)!.push(link.modifierGroupId);
+    }
+
     const quotationsWithItems = quotations.map(q => ({
       ...q,
       createdAt: q.createdAt.toISOString(),
@@ -206,7 +225,7 @@ export async function getFullState() {
       userBranches,
       templates,
       taxSlabs: taxSlabs.map(t => ({...t, percentage: Number(t.percentage)})),
-      products: products.map(p => ({...p, unitPrice: Number(p.unitPrice)})),
+      products: products.map(p => ({...p, unitPrice: Number(p.unitPrice), modifierGroupIds: modifierGroupIdsByProduct.get(p.id) || []})),
       customers,
       vendors,
       banks: banks.map(b => ({...b, openingBalance: Number(b.openingBalance)})),
@@ -252,6 +271,7 @@ export async function getFullState() {
       productWarehouses,
       jobTitles,
       employees,
+      modifierGroups,
     };
   } catch (err: any) {
     console.error("[Database] PostgreSQL connection failed or is down:", err.message);

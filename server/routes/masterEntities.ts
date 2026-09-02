@@ -8,6 +8,7 @@ import { generateId } from '../../src/id.js';
 import { validateBuyerFields } from '../lib/zatca/validators.js';
 import { isValidZatcaUnitCode } from '../../src/zatcaUnitCodes.js';
 import { previewNextDocumentNumbers, DOCUMENT_TYPE_REGISTRY } from '../lib/documentNumbering.js';
+import { assertModifierGroupsOwnedByCompany } from '../lib/businessLogic.js';
 import { imageSize } from 'image-size';
 
 const router = express.Router();
@@ -182,7 +183,16 @@ router.get('/products', async (req: any, res) => {
     }
     const companyId = req.targetCompanyId;
     const products = await db.select().from(schema.productsServices).where(eq(schema.productsServices.companyId, companyId));
-    res.json(products);
+    const productIds = products.map(p => p.id);
+    const links = productIds.length
+      ? await db.select().from(schema.productModifierGroups).where(inArray(schema.productModifierGroups.productId, productIds))
+      : [];
+    const groupIdsByProduct = new Map<string, string[]>();
+    for (const l of links.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))) {
+      if (!groupIdsByProduct.has(l.productId)) groupIdsByProduct.set(l.productId, []);
+      groupIdsByProduct.get(l.productId)!.push(l.modifierGroupId);
+    }
+    res.json(products.map(p => ({ ...p, modifierGroupIds: groupIdsByProduct.get(p.id) || [] })));
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -192,6 +202,14 @@ router.post('/products', async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     const data = { ...req.body };
+    // Not a column on products_services — pulled off before the insert/update below and
+    // applied separately as productModifierGroups join rows, once the product row itself
+    // is confirmed to belong to this company (see the assertModifierGroupsOwnedByCompany
+    // call further down, which additionally confirms every id here belongs to this
+    // company too). Optional/undefined leaves existing attachments untouched, matching
+    // this route's general "don't re-validate what wasn't sent" convention.
+    const modifierGroupIds: string[] | undefined = Array.isArray(data.modifierGroupIds) ? data.modifierGroupIds : undefined;
+    delete data.modifierGroupIds;
 
     let existing: typeof schema.productsServices.$inferSelect | undefined;
     if (data.id) {
@@ -248,13 +266,38 @@ router.post('/products', async (req: any, res) => {
       }
     }
 
-    await db.insert(schema.productsServices).values(data).onConflictDoUpdate({
-      target: schema.productsServices.id,
-      set: data
+    if (modifierGroupIds !== undefined) {
+      await assertModifierGroupsOwnedByCompany(db, data.companyId, modifierGroupIds);
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.insert(schema.productsServices).values(data).onConflictDoUpdate({
+        target: schema.productsServices.id,
+        set: data
+      });
+      if (modifierGroupIds !== undefined) {
+        // Replace-the-whole-set on every save, same convention as quotation/invoice
+        // items on edit — simpler and safer than diffing add/remove, and this list is
+        // always small (a handful of modifier groups per product).
+        await tx.delete(schema.productModifierGroups).where(eq(schema.productModifierGroups.productId, data.id));
+        if (modifierGroupIds.length > 0) {
+          // isolation-ok: every id in modifierGroupIds was already verified to belong to
+          // this company by assertModifierGroupsOwnedByCompany, called earlier in this
+          // same handler before the transaction started.
+          await tx.insert(schema.productModifierGroups).values(
+            modifierGroupIds.map((modifierGroupId, idx) => ({
+              id: generateId(),
+              productId: data.id,
+              modifierGroupId,
+              sortOrder: idx,
+            }))
+          );
+        }
+      }
     });
     res.json({ success: true, id: data.id });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(error.status || 500).json({ error: error.message });
   }
 });
 
@@ -750,6 +793,101 @@ router.patch('/product-categories/:id/toggle-active', async (req: any, res) => {
     }
     const nextActive = existing.isActive === false;
     await db.update(schema.productCategories).set({ isActive: nextActive }).where(eq(schema.productCategories.id, id));
+    res.json({ success: true, isActive: nextActive });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Modifier Groups (POS-only, optional per product — see schema.ts's modifierGroups
+// comment) --- Mirrors the Units-of-Measure CRUD shape immediately below: company-scoped
+// list, create-or-update via data.id presence with assertOwnsRow on edits, companyId
+// always forced server-side, toggle-active re-checking companyId in its own WHERE clause.
+router.get('/modifier-groups', async (req: any, res) => {
+  try {
+    if (!hasPermission(req.user, 'modifierGroups.read')) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const companyId = req.targetCompanyId;
+    const groups = await db.select().from(schema.modifierGroups).where(eq(schema.modifierGroups.companyId, companyId));
+    const groupIds = groups.map(g => g.id);
+    const choices = groupIds.length
+      ? await db.select().from(schema.modifierChoices).where(inArray(schema.modifierChoices.modifierGroupId, groupIds))
+      : [];
+    const choicesByGroup = new Map<string, any[]>();
+    for (const c of choices) {
+      if (!choicesByGroup.has(c.modifierGroupId)) choicesByGroup.set(c.modifierGroupId, []);
+      choicesByGroup.get(c.modifierGroupId)!.push(c);
+    }
+    res.json(groups.map(g => ({ ...g, choices: (choicesByGroup.get(g.id) || []).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)) })));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/modifier-groups', async (req: any, res) => {
+  try {
+    const data = { ...req.body };
+    const choices: Array<{ id?: string; label: string; priceDelta: number }> = Array.isArray(data.choices) ? data.choices : [];
+    delete data.choices;
+
+    let existing: typeof schema.modifierGroups.$inferSelect | undefined;
+    if (data.id) {
+      [existing] = await db.select().from(schema.modifierGroups).where(eq(schema.modifierGroups.id, data.id));
+      if (!assertOwnsRow(existing, req)) {
+        return res.status(403).json({ error: 'Forbidden: this modifier group belongs to another company' });
+      }
+    } else {
+      data.id = generateId();
+    }
+    if (!hasPermission(req.user, existing ? 'modifierGroups.update' : 'modifierGroups.create')) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    if (!data.name || !String(data.name).trim()) {
+      return res.status(400).json({ error: 'Modifier group name is required.' });
+    }
+
+    data.companyId = req.targetCompanyId;
+    await db.transaction(async (tx) => {
+      await tx.insert(schema.modifierGroups).values(data).onConflictDoUpdate({
+        target: schema.modifierGroups.id,
+        set: data
+      });
+      // Replace the whole choice set on every save — same convention used for the
+      // product's modifierGroupIds attachment above and for quotation/invoice items on
+      // edit. This list is always small, so diffing add/remove buys nothing.
+      await tx.delete(schema.modifierChoices).where(eq(schema.modifierChoices.modifierGroupId, data.id));
+      if (choices.length > 0) {
+        await tx.insert(schema.modifierChoices).values(
+          choices.map((c, idx) => ({
+            id: generateId(),
+            modifierGroupId: data.id,
+            label: c.label,
+            priceDelta: String(c.priceDelta ?? 0),
+            sortOrder: idx,
+          }))
+        );
+      }
+    });
+    res.json({ success: true, id: data.id });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+router.patch('/modifier-groups/:id/toggle-active', async (req: any, res) => {
+  try {
+    if (!hasPermission(req.user, 'modifierGroups.delete')) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { id } = req.params;
+    const [existing] = await db.select().from(schema.modifierGroups)
+      .where(and(eq(schema.modifierGroups.id, id), eq(schema.modifierGroups.companyId, req.targetCompanyId)));
+    if (!existing) {
+      return res.status(404).json({ error: 'Modifier group not found.' });
+    }
+    const nextActive = existing.isActive === false;
+    await db.update(schema.modifierGroups).set({ isActive: nextActive }).where(eq(schema.modifierGroups.id, id));
     res.json({ success: true, isActive: nextActive });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

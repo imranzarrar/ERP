@@ -1059,6 +1059,14 @@ async function startServer() {
         posHeldInvoices: state.posHeldInvoices.filter((ph: any) => ph.companyId === companyId && branchOk(ph.branchId)),
         productCategories: (state.productCategories || []).filter((c: any) => c.companyId === companyId),
         unitsOfMeasure: (state.unitsOfMeasure || []).filter((u: any) => u.companyId === companyId),
+        // Company-scoped only, no branch dimension — same convention as unitsOfMeasure/
+        // productCategories above (a stated design decision, see the POS grid/modifiers
+        // feature plan: modifier groups are company-wide, matching how products/tax slabs
+        // already work). Each product's own modifierGroupIds (embedded in `products`
+        // above) already only ever reference this same company's groups by construction
+        // (enforced at write-time by assertModifierGroupsOwnedByCompany), so filtering
+        // this master list is the only cross-tenant surface here.
+        modifierGroups: (state.modifierGroups || []).filter((g: any) => g.companyId === companyId),
         productWarehouses: (state.productWarehouses || []).filter((pw: any) => pw.companyId === companyId && branchOkViaWarehouse(pw.warehouseId)),
         // productUnitConversions has no companyId column of its own (schema.ts) — it's
         // scoped only indirectly via productId -> productsServices.companyId. Never added

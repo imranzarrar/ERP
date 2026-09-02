@@ -1,0 +1,582 @@
+<title>POS Grid Concept</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
+
+  :root {
+    /* Warraq brand — same tokens as the ERP's own manuals, reused deliberately
+       since this is a concept for that same app, not a new identity. */
+    --w-primary: #4f46e5; --w-primary-dark: #1e1b4b; --w-primary-darktext: #312e81;
+    --w-accent: #6366f1; --w-light: #f5f3ff; --w-light-border: #ddd6fe;
+    --good: #059669; --good-soft: #d1fae5; --good-ink: #065f46;
+    --warn: #d97706; --warn-soft: #fef3c7; --warn-ink: #92400e;
+    --crit: #e11d48; --crit-soft: #ffe4e6; --crit-ink: #9f1239;
+    --ink: #1a1c23; --ink-soft: #62667a; --paper: #f3f2f9; --paper-raised: #ffffff; --line: #e3e2ee;
+    --font-display: "Space Grotesk", "Segoe UI Semibold", system-ui, sans-serif;
+    --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", "Consolas", ui-monospace, monospace;
+
+    /* Category semantic colors — deliberately distinct from the brand accent
+       (Clover/Lightspeed both let categories carry their own color; a coffee
+       shop scans by color faster than by reading labels under time pressure). */
+    --cat-fav: #4f46e5;
+    --cat-coffee: #92400e; --cat-coffee-soft: #fef3ea;
+    --cat-cold: #0e7490; --cat-cold-soft: #ecfeff;
+    --cat-bakery: #be185d; --cat-bakery-soft: #fdf2f8;
+    --cat-food: #15803d; --cat-food-soft: #f0fdf4;
+  }
+
+  /* This is deliberately a single, fixed light theme, not adaptive to the
+     viewer's OS dark-mode preference — a real POS terminal is dedicated
+     hardware with a fixed bright display bolted to a counter, not a document
+     someone reads at night. Matches this app's other manuals' own choice. */
+  html { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-body); }
+  button { font-family: inherit; cursor: pointer; }
+
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 1.6rem 1.8rem 4rem; }
+
+  .intro { max-width: 76ch; margin: 0 0 1.6rem; }
+  .intro .kicker { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--w-primary); font-weight: 700; margin: 0 0 0.5rem; }
+  .intro h1 { font-family: var(--font-display); font-size: 1.7rem; margin: 0 0 0.5rem; color: var(--w-primary-dark); letter-spacing: -0.01em; }
+  .intro p { font-size: 0.95rem; line-height: 1.6; color: var(--ink-soft); margin: 0; }
+
+  /* ===== Demo control rail — clearly NOT part of the simulated POS chrome ===== */
+  .demo-rail { background: var(--w-primary-dark); border-radius: 16px; padding: 1.1rem 1.3rem; margin: 1.4rem 0 1.6rem; color: #fff; }
+  .demo-rail .dr-label { font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; color: #a5b4fc; margin-bottom: 0.7rem; font-weight: 700; }
+  .demo-row { display: flex; align-items: center; gap: 1.1rem; flex-wrap: wrap; }
+  .preset-group { display: flex; gap: 0.4rem; background: rgba(255,255,255,.08); padding: 0.3rem; border-radius: 11px; }
+  .preset-btn { border: none; background: transparent; color: #c7c8ec; font-weight: 700; font-size: 0.78rem; padding: 0.5rem 0.9rem; border-radius: 8px; }
+  .preset-btn.active { background: var(--w-accent); color: #fff; }
+  .preset-btn span { display: block; font-size: 0.62rem; font-weight: 500; opacity: 0.8; margin-top: 0.1rem; }
+  .stepper-group { display: flex; align-items: center; gap: 0.6rem; font-size: 0.78rem; color: #d6d7f4; }
+  .stepper { display: flex; align-items: center; gap: 0.4rem; background: rgba(255,255,255,.08); border-radius: 9px; padding: 0.25rem; }
+  .stepper button { width: 26px; height: 26px; border-radius: 6px; border: none; background: rgba(255,255,255,.12); color: #fff; font-weight: 800; font-size: 0.9rem; }
+  .stepper button:hover { background: var(--w-accent); }
+  .stepper b { min-width: 1.4ch; text-align: center; font-family: var(--font-mono); }
+  .edit-toggle { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; }
+  .edit-toggle button { border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.06); color: #fff; font-weight: 700; font-size: 0.78rem; padding: 0.55rem 1rem; border-radius: 9px; }
+  .edit-toggle button.on { background: var(--good); border-color: var(--good); }
+  .cap-readout { font-family: var(--font-mono); font-size: 0.72rem; color: #a5b4fc; }
+  .tile-warn { margin-top: 0.7rem; background: var(--warn-soft); color: var(--warn-ink); border-radius: 10px; padding: 0.6rem 0.9rem; font-size: 0.76rem; font-weight: 600; display: none; }
+  .tile-warn.show { display: block; }
+
+  /* ===== Simulated POS terminal shell ===== */
+  .pos-shell { display: grid; grid-template-columns: minmax(0,1fr) 320px; gap: 0; border-radius: 20px; overflow: hidden; box-shadow: 0 24px 60px -28px rgba(30,27,75,.5); border: 1px solid var(--line); background: var(--paper-raised); }
+  @media (max-width: 900px) { .pos-shell { grid-template-columns: 1fr; } }
+
+  .pos-main { padding: 1.1rem 1.2rem 1.3rem; min-width: 0; }
+  .pos-search { display: flex; align-items: center; gap: 0.6rem; background: #f1f0f9; border: 1px solid var(--line); border-radius: 12px; padding: 0.7rem 1rem; margin-bottom: 0.9rem; }
+  .pos-search svg { flex-shrink: 0; color: #9497b3; }
+  .pos-search input { border: none; background: transparent; outline: none; font-size: 0.88rem; width: 100%; font-family: var(--font-body); color: var(--ink); }
+  .pos-search .hint { font-family: var(--font-mono); font-size: 0.62rem; color: #a3a6c2; white-space: nowrap; }
+
+  .cat-tabs { display: flex; gap: 0.4rem; overflow-x: auto; padding-bottom: 0.2rem; margin-bottom: 1rem; }
+  .cat-tab { flex-shrink: 0; border: 1.5px solid var(--line); background: #fff; font-weight: 700; font-size: 0.8rem; padding: 0.5rem 1rem; border-radius: 100px; color: var(--ink-soft); display: flex; align-items: center; gap: 0.45rem; }
+  .cat-tab .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .cat-tab.active { border-color: transparent; color: #fff; }
+  .cat-tab[data-cat="fav"].active { background: var(--cat-fav); }
+  .cat-tab[data-cat="coffee"].active { background: var(--cat-coffee); }
+  .cat-tab[data-cat="cold"].active { background: var(--cat-cold); }
+  .cat-tab[data-cat="bakery"].active { background: var(--cat-bakery); }
+  .cat-tab[data-cat="food"].active { background: var(--cat-food); }
+
+  .edit-banner { display: none; align-items: center; gap: 0.6rem; background: var(--good-soft); color: var(--good-ink); border-radius: 10px; padding: 0.6rem 0.9rem; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.9rem; }
+  .edit-banner.show { display: flex; }
+
+  .tile-grid { display: grid; gap: 0.6rem; }
+  .tile { position: relative; border-radius: 14px; border: 1.5px solid var(--line); background: #fff; display: flex; flex-direction: column; justify-content: space-between; padding: 0.55em 0.6em; min-height: 78px; text-align: left; transition: transform .06s ease; }
+  .tile:active { transform: scale(0.96); }
+  .tile .icon { font-size: 1.5em; line-height: 1; }
+  .tile .name { font-family: var(--font-display); font-weight: 700; font-size: 0.92em; line-height: 1.15; color: var(--ink); margin-top: 0.3em; }
+  .tile .price { font-family: var(--font-mono); font-weight: 700; font-size: 0.82em; color: var(--ink-soft); margin-top: 0.2em; }
+  .tile .mod-flag { position: absolute; top: 0.5em; right: 0.55em; font-size: 0.85em; opacity: 0.55; }
+  .tile.cat-coffee { border-top: 4px solid var(--cat-coffee); }
+  .tile.cat-cold { border-top: 4px solid var(--cat-cold); }
+  .tile.cat-bakery { border-top: 4px solid var(--cat-bakery); }
+  .tile.cat-food { border-top: 4px solid var(--cat-food); }
+  .tile .qty-badge { position: absolute; top: -8px; right: -8px; background: var(--w-primary); color: #fff; font-family: var(--font-mono); font-weight: 700; font-size: 0.72rem; min-width: 22px; height: 22px; border-radius: 100px; display: flex; align-items: center; justify-content: center; padding: 0 5px; box-shadow: 0 3px 8px -2px rgba(79,70,229,.6); }
+  .tile.empty-slot { border: 1.5px dashed #cfcee0; background: #fbfbfe; align-items: center; justify-content: center; color: #b3b5cc; font-size: 0.78em; font-weight: 700; }
+  .tile.empty-slot::before { content: "+ Empty slot"; }
+  .tile.remove-x { position: absolute; top: -8px; left: -8px; width: 24px; height: 24px; border-radius: 50%; background: var(--crit); color: #fff; border: 2px solid #fff; font-weight: 800; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; }
+  .tile.selected-src { outline: 3px solid var(--good); outline-offset: 2px; }
+
+  .catalog-tray { margin-top: 1.1rem; border-top: 1px dashed var(--line); padding-top: 0.9rem; display: none; }
+  .catalog-tray.show { display: block; }
+  .catalog-tray h4 { font-family: var(--font-display); font-size: 0.82rem; margin: 0 0 0.6rem; color: var(--w-primary-darktext); }
+  .catalog-tray .tray-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 0.5rem; }
+  .catalog-tray .tile { min-height: 62px; opacity: 0.92; }
+
+  /* ===== Cart panel ===== */
+  .pos-cart { background: var(--w-primary-dark); color: #fff; padding: 1rem 1.1rem 1.2rem; display: flex; flex-direction: column; }
+  .pos-cart h3 { font-family: var(--font-display); font-size: 0.95rem; margin: 0 0 0.8rem; display: flex; justify-content: space-between; align-items: center; }
+  .pos-cart h3 .clear { font-size: 0.68rem; font-weight: 600; color: #a5b4fc; font-family: var(--font-body); }
+  .cart-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem; min-height: 120px; }
+  .cart-empty { color: #8286c2; font-size: 0.8rem; text-align: center; padding: 2rem 0; }
+  .cart-row { background: rgba(255,255,255,.06); border-radius: 10px; padding: 0.55rem 0.7rem; font-size: 0.78rem; }
+  .cart-row .top { display: flex; justify-content: space-between; font-weight: 700; }
+  .cart-row .mods { color: #9fa2d6; font-size: 0.7rem; margin-top: 0.15rem; }
+  .cart-row .bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 0.35rem; }
+  .cart-row .qty-ctl { display: flex; align-items: center; gap: 0.4rem; }
+  .cart-row .qty-ctl button { width: 20px; height: 20px; border-radius: 5px; border: none; background: rgba(255,255,255,.14); color: #fff; font-weight: 800; font-size: 0.75rem; }
+  .cart-total { border-top: 1px solid rgba(255,255,255,.16); margin-top: 0.8rem; padding-top: 0.8rem; }
+  .cart-total .row { display: flex; justify-content: space-between; font-size: 0.8rem; color: #c7c8ec; margin-bottom: 0.3rem; }
+  .cart-total .grand { display: flex; justify-content: space-between; font-family: var(--font-display); font-weight: 800; font-size: 1.15rem; margin-top: 0.4rem; }
+  .charge-btn { margin-top: 0.9rem; background: linear-gradient(135deg,#818cf8,#4f46e5); border: none; color: #fff; font-family: var(--font-display); font-weight: 700; font-size: 0.88rem; padding: 0.85rem; border-radius: 12px; }
+
+  /* ===== Modifier modal ===== */
+  .modal-veil { position: fixed; inset: 0; background: rgba(15,13,35,.55); display: none; align-items: center; justify-content: center; z-index: 50; padding: 1rem; }
+  .modal-veil.show { display: flex; }
+  .modal { background: #fff; border-radius: 20px; width: 100%; max-width: 480px; max-height: 88vh; overflow-y: auto; padding: 1.3rem 1.4rem 1.5rem; }
+  .modal-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.9rem; }
+  .modal-head .icon { font-size: 2rem; }
+  .modal-head h3 { font-family: var(--font-display); font-size: 1.15rem; margin: 0.3rem 0 0.1rem; }
+  .modal-head .price { font-family: var(--font-mono); color: var(--ink-soft); font-size: 0.85rem; }
+  .modal-close { border: none; background: #f1f0f9; width: 32px; height: 32px; border-radius: 50%; font-weight: 800; color: var(--ink-soft); }
+  .opt-group { margin-bottom: 1.1rem; }
+  .opt-group .lbl { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+  .opt-group .lbl b { font-family: var(--font-display); font-size: 0.8rem; }
+  .opt-group .lbl span { font-size: 0.64rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 0.15rem 0.5rem; border-radius: 100px; }
+  .opt-group .lbl span.req { background: var(--crit-soft); color: var(--crit-ink); }
+  .opt-group .lbl span.opt { background: #f1f0f9; color: var(--ink-soft); }
+  .chip-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .chip { border: 1.5px solid var(--line); background: #fff; padding: 0.55rem 1rem; border-radius: 11px; font-size: 0.82rem; font-weight: 600; color: var(--ink); }
+  .chip.sel { background: var(--w-primary); border-color: var(--w-primary); color: #fff; }
+  .modal-add { width: 100%; margin-top: 0.4rem; background: var(--w-primary); color: #fff; border: none; font-family: var(--font-display); font-weight: 700; font-size: 0.92rem; padding: 0.9rem; border-radius: 13px; }
+  .modal-add:disabled { background: #d7d6e6; color: #9a9db0; }
+
+  .notes { max-width: 76ch; margin: 2.2rem 0 0; }
+  .notes h2 { font-family: var(--font-display); font-size: 1.3rem; color: var(--w-primary-dark); }
+  .notes h3 { font-family: var(--font-display); font-size: 1rem; color: var(--w-primary-darktext); margin: 1.4rem 0 0.5rem; }
+  .notes p, .notes li { font-size: 0.9rem; line-height: 1.65; color: var(--ink-soft); }
+  .notes ul { padding-left: 1.2rem; }
+  .src-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin: 0.8rem 0 1.4rem; }
+  .src-table th { text-align: left; background: var(--w-primary-dark); color: #fff; padding: 0.5rem 0.7rem; font-family: var(--font-display); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .src-table td { padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--line); background: #fff; }
+</style>
+
+<div class="wrap">
+  <div class="intro">
+    <p class="kicker">POS Grid — UX Concept</p>
+    <h1>A configurable, touch-only item grid for coffee shops &amp; restaurants</h1>
+    <p>This is a live, interactive prototype, not a static mockup — use the controls below to change the grid density and watch the tile size adapt, switch category tabs, tap an item to add it (items with modifiers open a real customization step), and try "Arrange Grid" to see how an owner curates their own 30-item catalog down to a priority set.</p>
+  </div>
+
+  <div class="demo-rail">
+    <div class="dr-label">Demo controls — not part of the simulated POS screen below</div>
+    <div class="demo-row">
+      <div class="preset-group" id="presetGroup">
+        <button class="preset-btn" data-cols="3" data-rows="4">Compact<span>12 tiles</span></button>
+        <button class="preset-btn active" data-cols="5" data-rows="4">Standard<span>20 tiles</span></button>
+        <button class="preset-btn" data-cols="6" data-rows="5">Dense<span>30 tiles</span></button>
+        <button class="preset-btn" data-cols="0" data-rows="0">Custom<span>your own</span></button>
+      </div>
+      <div class="stepper-group" id="customSteppers" style="display:none;">
+        Columns
+        <div class="stepper"><button id="colMinus">−</button><b id="colVal">5</b><button id="colPlus">+</button></div>
+        Rows
+        <div class="stepper"><button id="rowMinus">−</button><b id="rowVal">4</b><button id="rowPlus">+</button></div>
+      </div>
+      <span class="cap-readout" id="capReadout">20 tiles on screen</span>
+      <div class="edit-toggle">
+        <button id="editBtn">✎ Arrange Grid</button>
+      </div>
+    </div>
+    <div class="tile-warn" id="tileWarn">⚠ Tiles at this density fall below the recommended minimum touch-target size for a POS terminal — consider fewer columns, or a larger display.</div>
+  </div>
+
+  <div class="pos-shell">
+    <div class="pos-main">
+      <div class="pos-search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input id="searchBox" placeholder="Search all 24 catalog items… (opens on-screen keyboard, no physical keys needed)">
+        <span class="hint">⌨ tap to type</span>
+      </div>
+
+      <div class="cat-tabs" id="catTabs">
+        <button class="cat-tab active" data-cat="fav"><span class="dot" style="color:var(--cat-fav)"></span>Favorites</button>
+        <button class="cat-tab" data-cat="coffee"><span class="dot" style="color:var(--cat-coffee)"></span>Coffee</button>
+        <button class="cat-tab" data-cat="cold"><span class="dot" style="color:var(--cat-cold)"></span>Cold Drinks</button>
+        <button class="cat-tab" data-cat="bakery"><span class="dot" style="color:var(--cat-bakery)"></span>Bakery</button>
+        <button class="cat-tab" data-cat="food"><span class="dot" style="color:var(--cat-food)"></span>Food</button>
+      </div>
+
+      <div class="edit-banner" id="editBanner">✎ Arrange mode: tap an item in "Unassigned Catalog" below, then tap a grid slot to place it there. Tap the red × to remove a tile from the grid.</div>
+
+      <div class="tile-grid" id="tileGrid"></div>
+
+      <div class="catalog-tray" id="catalogTray">
+        <h4>Unassigned catalog (not on the Favorites grid — still reachable via search or their own category tab)</h4>
+        <div class="tray-grid" id="trayGrid"></div>
+      </div>
+    </div>
+
+    <div class="pos-cart">
+      <h3>Current Order <span class="clear" id="clearCart">Clear</span></h3>
+      <div class="cart-list" id="cartList"><div class="cart-empty">Tap an item to start an order</div></div>
+      <div class="cart-total">
+        <div class="row"><span>Subtotal</span><span id="subtotal">SAR 0.00</span></div>
+        <div class="row"><span>VAT (15%)</span><span id="vat">SAR 0.00</span></div>
+        <div class="grand"><span>Total</span><span id="grand">SAR 0.00</span></div>
+        <button class="charge-btn">Charge →</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <h2>Design rationale</h2>
+    <p>Grounded in how the category-leading POS platforms actually solve this — Toast, Square, Clover, and Lightspeed — plus published touch-target research, not invented from scratch. See sources at the bottom.</p>
+
+    <h3>1. Two-tier catalog: a curated Favorites grid, backed by the full catalog</h3>
+    <p>Every item in the product catalog can optionally be marked <b>"Show on POS Grid"</b> with a priority position — the same mechanism Square's Favorites Grid and Clover's per-category <code>position</code> field use. The grid only ever shows the top <i>N</i> priority items, where <i>N</i> is however many tiles currently fit. The other 10–14 items (of a 24-40 item catalog) aren't gone — they're one tap away via <b>search</b> (always visible, opens the OS on-screen keyboard — no physical keyboard assumed anywhere) or their own <b>category tab</b>.</p>
+
+    <h3>2. Density is rows × columns, not a flat tile count — and tile size is computed, not fixed</h3>
+    <p>Toast's own admin setting is literally "Menu Grid Dimensions: columns × rows," because a flat number ("30 boxes") doesn't answer how they're arranged on a given screen. The grid above uses CSS Grid with fractional (<code>fr</code>) sizing — the <i>same</i> screen space is divided into however many cells are configured, so a 12-tile shop gets noticeably larger, easier-to-hit buttons than a 30-tile one on identical hardware. Try the Compact vs. Dense presets above.</p>
+
+    <h3>3. Ergonomic floors are enforced, not just allowed</h3>
+    <p>Kiosk/POS touch-target research (NN/g, ISO guidance, accessibility studies) converges on roughly <b>12–20mm minimum</b> per target — noticeably larger than phone or desktop UI minimums, because staff move fast, wear gloves, or work in bright light. A "tier-1" system doesn't just let an owner type in "12 columns × 10 rows" and ship broken tiles — it warns when the computed tile size would fall below a safe floor for the target screen (see the warning banner triggered by extreme Custom values).</p>
+
+    <h3>4. Category tabs, color-coded, exactly like Clover and Lightspeed</h3>
+    <p>Clover assigns each category a hex color and an explicit position (lower number = appears first); Lightspeed calls these "main screens" (up to 20) with drag-and-drop ordering. Here, every tile carries a colored top-edge matching its category tab, so a barista scans by color before they've even read the label — proven to cut mis-taps on busy screens.</p>
+
+    <h3>5. Modifiers open a real step, not a cramped popover</h3>
+    <p>Coffee items need Size / Milk / Extra Shot before they mean anything — these are "Option Sets" in Toast/Square/Clover terminology, attached per item, with required groups distinguished from optional ones. Tap "Latte" above to see it: a full-width modal with large chip buttons (not a dropdown — nothing here assumes a keyboard or a precise pointer), required groups blocking Add-to-Cart until chosen, optional groups skippable.</p>
+
+    <h3>6. Curation is a tap-to-place workflow, not fragile drag-and-drop</h3>
+    <p>Click "Arrange Grid" above. Rather than free-form dragging (finicky on a touch screen and in an embedded demo alike), the owner taps an item in the unassigned tray, then taps the grid slot to drop it in — same result as Square's "press and hold to rearrange," implemented in a way that also works cleanly with a finger, not just a mouse. A red × pulls any tile back off the grid instantly.</p>
+
+    <h3>How this maps onto Warraq's own data model</h3>
+    <ul>
+      <li><b>Per-product fields</b> (Product Catalog → Products &amp; Pricing): <code>posGridPosition</code> (nullable integer — null means "not on the grid," a number is its priority slot) alongside the existing <code>categoryId</code> and POS-enabled flag already in the schema.</li>
+      <li><b>Per-company/terminal setting</b> (Settings &amp; Companies → POS Terminal Settings, where the image-size limits already live): <code>posGridColumns</code> / <code>posGridRows</code>, plus a preset selector (Compact/Standard/Dense/Custom) mirroring the demo above.</li>
+      <li><b>Modifier groups</b> as a new lightweight construct attached to a product: an ordered list of option sets, each with a name, required/optional flag, and choices (each choice optionally carrying a price delta) — reusable across every drink that needs Size/Milk/Shots.</li>
+    </ul>
+
+    <table class="src-table">
+      <thead><tr><th>What was researched</th><th>Source</th></tr></thead>
+      <tbody>
+        <tr><td>General POS touchscreen UX principles (clarity, color-coded categories, large tap targets)</td><td><a href="https://dev.pro/insights/designing-a-pos-system-ten-user-experience-tactics-that-improve-usability/">dev.pro — 10 UX tactics for POS design</a>, <a href="https://agentestudio.com/blog/design-principles-pos-interface">Agente Studio — POS design principles</a></td></tr>
+        <tr><td>Square's curated Favorites Grid (add/remove/reorder, syncs across devices)</td><td><a href="https://squareup.com/help/us/en/article/8334-set-up-item-grid">Square Support — Set up item grid</a></td></tr>
+        <tr><td>Toast's explicit "Menu Grid Dimensions" (columns × rows control button size)</td><td><a href="https://support.toasttab.com/en/article/Can-I-preview-how-my-menus-will-look-on-my-POS">Toast Support — Preview POS menu layout</a></td></tr>
+        <tr><td>Clover's per-category color code + explicit position ordering</td><td><a href="https://docs.clover.com/dev/docs/managing-categories">Clover Developer Docs — Managing categories</a></td></tr>
+        <tr><td>Lightspeed's "main screens" (category tabs, max 20, drag-and-drop, colors/pictures)</td><td><a href="https://k-series-support.lightspeedhq.com/hc/en-us/articles/1260804656649-Creating-menus">Lightspeed K-Series — Creating menus</a></td></tr>
+        <tr><td>Kiosk/POS touch-target minimum sizing (~12–20mm, ISO guidance, spacing)</td><td><a href="https://xchange.avixa.org/posts/kiosk-ux-ui-design-checklist">AVIXA Xchange — Kiosk UX/UI design checklist</a>, <a href="https://www.nngroup.com/articles/touch-target-size/">NN/g — Touch Target Sizes</a></td></tr>
+        <tr><td>Modifier "Option Sets" pattern (Milk Option, etc.) attached to drink items</td><td><a href="https://o-series-support.lightspeedhq.com/hc/en-us/articles/31329530566683-Building-your-drinks-menu">Lightspeed O-Series — Building your drinks menu</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal-veil" id="modalVeil">
+  <div class="modal" id="modalBody"></div>
+</div>
+
+<script>
+(function(){
+  var CATS = {
+    fav:    { label: 'Favorites', color: 'var(--cat-fav)' },
+    coffee: { label: 'Coffee', color: 'var(--cat-coffee)' },
+    cold:   { label: 'Cold Drinks', color: 'var(--cat-cold)' },
+    bakery: { label: 'Bakery', color: 'var(--cat-bakery)' },
+    food:   { label: 'Food', color: 'var(--cat-food)' }
+  };
+
+  var MODS = {
+    size: { label: 'Size', required: true, choices: ['Small','Medium','Large'] },
+    milk: { label: 'Milk', required: true, choices: ['Whole','Oat','Almond','Skim'] },
+    shots: { label: 'Extra Shot', required: false, choices: ['None','+1 Shot','+2 Shots'] }
+  };
+
+  // 24-item sample catalog. priority = default "most popular first" ranking
+  // used to fill the Favorites grid up to whatever capacity is configured.
+  var ITEMS = [
+    {id:'esp', name:'Espresso', price:9, cat:'coffee', icon:'☕', mods:['size','shots'], priority:1},
+    {id:'lat', name:'Latte', price:15, cat:'coffee', icon:'☕', mods:['size','milk','shots'], priority:2},
+    {id:'cap', name:'Cappuccino', price:15, cat:'coffee', icon:'☕', mods:['size','milk','shots'], priority:3},
+    {id:'ame', name:'Americano', price:12, cat:'coffee', icon:'☕', mods:['size','shots'], priority:4},
+    {id:'fla', name:'Flat White', price:16, cat:'coffee', icon:'☕', mods:['size','milk'], priority:8},
+    {id:'moc', name:'Mocha', price:17, cat:'coffee', icon:'☕', mods:['size','milk','shots'], priority:9},
+    {id:'cor', name:'Cortado', price:14, cat:'coffee', icon:'☕', mods:['milk'], priority:16},
+    {id:'mac', name:'Macchiato', price:14, cat:'coffee', icon:'☕', mods:['size'], priority:17},
+
+    {id:'ice', name:'Iced Latte', price:16, cat:'cold', icon:'🧊', mods:['size','milk'], priority:5},
+    {id:'cbr', name:'Cold Brew', price:14, cat:'cold', icon:'🧊', mods:['size'], priority:6},
+    {id:'ite', name:'Iced Tea', price:11, cat:'cold', icon:'🧊', mods:['size'], priority:10},
+    {id:'lem', name:'Lemonade', price:12, cat:'cold', icon:'🧊', mods:['size'], priority:11},
+    {id:'fra', name:'Frappe', price:18, cat:'cold', icon:'🧊', mods:['size','milk'], priority:18},
+    {id:'imo', name:'Iced Mocha', price:18, cat:'cold', icon:'🧊', mods:['size','milk'], priority:19},
+
+    {id:'cro', name:'Croissant', price:10, cat:'bakery', icon:'🥐', mods:[], priority:7},
+    {id:'muf', name:'Blueberry Muffin', price:11, cat:'bakery', icon:'🧁', mods:[], priority:12},
+    {id:'coo', name:'Choc Cookie', price:7, cat:'bakery', icon:'🍪', mods:[], priority:13},
+    {id:'cin', name:'Cinnamon Roll', price:13, cat:'bakery', icon:'🥯', mods:[], priority:20},
+    {id:'ban', name:'Banana Bread', price:12, cat:'bakery', icon:'🍞', mods:[], priority:21},
+    {id:'cheese', name:'Cheesecake Slice', price:19, cat:'bakery', icon:'🍰', mods:[], priority:22},
+
+    {id:'san', name:'Club Sandwich', price:28, cat:'food', icon:'🥪', mods:[], priority:14},
+    {id:'avo', name:'Avocado Toast', price:24, cat:'food', icon:'🍞', mods:[], priority:15},
+    {id:'sal', name:'Caesar Salad', price:26, cat:'food', icon:'🥗', mods:[], priority:23},
+    {id:'bag', name:'Bagel & Cream Cheese', price:14, cat:'food', icon:'🥯', mods:[], priority:24}
+  ];
+  var byId = {}; ITEMS.forEach(function(it){ byId[it.id] = it; });
+
+  var state = {
+    cols: 5, rows: 4,
+    activeCat: 'fav',
+    editMode: false,
+    selectedTraySrc: null,
+    gridSlots: [], // array of item ids or null, length = capacity, for the Favorites grid
+    cart: [] // {itemId, mods:{}, qty}
+  };
+
+  function capacity(){ return state.cols * state.rows; }
+
+  function rebuildFavGrid(){
+    var cap = capacity();
+    var sorted = ITEMS.slice().sort(function(a,b){ return a.priority - b.priority; });
+    var slots = sorted.slice(0, cap).map(function(it){ return it.id; });
+    while (slots.length < cap) slots.push(null);
+    state.gridSlots = slots;
+  }
+
+  function setDensity(cols, rows){
+    state.cols = cols; state.rows = rows;
+    rebuildFavGrid();
+    render();
+  }
+
+  // ---- Demo rail wiring ----
+  var presetBtns = document.querySelectorAll('.preset-btn');
+  presetBtns.forEach(function(btn){
+    btn.addEventListener('click', function(){
+      presetBtns.forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      var isCustom = btn.dataset.cols === '0';
+      document.getElementById('customSteppers').style.display = isCustom ? 'flex' : 'none';
+      if (!isCustom) setDensity(parseInt(btn.dataset.cols,10), parseInt(btn.dataset.rows,10));
+      else setDensity(parseInt(document.getElementById('colVal').textContent,10), parseInt(document.getElementById('rowVal').textContent,10));
+    });
+  });
+  function wireStepper(minusId, plusId, valId, min, max){
+    document.getElementById(minusId).addEventListener('click', function(){
+      var v = Math.max(min, parseInt(document.getElementById(valId).textContent,10) - 1);
+      document.getElementById(valId).textContent = v;
+      setDensity(parseInt(document.getElementById('colVal').textContent,10), parseInt(document.getElementById('rowVal').textContent,10));
+    });
+    document.getElementById(plusId).addEventListener('click', function(){
+      var v = Math.min(max, parseInt(document.getElementById(valId).textContent,10) + 1);
+      document.getElementById(valId).textContent = v;
+      setDensity(parseInt(document.getElementById('colVal').textContent,10), parseInt(document.getElementById('rowVal').textContent,10));
+    });
+  }
+  wireStepper('colMinus','colPlus','colVal',2,10);
+  wireStepper('rowMinus','rowPlus','rowVal',2,8);
+
+  document.getElementById('editBtn').addEventListener('click', function(){
+    state.editMode = !state.editMode;
+    this.classList.toggle('on', state.editMode);
+    this.textContent = state.editMode ? '✓ Done Arranging' : '✎ Arrange Grid';
+    document.getElementById('editBanner').classList.toggle('show', state.editMode);
+    document.getElementById('catalogTray').classList.toggle('show', state.editMode);
+    state.selectedTraySrc = null;
+    render();
+  });
+
+  document.querySelectorAll('.cat-tab').forEach(function(tab){
+    tab.addEventListener('click', function(){
+      document.querySelectorAll('.cat-tab').forEach(function(t){ t.classList.remove('active'); });
+      tab.classList.add('active');
+      state.activeCat = tab.dataset.cat;
+      render();
+    });
+  });
+
+  document.getElementById('searchBox').addEventListener('input', function(e){
+    renderSearch(e.target.value.trim().toLowerCase());
+  });
+
+  document.getElementById('clearCart').addEventListener('click', function(){ state.cart = []; renderCart(); });
+
+  // ---- Tile size / ergonomic warning ----
+  function checkTileWarning(){
+    var gridEl = document.getElementById('tileGrid');
+    var w = gridEl.clientWidth || 700;
+    var tileW = (w - (state.cols - 1) * 10) / state.cols;
+    var warn = document.getElementById('tileWarn');
+    // ~64px on a typical POS tablet DPI approximates the ~15mm research floor.
+    warn.classList.toggle('show', tileW < 64);
+  }
+
+  // ---- Rendering ----
+  function tileHtml(item, opts){
+    opts = opts || {};
+    var cls = 'tile cat-' + item.cat;
+    var qty = state.cart.filter(function(c){ return c.itemId === item.id; }).reduce(function(s,c){ return s + c.qty; }, 0);
+    return '<button class="' + cls + '" data-id="' + item.id + '" data-role="' + (opts.role||'grid') + '">'
+      + (qty > 0 && opts.role==='grid' ? '<span class="qty-badge">' + qty + '</span>' : '')
+      + (item.mods.length ? '<span class="mod-flag">⋯</span>' : '')
+      + '<span class="icon">' + item.icon + '</span>'
+      + '<span class="name">' + item.name + '</span>'
+      + '<span class="price">SAR ' + item.price.toFixed(2) + '</span>'
+      + '</button>';
+  }
+
+  function render(){
+    var gridEl = document.getElementById('tileGrid');
+    gridEl.style.gridTemplateColumns = 'repeat(' + state.cols + ', 1fr)';
+    var html = '';
+
+    if (state.activeCat === 'fav') {
+      state.gridSlots.forEach(function(id, idx){
+        if (!id) { html += '<div class="tile empty-slot"></div>'; return; }
+        var item = byId[id];
+        if (state.editMode) {
+          html += '<div style="position:relative;">' + tileHtml(item, {role:'slot-'+idx}) + '<button class="tile remove-x" data-slot="' + idx + '">×</button></div>';
+        } else {
+          html += tileHtml(item);
+        }
+      });
+    } else {
+      var list = ITEMS.filter(function(it){ return it.cat === state.activeCat; }).sort(function(a,b){return a.priority-b.priority;});
+      list.forEach(function(item){ html += tileHtml(item); });
+    }
+    gridEl.innerHTML = html;
+
+    document.getElementById('capReadout').textContent = capacity() + ' tiles on screen (' + state.cols + '×' + state.rows + ')';
+    checkTileWarning();
+
+    // grid tile click behavior
+    gridEl.querySelectorAll('.tile[data-role]').forEach(function(el){
+      el.addEventListener('click', function(){ handleTileClick(this.dataset.id, this.dataset.role); });
+    });
+    gridEl.querySelectorAll('.remove-x').forEach(function(el){
+      el.addEventListener('click', function(e){
+        e.stopPropagation();
+        state.gridSlots[parseInt(this.dataset.slot,10)] = null;
+        render(); renderTray();
+      });
+    });
+
+    renderTray();
+  }
+
+  function renderTray(){
+    var tray = document.getElementById('trayGrid');
+    if (!state.editMode) { tray.innerHTML = ''; return; }
+    var placed = {}; state.gridSlots.forEach(function(id){ if (id) placed[id] = true; });
+    var unassigned = ITEMS.filter(function(it){ return !placed[it.id]; }).sort(function(a,b){return a.priority-b.priority;});
+    if (!unassigned.length) { tray.innerHTML = '<p style="font-size:0.8rem;color:#9a9db0;">Every catalog item is already on the grid.</p>'; return; }
+    tray.innerHTML = unassigned.map(function(it){
+      var sel = state.selectedTraySrc === it.id ? ' selected-src' : '';
+      return '<button class="tile cat-' + it.cat + sel + '" data-tray="' + it.id + '"><span class="icon">' + it.icon + '</span><span class="name">' + it.name + '</span><span class="price">SAR ' + it.price.toFixed(2) + '</span></button>';
+    }).join('');
+    tray.querySelectorAll('[data-tray]').forEach(function(el){
+      el.addEventListener('click', function(){
+        state.selectedTraySrc = (state.selectedTraySrc === this.dataset.tray) ? null : this.dataset.tray;
+        renderTray();
+      });
+    });
+    // clicking an empty/filled grid slot while a tray item is selected places it
+    document.querySelectorAll('#tileGrid .tile').forEach(function(el, idx){
+      el.addEventListener('click', function(){
+        if (!state.selectedTraySrc) return;
+        state.gridSlots[idx] = state.selectedTraySrc;
+        state.selectedTraySrc = null;
+        render();
+      });
+    });
+  }
+
+  function renderSearch(q){
+    if (!q) { render(); return; }
+    var gridEl = document.getElementById('tileGrid');
+    gridEl.style.gridTemplateColumns = 'repeat(' + state.cols + ', 1fr)';
+    var results = ITEMS.filter(function(it){ return it.name.toLowerCase().indexOf(q) !== -1; });
+    gridEl.innerHTML = results.length
+      ? results.map(function(it){ return tileHtml(it); }).join('')
+      : '<p style="grid-column:1/-1;color:#9a9db0;font-size:0.85rem;padding:1rem;">No items match "' + q + '" — searches the full 24-item catalog, not just what\'s on the grid.</p>';
+    gridEl.querySelectorAll('.tile[data-role]').forEach(function(el){
+      el.addEventListener('click', function(){ handleTileClick(this.dataset.id, 'grid'); });
+    });
+  }
+
+  function handleTileClick(id, role){
+    if (state.editMode) return; // in edit mode, grid clicks are handled by renderTray's placement logic
+    var item = byId[id];
+    if (item.mods.length) openModal(item);
+    else addToCart(item, {});
+  }
+
+  // ---- Modifier modal ----
+  var modalState = null;
+  function openModal(item){
+    modalState = { item: item, chosen: {} };
+    item.mods.forEach(function(mk){ if (!MODS[mk].required) modalState.chosen[mk] = MODS[mk].choices[0]; });
+    renderModal();
+    document.getElementById('modalVeil').classList.add('show');
+  }
+  function renderModal(){
+    var item = modalState.item;
+    var html = '<div class="modal-head"><div><div class="icon">' + item.icon + '</div><h3>' + item.name + '</h3><div class="price">From SAR ' + item.price.toFixed(2) + '</div></div><button class="modal-close" id="mClose">×</button></div>';
+    item.mods.forEach(function(mk){
+      var m = MODS[mk];
+      html += '<div class="opt-group"><div class="lbl"><b>' + m.label + '</b><span class="' + (m.required?'req':'opt') + '">' + (m.required?'Required':'Optional') + '</span></div><div class="chip-row">';
+      m.choices.forEach(function(c){
+        var sel = modalState.chosen[mk] === c ? ' sel' : '';
+        html += '<button class="chip' + sel + '" data-mk="' + mk + '" data-c="' + c + '">' + c + '</button>';
+      });
+      html += '</div></div>';
+    });
+    var allRequiredMet = item.mods.every(function(mk){ return !MODS[mk].required || modalState.chosen[mk]; });
+    html += '<button class="modal-add" id="mAdd" ' + (allRequiredMet?'':'disabled') + '>' + (allRequiredMet ? 'Add to Order' : 'Choose required options above') + '</button>';
+    document.getElementById('modalBody').innerHTML = html;
+    document.getElementById('mClose').addEventListener('click', closeModal);
+    document.querySelectorAll('.chip').forEach(function(el){
+      el.addEventListener('click', function(){ modalState.chosen[this.dataset.mk] = this.dataset.c; renderModal(); });
+    });
+    var addBtn = document.getElementById('mAdd');
+    if (allRequiredMet) addBtn.addEventListener('click', function(){ addToCart(item, modalState.chosen); closeModal(); });
+  }
+  function closeModal(){ document.getElementById('modalVeil').classList.remove('show'); modalState = null; }
+  document.getElementById('modalVeil').addEventListener('click', function(e){ if (e.target === this) closeModal(); });
+
+  // ---- Cart ----
+  function modsKey(mods){ return Object.keys(mods).sort().map(function(k){return k+':'+mods[k];}).join('|'); }
+  function addToCart(item, mods){
+    var key = modsKey(mods);
+    var existing = state.cart.find(function(c){ return c.itemId === item.id && modsKey(c.mods) === key; });
+    if (existing) existing.qty++;
+    else state.cart.push({ itemId: item.id, mods: mods, qty: 1 });
+    renderCart(); render();
+  }
+  function renderCart(){
+    var list = document.getElementById('cartList');
+    if (!state.cart.length) { list.innerHTML = '<div class="cart-empty">Tap an item to start an order</div>'; }
+    else {
+      list.innerHTML = state.cart.map(function(c, idx){
+        var item = byId[c.itemId];
+        var modsTxt = Object.keys(c.mods).map(function(k){ return c.mods[k]; }).filter(Boolean).join(' · ');
+        return '<div class="cart-row"><div class="top"><span>' + item.icon + ' ' + item.name + '</span><span>SAR ' + (item.price*c.qty).toFixed(2) + '</span></div>'
+          + (modsTxt ? '<div class="mods">' + modsTxt + '</div>' : '')
+          + '<div class="bottom"><div class="qty-ctl"><button data-dec="' + idx + '">−</button><b>' + c.qty + '</b><button data-inc="' + idx + '">+</button></div><span style="color:#9fa2d6;">SAR ' + item.price.toFixed(2) + ' ea</span></div></div>';
+      }).join('');
+      list.querySelectorAll('[data-inc]').forEach(function(el){ el.addEventListener('click', function(){ state.cart[this.dataset.inc].qty++; renderCart(); render(); }); });
+      list.querySelectorAll('[data-dec]').forEach(function(el){ el.addEventListener('click', function(){
+        var i = parseInt(this.dataset.dec,10); state.cart[i].qty--;
+        if (state.cart[i].qty <= 0) state.cart.splice(i,1);
+        renderCart(); render();
+      }); });
+    }
+    var subtotal = state.cart.reduce(function(s,c){ return s + byId[c.itemId].price * c.qty; }, 0);
+    var vat = subtotal * 0.15;
+    document.getElementById('subtotal').textContent = 'SAR ' + subtotal.toFixed(2);
+    document.getElementById('vat').textContent = 'SAR ' + vat.toFixed(2);
+    document.getElementById('grand').textContent = 'SAR ' + (subtotal+vat).toFixed(2);
+  }
+
+  rebuildFavGrid();
+  render();
+  renderCart();
+  window.addEventListener('resize', checkTileWarning);
+})();
+</script>

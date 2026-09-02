@@ -2932,6 +2932,66 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
                 </div>
               </div>
             </div>
+
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+              {(() => {
+                const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId)!;
+                const ps: any = activeCompany.posSettings || {};
+                const gridColumns = ps.gridColumns || 5;
+                const gridRows = ps.gridRows || 4;
+                const applyGrid = (patch: Record<string, any>) => {
+                  handlePosSettingsChange(activeCompany.id, { ...ps, autoPrint: ps.autoPrint ?? true, maxImageSizeKB: ps.maxImageSizeKB || 150, gridColumns, gridRows, ...patch });
+                };
+                const presets: Array<{ key: 'compact' | 'standard' | 'dense'; label: string; cols: number; rows: number }> = [
+                  { key: 'compact', label: t('Compact (12 tiles)'), cols: 3, rows: 4 },
+                  { key: 'standard', label: t('Standard (20 tiles)'), cols: 5, rows: 4 },
+                  { key: 'dense', label: t('Dense (30 tiles)'), cols: 6, rows: 5 },
+                ];
+                const activePreset = ps.gridDensityPreset || (presets.find(p => p.cols === gridColumns && p.rows === gridRows)?.key) || 'custom';
+                return (
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-800">{t('POS Terminal Grid Density')}</h3>
+                      <p className="text-xs text-slate-500 mt-0.5">{t('How many priority tiles the cashier\'s Terminal screen shows at once — items beyond this are still reachable via category tabs or search. See "Modifier Groups" and each product\'s "POS Grid Position" field to choose which items appear here.')}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {presets.map(p => (
+                        <button key={p.key} type="button"
+                          onClick={() => applyGrid({ gridColumns: p.cols, gridRows: p.rows, gridDensityPreset: p.key })}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${activePreset === p.key ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-300'}`}>
+                          {p.label}
+                        </button>
+                      ))}
+                      <button type="button"
+                        onClick={() => applyGrid({ gridDensityPreset: 'custom' })}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${activePreset === 'custom' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-300'}`}>
+                        {t('Custom')}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{t('Columns')}</label>
+                        <input type="number" min={2} max={10} value={gridColumns}
+                          onChange={e => applyGrid({ gridColumns: Math.max(2, Math.min(10, parseInt(e.target.value) || 2)), gridDensityPreset: 'custom' })}
+                          className="w-24 bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-indigo-600" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{t('Rows')}</label>
+                        <input type="number" min={2} max={8} value={gridRows}
+                          onChange={e => applyGrid({ gridRows: Math.max(2, Math.min(8, parseInt(e.target.value) || 2)), gridDensityPreset: 'custom' })}
+                          className="w-24 bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-indigo-600" />
+                      </div>
+                      <div className="text-xs font-bold text-slate-500 pt-5">= {gridColumns * gridRows} {t('tiles on screen')}</div>
+                    </div>
+                    {gridColumns * gridRows > 200 / 2 && (gridColumns > 8 || gridRows > 6) && (
+                      <p className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">
+                        ⚠ {t('A very dense grid makes tiles harder to tap accurately on touch hardware — consider fewer columns/rows, or a larger POS display.')}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         )}
 
