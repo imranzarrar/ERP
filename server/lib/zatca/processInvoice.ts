@@ -315,7 +315,7 @@ export async function processInvoiceZatca(invoiceId: string) {
           xmlContent: previewDoc.signedXmlContent,
           qrCodeContent: previewDoc.qrCodeBase64,
           zatcaStatus: 'DISABLED',
-          zatcaValidationResults: [{ code: 'ZATCA_DISABLED', message: 'ZATCA integration is not enabled for this company yet. A Phase-1-compliant QR code has been generated for printing; this invoice will be resubmitted for full Phase-2 clearance once ZATCA is enabled.' }] as any,
+          zatcaValidationResults: [{ code: 'ZATCA_DISABLED', message: 'ZATCA integration is disabled for this company.' }] as any,
         })
         .where(eq(schema.invoices.id, invoiceId));
       return { success: true, status: 'DISABLED', qrCodeContent: previewDoc.qrCodeBase64, xmlContent: previewDoc.signedXmlContent };

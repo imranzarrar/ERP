@@ -46,6 +46,14 @@ export default function InvoiceViewScreen({ db, invoiceId, onBack, onPrintDoc, o
   const inv = db.invoices.find(i => i.id === invoiceId);
   const customer = inv ? db.customers.find(c => c.id === inv.customerId) : undefined;
   const bank = inv ? db.banks.find(b => b.id === inv.bankId) : undefined;
+  // The company's CURRENT zatcaEnabled switch — deliberately not inv.zatcaStatus, which is
+  // a one-time snapshot frozen at whatever this invoice's last processing attempt saw. A
+  // company that enables ZATCA after already having invoices sitting at zatcaStatus:
+  // 'DISABLED' previously had no way to ever resubmit them: the button below used to
+  // exclude 'DISABLED' outright, and nothing re-checks a company's flag on its own, so
+  // those invoices stayed permanently stuck even once the company was genuinely enabled.
+  const company = inv ? db.companies?.find((c: any) => c.id === inv.companyId) : undefined;
+  const companyZatcaLive = Boolean((company as any)?.zatcaEnabled);
   // Every Receipt/Reversal voucher ever posted against this invoice, most recent first —
   // an invoice settled across several installments (e.g. cash now, two different banks
   // later) previously had no way to see or reprint any payment but the last one.
@@ -288,13 +296,18 @@ export default function InvoiceViewScreen({ db, invoiceId, onBack, onPrintDoc, o
             {inv.clearanceTimestamp && (
               <p className="text-xs text-slate-500 mb-2">{t('Cleared at')}: {new Date(inv.clearanceTimestamp).toLocaleString()}</p>
             )}
-            {inv.zatcaStatus === 'DISABLED' && (
+            {inv.zatcaStatus === 'DISABLED' && !companyZatcaLive && (
               <p className="text-[11px] text-slate-500 mb-2">
                 {t('ZATCA integration is not enabled for this company yet. Ask a Super Admin to enable it in Admin Settings, or complete Sandbox onboarding to enable it automatically.')}
               </p>
             )}
+            {inv.zatcaStatus === 'DISABLED' && companyZatcaLive && (
+              <p className="text-[11px] text-slate-500 mb-2">
+                {t('ZATCA is now enabled for this company — submit this invoice below to get it processed.')}
+              </p>
+            )}
 
-            {(inv.zatcaStatus === 'ERROR' || inv.zatcaStatus === 'REJECTED' || !inv.zatcaStatus || inv.zatcaStatus === 'NOT_SUBMITTED') && inv.zatcaStatus !== 'DISABLED' && (userPermissions.invoice.create.enabled || userPermissions.invoice.update.enabled) && (
+            {(inv.zatcaStatus === 'ERROR' || inv.zatcaStatus === 'REJECTED' || !inv.zatcaStatus || inv.zatcaStatus === 'NOT_SUBMITTED' || inv.zatcaStatus === 'DISABLED') && companyZatcaLive && (userPermissions.invoice.create.enabled || userPermissions.invoice.update.enabled) && (
               <button
                 onClick={handleManualZatcaSubmit}
                 disabled={zatcaSubmitting}

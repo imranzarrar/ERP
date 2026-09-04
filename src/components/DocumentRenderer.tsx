@@ -35,6 +35,27 @@ interface DocumentRendererProps {
  // logo image, with different alignment behavior than the real renderer) — which is
  // exactly why what an admin saw while editing didn't match what actually printed.
  embedded?: boolean;
+ // POS Terminal's receipt printout — an Invoice rendered as a genuine 80mm continuous-
+ // roll thermal receipt (worldwide standard POS paper width, printable area ~72mm) instead
+ // of the 12-column Canvas Designer layout, which is fundamentally an A4-shaped design
+ // tool and cannot usefully fit on 80mm. Deliberately reuses documentType: 'Invoice' —
+ // NOT a separate document type — so the already-verified ZATCA QR/tax-breakdown/
+ // bilingual-translation computation in renderQuotationOrInvoice is shared byte-for-byte,
+ // never re-derived for the receipt. See getPageSizeClass()/handlePrint() for the
+ // matching physical page geometry (80mm width, auto/continuous height — a fixed height
+ // like the existing 4in x 6in business-document thermal size would be wrong here).
+ forceThermalReceipt?: boolean;
+ // Fires handlePrint() once automatically on mount instead of waiting for the toolbar's
+ // Print button — this is what POS's "Auto Print Receipt" setting (posSettings.autoPrint)
+ // actually wires to now. The print popup already self-closes ~500ms after printing (see
+ // handlePrint()'s window.close() below), so this produces a real "sale completes, receipt
+ // prints" flow with no extra click, matching real POS behavior — see PosModule.tsx.
+ autoPrint?: boolean;
+ // A window handle from window.open() called SYNCHRONOUSLY by the caller's own click
+ // handler, before any async work — see handlePrint()'s comment for why this exists
+ // (popup blockers kill a window.open() that fires from a delayed autoPrint effect).
+ // Ignored when autoPrint is false; only meaningful paired with it.
+ preOpenedPrintWindow?: Window | null;
 }
 
 // Simple English-to-Arabic dictionary for high-fidelity bilingual output
@@ -83,6 +104,14 @@ const TRANSLATIONS: Record<string, string> = {
  'VAT': 'ضريبة القيمة المضافة',
  'Grand Total': 'المجموع الكلي',
  'Notes': 'ملاحظات',
+ 'Discount': 'الخصم',
+
+ // POS thermal receipt (renderQuotationOrInvoice's forceThermalReceipt branch)
+ 'Payment Method': 'طريقة الدفع',
+ 'Amount Paid': 'المبلغ المدفوع',
+ 'Change': 'الباقي',
+ 'Against': 'مقابل',
+ 'Thank you for your business!': 'شكرًا لتعاملكم معنا!',
 
  // Statuses
  'Draft': 'مسودة',
@@ -135,10 +164,17 @@ const URDU_TRANSLATIONS: Record<string, string> = {
  'Total': 'کل',
  'Amount': 'رقم',
 
- 'Subtotal': 'ذیلی مجموعہ',
+  'Subtotal': 'ذیلی مجموعہ',
  'VAT': 'ویٹ ٹیکس',
  'Grand Total': 'مجموعی کل',
  'Notes': 'نوٹس',
+ 'Discount': 'رعایت',
+
+ 'Payment Method': 'ادائیگی کا طریقہ',
+ 'Amount Paid': 'ادا شدہ رقم',
+ 'Change': 'بقیہ رقم',
+ 'Against': 'کے عوض',
+ 'Thank you for your business!': 'آپ کے کاروبار کا شکریہ!',
 
  'Draft': 'مسودہ',
  'Sent': 'بھیج دیا گیا',
@@ -160,7 +196,10 @@ export default function DocumentRenderer({
  db,
  onViewAnotherDoc,
  onClose,
- embedded = false
+ embedded = false,
+ forceThermalReceipt = false,
+ autoPrint = false,
+ preOpenedPrintWindow = null
 }: DocumentRendererProps) {
  // Find active template or default
  const companyTemplates = React.useMemo(() => {
@@ -268,7 +307,7 @@ export default function DocumentRenderer({
   const [zoomLevel, setZoomLevel] = React.useState(1);
   React.useEffect(() => {
     const handleResize = () => {
-      const isThermal = currentTemplate?.pageSize?.includes('4in x 6in');
+      const isThermal = forceThermalReceipt || currentTemplate?.pageSize?.includes('4in x 6in');
       const baseWidth = isThermal ? 400 : 800;
       if (window.innerWidth < baseWidth + 48) {
         setZoomLevel(Math.max(0.3, (window.innerWidth - 48) / baseWidth));
@@ -307,6 +346,15 @@ export default function DocumentRenderer({
  // genuinely long one (many line items) still paginates correctly via the browser's
  // own print engine — @page below still controls the physical paper size/margins.
  const getPageSizeClass = () => {
+ // Real 80mm continuous-roll thermal paper (the worldwide-standard POS receipt width —
+ // 58mm is the other common size, but 80mm is what this app's POS Terminal targets).
+ // Deliberately independent of currentTemplate.pageSize, same reasoning as the
+ // Expense/Ledger/Report branch below: a receipt's physical size is fixed by the till's
+ // printer hardware, not by whatever A4/thermal-label page size the company picked for
+ // its regular Invoice template.
+ if (forceThermalReceipt) {
+ return 'w-[80mm] text-[10px]';
+ }
  if (documentType === 'Expense' || documentType === 'Ledger' || documentType === 'Report') {
  return 'w-full min-w-[760px] max-w-4xl'; // Standard report size
  }
@@ -322,7 +370,18 @@ export default function DocumentRenderer({
  const printContent = printableRef.current;
  if (!printContent) return;
 
- const printWindow = window.open('', '', 'height=800,width=1000');
+ // preOpenedPrintWindow lets a caller open the popup SYNCHRONOUSLY inside its own
+ // click handler (e.g. POS's "Confirm Payment" button) and hand the still-open window
+ // reference in here once the receipt data/QR are actually ready — possibly seconds
+ // later, after network awaits. Chrome (and most browsers) only allow window.open() to
+ // succeed within a user gesture's "transient activation" window; calling it ourselves
+ // from a delayed effect (auto-print firing after the sale's network round-trip and the
+ // QR-readiness poll) reliably gets silently blocked as an unsolicited popup — confirmed
+ // live: "Please allow popups" fired on every auto-printed POS receipt. Writing content
+ // into an ALREADY-OPEN window has no such restriction, only the act of opening one does.
+ const printWindow = (preOpenedPrintWindow && !preOpenedPrintWindow.closed)
+ ? preOpenedPrintWindow
+ : window.open('', '', 'height=800,width=1000');
  if (!printWindow) {
  alert('Please allow popups to print/generate PDF.');
  return;
@@ -388,11 +447,27 @@ export default function DocumentRenderer({
  body { padding: 0; margin: 0; width: 100%; }
  .no-print { display: none !important; }
  @page {
- size: ${currentTemplate?.pageSize?.includes('4in x 6in') ? '4in 6in' : 'A4 portrait'};
- margin: ${currentTemplate?.pageSize?.includes('4in x 6in') ? '0.1in' : '0.4in'};
+ /* 80mm width, auto height: a real thermal roll has no fixed page length — it just
+ feeds and cuts after the content ends, unlike A4 or the existing 4in x 6in business-
+ document size (both fixed-height). "auto" is what tells the print engine/driver to
+ treat this as continuous paper instead of forcing a 6in-tall page with a wasteful
+ blank tail (or, for a long receipt, an unwanted mid-receipt page break). */
+ size: ${forceThermalReceipt ? '80mm auto' : currentTemplate?.pageSize?.includes('4in x 6in') ? '4in 6in' : 'A4 portrait'};
+ margin: ${forceThermalReceipt ? '2mm' : currentTemplate?.pageSize?.includes('4in x 6in') ? '0.1in' : '0.4in'};
  }
  /* Scale down for small thermal receipt paper */
- ${currentTemplate?.pageSize?.includes('4in x 6in') ? `
+ ${forceThermalReceipt ? `
+ body, table, td, th, p, span, div {
+ font-size: 10px !important;
+ }
+ .company-logo {
+ max-height: 32px !important;
+ max-width: 70mm !important;
+ }
+ #printable-inner {
+ padding: 2mm !important;
+ }
+ ` : currentTemplate?.pageSize?.includes('4in x 6in') ? `
  body, table, td, th, p, span, div {
  font-size: 10px !important;
  }
@@ -442,6 +517,36 @@ export default function DocumentRenderer({
  `);
  printWindow.document.close();
  };
+
+ // POS's "Auto Print Receipt" setting fires this once, right after mount, instead of
+ // waiting for a toolbar click — see the `autoPrint` prop doc comment above.
+ React.useEffect(() => {
+  if (!autoPrint) return;
+  let cancelled = false;
+  // The ZATCA QR image loads asynchronously (the QRCode.toDataURL effect above, inside
+  // renderQuotationOrInvoice) after this component mounts. Printing the instant we mount
+  // would capture the DOM before that image's src is actually set, silently producing a
+  // receipt with a blank QR box — printing a Saudi B2C receipt with no scannable QR is a
+  // real compliance problem, not just a cosmetic one. Poll briefly for the receipt's own
+  // QR <img> (tagged data-qr-ready, only rendered once localQrDataUri is set) to actually
+  // exist before printing — mirrors handlePrint()'s own document.fonts.ready race just
+  // below: wait for the real thing, but never hang forever if it doesn't show up (e.g. QR
+  // generation itself failed, or this document has no QR block at all).
+  const qrExpected = forceThermalReceipt && documentType === 'Invoice' && currentTemplate?.printQrCode !== false;
+  const deadline = Date.now() + 2000;
+  const tryPrint = () => {
+   if (cancelled) return;
+   const qrReady = !qrExpected || printableRef.current?.querySelector('[data-qr-ready="true"]');
+   if (qrReady || Date.now() > deadline) {
+    handlePrint();
+   } else {
+    setTimeout(tryPrint, 100);
+   }
+  };
+  const initial = setTimeout(tryPrint, 150);
+  return () => { cancelled = true; clearTimeout(initial); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [autoPrint]);
 
  const renderQuotationOrInvoice = (doc: Quotation | Invoice) => {
   const isInvoice = 'invoiceNumber' in doc;
@@ -561,6 +666,142 @@ export default function DocumentRenderer({
       .catch(() => { if (!cancelled) setLocalQrDataUri(null); });
     return () => { cancelled = true; };
   }, [qrDataStr]);
+
+  // POS Terminal's 80mm thermal receipt — a compact, stacked layout instead of the
+  // 12-column Canvas Designer grid below (that grid is an A4-shaped design tool; at 80mm
+  // wide, side-by-side blocks like seller/buyer simply don't fit). Deliberately reuses
+  // every value already computed above (totals, vatRateGroups, zatcaQr/localQrDataUri,
+  // isZatcaConfirmed, isCreditNote/isDebitNote) instead of re-deriving any of it — this is
+  // the same real ZATCA/tax data as the full-size printout, just laid out for a paper
+  // roll. See DocumentRendererProps.forceThermalReceipt and PosModule.tsx.
+  if (forceThermalReceipt) {
+   // Deliberately minimal — a cashier-facing 80mm receipt, not a full tax-invoice
+   // printout. Customer identity and payment method are dropped by design; only the
+   // items, the ZATCA-relevant totals, and (for a cash sale) the amount tendered/change
+   // are shown.
+   const amountPaidVal = isInvoice ? ((doc as Invoice).amountPaid || 0) : 0;
+   const changeDue = amountPaidVal > totals.grandTotal ? amountPaidVal - totals.grandTotal : 0;
+   const receiptTitle = isCreditNote ? 'Credit Note' : isDebitNote ? 'Debit Note' : (isInvoice ? 'Invoice' : 'Quotation');
+   const dividerClass = 'border-t border-dashed border-slate-400 my-1.5';
+
+   return (
+    <div className="text-[10px] leading-snug text-slate-900">
+     <div className="text-center mb-1.5">
+      {companySetup.logoUrl && (
+       <img src={companySetup.logoUrl} alt="" className="company-logo mx-auto mb-1 max-h-8 object-contain" />
+      )}
+      <p className="font-bold text-[12px]">{companySetup.name}</p>
+      {(branchAddressLine || companySetup.address) && (
+       <p className="text-[9px] text-slate-600 whitespace-pre-line">{branchAddressLine || companySetup.address}</p>
+      )}
+      {companySetup.vatNumber && <p className="text-[9px] text-slate-600">{t('VAT')}: {companySetup.vatNumber}</p>}
+      {companySetup.phone && <p className="text-[9px] text-slate-600">{t('Phone')}: {companySetup.phone}</p>}
+     </div>
+
+     <div className={dividerClass} />
+
+     <p className="text-center font-bold text-[11px] uppercase">
+      {t(receiptTitle)}
+      {(isCreditNote || isDebitNote) && originalInvoice && (
+       <span className="block text-[9px] font-normal normal-case">{t('Against')} {originalInvoice.invoiceNumber}</span>
+      )}
+     </p>
+     <div className="flex justify-between mt-1">
+      <span>{t('Invoice Number')}:</span>
+      <span className="font-semibold">{docNum}</span>
+     </div>
+     <div className="flex justify-between">
+      <span>{t('Date')}:</span>
+      <span>{timestamp}</span>
+     </div>
+
+     <div className={dividerClass} />
+
+     <div>
+      {items.map((item: any, idx: number) => {
+       const lineTotal = (item.unitCost || 0) * item.quantity - (item.discountAmount || 0) * item.quantity;
+       return (
+        <div key={item.id || idx} className="mb-1">
+         <div className="flex justify-between font-semibold">
+          <span className="flex-1 pe-1">{item.description}</span>
+          <span className="shrink-0">{fmt(lineTotal)}</span>
+         </div>
+         <div className="text-slate-500 text-[9px]">
+          <span>{item.quantity} x {fmt(item.unitCost || 0)}</span>
+         </div>
+        </div>
+       );
+      })}
+     </div>
+
+     <div className={dividerClass} />
+
+     <div className="flex justify-between">
+      <span>{t('Subtotal')}:</span>
+      <span>{fmt(totals.subtotal)}</span>
+     </div>
+     {totals.discountAmount > 0 && (
+      <div className="flex justify-between">
+       <span>{t('Discount')}:</span>
+       <span>-{fmt(totals.discountAmount)}</span>
+      </div>
+     )}
+     {hasMultipleVatRates ? (
+      Array.from(vatRateGroups.entries()).map(([rate, group]) => (
+       <div key={rate} className="flex justify-between">
+        <span>{t('VAT')} ({rate}%):</span>
+        <span>{fmt(group.taxAmount)}</span>
+       </div>
+      ))
+     ) : (
+      <div className="flex justify-between">
+       <span>{t('VAT')} ({totals.percentage}%):</span>
+       <span>{fmt(totals.taxAmount)}</span>
+      </div>
+     )}
+
+     <div className={dividerClass} />
+
+     <div className="flex justify-between font-bold text-[13px]">
+      <span>{t('Grand Total')}:</span>
+      <span>{fmt(totals.grandTotal)}</span>
+     </div>
+
+     {changeDue > 0 && (
+      <>
+       <div className={dividerClass} />
+       <div className="flex justify-between">
+        <span>{t('Amount Paid')}:</span>
+        <span>{fmt(amountPaidVal)}</span>
+       </div>
+       <div className="flex justify-between font-semibold">
+        <span>{t('Change')}:</span>
+        <span>{fmt(changeDue)}</span>
+       </div>
+      </>
+     )}
+
+     {isInvoice && currentTemplate?.printQrCode !== false && (
+      <>
+       <div className={dividerClass} />
+       <div className="flex flex-col items-center">
+        {localQrDataUri ? (
+         <img data-qr-ready="true" src={localQrDataUri} alt="ZATCA QR Verification" className="w-20 h-20" />
+        ) : (
+         <div className="w-20 h-20 bg-slate-100 rounded" />
+        )}
+        <span className={`text-[8px] font-bold mt-1 ${isZatcaConfirmed ? 'text-slate-400' : 'text-amber-500'}`}>
+         {isZatcaConfirmed ? (docZatcaStatus === 'CLEARED' ? 'Cleared' : 'Reported') : 'Not Yet Cleared'}
+        </span>
+       </div>
+      </>
+     )}
+
+     <div className={dividerClass} />
+     <p className="text-center text-[9px] mt-1">{t('Thank you for your business!')}</p>
+    </div>
+   );
+  }
 
   // Parse custom template layout configurations
   let parsedLayout: any[] = [];

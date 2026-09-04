@@ -1567,7 +1567,7 @@ type NavSection = {
  {(activeTab === 'units' || activeTab === 'units-add') && renderMasterEntities('units')}
  {(activeTab === 'warehouses' || activeTab === 'warehouses-add') && renderMasterEntities('warehouses')}
  {(activeTab === 'pos' || activeTab.startsWith('pos-')) && (
-            <PosModule db={activeDb} onUpdateDbLocal={handleUpdateDbLocal} onRefreshDb={triggerDbRefresh} currentUser={currentUser} defaultTab={activeTab === 'pos' ? 'terminal' : activeTab.replace('pos-', '') as any} onClose={() => setActiveTab('dashboard')} />
+            <PosModule db={activeDb} onUpdateDbLocal={handleUpdateDbLocal} onRefreshDb={triggerDbRefresh} currentUser={currentUser} defaultTab={activeTab === 'pos' ? 'terminal' : activeTab.replace('pos-', '') as any} onClose={() => setActiveTab('dashboard')} onViewInvoice={(id) => { setViewTarget({ id }); handleNavigate('invoices-view'); }} />
           )}
   {(activeTab === 'products' || activeTab === 'products-add') && renderMasterEntities('products')}
  {(activeTab === 'inventory' || activeTab.startsWith('inventory-')) && (

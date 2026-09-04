@@ -2,10 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { DatabaseState, calculateInvoiceTotals, getDefaultTaxSlabId } from '../dbStore';
 import { getMonthToDateRange } from '../dateUtils';
 import { ProductService, Customer, PosShift, PosHeldInvoice, PosCartItem, TaxSlab, Invoice, BankAccount } from '../types';
-import { Search, ShoppingCart, ShoppingBag, Trash2, Printer, Check, X, Pause, Play, Users, CreditCard, Banknote, UserPlus, LogOut, PackageSearch, Tag, Receipt, Maximize, Minimize } from 'lucide-react';
+import { Search, ShoppingCart, ShoppingBag, Trash2, Printer, Check, X, Pause, Play, Users, CreditCard, Banknote, UserPlus, LogOut, PackageSearch, Tag, Receipt, Maximize, Minimize, Eye, ShieldCheck } from 'lucide-react';
 import { useTranslation, usePermissions } from '../hooks';
 import StatusPill from './StatusPill';
 import { generateId } from '../id';
+import DocumentRenderer from './DocumentRenderer';
 
 interface PosModuleProps {
   db: DatabaseState;
@@ -29,9 +30,14 @@ interface PosModuleProps {
   // dropped selectedCompanyId/companySetup/currentUser and reset the active company).
   onRefreshDb?: () => Promise<void>;
   currentUser: any;
+  // Opens the same dedicated Invoice View screen (Print, ZATCA status/detail, and the
+  // Submit/Re-submit to ZATCA action) that InvoiceModule's own listing links to — a POS
+  // sale is a real row in the same invoices table, so it gets the exact same screen
+  // instead of a second, POS-specific implementation of ZATCA status/actions.
+  onViewInvoice?: (id: string) => void;
 }
 
-export default function PosModule({ db, onUpdateDbLocal, onRefreshDb, currentUser, defaultTab = 'terminal', onClose }: PosModuleProps & { defaultTab?: 'terminal' | 'held' | 'history' | 'shifts', onClose?: () => void }) {
+export default function PosModule({ db, onUpdateDbLocal, onRefreshDb, currentUser, defaultTab = 'terminal', onClose, onViewInvoice }: PosModuleProps & { defaultTab?: 'terminal' | 'held' | 'history' | 'shifts', onClose?: () => void }) {
   const activeCompany = db.companies?.find((c:any) => c.id === (db.selectedCompanyId));
   const currency = activeCompany?.currency || 'SAR';
   const { t, isRTL } = useTranslation(db);
@@ -163,7 +169,7 @@ export default function PosModule({ db, onUpdateDbLocal, onRefreshDb, currentUse
         {activeTab === 'terminal' && <PosMainApp db={db} onUpdateDbLocal={onUpdateDbLocal} onRefreshDb={onRefreshDb} currentUser={currentUser} activeShift={activeShift} activeCompanyId={activeCompanyId} posSettings={posSettings} cart={cart} setCart={setCart} holdCustomerId={holdCustomerId} setHoldCustomerId={setHoldCustomerId} onClose={onClose} fiscalMonths={fiscalMonths} />}
         {activeTab === 'held' && <PosHeldInvoices db={db} onUpdateDbLocal={onUpdateDbLocal} currentUser={currentUser} activeCompanyId={activeCompanyId} onResume={(heldInvoice: any) => { setCart(heldInvoice.items); setHoldCustomerId(heldInvoice.customerId); setActiveTab('terminal'); }} restricted={true} />}
 
-        {activeTab === 'history' && <PosSalesHistory db={db} activeCompanyId={activeCompanyId} currentUser={currentUser} restricted={true} />}
+        {activeTab === 'history' && <PosSalesHistory db={db} activeCompanyId={activeCompanyId} currentUser={currentUser} restricted={true} onViewInvoice={onViewInvoice} />}
 
         {activeTab === 'shifts' && <PosShiftsHistory db={db} activeCompanyId={activeCompanyId} currentUser={currentUser} />}
       </div>
@@ -210,6 +216,29 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
   const [receivedAmount, setReceivedAmount] = useState<string>('');
   const [isSavingPos, setIsSavingPos] = useState(false);
   const receivedAmountRef = React.useRef<HTMLInputElement>(null);
+  // The just-completed sale's invoice id, used to mount a real 80mm thermal-receipt
+  // DocumentRenderer (see below) — replaces the old fake "Receipt printing simulated!"
+  // alert with an actual print. When posSettings.autoPrint is on, it's mounted off-screen
+  // and prints itself silently; when off, it's shown as a normal visible Print/Close modal
+  // so the cashier still has a way to print (or reprint) that sale's receipt on demand.
+  const [receiptInvoiceId, setReceiptInvoiceId] = useState<string | null>(null);
+  // The receipt's print popup, opened synchronously in handlePayInvoice's click handler
+  // (before any await) — see DocumentRenderer's preOpenedPrintWindow prop doc comment for
+  // why: a window.open() fired later, from an effect after the sale's network round-trip,
+  // reliably gets blocked as an unsolicited popup.
+  const [pendingPrintWindow, setPendingPrintWindow] = useState<Window | null>(null);
+  // Auto Print mode is a silent, off-screen print (no Close button for the cashier to
+  // click) — unmount it a few seconds after firing so hidden DocumentRenderer instances
+  // don't pile up sale after sale. Manual mode (autoPrint off) is skipped here: that
+  // instance is a real visible modal the cashier closes themselves.
+  React.useEffect(() => {
+    if (!receiptInvoiceId || !posSettings.autoPrint) return;
+    const timer = setTimeout(() => {
+      setReceiptInvoiceId(null);
+      setPendingPrintWindow(null);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [receiptInvoiceId, posSettings.autoPrint]);
   
   React.useEffect(() => {
     if (showPayModal) {
@@ -462,12 +491,21 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
     if (!payBankId) return alert(t('Please select a payment method (Bank/Cash).'));
     if (isSavingPos) return;
 
+    // Open the print popup HERE — synchronously, before any await below — so it carries
+    // this click's user activation. Filled in with the actual receipt content once the
+    // sale round-trip finishes and the ZATCA QR is ready (see the receipt render block
+    // near the end of this component). A blank popup that never gets filled in (sale
+    // fails, or autoPrint gets toggled off mid-flight) is harmless — it just sits empty;
+    // closed defensively below on failure so it doesn't linger.
+    const printPopup = posSettings.autoPrint ? window.open('', '', 'height=800,width=1000') : null;
+
     // Guard against confirming a sale for less cash than the (tax-inclusive) total
     // actually due — previously any received amount (including a blank/0 field) was
     // accepted and the full grandTotal was still recorded as amountPaid regardless of
     // what was actually collected from the customer.
     const receivedNum = parseFloat(receivedAmount) || 0;
     if (receivedNum < total - 0.01) {
+      printPopup?.close();
       return alert(t('Received amount is less than the total due. Please collect the full amount before confirming payment.'));
     }
 
@@ -483,6 +521,7 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
          if (firstBank) {
            finalBankId = firstBank.id;
          } else {
+            printPopup?.close();
             return alert(t('No bank accounts configured. Please configure at least one bank account.'));
          }
        }
@@ -546,6 +585,7 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
+        printPopup?.close();
         alert(body.error || t('Failed to complete sale.'));
         return;
       }
@@ -554,7 +594,14 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
       // computed totals, and items — refresh from it rather than trusting local echo
       // (same pattern as InvoiceModule.handleSaveInvoice).
       if (onRefreshDb) await onRefreshDb();
+      if (body.invoiceId) {
+        setReceiptInvoiceId(body.invoiceId);
+        setPendingPrintWindow(printPopup);
+      } else {
+        printPopup?.close();
+      }
     } catch {
+      printPopup?.close();
       alert(t('Failed to complete sale — check your connection and try again.'));
       return;
     } finally {
@@ -564,9 +611,6 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
     setCart([]);
     setShowPayModal(false);
     setReceivedAmount('');
-    if (posSettings.autoPrint) {
-      setTimeout(() => alert(t('Receipt printing simulated!')), 500);
-    }
   };
 
   const handleCloseShiftConfirm = async () => {
@@ -1000,6 +1044,47 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
           </div>
         </div>
       )}
+
+      {/* RECEIPT — a real 80mm thermal printout of the sale just completed (see
+          DocumentRenderer's forceThermalReceipt). When Auto Print is on, this mounts
+          off-screen and prints itself silently (autoPrint prop), then unmounts itself a
+          few seconds later; when off, it's a normal visible Print/Close modal so the
+          cashier still has a way to print (or reprint) that sale's receipt. */}
+      {receiptInvoiceId && (() => {
+        const receiptInvoice = (db.invoices || []).find((i: Invoice) => i.id === receiptInvoiceId);
+        if (!receiptInvoice) return null;
+        if (posSettings.autoPrint) {
+          return (
+            <div style={{ position: 'absolute', left: '-9999px', top: 0, width: '80mm' }} aria-hidden="true">
+              <DocumentRenderer
+                embedded
+                autoPrint
+                preOpenedPrintWindow={pendingPrintWindow}
+                forceThermalReceipt
+                documentType="Invoice"
+                data={receiptInvoice}
+                companySetup={db.companySetup as any}
+                templates={db.templates}
+                taxSlabs={db.taxSlabs}
+                db={db}
+                onClose={() => setReceiptInvoiceId(null)}
+              />
+            </div>
+          );
+        }
+        return (
+          <DocumentRenderer
+            forceThermalReceipt
+            documentType="Invoice"
+            data={receiptInvoice}
+            companySetup={db.companySetup as any}
+            templates={db.templates}
+            taxSlabs={db.taxSlabs}
+            db={db}
+            onClose={() => setReceiptInvoiceId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
@@ -1076,7 +1161,7 @@ function PosHeldInvoices({ db, onUpdateDbLocal, currentUser, activeCompanyId, on
 }
 
 
-function PosSalesHistory({ db, activeCompanyId, currentUser, restricted }: any) {
+function PosSalesHistory({ db, activeCompanyId, currentUser, restricted, onViewInvoice }: any) {
   const { t } = useTranslation(db);
   const activeCompany = db.companies?.find((c:any) => c.id === activeCompanyId);
   const currency = activeCompany?.currency || 'SAR';
@@ -1110,11 +1195,24 @@ function PosSalesHistory({ db, activeCompanyId, currentUser, restricted }: any) 
               <th className="p-4 font-bold text-slate-700">{t("Customer")}</th>
               <th className="p-4 font-bold text-slate-700">{t("Total")}</th>
               <th className="p-4 font-bold text-slate-700">{t("Status")}</th>
+              <th className="p-4 font-bold text-slate-700 text-center">{t("ZATCA Status")}</th>
+              <th className="p-4 font-bold text-slate-700 text-end">{t("Actions")}</th>
             </tr>
           </thead>
           <tbody>
             {posInvoices.map((inv: any) => {
               const cust = db.customers?.find((c: any) => c.id === inv.customerId);
+              // Same tone/label mapping InvoiceModule.tsx's own listing uses for this
+              // exact column — a POS sale is a row in the same invoices table, so its
+              // ZATCA status reads identically wherever it's shown.
+              const zStatus = inv.zatcaStatus || 'NOT_SUBMITTED';
+              const zTone =
+                zStatus === 'CLEARED' ? 'good' :
+                zStatus === 'REPORTED' ? 'info' :
+                zStatus === 'PENDING' || zStatus === 'SUBMITTING' ? 'warn' :
+                zStatus === 'REJECTED' || zStatus === 'ERROR' ? 'critical' :
+                zStatus === 'DISABLED' ? 'warn' :
+                'neutral';
               return (
                 <tr key={inv.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                   <td className="p-4 font-bold text-indigo-600">{inv.invoiceNumber}</td>
@@ -1122,11 +1220,30 @@ function PosSalesHistory({ db, activeCompanyId, currentUser, restricted }: any) 
                   <td className="p-4 text-slate-800">{cust?.name || t("Walk-in")}</td>
                   <td className="p-4 font-bold text-slate-900">{currency} {calculateInvoiceTotals(db, inv.items, inv.taxSlabId, inv.discountPercentage).grandTotal.toFixed(2)}</td>
                   <td className="p-4"><StatusPill tone={inv.status === 'Active' ? 'good' : 'critical'}>{t(inv.status)}</StatusPill></td>
+                  <td className="p-4 text-center">
+                    <StatusPill tone={zTone as any}>
+                      <ShieldCheck className="w-2.5 h-2.5" />
+                      {t(zStatus)}
+                    </StatusPill>
+                  </td>
+                  <td className="p-4 text-end">
+                    {onViewInvoice && (
+                      <button
+                        type="button"
+                        onClick={() => onViewInvoice(inv.id)}
+                        className="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition cursor-pointer inline-flex items-center gap-1.5 text-[11px] font-bold border border-indigo-200"
+                        title={t('View invoice')}
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>{t('View')}</span>
+                      </button>
+                    )}
+                  </td>
                 </tr>
               );
             })}
             {posInvoices.length === 0 && (
-              <tr><td colSpan={5} className="p-8 text-center text-slate-400">{t("No POS invoices found.")}</td></tr>
+              <tr><td colSpan={7} className="p-8 text-center text-slate-400">{t("No POS invoices found.")}</td></tr>
             )}
           </tbody>
         </table>
