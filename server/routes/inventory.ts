@@ -730,6 +730,413 @@ router.patch('/purchase-orders/:id/cancel', async (req: any, res) => {
   }
 });
 
+// --- Warehouse Transfers (Dispatch -> Receiving) ---
+//
+// Moves stock between two warehouses of the same company, which may belong to two
+// DIFFERENT branches (or the same branch, or one/both branchless) — the one document
+// type in this file that genuinely touches two branches' inventory in a single write.
+// See schema.ts's warehouseDispatches comment for the full design rationale (1:1
+// dispatch->receiving, stock deducted at dispatch and only added at receiving using the
+// actual received quantity, no assertSalesWarehouse — warehouse `type` is irrelevant to a
+// pure transfer just like it already is for GRN/Stock Adjustment).
+//
+// Create a dispatch: deducts stock from fromWarehouseId immediately. Both warehouses are
+// resolved and branch-checked INDEPENDENTLY and explicitly scoped to companyId here (never
+// via branchAccessOkViaWarehouse, which does NOT check companyId on its own — safe only
+// for acting on a warehouseId that was already company-verified elsewhere, which a fresh
+// client-supplied id here has not been).
+router.post('/warehouse-dispatches', async (req: any, res) => {
+  try {
+    if (!hasPermission(req.user, 'warehouseDispatches.create')) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { dispatchData } = req.body || {};
+    if (!dispatchData || !dispatchData.fromWarehouseId || !dispatchData.toWarehouseId || !Array.isArray(dispatchData.items) || dispatchData.items.length === 0) {
+      return res.status(400).json({ error: 'A source warehouse, destination warehouse, and at least one dispatched item are required.' });
+    }
+    if (dispatchData.fromWarehouseId === dispatchData.toWarehouseId) {
+      return res.status(400).json({ error: 'Source and destination warehouse must be different.' });
+    }
+    if (!dispatchData.dispatchedBy) {
+      return res.status(400).json({ error: 'Dispatched By is required.' });
+    }
+    const companyId = req.targetCompanyId;
+
+    const created = await db.transaction(async (tx) => {
+      await assertProductsOwnedByCompany(tx, companyId, dispatchData.items.map((it: any) => it.productId));
+
+      const [fromWarehouse] = await tx.select({ branchId: schema.warehouses.branchId, isActive: schema.warehouses.isActive })
+        .from(schema.warehouses)
+        .where(and(eq(schema.warehouses.id, dispatchData.fromWarehouseId), eq(schema.warehouses.companyId, companyId)));
+      if (!fromWarehouse) {
+        const err: any = new Error('Source warehouse not found for this company.');
+        err.status = 404;
+        throw err;
+      }
+      if (fromWarehouse.isActive === false) {
+        const err: any = new Error('Source warehouse is deactivated and cannot dispatch stock.');
+        err.status = 400;
+        throw err;
+      }
+      if (!branchAccessOk(req, fromWarehouse.branchId)) {
+        const err: any = new Error('Forbidden: you are not assigned to the source warehouse\'s branch.');
+        err.status = 403;
+        throw err;
+      }
+
+      const [toWarehouse] = await tx.select({ branchId: schema.warehouses.branchId, isActive: schema.warehouses.isActive })
+        .from(schema.warehouses)
+        .where(and(eq(schema.warehouses.id, dispatchData.toWarehouseId), eq(schema.warehouses.companyId, companyId)));
+      if (!toWarehouse) {
+        const err: any = new Error('Destination warehouse not found for this company.');
+        err.status = 404;
+        throw err;
+      }
+      if (toWarehouse.isActive === false) {
+        const err: any = new Error('Destination warehouse is deactivated and cannot receive stock.');
+        err.status = 400;
+        throw err;
+      }
+      // A dispatch-creating user must be authorized for the branch they're removing stock
+      // FROM and the branch they're sending it TO — stricter than GRN, which only ever
+      // checks one side, because this write genuinely touches two branches' inventory.
+      if (!branchAccessOk(req, toWarehouse.branchId)) {
+        const err: any = new Error('Forbidden: you are not assigned to the destination warehouse\'s branch.');
+        err.status = 403;
+        throw err;
+      }
+
+      const dispatchNumber = await getAndIncrementDocumentNumber(tx, companyId, 'dispatch', new Date().toISOString().slice(0, 10), fromWarehouse.branchId);
+      const dispatchId = generateId();
+      const dispatchDate = new Date();
+
+      const [newDispatch] = await tx.insert(schema.warehouseDispatches).values({
+        id: dispatchId,
+        dispatchNumber,
+        fromWarehouseId: dispatchData.fromWarehouseId,
+        toWarehouseId: dispatchData.toWarehouseId,
+        date: dispatchDate,
+        vehicleNumber: dispatchData.vehicleNumber || null,
+        driverName: dispatchData.driverName || null,
+        driverContact: dispatchData.driverContact || null,
+        expectedArrivalDate: dispatchData.expectedArrivalDate ? new Date(dispatchData.expectedArrivalDate) : null,
+        dispatchedBy: dispatchData.dispatchedBy,
+        notes: dispatchData.notes || null,
+        status: 'Dispatched',
+        companyId,
+      }).returning();
+
+      const itemRows = dispatchData.items.map((item: any) => ({
+        id: generateId(),
+        dispatchId,
+        productId: item.productId,
+        quantityDispatched: String(item.quantityDispatched),
+        batchNumber: item.batchNumber || null,
+        expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
+        unitOfMeasureId: item.unitOfMeasureId || null,
+      }));
+      const insertedItems = await tx.insert(schema.warehouseDispatchItems).values(itemRows).returning();
+
+      // Deduct from the source warehouse — lock each matching stock row first (same
+      // concurrency reasoning as GRN's own increment loop), and hard-reject (never clamp)
+      // when there isn't enough: unlike a Stock Adjustment, which is itself the correction
+      // for a wrong count, a dispatch claiming to move stock that doesn't exist is a plain
+      // data-entry error and should never silently succeed at a lower quantity.
+      for (const item of dispatchData.items) {
+        const baseQtyDispatched = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityDispatched));
+
+        const batchCondition = item.batchNumber
+          ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
+          : isNull(schema.inventoryStocks.batchNumber);
+
+        const [existingStock] = await tx.select().from(schema.inventoryStocks)
+          .where(and(
+            eq(schema.inventoryStocks.productId, item.productId),
+            eq(schema.inventoryStocks.warehouseId, dispatchData.fromWarehouseId),
+            eq(schema.inventoryStocks.companyId, companyId),
+            batchCondition
+          ))
+          .for('update');
+
+        const priorQty = existingStock ? Number(existingStock.quantity) : 0;
+        if (priorQty < baseQtyDispatched) {
+          const err: any = new Error(`Insufficient stock for the selected product at the source warehouse (have ${priorQty}, dispatching ${baseQtyDispatched}).`);
+          err.status = 400;
+          throw err;
+        }
+        const newQty = round2(priorQty - baseQtyDispatched);
+        await tx.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
+        await writeStockLedgerEntry(tx, {
+          productId: item.productId, warehouseId: dispatchData.fromWarehouseId, companyId,
+          transactionType: 'TransferOut', referenceId: dispatchId, date: dispatchDate,
+          quantityChange: -baseQtyDispatched, endingQuantity: newQty,
+          batchNumber: item.batchNumber || null,
+        });
+      }
+
+      return { ...newDispatch, items: insertedItems };
+    });
+
+    res.json({ success: true, dispatch: created });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+// Receive against a dispatch — the 1:1 fulfillment step. Received quantity per line
+// defaults to what was dispatched but is independently editable/short/over; a mismatch is
+// expected and recorded via discrepancyNotes, not blocked. Adds stock to the destination
+// warehouse only now, using the RECEIVED (not dispatched) quantity.
+router.post('/warehouse-receivings', async (req: any, res) => {
+  try {
+    if (!hasPermission(req.user, 'warehouseReceivings.create')) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { receivingData } = req.body || {};
+    if (!receivingData || !receivingData.dispatchId || !Array.isArray(receivingData.items) || receivingData.items.length === 0) {
+      return res.status(400).json({ error: 'A dispatch and at least one received item are required.' });
+    }
+    if (!receivingData.receivedBy) {
+      return res.status(400).json({ error: 'Received By is required.' });
+    }
+    const companyId = req.targetCompanyId;
+
+    const created = await db.transaction(async (tx) => {
+      // Row-lock the dispatch for the duration of this transaction — the exact same
+      // check-then-set concurrency pattern goodsReceiptNotes.isBilled uses for Purchase
+      // Bill's 3-way match, so two concurrent receiving requests against the same dispatch
+      // can never both succeed.
+      const [dispatch] = await tx.select().from(schema.warehouseDispatches)
+        .where(and(eq(schema.warehouseDispatches.id, receivingData.dispatchId), eq(schema.warehouseDispatches.companyId, companyId)))
+        .for('update');
+      if (!dispatch) {
+        const err: any = new Error('Dispatch not found for this company.');
+        err.status = 404;
+        throw err;
+      }
+      if (dispatch.status === 'Cancelled') {
+        const err: any = new Error('This dispatch has been cancelled and cannot be received.');
+        err.status = 400;
+        throw err;
+      }
+      if (dispatch.status === 'Received') {
+        const err: any = new Error('This dispatch has already been received.');
+        err.status = 400;
+        throw err;
+      }
+
+      // toWarehouseId is DERIVED from the already company-scoped dispatch row above, never
+      // from the client — the destination was fixed at dispatch time. branchAccessOkViaWarehouse
+      // is safe here specifically because `dispatch` was just fetched with a companyId
+      // filter (unlike dispatch-creation's fresh, not-yet-verified client input).
+      // Deliberately does NOT also check the source branch — the receiving user may have
+      // no access to or knowledge of it; dispatch and receiving are legitimately done by
+      // different branch-scoped users.
+      if (!(await branchAccessOkViaWarehouse(tx, req, dispatch.toWarehouseId))) {
+        const err: any = new Error('Forbidden: you are not assigned to the destination warehouse\'s branch.');
+        err.status = 403;
+        throw err;
+      }
+      const [toWarehouseForNumbering] = await tx.select({ branchId: schema.warehouses.branchId })
+        .from(schema.warehouses).where(eq(schema.warehouses.id, dispatch.toWarehouseId));
+
+      const dispatchItems = await tx.select().from(schema.warehouseDispatchItems)
+        .where(eq(schema.warehouseDispatchItems.dispatchId, receivingData.dispatchId));
+      const dispatchItemById = new Map(dispatchItems.map((di: any) => [di.id, di]));
+
+      // Every submitted dispatchItemId must actually belong to THIS dispatch — without
+      // this, a crafted request could receive against another dispatch's line while
+      // writing stock under the current dispatch's number, corrupting quantities silently.
+      // isolation-checked: dispatchItemId membership verified against the already
+      // company-scoped `dispatchItems` set fetched above, not a recognized OWNERSHIP_HELPERS
+      // call but equivalent in effect.
+      for (const item of receivingData.items) {
+        if (!dispatchItemById.has(item.dispatchItemId)) {
+          const err: any = new Error('One or more received lines do not belong to the selected dispatch.');
+          err.status = 400;
+          throw err;
+        }
+      }
+
+      const receivingNumber = await getAndIncrementDocumentNumber(tx, companyId, 'receiving', new Date().toISOString().slice(0, 10), toWarehouseForNumbering?.branchId || null);
+      const receivingId = generateId();
+      const receivingDate = new Date();
+
+      const [newReceiving] = await tx.insert(schema.warehouseReceivings).values({
+        id: receivingId,
+        receivingNumber,
+        dispatchId: receivingData.dispatchId,
+        date: receivingDate,
+        receivedBy: receivingData.receivedBy,
+        condition: receivingData.condition || null,
+        discrepancyNotes: receivingData.discrepancyNotes || null,
+        notes: receivingData.notes || null,
+        status: 'Active',
+        companyId,
+      }).returning();
+
+      const itemRows = receivingData.items.map((item: any) => {
+        const dispatchItem: any = dispatchItemById.get(item.dispatchItemId);
+        const quantityReceived = item.quantityReceived !== undefined && item.quantityReceived !== null && item.quantityReceived !== ''
+          ? item.quantityReceived
+          : dispatchItem.quantityDispatched;
+        return {
+          id: generateId(),
+          receivingId,
+          dispatchItemId: item.dispatchItemId,
+          productId: dispatchItem.productId,
+          quantityReceived: String(quantityReceived),
+          batchNumber: item.batchNumber ?? dispatchItem.batchNumber ?? null,
+          expiryDate: item.expiryDate ? new Date(item.expiryDate) : (dispatchItem.expiryDate || null),
+          unitOfMeasureId: item.unitOfMeasureId ?? dispatchItem.unitOfMeasureId ?? null,
+        };
+      });
+      const insertedItems = await tx.insert(schema.warehouseReceivingItems).values(itemRows).returning();
+
+      // Add to the destination warehouse using the ACTUAL received quantity (may be less
+      // or more than dispatched — that's exactly what discrepancyNotes is for).
+      for (const row of itemRows) {
+        const baseQtyReceived = await toBaseQuantity(tx, row.productId, row.unitOfMeasureId, companyId, Number(row.quantityReceived));
+
+        const batchCondition = row.batchNumber
+          ? eq(schema.inventoryStocks.batchNumber, row.batchNumber)
+          : isNull(schema.inventoryStocks.batchNumber);
+
+        const [existingStock] = await tx.select().from(schema.inventoryStocks)
+          .where(and(
+            eq(schema.inventoryStocks.productId, row.productId),
+            eq(schema.inventoryStocks.warehouseId, dispatch.toWarehouseId),
+            eq(schema.inventoryStocks.companyId, companyId),
+            batchCondition
+          ))
+          .for('update');
+
+        const newQty = existingStock
+          ? round2(Number(existingStock.quantity) + baseQtyReceived)
+          : round2(baseQtyReceived);
+
+        if (existingStock) {
+          await tx.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
+        } else {
+          await tx.insert(schema.inventoryStocks).values({
+            id: generateId(),
+            productId: row.productId,
+            warehouseId: dispatch.toWarehouseId,
+            batchNumber: row.batchNumber || null,
+            expiryDate: row.expiryDate || null,
+            quantity: String(baseQtyReceived),
+            companyId,
+          });
+        }
+        await writeStockLedgerEntry(tx, {
+          productId: row.productId, warehouseId: dispatch.toWarehouseId, companyId,
+          transactionType: 'TransferIn', referenceId: receivingId, date: receivingDate,
+          quantityChange: baseQtyReceived, endingQuantity: newQty,
+          batchNumber: row.batchNumber || null,
+        });
+      }
+
+      // The atomic "set" half of the check-then-set — same locked row from the top of this
+      // transaction, so no concurrent request can have slipped through between the check
+      // and here.
+      await tx.update(schema.warehouseDispatches).set({ status: 'Received' }).where(eq(schema.warehouseDispatches.id, receivingData.dispatchId));
+
+      return { ...newReceiving, items: insertedItems };
+    });
+
+    res.json({ success: true, receiving: created });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+// Cancel a dispatch — only legal while still 'Dispatched' (never once 'Received': correct
+// an already-received transfer with a new opposite transfer, not a retroactive cancel).
+// Restores the previously-deducted quantity to the source warehouse and writes a reversing
+// TransferOut ledger entry (same transactionType, positive quantityChange, so the
+// reconciliation report's per-dispatch net-out math still nets to zero rather than needing
+// a third transaction type).
+router.post('/warehouse-dispatches/:id/cancel', async (req: any, res) => {
+  try {
+    if (!hasPermission(req.user, 'warehouseDispatches.delete')) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { id } = req.params;
+    const companyId = req.targetCompanyId;
+
+    const result = await db.transaction(async (tx) => {
+      const [dispatch] = await tx.select().from(schema.warehouseDispatches)
+        .where(and(eq(schema.warehouseDispatches.id, id), eq(schema.warehouseDispatches.companyId, companyId)))
+        .for('update');
+      if (!dispatch) {
+        const err: any = new Error('Dispatch not found.');
+        err.status = 404;
+        throw err;
+      }
+      if (!(await branchAccessOkViaWarehouse(tx, req, dispatch.fromWarehouseId))) {
+        const err: any = new Error('Forbidden: you are not assigned to the source warehouse\'s branch.');
+        err.status = 403;
+        throw err;
+      }
+      if (dispatch.status === 'Cancelled') {
+        const err: any = new Error('This dispatch has already been cancelled.');
+        err.status = 400;
+        throw err;
+      }
+      if (dispatch.status === 'Received') {
+        const err: any = new Error('This dispatch has already been received and cannot be cancelled — issue a new transfer in the opposite direction to correct it.');
+        err.status = 400;
+        throw err;
+      }
+
+      const items = await tx.select().from(schema.warehouseDispatchItems).where(eq(schema.warehouseDispatchItems.dispatchId, id));
+      const cancelDate = new Date();
+
+      for (const item of items) {
+        const baseQtyDispatched = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityDispatched));
+        const batchCondition = item.batchNumber
+          ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
+          : isNull(schema.inventoryStocks.batchNumber);
+        const [existingStock] = await tx.select().from(schema.inventoryStocks)
+          .where(and(
+            eq(schema.inventoryStocks.productId, item.productId),
+            eq(schema.inventoryStocks.warehouseId, dispatch.fromWarehouseId),
+            eq(schema.inventoryStocks.companyId, companyId),
+            batchCondition
+          ))
+          .for('update');
+        const priorQty = existingStock ? Number(existingStock.quantity) : 0;
+        const newQty = round2(priorQty + baseQtyDispatched);
+        if (existingStock) {
+          await tx.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
+        } else {
+          await tx.insert(schema.inventoryStocks).values({
+            id: generateId(), productId: item.productId, warehouseId: dispatch.fromWarehouseId,
+            batchNumber: item.batchNumber || null, expiryDate: item.expiryDate || null,
+            quantity: String(newQty), companyId,
+          });
+        }
+        await writeStockLedgerEntry(tx, {
+          productId: item.productId, warehouseId: dispatch.fromWarehouseId, companyId,
+          transactionType: 'TransferOut', referenceId: dispatch.id, date: cancelDate,
+          quantityChange: baseQtyDispatched, endingQuantity: newQty,
+          batchNumber: item.batchNumber || null,
+        });
+      }
+
+      const [cancelled] = await tx.update(schema.warehouseDispatches)
+        .set({ status: 'Cancelled' })
+        .where(eq(schema.warehouseDispatches.id, id))
+        .returning();
+      return cancelled;
+    });
+
+    res.json({ success: true, dispatch: result });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
 // Manual stock adjustment (count discrepancy, damage, etc.) — reuses the exact
 // lock-then-increment-or-insert pattern the GRN route above uses to update
 // inventoryStocks, just with a signed delta instead of an always-positive received

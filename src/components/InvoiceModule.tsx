@@ -155,6 +155,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  setFormBankId(defaultBank);
  setFormItems([{ description: '', unitCost: 0, quantity: 1, discountAmount: 0, taxSlabId: defaultTax }]);
  setFormBranchId(myPrimaryBranchId);
+ setFormAmountPaidNow('');
  }
  }, [db.selectedCompanyId, openMonth?.id, myPrimaryBranchId]);
 
@@ -173,7 +174,11 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  const [formCustomerId, setFormCustomerId] = React.useState('');
  const [formTaxSlabId, setFormTaxSlabId] = React.useState('');
  const [formBankId, setFormBankId] = React.useState('');
- const [formPaymentStatus, setFormPaymentStatus] = React.useState<'Paid' | 'Unpaid'>('Paid');
+ const [formPaymentStatus, setFormPaymentStatus] = React.useState<'Paid' | 'Partially Paid' | 'Unpaid'>('Paid');
+ // Only meaningful when formPaymentStatus === 'Partially Paid' — see ExpenseModule.tsx's
+ // matching field for the same reasoning (the server derives paymentStatus itself from
+ // whatever amountPaid is actually sent, via computePaymentStatus).
+ const [formAmountPaidNow, setFormAmountPaidNow] = React.useState('');
  const [formNotes, setFormNotes] = React.useState('');
  const [formAttachmentUrl, setFormAttachmentUrl] = React.useState('');
  const [formDiscountPercentage, setFormDiscountPercentage] = React.useState<number>(0);
@@ -324,6 +329,13 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  return triggerError('Please add at least one line item with a description.');
  }
 
+ // Resolved below, once the real grand total is known — see amountPaidVal near
+ // invoiceData's assembly.
+ if (formPaymentStatus === 'Partially Paid') {
+ const paidNow = parseFloat(formAmountPaidNow);
+ if (isNaN(paidNow) || paidNow <= 0) return triggerError('Enter a valid amount received for a partially paid invoice.');
+ }
+
  const cleanItems: InvoiceItem[] = validItems.map(item => ({
  id: generateId(),
  description: item.description.trim(),
@@ -346,20 +358,33 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  const resolvedCustomerId = formCustomerId || db.customers.find(c => c.isSystem && (c.companyId === db.selectedCompanyId || !c.companyId))?.id || db.customers.find(c => c.companyId === db.selectedCompanyId || !c.companyId)?.id || db.customers[0]?.id || '';
  const totals = calculateInvoiceTotals(db, cleanItems, formTaxSlabId, formDiscountPercentage);
 
+ // Same three-way model as Expense's own payment status — the server derives
+ // paymentStatus itself from whatever amountPaid is actually sent (computePaymentStatus
+ // in businessLogic.ts), so this is purely computing the right amountPaid to send.
+ let amountPaidVal = 0;
+ if (formPaymentStatus === 'Paid') {
+ amountPaidVal = totals.grandTotal;
+ } else if (formPaymentStatus === 'Partially Paid') {
+ amountPaidVal = parseFloat(formAmountPaidNow) || 0;
+ if (amountPaidVal >= totals.grandTotal) {
+ return triggerError('A partially paid amount must be less than the invoice total — use "Paid" instead if the full amount was received.');
+ }
+ }
+
  const invoiceData = {
  date: formDate,
  customerId: resolvedCustomerId,
  taxSlabId: formTaxSlabId,
  bankId: formBankId,
  paymentStatus: formPaymentStatus,
- paymentDate: formPaymentStatus === 'Paid' ? formDate : null,
+ paymentDate: formPaymentStatus !== 'Unpaid' ? formDate : null,
  notes: formNotes,
  status: 'Active' as const,
  originQuotationId: null,
  items: cleanItems,
  discountPercentage: formDiscountPercentage,
  attachmentUrl: formAttachmentUrl,
- amountPaid: formPaymentStatus === 'Paid' ? totals.grandTotal : 0,
+ amountPaid: amountPaidVal,
  branchId: formBranchId || undefined,
  warehouseId: formWarehouseId || undefined,
  salesAssociateId: formSalesAssociateId || undefined,
@@ -1086,7 +1111,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  {/* Row 2 */}
  <div className="lg:col-span-4 space-y-0.5">
  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Invoice Payment Status")}</label>
- <div className="flex gap-3 px-2 py-1 bg-slate-50/80 rounded-lg border border-slate-200 text-xs">
+ <div className="flex flex-wrap gap-3 px-2 py-1 bg-slate-50/80 rounded-lg border border-slate-200 text-xs">
  <label className="flex items-center gap-1 cursor-pointer text-slate-700 font-semibold text-[11px]">
  <input
  type="radio"
@@ -1096,6 +1121,16 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  className="text-indigo-600 focus:ring-indigo-500"
  />
  <span>{t("Paid")}</span>
+ </label>
+ <label className="flex items-center gap-1 cursor-pointer text-slate-700 font-semibold text-[11px]">
+ <input
+ type="radio"
+ name="invPayStatus"
+ checked={formPaymentStatus === 'Partially Paid'}
+ onChange={() => setFormPaymentStatus('Partially Paid')}
+ className="text-indigo-600 focus:ring-indigo-500"
+ />
+ <span>{t("Partially Paid")}</span>
  </label>
  <label className="flex items-center gap-1 cursor-pointer text-slate-600 text-[11px]">
  <input
@@ -1108,29 +1143,25 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  <span>{t("Pending / Credit")}</span>
  </label>
  </div>
- </div>
-
- <div className="lg:col-span-3 space-y-0.5">
- <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Design File (Attachment)")}</label>
+ {formPaymentStatus === 'Partially Paid' && (
  <input
- type="file"
- accept="image/jpeg, image/gif, image/bmp, image/png"
- onChange={(e) => {
- const file = e.target.files?.[0];
- if (file) {
- const reader = new FileReader();
- reader.onloadend = () => {
- setFormAttachmentUrl(reader.result as string);
- };
- reader.readAsDataURL(file);
- }
- }}
- className="w-full bg-slate-50/70 hover:bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] text-slate-700 focus:outline-none"
+ type="number"
+ required
+ step="0.01"
+ min="0"
+ placeholder={t('Amount received now')}
+ value={formAmountPaidNow}
+ onChange={(e) => setFormAmountPaidNow(e.target.value)}
+ className="w-full bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 text-[11px] text-amber-900 font-semibold focus:outline-none mt-1"
  />
- {formAttachmentUrl && <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">✓ {t('File attached')}</p>}
+ )}
  </div>
 
- <div className="lg:col-span-5 space-y-0.5">
+ {/* Design File (Attachment) is temporarily disabled per product decision — the
+ underlying formAttachmentUrl state/field is left intact for the existing attachment
+ view elsewhere in this file; only the create-form upload control is hidden. */}
+
+ <div className="lg:col-span-8 space-y-0.5">
  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Notes / Memo")}</label>
  <input
  type="text"
@@ -1280,7 +1311,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  onClick={handleAddLineItem}
  className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 px-3 py-1.5 rounded-lg bg-indigo-50/70 hover:bg-indigo-100/80 border border-indigo-200/60 transition-all cursor-pointer"
  >
- <Plus className="w-3.5 h-3.5" /> {t('Add Fabrication Line')}
+ <Plus className="w-3.5 h-3.5" /> {t('Add Line Item')}
  </button>
  <div className="text-xs font-semibold text-slate-500">
  {t("Total Items:")} <span className="text-slate-900 font-bold">{formItems.length}</span>

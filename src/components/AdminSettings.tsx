@@ -1074,6 +1074,23 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  setCompanyForm({ ...db.companySetup });
  }, [db.companySetup]);
 
+ // POS Terminal Settings tab — a local draft, saved explicitly (Save Changes button)
+ // instead of the old per-field auto-save-on-every-keystroke behavior (previously every
+ // input called handlePosSettingsChange directly, firing a PATCH per change with no
+ // explicit save action at all — confusing UX with no confirmation the change "took").
+ // Keyed only on the selected company (not on db.companies/posSettings) so an unrelated
+ // db refresh elsewhere in the app never wipes an in-progress, unsaved edit here — only
+ // switching companies re-syncs the draft from that company's actual saved settings.
+ const [posDraft, setPosDraft] = React.useState<any>(() => {
+ const ac = db.companies.find(c => c.id === db.selectedCompanyId);
+ return { ...(ac?.posSettings || {}) };
+ });
+ const [isSavingPosSettings, setIsSavingPosSettings] = React.useState(false);
+ React.useEffect(() => {
+ const ac = db.companies.find(c => c.id === db.selectedCompanyId);
+ setPosDraft({ ...(ac?.posSettings || {}) });
+ }, [db.selectedCompanyId]);
+
  const handleLogoFile = (file: File) => {
  if (!file.type.startsWith('image/') && !file.name.endsWith('.bmp')) {
  triggerError('Please upload a valid image file (PNG, JPG, BMP, WEBP).');
@@ -2881,19 +2898,50 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
 
  {/* TAB: COMPANY */}
  
-        {activeTab === 'pos' && (
+        {activeTab === 'pos' && (() => {
+          const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId)!;
+          const gridColumns = posDraft.gridColumns || 5;
+          const gridRows = posDraft.gridRows || 4;
+          const applyDraft = (patch: Record<string, any>) => setPosDraft((prev: any) => ({ ...prev, ...patch }));
+          const presets: Array<{ key: 'compact' | 'standard' | 'dense'; label: string; cols: number; rows: number }> = [
+            { key: 'compact', label: t('Compact (12 tiles)'), cols: 3, rows: 4 },
+            { key: 'standard', label: t('Standard (20 tiles)'), cols: 5, rows: 4 },
+            { key: 'dense', label: t('Dense (30 tiles)'), cols: 6, rows: 5 },
+          ];
+          const activePreset = posDraft.gridDensityPreset || (presets.find(p => p.cols === gridColumns && p.rows === gridRows)?.key) || 'custom';
+          const savedSettings = activeCompany.posSettings || {};
+          const hasUnsavedChanges = JSON.stringify({ ...savedSettings }) !== JSON.stringify({ ...posDraft });
+          const handleSavePosSettings = async () => {
+            setIsSavingPosSettings(true);
+            await handlePosSettingsChange(activeCompany.id, posDraft);
+            setIsSavingPosSettings(false);
+            triggerSuccess('POS settings saved.');
+          };
+          return (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div>
-              <h2 className="text-xl font-extrabold text-slate-900 tracking-tight mb-2">POS Configuration</h2>
-              <p className="text-sm text-slate-500 font-medium">Configure Point of Sale settings, receipts, and behaviors.</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-extrabold text-slate-900 tracking-tight mb-2">POS Configuration</h2>
+                <p className="text-sm text-slate-500 font-medium">Configure Point of Sale settings, receipts, and behaviors.</p>
+              </div>
+              <div className="flex items-center gap-3">
+                {hasUnsavedChanges && <span className="text-xs font-bold text-amber-600">{t('Unsaved changes')}</span>}
+                <button
+                  type="button"
+                  onClick={handleSavePosSettings}
+                  disabled={isSavingPosSettings || !hasUnsavedChanges}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-sm font-bold transition"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  {isSavingPosSettings ? t('Saving...') : t('Save Changes')}
+                </button>
+              </div>
             </div>
             <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
               <div className="space-y-4">
                 <label className="flex items-center gap-3 cursor-pointer">
-                  <input type="checkbox" checked={(db.companies?.find(c => c.id === (db.selectedCompanyId))!).posSettings?.autoPrint ?? true} onChange={e => {
-                    const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId)!;
-                    const newPosSettings = {...(activeCompany.posSettings || {}), autoPrint: e.target.checked, maxImageSizeKB: activeCompany.posSettings?.maxImageSizeKB || 150};
-                    handlePosSettingsChange(activeCompany.id, newPosSettings);
+                  <input type="checkbox" checked={posDraft.autoPrint ?? true} onChange={e => {
+                    applyDraft({ autoPrint: e.target.checked });
                   }} className="w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
                   <div>
                     <div className="text-sm font-bold text-slate-800">Auto-Print Receipts</div>
@@ -2903,30 +2951,24 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
 
                 <div>
                   <label className="block text-sm font-bold text-slate-800 mb-2">Max POS Product Image Size (KB)</label>
-                  <input type="number" min="50" max="5000" value={(db.companies?.find(c => c.id === (db.selectedCompanyId))!).posSettings?.maxImageSizeKB || 150} onChange={e => {
-                    const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId)!;
-                    const newPosSettings = {...(activeCompany.posSettings || {}), maxImageSizeKB: parseInt(e.target.value) || 150, autoPrint: activeCompany.posSettings?.autoPrint ?? true};
-                    handlePosSettingsChange(activeCompany.id, newPosSettings);
+                  <input type="number" min="50" max="5000" value={posDraft.maxImageSizeKB || 150} onChange={e => {
+                    applyDraft({ maxImageSizeKB: parseInt(e.target.value) || 150 });
                   }} className="w-full max-w-xs bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-600" />
                   <p className="text-xs text-slate-500 mt-1">Recommended: 150KB — these ride along on every page load for every user, so keeping them small matters.</p>
                 </div>
 
                 <div>
                   <label className="block text-sm font-bold text-slate-800 mb-2">Max Image Dimensions (pixels)</label>
-                  <input type="number" min="100" max="2000" value={(db.companies?.find(c => c.id === (db.selectedCompanyId))!).posSettings?.maxImageDimensions || 600} onChange={e => {
-                    const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId)!;
-                    const newPosSettings = {...(activeCompany.posSettings || {}), maxImageDimensions: parseInt(e.target.value) || 600, autoPrint: activeCompany.posSettings?.autoPrint ?? true, maxImageSizeKB: activeCompany.posSettings?.maxImageSizeKB || 150};
-                    handlePosSettingsChange(activeCompany.id, newPosSettings);
+                  <input type="number" min="100" max="2000" value={posDraft.maxImageDimensions || 600} onChange={e => {
+                    applyDraft({ maxImageDimensions: parseInt(e.target.value) || 600 });
                   }} className="w-full max-w-xs bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-600" />
                   <p className="text-xs text-slate-500 mt-1">Recommended: 600px — well above anything this app actually displays a product image at. Uploads larger than this are rejected, not resized.</p>
                 </div>
 
                 <div>
                   <label className="block text-sm font-bold text-slate-800 mb-2">Min Image Dimensions (pixels)</label>
-                  <input type="number" min="0" max="1000" value={(db.companies?.find(c => c.id === (db.selectedCompanyId))!).posSettings?.minImageDimensions ?? 150} onChange={e => {
-                    const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId)!;
-                    const newPosSettings = {...(activeCompany.posSettings || {}), minImageDimensions: parseInt(e.target.value) || 0, autoPrint: activeCompany.posSettings?.autoPrint ?? true, maxImageSizeKB: activeCompany.posSettings?.maxImageSizeKB || 150};
-                    handlePosSettingsChange(activeCompany.id, newPosSettings);
+                  <input type="number" min="0" max="1000" value={posDraft.minImageDimensions ?? 150} onChange={e => {
+                    applyDraft({ minImageDimensions: parseInt(e.target.value) || 0 });
                   }} className="w-full max-w-xs bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-600" />
                   <p className="text-xs text-slate-500 mt-1">Recommended: 150px — rejects blurry/low-quality uploads scaled up from something tiny. Set to 0 to disable.</p>
                 </div>
@@ -2934,66 +2976,50 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
             </div>
 
             <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-              {(() => {
-                const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId)!;
-                const ps: any = activeCompany.posSettings || {};
-                const gridColumns = ps.gridColumns || 5;
-                const gridRows = ps.gridRows || 4;
-                const applyGrid = (patch: Record<string, any>) => {
-                  handlePosSettingsChange(activeCompany.id, { ...ps, autoPrint: ps.autoPrint ?? true, maxImageSizeKB: ps.maxImageSizeKB || 150, gridColumns, gridRows, ...patch });
-                };
-                const presets: Array<{ key: 'compact' | 'standard' | 'dense'; label: string; cols: number; rows: number }> = [
-                  { key: 'compact', label: t('Compact (12 tiles)'), cols: 3, rows: 4 },
-                  { key: 'standard', label: t('Standard (20 tiles)'), cols: 5, rows: 4 },
-                  { key: 'dense', label: t('Dense (30 tiles)'), cols: 6, rows: 5 },
-                ];
-                const activePreset = ps.gridDensityPreset || (presets.find(p => p.cols === gridColumns && p.rows === gridRows)?.key) || 'custom';
-                return (
-                  <div className="space-y-4">
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-800">{t('POS Terminal Grid Density')}</h3>
-                      <p className="text-xs text-slate-500 mt-0.5">{t('How many priority tiles the cashier\'s Terminal screen shows at once — items beyond this are still reachable via category tabs or search. See "Modifier Groups" and each product\'s "POS Grid Position" field to choose which items appear here.')}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {presets.map(p => (
-                        <button key={p.key} type="button"
-                          onClick={() => applyGrid({ gridColumns: p.cols, gridRows: p.rows, gridDensityPreset: p.key })}
-                          className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${activePreset === p.key ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-300'}`}>
-                          {p.label}
-                        </button>
-                      ))}
-                      <button type="button"
-                        onClick={() => applyGrid({ gridDensityPreset: 'custom' })}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${activePreset === 'custom' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-300'}`}>
-                        {t('Custom')}
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{t('Columns')}</label>
-                        <input type="number" min={2} max={10} value={gridColumns}
-                          onChange={e => applyGrid({ gridColumns: Math.max(2, Math.min(10, parseInt(e.target.value) || 2)), gridDensityPreset: 'custom' })}
-                          className="w-24 bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-indigo-600" />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{t('Rows')}</label>
-                        <input type="number" min={2} max={8} value={gridRows}
-                          onChange={e => applyGrid({ gridRows: Math.max(2, Math.min(8, parseInt(e.target.value) || 2)), gridDensityPreset: 'custom' })}
-                          className="w-24 bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-indigo-600" />
-                      </div>
-                      <div className="text-xs font-bold text-slate-500 pt-5">= {gridColumns * gridRows} {t('tiles on screen')}</div>
-                    </div>
-                    {gridColumns * gridRows > 200 / 2 && (gridColumns > 8 || gridRows > 6) && (
-                      <p className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">
-                        ⚠ {t('A very dense grid makes tiles harder to tap accurately on touch hardware — consider fewer columns/rows, or a larger POS display.')}
-                      </p>
-                    )}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">{t('POS Terminal Grid Density')}</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">{t('How many priority tiles the cashier\'s Terminal screen shows at once — items beyond this are still reachable via category tabs or search. See "Modifier Groups" and each product\'s "POS Grid Position" field to choose which items appear here.')}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {presets.map(p => (
+                    <button key={p.key} type="button"
+                      onClick={() => applyDraft({ gridColumns: p.cols, gridRows: p.rows, gridDensityPreset: p.key })}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${activePreset === p.key ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-300'}`}>
+                      {p.label}
+                    </button>
+                  ))}
+                  <button type="button"
+                    onClick={() => applyDraft({ gridDensityPreset: 'custom' })}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors ${activePreset === 'custom' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-300'}`}>
+                    {t('Custom')}
+                  </button>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{t('Columns')}</label>
+                    <input type="number" min={2} max={10} value={gridColumns}
+                      onChange={e => applyDraft({ gridColumns: Math.max(2, Math.min(10, parseInt(e.target.value) || 2)), gridDensityPreset: 'custom' })}
+                      className="w-24 bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-indigo-600" />
                   </div>
-                );
-              })()}
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{t('Rows')}</label>
+                    <input type="number" min={2} max={8} value={gridRows}
+                      onChange={e => applyDraft({ gridRows: Math.max(2, Math.min(8, parseInt(e.target.value) || 2)), gridDensityPreset: 'custom' })}
+                      className="w-24 bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-3 py-2 focus:ring-2 focus:ring-indigo-600" />
+                  </div>
+                  <div className="text-xs font-bold text-slate-500 pt-5">= {gridColumns * gridRows} {t('tiles on screen')}</div>
+                </div>
+                {gridColumns * gridRows > 200 / 2 && (gridColumns > 8 || gridRows > 6) && (
+                  <p className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">
+                    ⚠ {t('A very dense grid makes tiles harder to tap accurately on touch hardware — consider fewer columns/rows, or a larger POS display.')}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
-        )}
+          );
+        })()}
 
 {activeTab === 'company' && (
  <div className="space-y-6">

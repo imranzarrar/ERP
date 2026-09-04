@@ -410,7 +410,15 @@ export const productsServices = pgTable('products_services', {
   id: uuid('id').primaryKey(),
   name: text('name').notNull(),
   description: text('description').notNull(),
+  // The SELLING price — what a customer is charged on invoices/quotations/POS. Never
+  // used to value stock or default a purchase cost.
   unitPrice: decimal('unit_price', { precision: 12, scale: 2 }).notNull(),
+  // The purchasing/stock-valuation price — defaults GRN/PO line unit cost. Nullable
+  // because older rows predate this split (before this field existed, unitPrice was
+  // overloaded for both purposes); every cost-default read falls back to unitPrice when
+  // this is null, so pre-existing products keep behaving exactly as before until an
+  // admin sets a real cost price. Never itself used as a selling price.
+  costPrice: decimal('cost_price', { precision: 12, scale: 2 }),
   type: text('type').notNull(), // 'item' or 'service'
   unit: text('unit'),
   isPosItem: boolean('is_pos_item').default(false),
@@ -790,6 +798,16 @@ export const expenses = pgTable('expenses', {
   attachmentUrl: text('attachment_url'),
   // Nullable, additive — see quotations.branchId's comment.
   branchId: uuid('branch_id').references(() => branches.id),
+  // The vendor's own bill/receipt reference number — nullable at the DB level (existing
+  // rows predate this field), but the create form and POST /api/expenses both require it
+  // for every NEW expense going forward. Free text, not unique: different vendors can
+  // legitimately reuse the same bill number.
+  billNumber: text('bill_number'),
+  // Fixed pre-filled category for an ordinary (OpEx) expense — independent of
+  // classification/assetType above, which only applies to a Fixed Asset (CapEx) purchase.
+  // Nullable/additive like billNumber; enforced against a fixed option list at the
+  // application layer (ExpenseModule.tsx), not a DB-level check constraint.
+  expenseType: text('expense_type'),
 }, (table) => ({
   companyIdIdx: index('expenses_company_id_idx').on(table.companyId),
   originAccrualFk: index('expenses_origin_accrual_idx').on(table.originAccrualId),
@@ -1237,7 +1255,7 @@ export const stockLedgerTransactions = pgTable('stock_ledger_transactions', {
   id: uuid('id').primaryKey(),
   productId: uuid('product_id').notNull().references(() => productsServices.id),
   warehouseId: uuid('warehouse_id').notNull().references(() => warehouses.id),
-  transactionType: text('transaction_type').notNull(), // 'GRN', 'Return', 'Sale', 'Adjustment', 'StockTake'
+  transactionType: text('transaction_type').notNull(), // 'GRN', 'Return', 'Sale', 'Adjustment', 'StockTake', 'TransferOut', 'TransferIn'
   // Polymorphic (GRN/Sale/Adjustment/etc depending on transactionType) — no single-table FK.
   referenceId: uuid('reference_id').notNull(),
   date: timestamp('date').notNull(),
@@ -1246,3 +1264,97 @@ export const stockLedgerTransactions = pgTable('stock_ledger_transactions', {
   batchNumber: text('batch_number'),
   companyId: uuid('company_id').notNull().references(() => companies.id),
 });
+
+// 11. Warehouse Transfers (Dispatch -> Receiving)
+// A transfer moves stock between two warehouses that may belong to two different branches
+// (or the same branch, or one/both branchless) — unlike every other document in this
+// schema, there is no single "this document's branch." branchId is therefore NOT a column
+// on either table; it is derived independently per side via warehouseId -> warehouses.
+// branchId, exactly like goodsReceiptNotes/purchaseReturns/physicalStockTakes already do,
+// applied twice instead of once (see server/routes/inventory.ts's two independent
+// branchAccessOk checks — source at dispatch-creation, destination at receiving-creation,
+// deliberately allowed to be different callers).
+//
+// Stock timing (deliberate): dispatch deducts from fromWarehouseId immediately; receiving
+// adds to toWarehouseId only when it's created, using the actual received quantity (which
+// defaults to quantityDispatched but is editable per line). Stock is genuinely in transit
+// — visible at neither warehouse — between the two events. This is not a bug; it mirrors
+// real warehouse operations and is what makes the reconciliation report meaningful.
+export const warehouseDispatches = pgTable('warehouse_dispatches', {
+  id: uuid('id').primaryKey(),
+  dispatchNumber: text('dispatch_number').notNull(),
+  fromWarehouseId: uuid('from_warehouse_id').notNull().references(() => warehouses.id),
+  toWarehouseId: uuid('to_warehouse_id').notNull().references(() => warehouses.id),
+  date: timestamp('date').notNull(),
+  // Standard warehouse-dispatch-note fields. Unlike goodsReceiptNotes' vehicleNumber/
+  // driverName (a pre-existing shortcut kept client-state-only, never persisted), these
+  // are real columns here since dispatch/receiving are genuinely built around them.
+  vehicleNumber: text('vehicle_number'),
+  driverName: text('driver_name'),
+  driverContact: text('driver_contact'),
+  expectedArrivalDate: timestamp('expected_arrival_date'),
+  dispatchedBy: text('dispatched_by').notNull(), // loosely-typed text, same convention as goodsReceiptNotes.receivedBy / physicalStockTakes.performedBy
+  notes: text('notes'),
+  // 'Dispatched' (in transit, awaiting receipt) | 'Received' (fulfilled — see
+  // warehouseReceivings.dispatchId) | 'Cancelled' (voided before receipt, stock already
+  // reversed back into fromWarehouseId). Plain text, not a real Postgres enum — matches
+  // every other status column in this schema (purchaseOrders.status, purchaseBills.status,
+  // physicalStockTakes.status, stockLedgerTransactions.transactionType itself).
+  status: text('status').default('Dispatched').notNull(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+}, (table) => ({
+  companyIdIdx: index('warehouse_dispatches_company_id_idx').on(table.companyId),
+}));
+
+export const warehouseDispatchItems = pgTable('warehouse_dispatch_items', {
+  id: uuid('id').primaryKey(),
+  dispatchId: uuid('dispatch_id').notNull().references(() => warehouseDispatches.id),
+  productId: uuid('product_id').notNull().references(() => productsServices.id),
+  quantityDispatched: decimal('quantity_dispatched', { precision: 12, scale: 3 }).notNull(),
+  batchNumber: text('batch_number'),
+  expiryDate: timestamp('expiry_date'),
+  // Nullable: null means the product's own base unit — see purchaseOrderItems.
+  // unitOfMeasureId's comment. quantityDispatched is expressed in THIS unit; converted to
+  // base-unit terms before touching inventoryStocks/stockLedgerTransactions.
+  unitOfMeasureId: uuid('unit_of_measure_id').references(() => unitsOfMeasure.id),
+}, (table) => ({
+  dispatchIdIdx: index('warehouse_dispatch_items_dispatch_id_idx').on(table.dispatchId),
+}));
+
+export const warehouseReceivings = pgTable('warehouse_receivings', {
+  id: uuid('id').primaryKey(),
+  receivingNumber: text('receiving_number').notNull(),
+  // One dispatch -> at most one receiving (v1 non-goal: multiple partial receipts against
+  // one dispatch over time). Enforced at the application layer — a row-locked
+  // check-then-set of warehouseDispatches.status inside the same transaction, mirroring
+  // goodsReceiptNotes.isBilled's exact concurrency pattern — not a DB unique constraint,
+  // matching this schema's convention of keeping such uniqueness at the route layer (see
+  // inventoryStocks' own lack of a unique constraint for the same reasoning).
+  dispatchId: uuid('dispatch_id').notNull().references(() => warehouseDispatches.id),
+  date: timestamp('date').notNull(),
+  receivedBy: text('received_by').notNull(),
+  condition: text('condition'), // free text (e.g. 'Good', 'Damaged', 'Partial') — not an enforced enum
+  discrepancyNotes: text('discrepancy_notes'), // free-text explanation when received != dispatched on one or more lines
+  notes: text('notes'),
+  status: text('status').default('Active').notNull(), // 'Active' | 'Cancelled'
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+}, (table) => ({
+  companyIdIdx: index('warehouse_receivings_company_id_idx').on(table.companyId),
+  dispatchIdIdx: index('warehouse_receivings_dispatch_id_idx').on(table.dispatchId),
+}));
+
+export const warehouseReceivingItems = pgTable('warehouse_receiving_items', {
+  id: uuid('id').primaryKey(),
+  receivingId: uuid('receiving_id').notNull().references(() => warehouseReceivings.id),
+  // Links each receiving line back to its exact dispatch line, so variance is computed
+  // per-line, not just per-document — also the anchor for the cross-dispatch-line
+  // ownership check at receiving-creation time (see inventory.ts).
+  dispatchItemId: uuid('dispatch_item_id').notNull().references(() => warehouseDispatchItems.id),
+  productId: uuid('product_id').notNull().references(() => productsServices.id), // denormalized copy of dispatchItemId's own productId, same reasoning goodsReceiptNoteItems keeps productId directly
+  quantityReceived: decimal('quantity_received', { precision: 12, scale: 3 }).notNull(),
+  batchNumber: text('batch_number'),
+  expiryDate: timestamp('expiry_date'),
+  unitOfMeasureId: uuid('unit_of_measure_id').references(() => unitsOfMeasure.id),
+}, (table) => ({
+  receivingIdIdx: index('warehouse_receiving_items_receiving_id_idx').on(table.receivingId),
+}));

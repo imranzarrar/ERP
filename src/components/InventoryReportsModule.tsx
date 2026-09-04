@@ -4,7 +4,7 @@ import { DatabaseState } from '../dbStore';
 import { getMonthToDateRange } from '../dateUtils';
 import { Printer, Filter } from 'lucide-react';
 
-type ReportType = 'StockValuation' | 'ItemProfitability' | 'LowStock' | 'StockTakeVarianceHistory' | 'StockMovementLedger';
+type ReportType = 'StockValuation' | 'ItemProfitability' | 'LowStock' | 'StockTakeVarianceHistory' | 'StockMovementLedger' | 'WarehouseTransferReconciliation';
 
 interface InventoryReportsModuleProps {
   db: DatabaseState;
@@ -18,6 +18,7 @@ const REPORT_PERMISSION_KEYS: Record<ReportType, string> = {
   LowStock: 'reports.lowStock',
   StockTakeVarianceHistory: 'reports.stockTakeVarianceHistory',
   StockMovementLedger: 'reports.stockMovementLedger',
+  WarehouseTransferReconciliation: 'reports.warehouseTransferReconciliation',
 };
 
 const REPORT_LABELS: Record<ReportType, string> = {
@@ -26,6 +27,7 @@ const REPORT_LABELS: Record<ReportType, string> = {
   LowStock: 'Low Stock / Reorder Report',
   StockTakeVarianceHistory: 'Stock Take Variance History',
   StockMovementLedger: 'Stock Movement Ledger',
+  WarehouseTransferReconciliation: 'Warehouse Transfer Reconciliation',
 };
 
 const TRANSACTION_TYPE_LABELS: Record<string, string> = {
@@ -34,6 +36,8 @@ const TRANSACTION_TYPE_LABELS: Record<string, string> = {
   Sale: 'Sale',
   Adjustment: 'Stock Adjustment',
   StockTake: 'Stock Take',
+  TransferOut: 'Transfer Out',
+  TransferIn: 'Transfer In',
 };
 
 export default function InventoryReportsModule({ db, defaultReportType, onPrintDoc }: InventoryReportsModuleProps) {
@@ -157,6 +161,46 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
     return { rows };
   };
 
+  const [pendingOnly, setPendingOnly] = React.useState(false);
+
+  // 6. Warehouse Transfer Reconciliation — one row per dispatched line, paired with its
+  // receiving line (if any) via dispatchItemId. Reads the dispatches/receivings directly
+  // rather than the stock ledger, since the ledger's signed deltas alone can't reconstruct
+  // which dispatched line corresponds to which received line.
+  const getWarehouseTransferReconciliationData = () => {
+    const dispatches = (db.warehouseDispatches || []).filter((d: any) => d.companyId === companyId
+      && d.date.slice(0, 10) >= startDate && d.date.slice(0, 10) <= endDate
+      && (selectedWarehouseId === 'ALL' || d.fromWarehouseId === selectedWarehouseId || d.toWarehouseId === selectedWarehouseId)
+      && (companyWarehouseIds.has(d.fromWarehouseId) || companyWarehouseIds.has(d.toWarehouseId)));
+    const rows: any[] = [];
+    dispatches.forEach((d: any) => {
+      const fromWh = (db.warehouses || []).find((w: any) => w.id === d.fromWarehouseId);
+      const toWh = (db.warehouses || []).find((w: any) => w.id === d.toWarehouseId);
+      const receiving = (db.warehouseReceivings || []).find((r: any) => r.dispatchId === d.id);
+      (d.items || []).forEach((item: any) => {
+        const product = companyProducts.find((p: any) => p.id === item.productId);
+        const receivingItem = receiving ? (receiving.items || []).find((ri: any) => ri.dispatchItemId === item.id) : undefined;
+        const qtyDispatched = Number(item.quantityDispatched);
+        const qtyReceived = receivingItem ? Number(receivingItem.quantityReceived) : null;
+        const variance = qtyReceived !== null ? qtyReceived - qtyDispatched : null;
+        let status: 'Pending' | 'Matched' | 'Short' | 'Over' | 'Cancelled';
+        if (d.status === 'Cancelled') status = 'Cancelled';
+        else if (qtyReceived === null) status = 'Pending';
+        else if (variance === 0) status = 'Matched';
+        else if ((variance as number) < 0) status = 'Short';
+        else status = 'Over';
+        if (pendingOnly && status !== 'Pending') return;
+        const daysInTransit = status === 'Pending' ? Math.floor((Date.now() - new Date(d.date).getTime()) / (1000 * 60 * 60 * 24)) : null;
+        rows.push({
+          dispatchNumber: d.dispatchNumber, date: d.date.slice(0, 10), fromWarehouseName: fromWh?.name || '', toWarehouseName: toWh?.name || '',
+          productName: product?.name || '', batchNumber: item.batchNumber || '', quantityDispatched: qtyDispatched,
+          receivingNumber: receiving?.receivingNumber || '', quantityReceived: qtyReceived, variance, status, daysInTransit,
+        });
+      });
+    });
+    return { rows: rows.sort((a, b) => a.date.localeCompare(b.date)) };
+  };
+
   const handlePrint = () => {
     if (!can(REPORT_PERMISSION_KEYS[reportType])) return;
     let reportData: any = {};
@@ -165,6 +209,7 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
     else if (reportType === 'LowStock') reportData = getLowStockData();
     else if (reportType === 'StockTakeVarianceHistory') reportData = getStockTakeVarianceHistoryData();
     else if (reportType === 'StockMovementLedger') reportData = getStockMovementLedgerData();
+    else if (reportType === 'WarehouseTransferReconciliation') reportData = getWarehouseTransferReconciliationData();
     onPrintDoc('Report', { type: reportType, startDate, endDate, data: reportData });
   };
 
@@ -201,7 +246,7 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
                   </select>
                 </div>
               )}
-              {(reportType === 'StockValuation' || reportType === 'LowStock' || reportType === 'StockTakeVarianceHistory' || reportType === 'StockMovementLedger') && (
+              {(reportType === 'StockValuation' || reportType === 'LowStock' || reportType === 'StockTakeVarianceHistory' || reportType === 'StockMovementLedger' || reportType === 'WarehouseTransferReconciliation') && (
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Filter Warehouse')}</label>
                   <select value={selectedWarehouseId} onChange={e => setSelectedWarehouseId(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none">
@@ -219,7 +264,7 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
                   </select>
                 </div>
               )}
-              {(reportType === 'StockTakeVarianceHistory' || reportType === 'StockMovementLedger') && (
+              {(reportType === 'StockTakeVarianceHistory' || reportType === 'StockMovementLedger' || reportType === 'WarehouseTransferReconciliation') && (
                 <>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('From Date')}</label>
@@ -230,6 +275,15 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
                     <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none" />
                   </div>
                 </>
+              )}
+              {reportType === 'WarehouseTransferReconciliation' && (
+                <div className="space-y-1 flex flex-col justify-end">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Pending Only')}</label>
+                  <label className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 cursor-pointer">
+                    <input type="checkbox" checked={pendingOnly} onChange={e => setPendingOnly(e.target.checked)} className="rounded border-slate-300 text-indigo-600" />
+                    {t('Show only pending (not yet received) lines')}
+                  </label>
+                </div>
               )}
             </div>
           </div>
@@ -316,6 +370,46 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
                         <td className="p-3">{t(TRANSACTION_TYPE_LABELS[r.transactionType] || r.transactionType)}</td><td className="p-3">{r.batchNumber}</td>
                         <td className={`p-3 text-end font-mono font-bold ${r.quantityChange >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{r.quantityChange >= 0 ? '+' : ''}{r.quantityChange}</td>
                         <td className="p-3 text-end font-mono">{r.endingQuantity}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              );
+            })()}
+
+            {reportType === 'WarehouseTransferReconciliation' && (() => {
+              const data = getWarehouseTransferReconciliationData();
+              const statusClass = (status: string) => status === 'Matched' ? 'bg-emerald-50 text-emerald-700' :
+                status === 'Pending' ? 'bg-amber-50 text-amber-700' :
+                status === 'Cancelled' ? 'bg-gray-100 text-gray-500' :
+                'bg-rose-50 text-rose-700';
+              return data.rows.length === 0 ? (
+                <p className="text-xs text-slate-400 text-center py-8">{t('No warehouse transfer lines in this period.')}</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-start">
+                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]">
+                      <th className="p-3">{t('Dispatch #')}</th><th className="p-3">{t('Date')}</th><th className="p-3">{t('From')}</th><th className="p-3">{t('To')}</th>
+                      <th className="p-3">{t('Product')}</th><th className="p-3">{t('Batch')}</th><th className="p-3 text-end">{t('Qty Dispatched')}</th>
+                      <th className="p-3">{t('Receiving #')}</th><th className="p-3 text-end">{t('Qty Received')}</th><th className="p-3 text-end">{t('Variance')}</th>
+                      <th className="p-3">{t('Status')}</th>
+                    </tr></thead>
+                    <tbody>{data.rows.map((r: any, i: number) => (
+                      <tr key={i} className="border-b border-slate-100 text-slate-700">
+                        <td className="p-3 font-semibold font-mono">{r.dispatchNumber}</td><td className="p-3">{r.date}</td>
+                        <td className="p-3">{r.fromWarehouseName}</td><td className="p-3">{r.toWarehouseName}</td>
+                        <td className="p-3 font-semibold">{r.productName}</td><td className="p-3 font-mono">{r.batchNumber}</td>
+                        <td className="p-3 text-end font-mono">{r.quantityDispatched}</td>
+                        <td className="p-3 font-mono">{r.receivingNumber || '-'}</td>
+                        <td className="p-3 text-end font-mono">{r.quantityReceived ?? '-'}</td>
+                        <td className={`p-3 text-end font-mono font-bold ${r.variance == null ? 'text-slate-400' : r.variance === 0 ? 'text-emerald-600' : r.variance < 0 ? 'text-rose-600' : 'text-amber-600'}`}>
+                          {r.variance == null ? '-' : (r.variance > 0 ? `+${r.variance}` : r.variance)}
+                        </td>
+                        <td className="p-3">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold ${statusClass(r.status)}`}>
+                            {t(r.status)}{r.status === 'Pending' && r.daysInTransit != null ? ` (${r.daysInTransit} ${t('days')})` : ''}
+                          </span>
+                        </td>
                       </tr>
                     ))}</tbody>
                   </table>

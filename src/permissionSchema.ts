@@ -146,6 +146,27 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
       { key: 'delete', label: 'Cancel Draft Stock Takes' },
     ]
   },
+  // Two separate modules (not one combined "warehouseTransfers") deliberately — dispatch
+  // and receiving are realistically done by different people at different branches, so
+  // their create/read/update/delete rights need to be assignable independently, same
+  // reasoning GRN and Purchase Bills already have fully separate leaves despite being
+  // related documents.
+  {
+    id: 'warehouseDispatches', groupId: 'inventory', label: 'Warehouse Dispatch', leaves: [
+      { key: 'create', label: 'Create Warehouse Dispatches' },
+      { key: 'read', label: 'View Warehouse Dispatches' },
+      { key: 'update', label: 'Edit Warehouse Dispatches' },
+      { key: 'delete', label: 'Cancel Warehouse Dispatches' },
+    ]
+  },
+  {
+    id: 'warehouseReceivings', groupId: 'inventory', label: 'Warehouse Receiving', leaves: [
+      { key: 'create', label: 'Create Warehouse Receivings (Receive Against Dispatch)' },
+      { key: 'read', label: 'View Warehouse Receivings' },
+      { key: 'update', label: 'Edit Warehouse Receivings' },
+      { key: 'delete', label: 'Cancel Warehouse Receivings' },
+    ]
+  },
   {
     id: 'customers', groupId: 'master_registries', label: 'Customer Directory Access', leaves: [
       { key: 'create', label: 'Create Customers' },
@@ -238,6 +259,7 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
       { key: 'lowStock', label: 'Low Stock / Reorder Report' },
       { key: 'stockTakeVarianceHistory', label: 'Stock Take Variance History' },
       { key: 'stockMovementLedger', label: 'Stock Movement Ledger' },
+      { key: 'warehouseTransferReconciliation', label: 'Warehouse Transfer Reconciliation Report' },
     ]
   },
   {

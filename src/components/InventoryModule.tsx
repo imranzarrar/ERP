@@ -14,7 +14,10 @@ import {
   Vendor,
   PurchaseBill,
   PurchaseReturn,
-  PhysicalStockTake
+  PhysicalStockTake,
+  WarehouseDispatch,
+  WarehouseDispatchItem,
+  WarehouseReceiving
 } from '../types';
 import {
   Plus,
@@ -36,7 +39,11 @@ import {
   PackageCheck,
   Receipt,
   Undo2,
-  ClipboardList
+  ClipboardList,
+  Truck,
+  PackageOpen,
+  Printer,
+  Ban
 } from 'lucide-react';
 
 interface InventoryModuleProps {
@@ -57,9 +64,9 @@ interface InventoryModuleProps {
   onRefreshDb?: () => Promise<void>;
   // Opens the shared print/preview overlay (App.tsx's printDoc state) — used to
   // auto-open a printable payment receipt right after a Purchase Bill disbursement.
-  onPrintDoc?: (type: 'PaymentReceipt', data: any) => void;
+  onPrintDoc?: (type: 'PaymentReceipt' | 'WarehouseDispatch' | 'WarehouseReceiving', data: any) => void;
   currentUser: any;
-  defaultTab?: 'stock' | 'pr' | 'po' | 'grn' | 'warehouses' | 'bills' | 'returns' | 'stocktakes';
+  defaultTab?: 'stock' | 'pr' | 'po' | 'grn' | 'warehouses' | 'bills' | 'returns' | 'stocktakes' | 'dispatch' | 'receiving';
 }
 
 export default function InventoryModule({
@@ -108,7 +115,7 @@ export default function InventoryModule({
   const [isSubmittingAdjustment, setIsSubmittingAdjustment] = React.useState(false);
 
   // State
-  const [activeSubTab, setActiveSubTab] = React.useState<'stock' | 'pr' | 'po' | 'grn' | 'warehouses' | 'bills' | 'returns' | 'stocktakes'>(defaultTab);
+  const [activeSubTab, setActiveSubTab] = React.useState<'stock' | 'pr' | 'po' | 'grn' | 'warehouses' | 'bills' | 'returns' | 'stocktakes' | 'dispatch' | 'receiving'>(defaultTab);
 
   // Lists from state filtered by current company
   const warehouses = (db.warehouses || []).filter(w => w.companyId === companyId);
@@ -119,6 +126,8 @@ export default function InventoryModule({
   const purchaseBills = (db.purchaseBills || []).filter((b: PurchaseBill) => b.companyId === companyId);
   const purchaseReturns = (db.purchaseReturns || []).filter((r: PurchaseReturn) => r.companyId === companyId);
   const physicalStockTakes = (db.physicalStockTakes || []).filter((s: PhysicalStockTake) => s.companyId === companyId);
+  const warehouseDispatches = (db.warehouseDispatches || []).filter((d: WarehouseDispatch) => d.companyId === companyId);
+  const warehouseReceivings = (db.warehouseReceivings || []).filter((r: WarehouseReceiving) => r.companyId === companyId);
   const banks = (db.banks || []).filter((b: any) => b.isActive && b.companyId === companyId);
   const products = (db.products || []).filter(p => p.companyId === companyId);
   const vendors = (db.vendors || []).filter(v => v.companyId === companyId);
@@ -134,6 +143,11 @@ export default function InventoryModule({
   const [viewingBill, setViewingBill] = React.useState<PurchaseBill | null>(null);
   const [viewingReturn, setViewingReturn] = React.useState<PurchaseReturn | null>(null);
   const [viewingStockTake, setViewingStockTake] = React.useState<PhysicalStockTake | null>(null);
+  const [viewingDispatch, setViewingDispatch] = React.useState<WarehouseDispatch | null>(null);
+  const [viewingReceiving, setViewingReceiving] = React.useState<WarehouseReceiving | null>(null);
+  // The dispatch currently being received against — opens the Receiving confirm form,
+  // pre-filled from this dispatch's own items (see handleOpenReceiving).
+  const [receivingAgainstDispatch, setReceivingAgainstDispatch] = React.useState<WarehouseDispatch | null>(null);
 
   // Creation Modals
   const [isCreatingPr, setIsCreatingPr] = React.useState(false);
@@ -149,6 +163,10 @@ export default function InventoryModule({
   const [isSubmittingBill, setIsSubmittingBill] = React.useState(false);
   const [isSubmittingReturn, setIsSubmittingReturn] = React.useState(false);
   const [isSubmittingStockTake, setIsSubmittingStockTake] = React.useState(false);
+  const [isCreatingDispatch, setIsCreatingDispatch] = React.useState(false);
+  const [isSubmittingDispatch, setIsSubmittingDispatch] = React.useState(false);
+  const [isSubmittingReceiving, setIsSubmittingReceiving] = React.useState(false);
+  const [isCancellingDispatch, setIsCancellingDispatch] = React.useState(false);
 
   // PR Form State
   const [prForm, setPrForm] = React.useState({
@@ -229,6 +247,31 @@ export default function InventoryModule({
   const [newStockTakeItem, setNewStockTakeItem] = React.useState({ productId: '', physicalQuantity: 0, batchNumber: '', unitOfMeasureId: '' });
   const [stockTakeBarcodeInput, setStockTakeBarcodeInput] = React.useState('');
 
+  // Warehouse Dispatch Form State
+  const [dispatchForm, setDispatchForm] = React.useState({
+    fromWarehouseId: warehouses[0]?.id || '',
+    toWarehouseId: '',
+    vehicleNumber: '',
+    driverName: '',
+    driverContact: '',
+    expectedArrivalDate: '',
+    dispatchedBy: currentUser?.username || '',
+    notes: '',
+    items: [] as Array<{ productId: string; quantityDispatched: number; batchNumber: string; expiryDate: string; unitOfMeasureId?: string }>
+  });
+  const [newDispatchItem, setNewDispatchItem] = React.useState({ productId: '', quantityDispatched: 1, batchNumber: '', expiryDate: '', unitOfMeasureId: '' });
+  const [dispatchBarcodeInput, setDispatchBarcodeInput] = React.useState('');
+
+  // Warehouse Receiving Form State — quantityReceived per line defaults to the dispatch
+  // line's own quantityDispatched (seeded in handleOpenReceiving), independently editable.
+  const [receivingForm, setReceivingForm] = React.useState({
+    receivedBy: currentUser?.username || '',
+    condition: '',
+    discrepancyNotes: '',
+    notes: '',
+    items: [] as Array<{ dispatchItemId: string; productId: string; quantityDispatched: number; quantityReceived: number; batchNumber: string; unitOfMeasureId?: string }>
+  });
+
   // Shared barcode/SKU resolver for the four forms above — mirrors
   // server/lib/uomConversion.ts's resolveProductByCode exactly, but resolves entirely
   // client-side against already-loaded db state (no round-trip needed): an active
@@ -247,7 +290,7 @@ export default function InventoryModule({
     }
     const baseHit = (db.products || []).find((p: any) => p.barcode === trimmed || (p.sku && p.sku.toLowerCase() === trimmed.toLowerCase()));
     if (!baseHit) return null;
-    return { productId: baseHit.id, unitOfMeasureId: null, purchasePrice: baseHit.unitPrice, salePrice: baseHit.unitPrice };
+    return { productId: baseHit.id, unitOfMeasureId: null, purchasePrice: baseHit.costPrice ?? baseHit.unitPrice, salePrice: baseHit.unitPrice };
   }, [db.productUnitConversions, db.products]);
 
   // Automatically update activeSubTab if defaultTab changes
@@ -260,6 +303,8 @@ export default function InventoryModule({
     if (currentUser?.username) {
       setPrForm(prev => ({ ...prev, requestedBy: currentUser.username }));
       setGrnForm(prev => ({ ...prev, receivedBy: currentUser.username }));
+      setDispatchForm(prev => ({ ...prev, dispatchedBy: currentUser.username }));
+      setReceivingForm(prev => ({ ...prev, receivedBy: currentUser.username }));
     }
   }, [currentUser]);
 
@@ -281,6 +326,10 @@ export default function InventoryModule({
     setViewingReturn(null);
     setIsCreatingStockTake(false);
     setViewingStockTake(null);
+    setIsCreatingDispatch(false);
+    setViewingDispatch(null);
+    setViewingReceiving(null);
+    setReceivingAgainstDispatch(null);
   }, [companyId]);
 
   const isFormOrDetailOpen = !!(
@@ -290,7 +339,8 @@ export default function InventoryModule({
     isCreatingWarehouse || isAdjustingStock ||
     isCreatingBill || viewingBill || isPayingBill ||
     isCreatingReturn || viewingReturn ||
-    isCreatingStockTake || viewingStockTake
+    isCreatingStockTake || viewingStockTake ||
+    isCreatingDispatch || viewingDispatch || viewingReceiving || receivingAgainstDispatch
   );
 
   // Handle Warehouse Creation — goes through the real backend route (POST /api/warehouses)
@@ -487,7 +537,7 @@ export default function InventoryModule({
       return {
         productId: item.productId,
         quantityOrdered: item.quantity,
-        unitPrice: Number(prod?.unitPrice || 0),
+        unitPrice: Number(prod?.costPrice ?? prod?.unitPrice ?? 0),
         taxRate: defaultTaxRate
       };
     });
@@ -758,6 +808,168 @@ export default function InventoryModule({
       setViewingGrn(null);
     } catch (err: any) {
       triggerError(err?.message || t('Failed to reverse goods receipt.'));
+    }
+  };
+
+  const handleAddDispatchItem = () => {
+    if (!newDispatchItem.productId || newDispatchItem.quantityDispatched <= 0) return;
+    setDispatchForm(prev => ({ ...prev, items: [...prev.items, { ...newDispatchItem }] }));
+    setNewDispatchItem({ productId: '', quantityDispatched: 1, batchNumber: '', expiryDate: '', unitOfMeasureId: '' });
+    setDispatchBarcodeInput('');
+  };
+
+  const handleRemoveDispatchItem = (idx: number) => {
+    setDispatchForm(prev => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }));
+  };
+
+  // Create a dispatch — goes through POST /api/inventory/warehouse-dispatches, which
+  // deducts source-warehouse stock server-side. Refreshes from the server afterward
+  // (like handleReverseGrn above) rather than hand-reconstructing the stock deltas
+  // locally — this route doesn't return the precise updated stock rows an optimistic
+  // merge would need, and the on-hand figures here are exactly the kind of thing worth
+  // getting from the source of truth rather than guessing.
+  const handleCreateDispatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dispatchForm.fromWarehouseId || !dispatchForm.toWarehouseId || dispatchForm.items.length === 0 || isSubmittingDispatch) return;
+    if (dispatchForm.fromWarehouseId === dispatchForm.toWarehouseId) {
+      return triggerError(t('Source and destination warehouse must be different.'));
+    }
+    setIsSubmittingDispatch(true);
+    try {
+      const res = await fetch('/api/inventory/warehouse-dispatches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dispatchData: dispatchForm })
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error || t('Failed to create dispatch.'));
+      }
+      onUpdateDbLocal(prev => ({
+        ...prev,
+        warehouseDispatches: [...(prev.warehouseDispatches || []), payload.dispatch]
+      }));
+      if (onRefreshDb) await onRefreshDb();
+      triggerSuccess(t('Dispatch created and stock deducted from the source warehouse.'));
+      setDispatchForm({
+        fromWarehouseId: warehouses[0]?.id || '',
+        toWarehouseId: '',
+        vehicleNumber: '',
+        driverName: '',
+        driverContact: '',
+        expectedArrivalDate: '',
+        dispatchedBy: currentUser?.username || '',
+        notes: '',
+        items: []
+      });
+      setIsCreatingDispatch(false);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to create dispatch.'));
+    } finally {
+      setIsSubmittingDispatch(false);
+    }
+  };
+
+  // Seed the Receiving confirm form from a dispatch's own items — quantityReceived
+  // defaults to quantityDispatched per line (the user's explicit "by default received qty
+  // is same as dispatched" requirement), independently editable per line below.
+  const handleOpenReceiving = (dispatch: WarehouseDispatch) => {
+    setReceivingForm({
+      receivedBy: currentUser?.username || '',
+      condition: '',
+      discrepancyNotes: '',
+      notes: '',
+      items: (dispatch.items || []).map((item: WarehouseDispatchItem) => ({
+        dispatchItemId: item.id,
+        productId: item.productId,
+        quantityDispatched: item.quantityDispatched,
+        quantityReceived: item.quantityDispatched,
+        batchNumber: item.batchNumber || '',
+        unitOfMeasureId: item.unitOfMeasureId || undefined,
+      }))
+    });
+    setReceivingAgainstDispatch(dispatch);
+  };
+
+  const handleUpdateReceivingItemQty = (idx: number, quantityReceived: number) => {
+    setReceivingForm(prev => {
+      const items = [...prev.items];
+      items[idx] = { ...items[idx], quantityReceived };
+      return { ...prev, items };
+    });
+  };
+
+  // Confirm receiving against the open dispatch — goes through POST
+  // /api/inventory/warehouse-receivings, which adds destination-warehouse stock using the
+  // ACTUAL received quantity and flips the dispatch to 'Received' server-side (the
+  // atomic check-then-set that prevents double-receiving under concurrency).
+  const handleSubmitReceiving = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!receivingAgainstDispatch || receivingForm.items.length === 0 || isSubmittingReceiving) return;
+    setIsSubmittingReceiving(true);
+    try {
+      const res = await fetch('/api/inventory/warehouse-receivings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          receivingData: {
+            dispatchId: receivingAgainstDispatch.id,
+            receivedBy: receivingForm.receivedBy,
+            condition: receivingForm.condition || undefined,
+            discrepancyNotes: receivingForm.discrepancyNotes || undefined,
+            notes: receivingForm.notes || undefined,
+            items: receivingForm.items.map(item => ({
+              dispatchItemId: item.dispatchItemId,
+              quantityReceived: item.quantityReceived,
+              batchNumber: item.batchNumber || undefined,
+              unitOfMeasureId: item.unitOfMeasureId,
+            }))
+          }
+        })
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error || t('Failed to record receiving.'));
+      }
+      onUpdateDbLocal(prev => ({
+        ...prev,
+        warehouseReceivings: [...(prev.warehouseReceivings || []), payload.receiving],
+        warehouseDispatches: (prev.warehouseDispatches || []).map(d =>
+          d.id === receivingAgainstDispatch.id ? { ...d, status: 'Received' as const } : d
+        ),
+      }));
+      if (onRefreshDb) await onRefreshDb();
+      triggerSuccess(t('Receiving recorded and stock added to the destination warehouse.'));
+      setReceivingAgainstDispatch(null);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to record receiving.'));
+    } finally {
+      setIsSubmittingReceiving(false);
+    }
+  };
+
+  // Cancel a still-pending (not yet received) dispatch — restores the source warehouse's
+  // stock server-side. Only offered in the UI while status === 'Dispatched'.
+  const handleCancelDispatch = async (dispatchId: string) => {
+    if (!window.confirm(t('Cancel this dispatch? The stock already deducted from the source warehouse will be restored.'))) return;
+    setIsCancellingDispatch(true);
+    try {
+      const res = await fetch(`/api/inventory/warehouse-dispatches/${dispatchId}/cancel`, { method: 'POST' });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload.error || t('Failed to cancel dispatch.'));
+      }
+      onUpdateDbLocal(prev => ({
+        ...prev,
+        warehouseDispatches: (prev.warehouseDispatches || []).map(d => d.id === dispatchId ? { ...d, status: 'Cancelled' as const } : d)
+      }));
+      if (onRefreshDb) await onRefreshDb();
+      triggerSuccess(t('Dispatch cancelled and stock restored to the source warehouse.'));
+      setViewingDispatch(null);
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to cancel dispatch.'));
+    } finally {
+      setIsCancellingDispatch(false);
     }
   };
 
@@ -1059,6 +1271,8 @@ export default function InventoryModule({
             {activeSubTab === 'bills' && <Receipt className="h-7 w-7 text-indigo-600" />}
             {activeSubTab === 'returns' && <Undo2 className="h-7 w-7 text-indigo-600" />}
             {activeSubTab === 'stocktakes' && <ClipboardList className="h-7 w-7 text-indigo-600" />}
+            {activeSubTab === 'dispatch' && <Truck className="h-7 w-7 text-indigo-600" />}
+            {activeSubTab === 'receiving' && <PackageOpen className="h-7 w-7 text-indigo-600" />}
             {activeSubTab === 'stock' && t('Stock Registry')}
             {activeSubTab === 'pr' && t('Purchase Requisitions')}
             {activeSubTab === 'po' && t('Purchase Orders')}
@@ -1067,6 +1281,8 @@ export default function InventoryModule({
             {activeSubTab === 'bills' && t('Purchase Bills')}
             {activeSubTab === 'returns' && t('Purchase Returns')}
             {activeSubTab === 'stocktakes' && t('Physical Stock Takes')}
+            {activeSubTab === 'dispatch' && t('Warehouse Dispatch')}
+            {activeSubTab === 'receiving' && t('Warehouse Receiving')}
           </h1>
           <p className="text-sm text-gray-500 mt-1">
             {activeSubTab === 'stock' && t('Monitor physical inventory levels, serial numbers, batches, and locations in real-time.')}
@@ -1077,6 +1293,8 @@ export default function InventoryModule({
             {activeSubTab === 'bills' && t('Record vendor invoices against received goods — totals are always computed from the linked receipt, never entered by hand.')}
             {activeSubTab === 'returns' && t('Send goods back to a vendor against a prior receipt and record the resulting debit note.')}
             {activeSubTab === 'stocktakes' && t('Count physical stock and reconcile it against system quantities.')}
+            {activeSubTab === 'dispatch' && t('Send stock from one warehouse to another — stock leaves the source warehouse immediately and stays in transit until received.')}
+            {activeSubTab === 'receiving' && t('Confirm what actually arrived against a pending dispatch — quantities default to what was dispatched but can be adjusted.')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -1152,6 +1370,15 @@ export default function InventoryModule({
                 >
                   <Plus className="h-4 w-4" />
                   {t('New Stock Take')}
+                </button>
+              )}
+              {activeSubTab === 'dispatch' && can('warehouseDispatches.create') && (
+                <button
+                  onClick={() => { setDispatchForm(prev => ({ ...prev, fromWarehouseId: warehouses[0]?.id || '', toWarehouseId: '', items: [] })); setIsCreatingDispatch(true); }}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 text-sm shadow-sm transition"
+                >
+                  <Plus className="h-4 w-4" />
+                  {t('New Dispatch')}
                 </button>
               )}
             </>
@@ -1670,6 +1897,130 @@ export default function InventoryModule({
         </div>
       )}
 
+      {activeSubTab === 'dispatch' && !isFormOrDetailOpen && (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Dispatch #')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('From → To')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Vehicle / Driver')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Date')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Status')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">{t('Actions')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {warehouseDispatches
+                  .filter(d => d.dispatchNumber.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map(d => {
+                    const fromWh = warehouses.find(w => w.id === d.fromWarehouseId);
+                    const toWh = warehouses.find(w => w.id === d.toWarehouseId);
+                    return (
+                      <tr key={d.id} className="hover:bg-gray-50/50 transition">
+                        <td className="px-6 py-4 font-semibold text-indigo-700 font-mono">{d.dispatchNumber}</td>
+                        <td className="px-6 py-4 text-sm text-gray-800">
+                          {fromWh?.name || t('Unknown Warehouse')} → {toWh?.name || t('Unknown Warehouse')}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {d.vehicleNumber || d.driverName ? `${d.vehicleNumber || '-'} / ${d.driverName || '-'}` : '-'}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{new Date(d.date).toLocaleDateString()}</td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
+                            d.status === 'Received' ? 'bg-emerald-50 text-emerald-700' :
+                            d.status === 'Cancelled' ? 'bg-gray-100 text-gray-500' :
+                            'bg-amber-50 text-amber-700'
+                          }`}>
+                            {t(d.status)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-3">
+                            {d.status === 'Dispatched' && can('warehouseReceivings.create') && (
+                              <button
+                                onClick={() => handleOpenReceiving(d)}
+                                className="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-md text-xs font-semibold hover:bg-indigo-100 transition"
+                              >
+                                {t('Receive')}
+                              </button>
+                            )}
+                            <button onClick={() => setViewingDispatch(d)} className="p-1 text-gray-400 hover:text-indigo-600 transition">
+                              <Eye className="h-5 w-5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                {warehouseDispatches.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                      <div className="flex flex-col items-center gap-2">
+                        <Truck className="h-10 w-10 text-gray-300" />
+                        <p className="text-sm font-medium">{t('No warehouse dispatches recorded yet.')}</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeSubTab === 'receiving' && !isFormOrDetailOpen && (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Receiving #')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Dispatch #')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Destination Warehouse')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Received By')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Date')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">{t('Actions')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {warehouseReceivings
+                  .filter(r => r.receivingNumber.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map(r => {
+                    const dispatch = warehouseDispatches.find(d => d.id === r.dispatchId);
+                    const toWh = warehouses.find(w => w.id === dispatch?.toWarehouseId);
+                    return (
+                      <tr key={r.id} className="hover:bg-gray-50/50 transition">
+                        <td className="px-6 py-4 font-semibold text-indigo-700 font-mono">{r.receivingNumber}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600 font-mono">{dispatch?.dispatchNumber || '-'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-800">{toWh?.name || t('Unknown Warehouse')}</td>
+                        <td className="px-6 py-4 text-sm text-gray-600">{r.receivedBy}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{new Date(r.date).toLocaleDateString()}</td>
+                        <td className="px-6 py-4 text-right">
+                          <button onClick={() => setViewingReceiving(r)} className="p-1 text-gray-400 hover:text-indigo-600 transition">
+                            <Eye className="h-5 w-5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                {warehouseReceivings.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                      <div className="flex flex-col items-center gap-2">
+                        <PackageOpen className="h-10 w-10 text-gray-300" />
+                        <p className="text-sm font-medium">{t('No warehouse receivings recorded yet.')}</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* ----------------- MODALS & VIEWS ----------------- */}
 
       {/* PR VIEW DETAIL PANEL */}
@@ -2015,6 +2366,261 @@ export default function InventoryModule({
         </div>
       )}
 
+      {/* DISPATCH VIEW DETAIL PANEL */}
+      {viewingDispatch && (() => {
+        const fromWh = warehouses.find(w => w.id === viewingDispatch.fromWarehouseId);
+        const toWh = warehouses.find(w => w.id === viewingDispatch.toWarehouseId);
+        return (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
+            <div className="overflow-hidden flex flex-col">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">{t('Warehouse Dispatch Details')}</h3>
+                  <span className="text-sm font-semibold text-indigo-700 font-mono mt-0.5 inline-block">{viewingDispatch.dispatchNumber}</span>
+                </div>
+                <button
+                  onClick={() => setViewingDispatch(null)}
+                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition"
+                >
+                  {t('Back to List')}
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500">{t('From Warehouse:')}</span>
+                    <p className="font-semibold text-gray-900 mt-0.5">{fromWh?.name || t('Unknown Warehouse')}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">{t('To Warehouse:')}</span>
+                    <p className="font-semibold text-gray-900 mt-0.5">{toWh?.name || t('Unknown Warehouse')}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">{t('Date:')}</span>
+                    <p className="font-semibold text-gray-900 mt-0.5">{new Date(viewingDispatch.date).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">{t('Dispatched By:')}</span>
+                    <p className="font-semibold text-gray-900 mt-0.5">{viewingDispatch.dispatchedBy}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">{t('Status:')}</span>
+                    <p className="font-semibold text-gray-900 mt-0.5">{t(viewingDispatch.status)}</p>
+                  </div>
+                  {viewingDispatch.vehicleNumber && (
+                    <div>
+                      <span className="text-gray-500">{t('Vehicle Number:')}</span>
+                      <p className="font-semibold text-indigo-700 mt-0.5">{viewingDispatch.vehicleNumber}</p>
+                    </div>
+                  )}
+                  {viewingDispatch.driverName && (
+                    <div>
+                      <span className="text-gray-500">{t('Driver Name:')}</span>
+                      <p className="font-semibold text-indigo-700 mt-0.5">{viewingDispatch.driverName}</p>
+                    </div>
+                  )}
+                  {viewingDispatch.driverContact && (
+                    <div>
+                      <span className="text-gray-500">{t('Driver Contact:')}</span>
+                      <p className="font-semibold text-gray-900 mt-0.5">{viewingDispatch.driverContact}</p>
+                    </div>
+                  )}
+                  {viewingDispatch.expectedArrivalDate && (
+                    <div>
+                      <span className="text-gray-500">{t('Expected Arrival:')}</span>
+                      <p className="font-semibold text-gray-900 mt-0.5">{new Date(viewingDispatch.expectedArrivalDate).toLocaleDateString()}</p>
+                    </div>
+                  )}
+                  {viewingDispatch.notes && (
+                    <div className="col-span-2">
+                      <span className="text-gray-500">{t('Notes:')}</span>
+                      <p className="text-gray-700 mt-0.5 bg-gray-50 p-2.5 rounded border border-gray-100">{viewingDispatch.notes}</p>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-6">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">{t('Dispatched Items')}</h4>
+                  <div className="border border-gray-100 rounded-lg overflow-hidden">
+                    <table className="w-full text-left">
+                      <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                        <tr>
+                          <th className="px-4 py-2">{t('Product')}</th>
+                          <th className="px-4 py-2 text-right">{t('Qty Dispatched')}</th>
+                          <th className="px-4 py-2">{t('Batch / Expiry')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-sm divide-y divide-gray-100">
+                        {(viewingDispatch.items || []).map((item, idx) => {
+                          const prod = products.find(p => p.id === item.productId);
+                          return (
+                            <tr key={idx}>
+                              <td className="px-4 py-2 font-medium text-gray-900">{prod?.name || t('Unknown Product')}</td>
+                              <td className="px-4 py-2 text-right font-bold text-indigo-600">{item.quantityDispatched}</td>
+                              <td className="px-4 py-2 text-gray-600 text-xs">
+                                <span className="font-mono">{item.batchNumber || '-'}</span>
+                                {item.expiryDate ? ` / ${new Date(item.expiryDate).toLocaleDateString()}` : ''}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 border-t border-gray-200 flex justify-between bg-gray-50">
+                <button
+                  onClick={() => setViewingDispatch(null)}
+                  className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
+                >
+                  {t('Close')}
+                </button>
+                <div className="flex items-center gap-3">
+                  {onPrintDoc && (
+                    <button
+                      onClick={() => onPrintDoc('WarehouseDispatch', viewingDispatch)}
+                      className="inline-flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition"
+                    >
+                      <Printer className="h-4 w-4" />
+                      {t('Print')}
+                    </button>
+                  )}
+                  {viewingDispatch.status === 'Dispatched' && can('warehouseDispatches.delete') && (
+                    <button
+                      onClick={() => handleCancelDispatch(viewingDispatch.id)}
+                      disabled={isCancellingDispatch}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-rose-50 text-rose-700 rounded-lg text-sm font-medium hover:bg-rose-100 transition disabled:opacity-50"
+                    >
+                      <Ban className="h-4 w-4" />
+                      {isCancellingDispatch ? t('Cancelling...') : t('Cancel Dispatch')}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* RECEIVING VIEW DETAIL PANEL */}
+      {viewingReceiving && (() => {
+        const dispatch = warehouseDispatches.find(d => d.id === viewingReceiving.dispatchId);
+        const fromWh = warehouses.find(w => w.id === dispatch?.fromWarehouseId);
+        const toWh = warehouses.find(w => w.id === dispatch?.toWarehouseId);
+        return (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
+            <div className="overflow-hidden flex flex-col">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">{t('Warehouse Receiving Details')}</h3>
+                  <span className="text-sm font-semibold text-indigo-700 font-mono mt-0.5 inline-block">{viewingReceiving.receivingNumber}</span>
+                </div>
+                <button
+                  onClick={() => setViewingReceiving(null)}
+                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition"
+                >
+                  {t('Back to List')}
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500">{t('Dispatch #:')}</span>
+                    <p className="font-semibold text-gray-900 mt-0.5 font-mono">{dispatch?.dispatchNumber || '-'}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">{t('From Warehouse:')}</span>
+                    <p className="font-semibold text-gray-900 mt-0.5">{fromWh?.name || t('Unknown Warehouse')}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">{t('To Warehouse:')}</span>
+                    <p className="font-semibold text-gray-900 mt-0.5">{toWh?.name || t('Unknown Warehouse')}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">{t('Date:')}</span>
+                    <p className="font-semibold text-gray-900 mt-0.5">{new Date(viewingReceiving.date).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">{t('Received By:')}</span>
+                    <p className="font-semibold text-gray-900 mt-0.5">{viewingReceiving.receivedBy}</p>
+                  </div>
+                  {viewingReceiving.condition && (
+                    <div>
+                      <span className="text-gray-500">{t('Condition:')}</span>
+                      <p className="font-semibold text-gray-900 mt-0.5">{viewingReceiving.condition}</p>
+                    </div>
+                  )}
+                  {viewingReceiving.discrepancyNotes && (
+                    <div className="col-span-2">
+                      <span className="text-gray-500">{t('Discrepancy Notes:')}</span>
+                      <p className="text-gray-700 mt-0.5 bg-amber-50 p-2.5 rounded border border-amber-100">{viewingReceiving.discrepancyNotes}</p>
+                    </div>
+                  )}
+                  {viewingReceiving.notes && (
+                    <div className="col-span-2">
+                      <span className="text-gray-500">{t('Notes:')}</span>
+                      <p className="text-gray-700 mt-0.5 bg-gray-50 p-2.5 rounded border border-gray-100">{viewingReceiving.notes}</p>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-6">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">{t('Received Items')}</h4>
+                  <div className="border border-gray-100 rounded-lg overflow-hidden">
+                    <table className="w-full text-left">
+                      <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                        <tr>
+                          <th className="px-4 py-2">{t('Product')}</th>
+                          <th className="px-4 py-2 text-right">{t('Qty Dispatched')}</th>
+                          <th className="px-4 py-2 text-right">{t('Qty Received')}</th>
+                          <th className="px-4 py-2 text-right">{t('Variance')}</th>
+                          <th className="px-4 py-2">{t('Batch')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-sm divide-y divide-gray-100">
+                        {(viewingReceiving.items || []).map((item, idx) => {
+                          const dispatchItem = (dispatch?.items || []).find(di => di.id === item.dispatchItemId);
+                          const prod = products.find(p => p.id === item.productId);
+                          const qtyDispatched = dispatchItem?.quantityDispatched ?? 0;
+                          const variance = item.quantityReceived - qtyDispatched;
+                          return (
+                            <tr key={idx}>
+                              <td className="px-4 py-2 font-medium text-gray-900">{prod?.name || t('Unknown Product')}</td>
+                              <td className="px-4 py-2 text-right text-gray-600">{qtyDispatched}</td>
+                              <td className="px-4 py-2 text-right font-bold text-emerald-600">{item.quantityReceived}</td>
+                              <td className={`px-4 py-2 text-right font-semibold ${variance === 0 ? 'text-gray-400' : variance < 0 ? 'text-rose-600' : 'text-amber-600'}`}>
+                                {variance > 0 ? `+${variance}` : variance}
+                              </td>
+                              <td className="px-4 py-2 text-gray-600 text-xs font-mono">{item.batchNumber || '-'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 border-t border-gray-200 flex justify-between bg-gray-50">
+                <button
+                  onClick={() => setViewingReceiving(null)}
+                  className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
+                >
+                  {t('Close')}
+                </button>
+                {onPrintDoc && (
+                  <button
+                    onClick={() => onPrintDoc('WarehouseReceiving', viewingReceiving)}
+                    className="inline-flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition"
+                  >
+                    <Printer className="h-4 w-4" />
+                    {t('Print')}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* CREATE PR PANEL */}
       {isCreatingPr && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
@@ -2292,7 +2898,7 @@ export default function InventoryModule({
                             ...newPoItem,
                             productId: e.target.value,
                             unitOfMeasureId: '',
-                            unitPrice: Number(selectedProd?.unitPrice || 0)
+                            unitPrice: Number(selectedProd?.costPrice ?? selectedProd?.unitPrice ?? 0)
                           });
                         }}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
@@ -2656,7 +3262,7 @@ export default function InventoryModule({
                             ...newGrnItem,
                             productId: e.target.value,
                             unitOfMeasureId: '',
-                            unitCost: Number(selectedProd?.unitPrice || 0),
+                            unitCost: Number(selectedProd?.costPrice ?? selectedProd?.unitPrice ?? 0),
                             taxRate: 15
                           });
                         }}
@@ -2815,6 +3421,397 @@ export default function InventoryModule({
           </div>
         </div>
       )}
+
+      {/* CREATE DISPATCH PANEL */}
+      {isCreatingDispatch && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
+          <div className="overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+              <h3 className="text-lg font-bold text-gray-900">{t('New Warehouse Dispatch')}</h3>
+              <button
+                type="button"
+                onClick={() => setIsCreatingDispatch(false)}
+                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition"
+              >
+                {t('Back to List')}
+              </button>
+            </div>
+            <form onSubmit={handleCreateDispatch} className="flex-1 flex flex-col">
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('From Warehouse')}</label>
+                    <select
+                      value={dispatchForm.fromWarehouseId}
+                      onChange={(e) => setDispatchForm({ ...dispatchForm, fromWarehouseId: e.target.value })}
+                      required
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                    >
+                      <option value="">{t('-- Select Source Warehouse --')}</option>
+                      {warehouses.map(wh => (
+                        <option key={wh.id} value={wh.id}>{wh.name} ({wh.code})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('To Warehouse')}</label>
+                    <select
+                      value={dispatchForm.toWarehouseId}
+                      onChange={(e) => setDispatchForm({ ...dispatchForm, toWarehouseId: e.target.value })}
+                      required
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                    >
+                      <option value="">{t('-- Select Destination Warehouse --')}</option>
+                      {warehouses.filter(wh => wh.id !== dispatchForm.fromWarehouseId).map(wh => (
+                        <option key={wh.id} value={wh.id}>{wh.name} ({wh.code})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('Dispatched By')}</label>
+                    <input
+                      type="text"
+                      value={dispatchForm.dispatchedBy}
+                      readOnly
+                      disabled
+                      required
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-100 text-gray-400 cursor-not-allowed"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('Vehicle Number')}</label>
+                    <input
+                      type="text"
+                      placeholder={t('Vehicle # (e.g. LKN-1234)')}
+                      value={dispatchForm.vehicleNumber}
+                      onChange={(e) => setDispatchForm({ ...dispatchForm, vehicleNumber: e.target.value })}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('Driver Name')}</label>
+                    <input
+                      type="text"
+                      placeholder={t('Driver Full Name')}
+                      value={dispatchForm.driverName}
+                      onChange={(e) => setDispatchForm({ ...dispatchForm, driverName: e.target.value })}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('Driver Contact')}</label>
+                    <input
+                      type="text"
+                      placeholder={t('Driver Phone Number')}
+                      value={dispatchForm.driverContact}
+                      onChange={(e) => setDispatchForm({ ...dispatchForm, driverContact: e.target.value })}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('Expected Arrival Date')}</label>
+                    <input
+                      type="date"
+                      value={dispatchForm.expectedArrivalDate}
+                      onChange={(e) => setDispatchForm({ ...dispatchForm, expectedArrivalDate: e.target.value })}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('Notes')}</label>
+                    <input
+                      type="text"
+                      placeholder={t('Internal notes...')}
+                      value={dispatchForm.notes}
+                      onChange={(e) => setDispatchForm({ ...dispatchForm, notes: e.target.value })}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Add Item Form */}
+                <div className="border border-gray-100 rounded-xl p-4 bg-gray-50/50 space-y-3 mt-4">
+                  <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wider">{t('Add Item to Dispatch')}</h4>
+                  <input
+                    type="text"
+                    placeholder={t('Scan or type a barcode — resolves the product and its unit automatically')}
+                    value={dispatchBarcodeInput}
+                    onChange={(e) => setDispatchBarcodeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return;
+                      e.preventDefault();
+                      const resolved = resolveProductByCode(dispatchBarcodeInput);
+                      if (!resolved) { triggerError(t('No product matches that barcode/SKU.')); return; }
+                      setNewDispatchItem({ ...newDispatchItem, productId: resolved.productId, unitOfMeasureId: resolved.unitOfMeasureId || '' });
+                      setDispatchBarcodeInput('');
+                    }}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                  />
+                  <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
+                    <div className="sm:col-span-2">
+                      <select
+                        value={newDispatchItem.productId}
+                        onChange={(e) => setNewDispatchItem({ ...newDispatchItem, productId: e.target.value, unitOfMeasureId: '' })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                      >
+                        <option value="">{t('-- Select Product --')}</option>
+                        {products.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <select
+                        value={newDispatchItem.unitOfMeasureId}
+                        onChange={(e) => setNewDispatchItem({ ...newDispatchItem, unitOfMeasureId: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                      >
+                        <option value="">{t('Base Unit')}</option>
+                        {(db.productUnitConversions || []).filter(puc => puc.productId === newDispatchItem.productId && puc.isActive !== false).map(puc => {
+                          const uom = (db.unitsOfMeasure || []).find(u => u.id === puc.unitOfMeasureId);
+                          return <option key={puc.id} value={puc.unitOfMeasureId}>{uom ? uom.name : t('Unit')} (×{puc.conversionFactor})</option>;
+                        })}
+                      </select>
+                    </div>
+                    <div>
+                      <input
+                        type="number"
+                        placeholder={t('Qty')}
+                        value={newDispatchItem.quantityDispatched}
+                        onChange={(e) => setNewDispatchItem({ ...newDispatchItem, quantityDispatched: Number(e.target.value) })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        placeholder={t('Batch No.')}
+                        value={newDispatchItem.batchNumber}
+                        onChange={(e) => setNewDispatchItem({ ...newDispatchItem, batchNumber: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                      />
+                    </div>
+                    <div className="flex gap-1">
+                      <input
+                        type="date"
+                        placeholder={t('Expiry')}
+                        value={newDispatchItem.expiryDate}
+                        onChange={(e) => setNewDispatchItem({ ...newDispatchItem, expiryDate: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddDispatchItem}
+                        className="px-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-bold text-sm"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Dispatch Items Table */}
+                <div className="mt-4">
+                  <h4 className="text-xs font-semibold text-gray-700 mb-2">{t('Items to Dispatch')}</h4>
+                  <div className="border border-gray-100 rounded-lg overflow-hidden">
+                    <table className="w-full text-left">
+                      <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                        <tr>
+                          <th className="px-4 py-2">{t('Product')}</th>
+                          <th className="px-4 py-2 text-right">{t('Qty')}</th>
+                          <th className="px-4 py-2">{t('Batch / Expiry')}</th>
+                          <th className="px-4 py-2 text-right">{t('Action')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-sm divide-y divide-gray-100 bg-white">
+                        {dispatchForm.items.map((item, idx) => {
+                          const prod = products.find(p => p.id === item.productId);
+                          return (
+                            <tr key={idx}>
+                              <td className="px-4 py-2">{prod?.name || t('Unknown Product')}</td>
+                              <td className="px-4 py-2 text-right font-bold text-indigo-600">{item.quantityDispatched}</td>
+                              <td className="px-4 py-2 text-xs text-gray-500">
+                                <span className="font-mono">{item.batchNumber || '-'}</span>
+                                {item.expiryDate ? ` / ${new Date(item.expiryDate).toLocaleDateString()}` : ''}
+                              </td>
+                              <td className="px-4 py-2 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveDispatchItem(idx)}
+                                  className="text-rose-600 hover:text-rose-800 text-sm font-semibold"
+                                >
+                                  {t('Remove')}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {dispatchForm.items.length === 0 && (
+                          <tr>
+                            <td colSpan={4} className="px-4 py-6 text-center text-gray-400 text-xs">
+                              {t('No items added yet. Add items above to dispatch.')}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingDispatch(false)}
+                  className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
+                >
+                  {t('Cancel')}
+                </button>
+                <button
+                  type="submit"
+                  disabled={!dispatchForm.fromWarehouseId || !dispatchForm.toWarehouseId || dispatchForm.items.length === 0 || isSubmittingDispatch}
+                  className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  {isSubmittingDispatch ? t('Dispatching...') : t('Confirm Dispatch & Deduct Stock')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* RECEIVING CONFIRM PANEL */}
+      {receivingAgainstDispatch && (() => {
+        const fromWh = warehouses.find(w => w.id === receivingAgainstDispatch.fromWarehouseId);
+        const toWh = warehouses.find(w => w.id === receivingAgainstDispatch.toWarehouseId);
+        return (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full animate-fade-in">
+            <div className="overflow-hidden flex flex-col">
+              <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">{t('Receive Against Dispatch')}</h3>
+                  <span className="text-sm font-semibold text-indigo-700 font-mono mt-0.5 inline-block">{receivingAgainstDispatch.dispatchNumber}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReceivingAgainstDispatch(null)}
+                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition"
+                >
+                  {t('Back to List')}
+                </button>
+              </div>
+              <form onSubmit={handleSubmitReceiving} className="flex-1 flex flex-col">
+                <div className="p-6 space-y-4">
+                  <div className="bg-indigo-50 p-3.5 rounded-lg border border-indigo-100 text-sm text-indigo-900">
+                    {t('From:')} <span className="font-semibold">{fromWh?.name || t('Unknown Warehouse')}</span> &nbsp;→&nbsp;
+                    {t('To:')} <span className="font-semibold">{toWh?.name || t('Unknown Warehouse')}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('Received By')}</label>
+                      <input
+                        type="text"
+                        value={receivingForm.receivedBy}
+                        readOnly
+                        disabled
+                        required
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-100 text-gray-400 cursor-not-allowed"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('Condition')}</label>
+                      <input
+                        type="text"
+                        placeholder={t('e.g. Good, Damaged packaging...')}
+                        value={receivingForm.condition}
+                        onChange={(e) => setReceivingForm({ ...receivingForm, condition: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('Discrepancy Notes')}</label>
+                      <input
+                        type="text"
+                        placeholder={t('Explain any quantity mismatch...')}
+                        value={receivingForm.discrepancyNotes}
+                        onChange={(e) => setReceivingForm({ ...receivingForm, discrepancyNotes: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('Notes')}</label>
+                      <input
+                        type="text"
+                        placeholder={t('Internal notes...')}
+                        value={receivingForm.notes}
+                        onChange={(e) => setReceivingForm({ ...receivingForm, notes: e.target.value })}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <h4 className="text-xs font-semibold text-gray-700 mb-2">{t('Confirm Received Quantities')}</h4>
+                    <div className="border border-gray-100 rounded-lg overflow-hidden">
+                      <table className="w-full text-left">
+                        <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                          <tr>
+                            <th className="px-4 py-2">{t('Product')}</th>
+                            <th className="px-4 py-2 text-right">{t('Qty Dispatched')}</th>
+                            <th className="px-4 py-2 text-right">{t('Qty Received')}</th>
+                            <th className="px-4 py-2 text-right">{t('Variance')}</th>
+                            <th className="px-4 py-2">{t('Batch')}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="text-sm divide-y divide-gray-100 bg-white">
+                          {receivingForm.items.map((item, idx) => {
+                            const prod = products.find(p => p.id === item.productId);
+                            const variance = item.quantityReceived - item.quantityDispatched;
+                            return (
+                              <tr key={idx}>
+                                <td className="px-4 py-2 font-medium text-gray-900">{prod?.name || t('Unknown Product')}</td>
+                                <td className="px-4 py-2 text-right text-gray-600">{item.quantityDispatched}</td>
+                                <td className="px-4 py-2 text-right">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    value={item.quantityReceived}
+                                    onChange={(e) => handleUpdateReceivingItemQty(idx, Number(e.target.value))}
+                                    className="w-24 border border-gray-200 rounded-lg px-2 py-1 text-sm text-right bg-white"
+                                  />
+                                </td>
+                                <td className={`px-4 py-2 text-right font-semibold ${variance === 0 ? 'text-gray-400' : variance < 0 ? 'text-rose-600' : 'text-amber-600'}`}>
+                                  {variance > 0 ? `+${variance}` : variance}
+                                </td>
+                                <td className="px-4 py-2 text-gray-600 text-xs font-mono">{item.batchNumber || '-'}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
+                  <button
+                    type="button"
+                    onClick={() => setReceivingAgainstDispatch(null)}
+                    className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
+                  >
+                    {t('Cancel')}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={receivingForm.items.length === 0 || isSubmittingReceiving}
+                    className="px-5 py-2 bg-emerald-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-emerald-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    {isSubmittingReceiving ? t('Recording...') : t('Confirm Receiving & Update Stock')}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* CREATE WAREHOUSE PANEL */}
       {isCreatingWarehouse && (
@@ -3020,6 +4017,9 @@ export default function InventoryModule({
                 <div>{t('VAT Total:')} &nbsp;<span className="font-bold text-gray-900">{viewingBill.taxTotal.toFixed(2)} {currency}</span></div>
                 <div className="text-lg font-bold text-indigo-700">{t('Grand Total:')} &nbsp;<span>{viewingBill.grandTotal.toFixed(2)} {currency}</span></div>
                 <div className="text-emerald-700">{t('Paid:')} &nbsp;<span className="font-bold">{viewingBill.amountPaid.toFixed(2)} {currency}</span></div>
+                {(viewingBill.grandTotal - viewingBill.amountPaid) > 0.004 && (
+                  <div className="text-rose-600">{t('Balance Due:')} &nbsp;<span className="font-bold">{(viewingBill.grandTotal - viewingBill.amountPaid).toFixed(2)} {currency}</span></div>
+                )}
               </div>
             </div>
             <div className="p-6 border-t border-gray-200 flex justify-between bg-gray-50">

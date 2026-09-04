@@ -23,6 +23,8 @@ export const DOCUMENT_TYPE_REGISTRY: { key: string; label: string; defaultPrefix
   { key: 'bill', label: 'Purchase Bill', defaultPrefix: 'BILL' },
   { key: 'return', label: 'Purchase Return', defaultPrefix: 'DN' }, // collides with debitNote by default — true to today's existing behavior, surfaced (not silently changed) by the settings UI
   { key: 'stockTake', label: 'Physical Stock Take', defaultPrefix: 'ST' },
+  { key: 'dispatch', label: 'Warehouse Dispatch', defaultPrefix: 'DSP' },
+  { key: 'receiving', label: 'Warehouse Receiving', defaultPrefix: 'RCV' },
 ];
 
 const DEFAULTS_BY_KEY = new Map(DOCUMENT_TYPE_REGISTRY.map(d => [d.key, d]));

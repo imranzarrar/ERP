@@ -254,7 +254,7 @@ describe('Figure correctness (Credit Note netting + Purchase Bill inclusion)', (
     const exp = await api(adminSessionId, '/api/expenses', {
       method: 'POST',
       body: JSON.stringify({
-        date: today, vendorId, taxSlabId, bankId, description: 'Test expense',
+        date: today, vendorId, taxSlabId, bankId, description: 'Test expense', billNumber: 'BILL-TEST-1',
         amount: 115, status: 'Active', type: 'Actual', paymentStatus: 'Unpaid',
       }),
     });
@@ -448,7 +448,7 @@ describe('Filing, permanent lock, and the filed-quarter document lock', () => {
 
     const newExpense = await api(adminSessionId, '/api/expenses', {
       method: 'POST',
-      body: JSON.stringify({ date: today, vendorId, taxSlabId, bankId, description: 'blocked', amount: 50, status: 'Active', type: 'Actual', paymentStatus: 'Unpaid' }),
+      body: JSON.stringify({ date: today, vendorId, taxSlabId, bankId, description: 'blocked', billNumber: 'BILL-TEST-2', amount: 50, status: 'Active', type: 'Actual', paymentStatus: 'Unpaid' }),
     });
     expect(newExpense.status).toBe(400);
     expect(newExpense.body.error).toMatch(/filed with ZATCA/i);

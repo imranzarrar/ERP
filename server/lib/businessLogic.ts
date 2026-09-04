@@ -24,13 +24,16 @@ export function round4(n: number): number {
 // Records one row in the stock ledger for an inventoryStocks mutation that has already
 // been applied within the same transaction — this is a read-only audit trail of what
 // happened, never a second place that decides quantities itself. `referenceId` is
-// polymorphic (GRN/Return/Sale/Adjustment/StockTake id depending on transactionType, same
-// as the column comment in schema.ts) — no single-table FK.
+// polymorphic (GRN/Return/Sale/Adjustment/StockTake/dispatch/receiving id depending on
+// transactionType, same as the column comment in schema.ts) — no single-table FK.
 export async function writeStockLedgerEntry(tx: any, params: {
   productId: string;
   warehouseId: string;
   companyId: string;
-  transactionType: 'GRN' | 'Return' | 'Sale' | 'Adjustment' | 'StockTake';
+  // TransferOut/TransferIn: warehouse transfer dispatch (deduct at source) and receiving
+  // (add at destination) — see server/routes/inventory.ts's warehouse-dispatches/
+  // warehouse-receivings routes and schema.ts's warehouseDispatches comment.
+  transactionType: 'GRN' | 'Return' | 'Sale' | 'Adjustment' | 'StockTake' | 'TransferOut' | 'TransferIn';
   referenceId: string;
   date: Date;
   quantityChange: number;
@@ -386,7 +389,10 @@ export async function syncVoucherForExpense(tx: any, expenseId: string, companyI
       )
     );
 
-  if (data.paymentStatus === 'Paid' && data.status !== 'Cancelled') {
+  // Same reasoning as syncVoucherForInvoice's matching comment: an expense created with
+  // 'Partially Paid' has genuinely paid out some real cash and needs its one synced
+  // Payment voucher to exist for that amount, not just when the full amount is 'Paid'.
+  if ((data.paymentStatus === 'Paid' || data.paymentStatus === 'Partially Paid') && data.status !== 'Cancelled') {
     if (existingVoucher) {
       // Check if voucher's month is closed
       const voucherMonthId = existingVoucher.date.substring(0, 7);
@@ -405,7 +411,11 @@ export async function syncVoucherForExpense(tx: any, expenseId: string, companyI
           .set({
             date: data.date,
             bankId: data.bankId,
-            amount: data.amount,
+            // amountPaid, not amount — a Partially Paid expense's real cash outflow is
+            // whatever was actually paid, not the expense's full total (the same mistake
+            // this branch made for every 'Paid' expense too, harmless there only because
+            // amountPaid always equals amount for a fully-paid expense).
+            amount: data.amountPaid || data.amount,
             description: `Payment voucher for ${data.description || 'Expense'}`,
             companyId: companyId,
           })
@@ -419,7 +429,7 @@ export async function syncVoucherForExpense(tx: any, expenseId: string, companyI
         type: 'Payment',
         date: data.date,
         bankId: data.bankId,
-        amount: data.amount,
+        amount: data.amountPaid || data.amount,
         description: `Payment voucher for ${data.description || 'Expense'}`,
         referenceType: 'Expense',
         referenceId: expenseId,
@@ -511,7 +521,17 @@ export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyI
       )
     );
 
-  if (data.paymentStatus === 'Paid' && data.status !== 'Cancelled') {
+  // A newly-created (or edited) invoice that already collected SOME money up front —
+  // whether the full amount ('Paid') or a deposit ('Partially Paid') — needs its one
+  // synced Receipt voucher to exist and reflect that real amountPaid. Previously scoped
+  // to 'Paid' only: a Partially Paid invoice created directly with an initial amountPaid
+  // silently posted no voucher at all for money genuinely already received, even though
+  // the exact same partial amount recorded LATER via the separate POST /invoices/:id/paid
+  // action (a different, additive mechanism for incremental installments — see that
+  // route's own comment for why it's deliberately not built on this function) already
+  // correctly creates one. Only a real 'Unpaid' (or Cancelled) invoice has no receipt to
+  // reflect yet, which is what the reversal branch below is actually for.
+  if ((data.paymentStatus === 'Paid' || data.paymentStatus === 'Partially Paid') && data.status !== 'Cancelled') {
     if (existingVoucher) {
       // Check if voucher's month is closed
       const voucherMonthId = existingVoucher.date.substring(0, 7);
@@ -531,7 +551,7 @@ export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyI
             date: String(data.paymentDate || data.date),
             bankId: data.bankId,
             amount: data.amountPaid || data.amount,
-            description: `Receipt voucher generated automatically for paid invoice ${data.invoiceNumber}`,
+            description: `Receipt voucher generated automatically for invoice ${data.invoiceNumber}`,
             companyId: companyId,
           })
           .where(eq(schema.vouchers.id, existingVoucher.id));
@@ -546,7 +566,7 @@ export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyI
         date: voucherDate,
         bankId: data.bankId,
         amount: data.amountPaid || data.amount,
-        description: `Receipt voucher generated automatically for paid invoice ${data.invoiceNumber}`,
+        description: `Receipt voucher generated automatically for invoice ${data.invoiceNumber}`,
         referenceType: 'Invoice',
         referenceId: invoiceId,
         companyId: companyId,

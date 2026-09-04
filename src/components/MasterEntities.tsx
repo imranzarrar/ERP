@@ -114,6 +114,10 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
  const [prodName, setProdName] = React.useState('');
  const [prodType, setProdType] = React.useState<'Sales' | 'Purchase'>('Sales');
  const [prodPrice, setProdPrice] = React.useState('');
+ // Purchase/stock-valuation cost — separate from prodPrice (the selling price). Optional:
+ // left blank, GRN/PO line cost defaults fall back to the selling price instead (see
+ // InventoryModule.tsx's resolveProductByCode and its GRN/PO item-add handlers).
+ const [prodCostPrice, setProdCostPrice] = React.useState('');
  const [prodUnit, setProdUnit] = React.useState('No');
   const [prodIsPos, setProdIsPos] = React.useState(false);
   const [prodCategory, setProdCategory] = React.useState('');
@@ -194,6 +198,7 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
  setProdName('');
  setProdType('Sales');
  setProdPrice('');
+ setProdCostPrice('');
  setProdUnit('No');
     setProdIsPos(false);
     setProdCategory('');
@@ -424,6 +429,10 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
 
  const priceNum = parseFloat(prodPrice);
  if (isNaN(priceNum) || priceNum < 0) return triggerError('Price must be a valid positive number.');
+ // Optional — left blank, cost-affecting flows (GRN/PO line defaults) fall back to the
+ // selling price instead, matching every pre-existing product that predates this field.
+ const costPriceNum = prodCostPrice.trim() ? parseFloat(prodCostPrice) : null;
+ if (prodCostPrice.trim() && (isNaN(costPriceNum as number) || (costPriceNum as number) < 0)) return triggerError('Cost price must be a valid positive number.');
 
  const newDb = { ...db };
  let savedProd;
@@ -435,6 +444,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  name: prodName,
  type: prodType,
  unitPrice: priceNum,
+ costPrice: costPriceNum,
  unit: prodUnit,
  base64Image: prodImage,
  isPosItem: prodIsPos,
@@ -458,6 +468,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  name: prodName,
  description: '',
  unitPrice: priceNum,
+ costPrice: costPriceNum,
  type: prodType,
  unit: prodUnit,
       isPosItem: prodIsPos,
@@ -886,6 +897,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
      setProdName(entity.name);
      setProdType(entity.type);
      setProdPrice(entity.unitPrice.toString());
+     setProdCostPrice(entity.costPrice != null ? entity.costPrice.toString() : '');
      setProdUnit(entity.unit || 'No');
      setProdIsPos(entity.isPosItem || false);
      setProdCategory(entity.category || '');
@@ -1388,7 +1400,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Unit Cost / Price')} ({db.companySetup?.currency || 'SAR'})</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Sales Price')} ({db.companySetup?.currency || 'SAR'})</label>
  <input
  type="number"
  required
@@ -1398,6 +1410,20 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  onChange={(e) => setProdPrice(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"
  />
+ <p className="text-[10px] text-slate-400">{t('Charged to customers on invoices, quotations, and POS.')}</p>
+ </div>
+
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Cost Price')} ({db.companySetup?.currency || 'SAR'})</label>
+ <input
+ type="number"
+ step="0.01"
+ placeholder="e.g. 30.00"
+ value={prodCostPrice}
+ onChange={(e) => setProdCostPrice(e.target.value)}
+ className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"
+ />
+ <p className="text-[10px] text-slate-400">{t('Purchasing/stock cost — defaults GRN and Purchase Order line costs. Leave blank to default from Sales Price.')}</p>
  </div>
 
  {editingId && prodCatalogType === 'item' && (
@@ -2181,7 +2207,8 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <th className="p-4">{t('Type / Ledger Scope')}</th>
  <th className="p-4">{t('Unit')}</th>
  <th className="p-4">{t('Status')}</th>
- <th className="p-4 text-end">{t('Unit Rate Price')}</th>
+ <th className="p-4 text-end">{t('Cost Price')}</th>
+ <th className="p-4 text-end">{t('Sales Price')}</th>
  {(canUpdateProducts || canDeleteProducts) && <th className="p-4 pe-5 text-end">{t('Actions')}</th>}
  </tr>
  </thead>
@@ -2207,6 +2234,10 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  }`}>
  {p.isActive === false ? t('Inactive') : t('Active')}
  </span>
+ </td>
+ <td className="p-4 text-end text-slate-500 text-sm">
+ {db.companySetup?.currency || 'SAR'} {Number(p.costPrice ?? p.unitPrice ?? 0).toFixed(2)}
+ {p.costPrice == null && <span className="ms-1 text-[9px] text-slate-400 font-semibold">({t('defaulted')})</span>}
  </td>
  <td className="p-4 text-end font-extrabold text-slate-900 text-sm">{db.companySetup?.currency || 'SAR'} {Number(p.unitPrice || 0).toFixed(2)}</td>
  {(canUpdateProducts || canDeleteProducts) && (

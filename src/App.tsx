@@ -162,6 +162,8 @@ export default function App() {
       purchaseBills: data.purchaseBills || [],
       purchaseReturns: data.purchaseReturns || [],
       physicalStockTakes: data.physicalStockTakes || [],
+      warehouseDispatches: data.warehouseDispatches || [],
+      warehouseReceivings: data.warehouseReceivings || [],
       productCategories: data.productCategories || [],
       unitsOfMeasure: data.unitsOfMeasure || [],
       productUnitConversions: data.productUnitConversions || [],
@@ -267,6 +269,8 @@ export default function App() {
               purchaseBills: data.purchaseBills || [],
               purchaseReturns: data.purchaseReturns || [],
               physicalStockTakes: data.physicalStockTakes || [],
+              warehouseDispatches: data.warehouseDispatches || [],
+              warehouseReceivings: data.warehouseReceivings || [],
               productCategories: data.productCategories || [],
               unitsOfMeasure: data.unitsOfMeasure || [],
               // Same gap already fixed once for this exact refresh path (see the comment
@@ -392,7 +396,7 @@ export default function App() {
   };
 
   const [printDoc, setPrintDoc] = React.useState<{
-    type: 'Quotation' | 'Invoice' | 'Expense' | 'Voucher' | 'PaymentReceipt' | 'Ledger' | 'Report';
+    type: 'Quotation' | 'Invoice' | 'Expense' | 'Voucher' | 'PaymentReceipt' | 'Ledger' | 'Report' | 'WarehouseDispatch' | 'WarehouseReceiving';
     data: any;
   } | null>(null);
 
@@ -610,7 +614,9 @@ type NavSection = {
               { id: 'inventory-stock', label: t('Stock Registry'), permissionKey: 'inventory.stock' },
               { id: 'inventory-bills', label: t('Purchase Bills'), permissionKey: 'purchaseBills.read' },
               { id: 'inventory-returns', label: t('Purchase Returns'), permissionKey: 'purchaseReturns.read' },
-              { id: 'inventory-stocktakes', label: t('Physical Stock Takes'), permissionKey: 'stockTakes.read' }
+              { id: 'inventory-stocktakes', label: t('Physical Stock Takes'), permissionKey: 'stockTakes.read' },
+              { id: 'inventory-dispatch', label: t('Warehouse Dispatch'), permissionKey: 'warehouseDispatches.read' },
+              { id: 'inventory-receiving', label: t('Warehouse Receiving'), permissionKey: 'warehouseReceivings.read' }
             ]
           }
         ]
@@ -724,7 +730,8 @@ type NavSection = {
             { id: 'reports-itemprofitability', label: t('Item Profitability Report'), permissionKey: 'reports.itemProfitability' },
             { id: 'reports-lowstock', label: t('Low Stock / Reorder Report'), permissionKey: 'reports.lowStock' },
             { id: 'reports-stocktakevariance', label: t('Stock Take Variance History'), permissionKey: 'reports.stockTakeVarianceHistory' },
-            { id: 'reports-stockmovementledger', label: t('Stock Movement Ledger'), permissionKey: 'reports.stockMovementLedger' }
+            { id: 'reports-stockmovementledger', label: t('Stock Movement Ledger'), permissionKey: 'reports.stockMovementLedger' },
+            { id: 'reports-warehousetransferreconciliation', label: t('Warehouse Transfer Reconciliation'), permissionKey: 'reports.warehouseTransferReconciliation' }
           ]
         }
       ]
@@ -1384,6 +1391,8 @@ type NavSection = {
  activeTab === 'inventory-bills' ? t('Purchase Bills') :
  activeTab === 'inventory-returns' ? t('Purchase Returns') :
  activeTab === 'inventory-stocktakes' ? t('Physical Stock Takes') :
+ activeTab === 'inventory-dispatch' ? t('Warehouse Dispatch') :
+ activeTab === 'inventory-receiving' ? t('Warehouse Receiving') :
  activeTab === 'settings' ? t('Settings & Companies') :
  t(activeTab)}
  </h2>
@@ -1548,7 +1557,7 @@ type NavSection = {
  onPrintDoc={(type, data) => setPrintDoc({ type, data })}
  />
  )}
- {['reports-stockvaluation', 'reports-itemprofitability', 'reports-lowstock', 'reports-stocktakevariance', 'reports-stockmovementledger'].includes(activeTab) && (
+ {['reports-stockvaluation', 'reports-itemprofitability', 'reports-lowstock', 'reports-stocktakevariance', 'reports-stockmovementledger', 'reports-warehousetransferreconciliation'].includes(activeTab) && (
  <InventoryReportsModule
  db={activeDb}
  defaultReportType={
@@ -1556,7 +1565,8 @@ type NavSection = {
  activeTab === 'reports-itemprofitability' ? 'ItemProfitability' :
  activeTab === 'reports-lowstock' ? 'LowStock' :
  activeTab === 'reports-stocktakevariance' ? 'StockTakeVarianceHistory' :
- 'StockMovementLedger'
+ activeTab === 'reports-stockmovementledger' ? 'StockMovementLedger' :
+ 'WarehouseTransferReconciliation'
  }
  onPrintDoc={(type, data) => setPrintDoc({ type, data })}
  />

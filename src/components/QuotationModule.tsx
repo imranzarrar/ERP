@@ -1161,7 +1161,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  onClick={handleAddLineItem}
  className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 px-3 py-1.5 rounded-lg bg-indigo-50/70 hover:bg-indigo-100/80 border border-indigo-200/60 transition-all cursor-pointer"
  >
- <Plus className="w-3.5 h-3.5" /> {t('Add Fabrication Line')}
+ <Plus className="w-3.5 h-3.5" /> {t('Add Line Item')}
  </button>
  <div className="text-xs font-semibold text-slate-500">
  {t("Total Items:")} <span className="text-slate-900 font-bold">{formItems.length}</span>
@@ -1366,7 +1366,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  onClick={handleConvAddLine}
  className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
  >
- <Plus className="w-3.5 h-3.5" /> {t('Add New Item Line')}
+ <Plus className="w-3.5 h-3.5" /> {t('Add Line Item')}
  </button>
  </div>
 

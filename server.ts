@@ -1107,6 +1107,13 @@ async function startServer() {
         purchaseReturns: (state.purchaseReturns || []).filter((r: any) => r.companyId === companyId && branchOkViaWarehouse(r.warehouseId)),
         physicalStockTakes: (state.physicalStockTakes || []).filter((s: any) => s.companyId === companyId && branchOkViaWarehouse(s.warehouseId)),
         stockLedgerTransactions: (state.stockLedgerTransactions || []).filter((s: any) => s.companyId === companyId && branchOkViaWarehouse(s.warehouseId)),
+        // Deliberately asymmetric, unlike every single-warehouse document type above: a
+        // dispatch is visible if it leaves YOUR warehouse (regardless of destination), a
+        // receiving is visible if it arrived at YOUR warehouse (regardless of source) — a
+        // branch-restricted user genuinely needs to see both "stock I sent out" and "stock
+        // that arrived here" even when the other end belongs to a branch they can't otherwise touch.
+        warehouseDispatches: (state.warehouseDispatches || []).filter((d: any) => d.companyId === companyId && branchOkViaWarehouse(d.fromWarehouseId)),
+        warehouseReceivings: (state.warehouseReceivings || []).filter((r: any) => r.companyId === companyId && branchOkViaWarehouse(r.toWarehouseId)),
         roles: (state.roles || []).filter((r: any) => r.companyId === companyId),
         branches: (state.branches || []).filter((b: any) => b.companyId === companyId),
         // userRoles is a plain (userId, roleId) join row with no companyId of its own —

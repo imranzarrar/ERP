@@ -59,9 +59,13 @@ export async function getFullState() {
     const purchaseReturnItems = await db.select().from(schema.purchaseReturnItems);
     const physicalStockTakes = await db.select().from(schema.physicalStockTakes);
     const physicalStockTakeItems = await db.select().from(schema.physicalStockTakeItems);
-    // Grows with every stock-mutating transaction (GRN/Return/Sale/Adjustment/StockTake) —
-    // bounded the same way invoices/vouchers are above, most-recent-first.
+    // Grows with every stock-mutating transaction (GRN/Return/Sale/Adjustment/StockTake/
+    // TransferOut/TransferIn) — bounded the same way invoices/vouchers are above, most-recent-first.
     const stockLedgerTransactions = await db.select().from(schema.stockLedgerTransactions).orderBy(desc(schema.stockLedgerTransactions.date)).limit(DEFAULT_LIST_LIMIT);
+    const warehouseDispatches = await db.select().from(schema.warehouseDispatches);
+    const warehouseDispatchItems = await db.select().from(schema.warehouseDispatchItems);
+    const warehouseReceivings = await db.select().from(schema.warehouseReceivings);
+    const warehouseReceivingItems = await db.select().from(schema.warehouseReceivingItems);
 
     // Advanced Catalog Master Tables
     const productCategories = await db.select().from(schema.productCategories);
@@ -209,6 +213,27 @@ export async function getFullState() {
       })),
     }));
 
+    const warehouseDispatchesWithItems = warehouseDispatches.map(d => ({
+      ...d,
+      date: d.date.toISOString(),
+      expectedArrivalDate: d.expectedArrivalDate ? d.expectedArrivalDate.toISOString() : null,
+      items: warehouseDispatchItems.filter(item => item.dispatchId === d.id).map(item => ({
+        ...item,
+        quantityDispatched: Number(item.quantityDispatched),
+        expiryDate: item.expiryDate ? item.expiryDate.toISOString() : null,
+      })),
+    }));
+
+    const warehouseReceivingsWithItems = warehouseReceivings.map(r => ({
+      ...r,
+      date: r.date.toISOString(),
+      items: warehouseReceivingItems.filter(item => item.receivingId === r.id).map(item => ({
+        ...item,
+        quantityReceived: Number(item.quantityReceived),
+        expiryDate: item.expiryDate ? item.expiryDate.toISOString() : null,
+      })),
+    }));
+
     const stockLedgerTransactionsMapped = stockLedgerTransactions.map(slt => ({
       ...slt,
       date: slt.date.toISOString(),
@@ -265,6 +290,8 @@ export async function getFullState() {
       purchaseReturns: returnsWithItems,
       physicalStockTakes: stockTakesWithItems,
       stockLedgerTransactions: stockLedgerTransactionsMapped,
+      warehouseDispatches: warehouseDispatchesWithItems,
+      warehouseReceivings: warehouseReceivingsWithItems,
       productCategories,
       unitsOfMeasure,
       productUnitConversions,

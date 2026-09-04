@@ -16,7 +16,6 @@ import {
  Lock,
  Search,
  CheckSquare,
- Sparkles,
  ChevronUp,
  ChevronDown,
  Paperclip,
@@ -90,6 +89,9 @@ export default function ExpenseModule({ db, onPrintDoc, mode, onDone, onCreateNe
  setFormBankId(defaultBank);
  setFormItems([{ description: '', unitCost: 0, quantity: 1 }]);
  setFormBranchId(myPrimaryBranchId);
+ setFormBillNumber('');
+ setFormExpenseType('Admin Expenses');
+ setFormAmountPaidNow('');
  }
  setPayingExpense(null);
  }, [db.selectedCompanyId, openMonth?.id, myPrimaryBranchId]);
@@ -132,9 +134,15 @@ export default function ExpenseModule({ db, onPrintDoc, mode, onDone, onCreateNe
  const [formVendorId, setFormVendorId] = React.useState('');
  const [formTaxSlabId, setFormTaxSlabId] = React.useState('');
  const [formBankId, setFormBankId] = React.useState('');
- const [formPaymentStatus, setFormPaymentStatus] = React.useState<'Paid' | 'Unpaid'>('Paid');
+ const [formPaymentStatus, setFormPaymentStatus] = React.useState<'Paid' | 'Partially Paid' | 'Unpaid'>('Paid');
+ // Only meaningful when formPaymentStatus === 'Partially Paid' — how much of formAmount
+ // is being paid right now (the rest stays outstanding, same as a Partially Paid invoice).
+ const [formAmountPaidNow, setFormAmountPaidNow] = React.useState('');
  const [formDescription, setFormDescription] = React.useState('');
  const [formAmount, setFormAmount] = React.useState('');
+ const [formBillNumber, setFormBillNumber] = React.useState('');
+ const EXPENSE_TYPE_OPTIONS = ['Admin Expenses', 'Staff Salaries', 'Office Purchases', 'Repair and Maintenance', 'Govt Expenses', 'Other Expenses'] as const;
+ const [formExpenseType, setFormExpenseType] = React.useState<typeof EXPENSE_TYPE_OPTIONS[number]>('Admin Expenses');
  const [formClassification, setFormClassification] = React.useState<'Expense' | 'Asset'>('Expense');
  const [formAssetType, setFormAssetType] = React.useState<'Equipment' | 'Machinery' | 'Tools' | 'Computers' | 'Vehicles' | 'Furniture' | 'Other'>('Equipment');
  const [formAttachmentUrl, setFormAttachmentUrl] = React.useState('');
@@ -232,6 +240,21 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  const amountVal = parseFloat(formAmount);
  if (isNaN(amountVal) || amountVal <= 0) return triggerError('Expense amount must be a valid positive number.');
  if (!formDescription.trim()) return triggerError('Expense description is required.');
+ if (!formBillNumber.trim()) return triggerError('Bill # is required.');
+
+ // Same three-way model as Invoice's own payment status — 'Paid' pays the full amount
+ // now, 'Unpaid' pays nothing, 'Partially Paid' pays whatever the user enters (validated
+ // against the total). The server derives paymentStatus itself from whatever amountPaid
+ // is actually sent (computePaymentStatus in businessLogic.ts) — this is purely computing
+ // the right amountPaid to send, not asserting the status directly.
+ let amountPaidVal = 0;
+ if (formPaymentStatus === 'Paid') {
+ amountPaidVal = amountVal;
+ } else if (formPaymentStatus === 'Partially Paid') {
+ amountPaidVal = parseFloat(formAmountPaidNow);
+ if (isNaN(amountPaidVal) || amountPaidVal <= 0) return triggerError('Enter a valid amount received for a partially paid expense.');
+ if (amountPaidVal >= amountVal) return triggerError('A partially paid amount must be less than the total expense amount — use "Paid" instead if the full amount was received.');
+ }
 
  if (showItemised) {
  const validItems = formItems.filter(item => item.description && item.description.trim() !== "");
@@ -253,7 +276,8 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  taxSlabId: formTaxSlabId,
  bankId: formBankId,
  paymentStatus: formPaymentStatus,
- paymentDate: formPaymentStatus === 'Paid' ? formDate : null,
+ paymentDate: formPaymentStatus !== 'Unpaid' ? formDate : null,
+ amountPaid: amountPaidVal,
  description: formDescription,
  amount: amountVal,
  status: 'Active' as const,
@@ -263,6 +287,8 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  classification: formClassification,
  assetType: formClassification === 'Asset' ? formAssetType : undefined,
  branchId: formBranchId || undefined,
+ billNumber: formBillNumber.trim(),
+ expenseType: formExpenseType,
  };
 
  setIsSavingExpense(true);
@@ -777,9 +803,35 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  )}
  </div>
 
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Bill #')}</label>
+ <input
+ type="text"
+ required
+ placeholder={t('e.g. INV-4471')}
+ value={formBillNumber}
+ onChange={(e) => setFormBillNumber(e.target.value)}
+ className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none"
+ />
+ </div>
+
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Type of Expense')}</label>
+ <select
+ required
+ value={formExpenseType}
+ onChange={(e) => setFormExpenseType(e.target.value as any)}
+ className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none"
+ >
+ {EXPENSE_TYPE_OPTIONS.map(opt => (
+ <option key={opt} value={opt}>{t(opt)}</option>
+ ))}
+ </select>
+ </div>
+
  <div className="col-span-1 md:col-span-2 space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Payment Status')}</label>
- <div className="flex gap-4 p-1">
+ <div className="flex flex-wrap gap-4 p-1">
  <label className="flex items-center gap-1.5 cursor-pointer text-slate-700 font-semibold">
  <input
  type="radio"
@@ -788,6 +840,15 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  onChange={() => setFormPaymentStatus('Paid')}
  />
  <span>{t('Paid (Generates Payment Voucher instantly)')}</span>
+ </label>
+ <label className="flex items-center gap-1.5 cursor-pointer text-slate-700 font-semibold">
+ <input
+ type="radio"
+ name="expPayStatus"
+ checked={formPaymentStatus === 'Partially Paid'}
+ onChange={() => setFormPaymentStatus('Partially Paid')}
+ />
+ <span>{t('Partially Paid')}</span>
  </label>
  <label className="flex items-center gap-1.5 cursor-pointer text-slate-700">
  <input
@@ -799,51 +860,24 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  <span>{t('Pending Outstanding payment')}</span>
  </label>
  </div>
- </div>
-
- <div className="col-span-1 md:col-span-2 space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Procurement Classification')}</label>
- <div className="flex gap-4 p-1">
- <label className="flex items-center gap-1.5 cursor-pointer text-slate-700 font-semibold">
+ {formPaymentStatus === 'Partially Paid' && (
  <input
- type="radio"
- name="formClassification"
- checked={formClassification === 'Expense'}
- onChange={() => setFormClassification('Expense')}
- />
- <span>{t('Operating Expense (OpEx)')}</span>
- </label>
- <label className="flex items-center gap-1.5 cursor-pointer text-slate-700 font-semibold">
- <input
- type="radio"
- name="formClassification"
- checked={formClassification === 'Asset'}
- onChange={() => setFormClassification('Asset')}
- />
- <span className="text-amber-600 ">{t('Fixed Asset (CapEx)')}</span>
- </label>
- </div>
- </div>
-
- {formClassification === 'Asset' && (
- <div className="col-span-1 md:col-span-2 space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Fixed Asset Category')}</label>
- <select
+ type="number"
  required
- value={formAssetType}
- onChange={(e) => setFormAssetType(e.target.value as any)}
- className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none"
- >
- <option value="Machinery">{t('Machinery & CNC Equipment')}</option>
- <option value="Equipment">{t('Factory & Shop Equipment')}</option>
- <option value="Tools">{t('Power Tools & Hand Tools')}</option>
- <option value="Computers">{t('Computers & Software Servers')}</option>
- <option value="Vehicles">{t('Logistics & Delivery Vehicles')}</option>
- <option value="Furniture">{t('Office & Showroom Furniture')}</option>
- <option value="Other">{t('Other Non-Current Capital Asset')}</option>
- </select>
- </div>
+ step="0.01"
+ min="0"
+ placeholder={t('Amount paid now')}
+ value={formAmountPaidNow}
+ onChange={(e) => setFormAmountPaidNow(e.target.value)}
+ className="w-full max-w-xs bg-amber-50 border border-amber-200 rounded-xl px-2.5 py-1.5 text-xs text-amber-900 font-semibold focus:outline-none mt-1"
+ />
  )}
+ </div>
+
+ {/* Fixed Asset (CapEx) classification is temporarily disabled per product decision —
+ formClassification stays 'Expense' for every new expense; the underlying field/logic
+ (and the Fixed Asset Category picker below) are left intact for existing historical
+ Asset-classified expenses and can be re-enabled by restoring this radio group. */}
 
  <div className="col-span-1 md:col-span-2 space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Bill / Receipt (Attachment)')}</label>
@@ -878,30 +912,11 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  </div>
  </div>
 
- {/* Optional itemised line items toggling */}
+ {/* Itemised Purchase Breakdown is temporarily disabled per product decision — the
+ toggle checkbox is hidden so showItemised can never become true for a new expense,
+ but the underlying state/table/save logic is left fully intact (not deleted) so
+ this can be re-enabled later by restoring the checkbox below. */}
  <div className="space-y-4">
- <div className="flex items-center justify-between border-b border-slate-100 pb-2">
- <div className="flex items-center gap-2">
- <input
- type="checkbox"
- id="chk-itemised"
- checked={showItemised}
- onChange={(e) => {
- setShowItemised(e.target.checked);
- if (e.target.checked && formItems.length === 0) {
- setFormItems([{ description: '', unitCost: 0, quantity: 1 }]);
- }
- }}
- className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
- />
- <label htmlFor="chk-itemised" className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1 cursor-pointer">
- <Sparkles className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
- {t('Enable Itemised Purchase Breakdown')}
- </label>
- </div>
- <span className="text-[10px] text-slate-400">{t('Recommended for stock tracking')}</span>
- </div>
-
  {showItemised && (
  <div className="border border-slate-200 rounded-xl bg-white shadow-xs my-2 relative">
  <div className="overflow-x-auto overflow-y-visible">
@@ -989,7 +1004,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  onClick={handleAddLineItem}
  className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 px-3 py-1.5 rounded-lg bg-indigo-50/70 hover:bg-indigo-100/80 border border-indigo-200/60 transition-all cursor-pointer"
  >
- <Plus className="w-3.5 h-3.5" /> {t('Add Fabrication Line')}
+ <Plus className="w-3.5 h-3.5" /> {t('Add Line Item')}
  </button>
  <div className="text-xs font-semibold text-slate-500">
  {t("Total Items:")} <span className="text-slate-900 font-bold">{formItems.length}</span>

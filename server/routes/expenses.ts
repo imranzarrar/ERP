@@ -81,6 +81,13 @@ router.post('/', async (req: any, res) => {
     delete data.createdById;
     delete data.createdAt;
 
+    // Bill # is mandatory on the create form (ExpenseModule.tsx) — enforced here too so a
+    // request bypassing that form (a direct API call, a future integration) can't create
+    // an expense with no vendor bill reference at all.
+    if (!existing && !String(data.billNumber || '').trim()) {
+      return res.status(400).json({ error: 'Bill # is required.' });
+    }
+
     data.companyId = req.targetCompanyId;
     // Branch is immutable after creation, same choke-point pattern as Quotation/Invoice
     // (server/routes/transactions.ts) — resolved/validated before the transaction opens.

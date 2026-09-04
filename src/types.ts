@@ -260,7 +260,13 @@ export interface ProductService {
   id: string;
   name: string;
   description: string;
+  // Selling price (invoices/quotations/POS). Purchase/stock-valuation defaults come from
+  // costPrice instead — see costPrice's own comment.
   unitPrice: number;
+  // Purchasing/stock-valuation price — defaults GRN/PO line unit cost. Undefined on
+  // products created before this field existed; every cost-default read falls back to
+  // unitPrice in that case (see e.g. InventoryModule.tsx's resolveProductByCode).
+  costPrice?: number;
   // Confirmed via live data (2026-07-27): all four values are in real use, not a stale
   // convention — 'item'/'service' and 'Sales'/'Purchase' represent two different,
   // overlapping classification axes on the same field. Reconciling that overlap is a
@@ -537,6 +543,11 @@ export interface Expense {
   shiftId?: string;
   attachmentUrl?: string;
   amountPaid?: number;
+  // The vendor's own bill/receipt reference number — required on the create form for
+  // every new expense (not enforced at the DB level; see schema.ts's comment).
+  billNumber?: string;
+  // Fixed pre-filled category for an ordinary (OpEx) expense — see schema.ts's comment.
+  expenseType?: 'Admin Expenses' | 'Staff Salaries' | 'Office Purchases' | 'Repair and Maintenance' | 'Govt Expenses' | 'Other Expenses';
 }
 
 export interface RecurringExpenseTemplate {
@@ -796,6 +807,58 @@ export interface PurchaseBill {
   companyId: string;
 }
 
+export interface WarehouseDispatchItem {
+  id: string;
+  dispatchId: string;
+  productId: string;
+  quantityDispatched: number;
+  batchNumber?: string | null;
+  expiryDate?: string | null;
+  unitOfMeasureId?: string | null; // null/undefined = the product's own base unit
+}
+
+export interface WarehouseDispatch {
+  id: string;
+  dispatchNumber: string;
+  fromWarehouseId: string;
+  toWarehouseId: string;
+  date: string;
+  vehicleNumber?: string | null;
+  driverName?: string | null;
+  driverContact?: string | null;
+  expectedArrivalDate?: string | null;
+  dispatchedBy: string;
+  notes?: string | null;
+  status: 'Dispatched' | 'Received' | 'Cancelled';
+  companyId: string;
+  items?: WarehouseDispatchItem[];
+}
+
+export interface WarehouseReceivingItem {
+  id: string;
+  receivingId: string;
+  dispatchItemId: string;
+  productId: string;
+  quantityReceived: number;
+  batchNumber?: string | null;
+  expiryDate?: string | null;
+  unitOfMeasureId?: string | null;
+}
+
+export interface WarehouseReceiving {
+  id: string;
+  receivingNumber: string;
+  dispatchId: string;
+  date: string;
+  receivedBy: string;
+  condition?: string | null;
+  discrepancyNotes?: string | null;
+  notes?: string | null;
+  status: 'Active' | 'Cancelled';
+  companyId: string;
+  items?: WarehouseReceivingItem[];
+}
+
 export interface PurchaseReturnItem {
   id: string;
   returnId: string;
@@ -855,7 +918,7 @@ export interface StockLedgerTransaction {
   id: string;
   productId: string;
   warehouseId: string;
-  transactionType: 'GRN' | 'Return' | 'Sale' | 'Adjustment' | 'StockTake';
+  transactionType: 'GRN' | 'Return' | 'Sale' | 'Adjustment' | 'StockTake' | 'TransferOut' | 'TransferIn';
   referenceId: string;
   date: string;
   quantityChange: number;

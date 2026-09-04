@@ -39,6 +39,8 @@ import {
   PurchaseReturn,
   PhysicalStockTake,
   StockLedgerTransaction,
+  WarehouseDispatch,
+  WarehouseReceiving,
   Branch,
   UserBranchAssignment
 } from './types';
@@ -81,6 +83,8 @@ export interface DatabaseState {
   purchaseReturns?: PurchaseReturn[];
   physicalStockTakes?: PhysicalStockTake[];
   stockLedgerTransactions?: StockLedgerTransaction[];
+  warehouseDispatches?: WarehouseDispatch[];
+  warehouseReceivings?: WarehouseReceiving[];
   productCategories?: ProductCategory[];
   unitsOfMeasure?: UnitOfMeasure[];
   productUnitConversions?: ProductUnitConversion[];

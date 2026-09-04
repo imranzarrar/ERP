@@ -18,7 +18,7 @@ import { DEFAULT_DOCUMENT_LAYOUT, COL_SPAN_MD, COL_SPAN_PRINT } from '../documen
 import { amountToWordsForCurrency } from '../numberToWords';
 
 interface DocumentRendererProps {
- documentType: 'Quotation' | 'Invoice' | 'Expense' | 'Voucher' | 'PaymentReceipt' | 'Ledger' | 'Report';
+ documentType: 'Quotation' | 'Invoice' | 'Expense' | 'Voucher' | 'PaymentReceipt' | 'Ledger' | 'Report' | 'WarehouseDispatch' | 'WarehouseReceiving';
  data: any; // Can be Quotation, Invoice, Expense, Voucher, PaymentReceipt, or Ledger/Report data
  companySetup: CompanySetup;
  templates: DocumentTemplate[];
@@ -109,6 +109,7 @@ const TRANSLATIONS: Record<string, string> = {
  // POS thermal receipt (renderQuotationOrInvoice's forceThermalReceipt branch)
  'Payment Method': 'طريقة الدفع',
  'Amount Paid': 'المبلغ المدفوع',
+ 'Balance Due': 'الرصيد المستحق',
  'Change': 'الباقي',
  'Against': 'مقابل',
  'Thank you for your business!': 'شكرًا لتعاملكم معنا!',
@@ -172,6 +173,7 @@ const URDU_TRANSLATIONS: Record<string, string> = {
 
  'Payment Method': 'ادائیگی کا طریقہ',
  'Amount Paid': 'ادا شدہ رقم',
+ 'Balance Due': 'بقایا رقم',
  'Change': 'بقیہ رقم',
  'Against': 'کے عوض',
  'Thank you for your business!': 'آپ کے کاروبار کا شکریہ!',
@@ -355,7 +357,7 @@ export default function DocumentRenderer({
  if (forceThermalReceipt) {
  return 'w-[80mm] text-[10px]';
  }
- if (documentType === 'Expense' || documentType === 'Ledger' || documentType === 'Report') {
+ if (documentType === 'Expense' || documentType === 'Ledger' || documentType === 'Report' || documentType === 'WarehouseDispatch' || documentType === 'WarehouseReceiving') {
  return 'w-full min-w-[760px] max-w-4xl'; // Standard report size
  }
  const size = currentTemplate?.pageSize || '8.27in x 11.69in';
@@ -1753,6 +1755,31 @@ export default function DocumentRenderer({
            <span className={`${totalAccentText} text-base whitespace-nowrap font-mono font-bold`}>{fmt(totals.grandTotal)}</span>
           </div>
 
+          {/* Amount Paid / Balance Due — Invoice only (a Quotation has no payment concept
+              at all). Balance Due is hidden once the invoice is fully paid — showing
+              "Balance Due: 0.00" on a settled invoice reads as an outstanding claim, not
+              a confirmation of payment. */}
+          {isInvoice && (
+           <>
+            <div className={`flex justify-between text-xs text-emerald-700 font-semibold ${compact ? '' : 'pt-1'}`}>
+             <span className="whitespace-nowrap">
+              {t('Amount Paid')}:
+              {isBilingual && !compact && <span className="block text-[8px] text-emerald-500">المبلغ المدفوع</span>}
+             </span>
+             <span className="whitespace-nowrap font-mono">{fmt((doc as Invoice).amountPaid || 0)}</span>
+            </div>
+            {Math.max(0, totals.grandTotal - ((doc as Invoice).amountPaid || 0)) > 0.004 && (
+             <div className="flex justify-between text-xs text-rose-600 font-bold">
+              <span className="whitespace-nowrap">
+               {t('Balance Due')}:
+               {isBilingual && !compact && <span className="block text-[8px] text-rose-400">الرصيد المستحق</span>}
+              </span>
+              <span className="whitespace-nowrap font-mono">{fmt(Math.max(0, totals.grandTotal - ((doc as Invoice).amountPaid || 0)))}</span>
+             </div>
+            )}
+           </>
+          )}
+
           {/* Declared in documentTemplateDefaults.ts's DEFAULT_DOCUMENT_LAYOUT since that
               file was first written, but never actually implemented here — an admin
               could enable "Grand Total in Words" in the Canvas Designer and it silently
@@ -2673,6 +2700,256 @@ export default function DocumentRenderer({
  );
  };
 
+ // Internal warehouse paperwork — never customer-facing, so this follows the fixed-layout
+ // internal-document style (renderVoucher/renderPaymentReceipt above), not the bilingual
+ // Canvas-Designer path Quotation/Invoice use. Each side's warehouse is shown alongside its
+ // OWN branch (not the company's default) since a dispatch/receiving can legitimately span
+ // two different branches — falling back to the company name only when a warehouse has no
+ // branch assigned, same as every other branch-optional printout in this app.
+ const renderWarehouseDispatch = (dispatch: any) => {
+  const fromWh = db?.warehouses?.find(w => w.id === dispatch.fromWarehouseId);
+  const toWh = db?.warehouses?.find(w => w.id === dispatch.toWarehouseId);
+  const fromBranch = fromWh?.branchId ? (db as any)?.branches?.find((b: any) => b.id === fromWh.branchId) : undefined;
+  const toBranch = toWh?.branchId ? (db as any)?.branches?.find((b: any) => b.id === toWh.branchId) : undefined;
+
+  return (
+   <div className="flex flex-col h-full justify-between text-xs">
+    <div>
+     <div className="flex justify-between items-start border-b border-slate-200 pb-6 mb-6">
+      <div>
+       <h1 className="text-xl font-bold text-slate-900">{companySetup.name}</h1>
+       <p className="text-xs text-slate-500">{companySetup.address}</p>
+      </div>
+      <div className="text-end">
+       <h2 className="text-xl font-bold uppercase text-indigo-700 tracking-wider mb-1">{t('Warehouse Dispatch Note')}</h2>
+       <p className="text-slate-500"><span className="font-semibold">{t('Dispatch Number')}:</span> {dispatch.dispatchNumber}</p>
+       <p className="text-slate-500"><span className="font-semibold">{t('Date')}:</span> {new Date(dispatch.date).toLocaleDateString()}</p>
+      </div>
+     </div>
+
+     <div className="grid grid-cols-2 gap-6 mb-6">
+      <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+       <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{t('From')}</p>
+       <p className="text-sm font-bold text-slate-900">{fromWh?.name || t('Unknown Warehouse')}</p>
+       <p className="text-[11px] text-slate-500">{fromBranch?.name || companySetup.name}</p>
+      </div>
+      <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+       <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{t('To')}</p>
+       <p className="text-sm font-bold text-slate-900">{toWh?.name || t('Unknown Warehouse')}</p>
+       <p className="text-[11px] text-slate-500">{toBranch?.name || companySetup.name}</p>
+      </div>
+     </div>
+
+     <div className="grid grid-cols-2 gap-4 text-xs mb-6">
+      <div>
+       <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Dispatched By')}</p>
+       <p className="font-semibold text-slate-800">{dispatch.dispatchedBy}</p>
+      </div>
+      <div>
+       <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Status')}</p>
+       <p className="font-semibold text-slate-800">{t(dispatch.status)}</p>
+      </div>
+      {dispatch.vehicleNumber && (
+       <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Vehicle Number')}</p>
+        <p className="font-semibold text-slate-800">{dispatch.vehicleNumber}</p>
+       </div>
+      )}
+      {dispatch.driverName && (
+       <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Driver Name')}</p>
+        <p className="font-semibold text-slate-800">{dispatch.driverName}</p>
+       </div>
+      )}
+      {dispatch.driverContact && (
+       <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Driver Contact')}</p>
+        <p className="font-semibold text-slate-800">{dispatch.driverContact}</p>
+       </div>
+      )}
+      {dispatch.expectedArrivalDate && (
+       <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Expected Arrival')}</p>
+        <p className="font-semibold text-slate-800">{new Date(dispatch.expectedArrivalDate).toLocaleDateString()}</p>
+       </div>
+      )}
+     </div>
+
+     {dispatch.notes && (
+      <div className="mb-6">
+       <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{t('Notes')}</p>
+       <p className="text-[11px] text-slate-600 whitespace-pre-line">{dispatch.notes}</p>
+      </div>
+     )}
+
+     <div className="overflow-x-auto"><table className="w-full text-xs min-w-[500px]">
+      <thead>
+       <tr className="bg-slate-100 text-slate-600">
+        <th className="py-2 px-3 text-start">{t('Product')}</th>
+        <th className="py-2 px-3 text-end">{t('Qty Dispatched')}</th>
+        <th className="py-2 px-3 text-start">{t('Unit')}</th>
+        <th className="py-2 px-3 text-start">{t('Batch / Expiry')}</th>
+       </tr>
+      </thead>
+      <tbody>
+       {(dispatch.items || []).map((item: any, idx: number) => {
+        const prod = db?.products?.find(p => p.id === item.productId);
+        const uom = item.unitOfMeasureId ? (db as any)?.unitsOfMeasure?.find((u: any) => u.id === item.unitOfMeasureId) : undefined;
+        return (
+         <tr key={idx} className="border-b border-slate-100">
+          <td className="py-2 px-3 font-semibold text-slate-800">{prod?.name || t('Unknown Product')}</td>
+          <td className="py-2 px-3 text-end font-bold text-indigo-700">{item.quantityDispatched}</td>
+          <td className="py-2 px-3 text-slate-600">{uom?.name || t('Base Unit')}</td>
+          <td className="py-2 px-3 text-slate-600 font-mono text-[11px]">
+           {item.batchNumber || '-'}{item.expiryDate ? ` / ${new Date(item.expiryDate).toLocaleDateString()}` : ''}
+          </td>
+         </tr>
+        );
+       })}
+      </tbody>
+     </table></div>
+
+     <div className="mt-8 grid grid-cols-2 gap-12 pt-8">
+      <div className="text-center">
+       <div className="border-b border-slate-300 w-36 mx-auto mb-2 h-10"></div>
+       <p className="text-[10px] text-slate-400">{t('Dispatched By (Signature)')}</p>
+      </div>
+      <div className="text-center">
+       <div className="border-b border-slate-300 w-36 mx-auto mb-2 h-10"></div>
+       <p className="text-[10px] text-slate-400">{t('Driver Acknowledgment (Signature)')}</p>
+      </div>
+     </div>
+    </div>
+
+    {companySetup.customFooter && (
+     <div className="footer-text mt-12 pt-4 border-t border-slate-200 text-center text-[10px] text-slate-400">
+      {companySetup.customFooter}
+     </div>
+    )}
+   </div>
+  );
+ };
+
+ // The variance columns (dispatched vs. received) are the one thing this printout needs
+ // that the Dispatch Note doesn't — the whole point of a Receiving Note is proving what
+ // actually arrived versus what was sent.
+ const renderWarehouseReceiving = (receiving: any) => {
+  const dispatch = (db as any)?.warehouseDispatches?.find((d: any) => d.id === receiving.dispatchId);
+  const fromWh = db?.warehouses?.find(w => w.id === dispatch?.fromWarehouseId);
+  const toWh = db?.warehouses?.find(w => w.id === dispatch?.toWarehouseId);
+  const fromBranch = fromWh?.branchId ? (db as any)?.branches?.find((b: any) => b.id === fromWh.branchId) : undefined;
+  const toBranch = toWh?.branchId ? (db as any)?.branches?.find((b: any) => b.id === toWh.branchId) : undefined;
+
+  return (
+   <div className="flex flex-col h-full justify-between text-xs">
+    <div>
+     <div className="flex justify-between items-start border-b border-slate-200 pb-6 mb-6">
+      <div>
+       <h1 className="text-xl font-bold text-slate-900">{companySetup.name}</h1>
+       <p className="text-xs text-slate-500">{companySetup.address}</p>
+      </div>
+      <div className="text-end">
+       <h2 className="text-xl font-bold uppercase text-emerald-700 tracking-wider mb-1">{t('Warehouse Receiving Note')}</h2>
+       <p className="text-slate-500"><span className="font-semibold">{t('Receiving Number')}:</span> {receiving.receivingNumber}</p>
+       <p className="text-slate-500"><span className="font-semibold">{t('Date')}:</span> {new Date(receiving.date).toLocaleDateString()}</p>
+       <p className="text-slate-500"><span className="font-semibold">{t('Dispatch #:')}</span> {dispatch?.dispatchNumber || '-'}</p>
+      </div>
+     </div>
+
+     {/* Destination shown first (this is a receiving document, primarily this side's
+         record), source second for traceability — per the approved plan. */}
+     <div className="grid grid-cols-2 gap-6 mb-6">
+      <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
+       <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1">{t('Received At')}</p>
+       <p className="text-sm font-bold text-slate-900">{toWh?.name || t('Unknown Warehouse')}</p>
+       <p className="text-[11px] text-slate-500">{toBranch?.name || companySetup.name}</p>
+      </div>
+      <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
+       <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{t('Dispatched From')}</p>
+       <p className="text-sm font-bold text-slate-900">{fromWh?.name || t('Unknown Warehouse')}</p>
+       <p className="text-[11px] text-slate-500">{fromBranch?.name || companySetup.name}</p>
+      </div>
+     </div>
+
+     <div className="grid grid-cols-2 gap-4 text-xs mb-6">
+      <div>
+       <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Received By')}</p>
+       <p className="font-semibold text-slate-800">{receiving.receivedBy}</p>
+      </div>
+      {receiving.condition && (
+       <div>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Condition')}</p>
+        <p className="font-semibold text-slate-800">{receiving.condition}</p>
+       </div>
+      )}
+     </div>
+
+     {receiving.discrepancyNotes && (
+      <div className="mb-4 bg-amber-50 border border-amber-100 rounded-xl p-3">
+       <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-1">{t('Discrepancy Notes')}</p>
+       <p className="text-[11px] text-amber-900 whitespace-pre-line">{receiving.discrepancyNotes}</p>
+      </div>
+     )}
+
+     {receiving.notes && (
+      <div className="mb-6">
+       <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{t('Notes')}</p>
+       <p className="text-[11px] text-slate-600 whitespace-pre-line">{receiving.notes}</p>
+      </div>
+     )}
+
+     <div className="overflow-x-auto"><table className="w-full text-xs min-w-[500px]">
+      <thead>
+       <tr className="bg-slate-100 text-slate-600">
+        <th className="py-2 px-3 text-start">{t('Product')}</th>
+        <th className="py-2 px-3 text-end">{t('Qty Dispatched')}</th>
+        <th className="py-2 px-3 text-end">{t('Qty Received')}</th>
+        <th className="py-2 px-3 text-end">{t('Variance')}</th>
+        <th className="py-2 px-3 text-start">{t('Batch')}</th>
+       </tr>
+      </thead>
+      <tbody>
+       {(receiving.items || []).map((item: any, idx: number) => {
+        const dispatchItem = (dispatch?.items || []).find((di: any) => di.id === item.dispatchItemId);
+        const prod = db?.products?.find(p => p.id === item.productId);
+        const qtyDispatched = dispatchItem?.quantityDispatched ?? 0;
+        const variance = item.quantityReceived - qtyDispatched;
+        return (
+         <tr key={idx} className="border-b border-slate-100">
+          <td className="py-2 px-3 font-semibold text-slate-800">{prod?.name || t('Unknown Product')}</td>
+          <td className="py-2 px-3 text-end text-slate-600">{qtyDispatched}</td>
+          <td className="py-2 px-3 text-end font-bold text-emerald-700">{item.quantityReceived}</td>
+          <td className={`py-2 px-3 text-end font-bold ${variance === 0 ? 'text-slate-400' : variance < 0 ? 'text-rose-600' : 'text-amber-600'}`}>
+           {variance > 0 ? `+${variance}` : variance}
+          </td>
+          <td className="py-2 px-3 text-slate-600 font-mono text-[11px]">{item.batchNumber || '-'}</td>
+         </tr>
+        );
+       })}
+      </tbody>
+     </table></div>
+
+     <div className="mt-8 grid grid-cols-2 gap-12 pt-8">
+      <div className="text-center">
+       <div className="border-b border-slate-300 w-36 mx-auto mb-2 h-10"></div>
+       <p className="text-[10px] text-slate-400">{t('Received By (Signature)')}</p>
+      </div>
+      <div className="text-center">
+       <div className="border-b border-slate-300 w-36 mx-auto mb-2 h-10"></div>
+       <p className="text-[10px] text-slate-400">{t('Warehouse Supervisor (Signature)')}</p>
+      </div>
+     </div>
+    </div>
+
+    {companySetup.customFooter && (
+     <div className="footer-text mt-12 pt-4 border-t border-slate-200 text-center text-[10px] text-slate-400">
+      {companySetup.customFooter}
+     </div>
+    )}
+   </div>
+  );
+ };
+
  const renderDocumentBody = () => {
  switch (documentType) {
  case 'Quotation':
@@ -2688,6 +2965,10 @@ export default function DocumentRenderer({
  return renderLedger(data);
  case 'Report':
  return renderReport(data);
+ case 'WarehouseDispatch':
+ return renderWarehouseDispatch(data);
+ case 'WarehouseReceiving':
+ return renderWarehouseReceiving(data);
  default:
  return <div className="text-center p-8 text-rose-500"><AlertCircle className="mx-auto mb-2" /> Unsupported Document Type</div>;
  }
