@@ -1,0 +1,4 @@
+# Shell scripts must always keep LF line endings, regardless of the platform that checks
+# them out or edits them — a CRLF-corrupted shebang line (`#!/usr/bin/env bash^M`) fails
+# with a cryptic "bad interpreter" error on the Linux VPS these scripts are meant to run on.
+*.sh text eol=lf

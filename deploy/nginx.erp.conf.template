@@ -1,0 +1,33 @@
+# Nginx reverse-proxy template — NOT wired in yet. This deployment started on the bare VPS
+# IP with no domain (PM2's cluster listens directly on :3000, opened via ufw). Use this once
+# a domain/subdomain exists and is pointed at the VPS's A record.
+#
+# Setup, once a domain exists:
+#   1. Replace YOUR_DOMAIN below with the real domain.
+#   2. sudo cp deploy/nginx.erp.conf.template /etc/nginx/sites-available/erp
+#      (after substituting the domain — e.g. `sed 's/YOUR_DOMAIN/erp.example.com/'`)
+#   3. sudo ln -s /etc/nginx/sites-available/erp /etc/nginx/sites-enabled/erp
+#   4. sudo nginx -t && sudo systemctl reload nginx
+#   5. sudo certbot --nginx -d YOUR_DOMAIN   (Certbot rewrites this file in place to add SSL)
+#   6. sudo ufw allow 'Nginx Full' && sudo ufw delete allow 3000/tcp
+#      (close the direct app port now that Nginx is the only public entry point)
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name YOUR_DOMAIN;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    client_max_body_size 15M;
+}
