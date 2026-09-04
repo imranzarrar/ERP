@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import React from 'react';
 import { useTranslation, usePermissions, translateMonthLabel } from './hooks';
 import { getDatabase, saveDatabase, getActiveOpenMonth, getOpenMonths, DatabaseState } from './dbStore';
@@ -1442,13 +1442,23 @@ type NavSection = {
  </div>
  )}
 
- {/* COMPONENT ROUTER VIEWPORT */}
- <AnimatePresence mode="wait">
+ {/* COMPONENT ROUTER VIEWPORT — deliberately no AnimatePresence/exit animation here.
+ This used to be `<AnimatePresence mode="wait"><motion.div exit={...}>`, which
+ blocks mounting the NEXT tab's content until the PREVIOUS motion.div's exit
+ animation reports complete. That completion callback depends on the browser
+ actually driving requestAnimationFrame for this element; in at least one real
+ environment (an automated/headless browser pane) it never fired, permanently
+ stranding the page on the old tab's content forever (title/subtitle above,
+ which read `activeTab` directly, updated fine — only this gated subtree stuck)
+ with no way to recover short of a full reload. A stuck-forever failure mode
+ for a single lost animation-frame callback is too fragile for the app's main
+ router. Keeping `key={activeTab}` still remounts this div on every navigation
+ (so the initial->animate fade/blur-in below still plays each time) without any
+ exit phase for that remount to ever get stuck waiting on. */}
  <motion.div
  key={activeTab}
  initial={{ opacity: 0, filter: 'blur(4px)' }}
  animate={{ opacity: 1, filter: 'blur(0px)' }}
- exit={{ opacity: 0, filter: 'blur(4px)' }}
  transition={{ duration: 0.25, ease: 'easeOut' }}
  className="flex-1 min-h-0"
  >
@@ -1616,7 +1626,6 @@ type NavSection = {
  </>
  )}
  </motion.div>
- </AnimatePresence>
  </main>
 
  {/* DOCUMENT PRINTING/PREVIEW OVERLAY */}
