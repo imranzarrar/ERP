@@ -21,6 +21,7 @@ import SalesReportsModule from './components/SalesReportsModule';
 import PurchaseReportsModule from './components/PurchaseReportsModule';
 import InventoryReportsModule from './components/InventoryReportsModule';
 import LoginScreen from './components/LoginScreen';
+import warraqMark from './assets/warraq-mark.svg';
 import ResetPasswordScreen from './components/ResetPasswordScreen';
 import InventoryModule from './components/InventoryModule';
 import EmployeesModule from './components/EmployeesModule';
@@ -38,7 +39,6 @@ import {
  Menu,
  X,
  User as UserIcon,
- HardHat,
  Printer,
  ChevronRight, ChevronDown,
  AlertTriangle,
@@ -907,8 +907,8 @@ type NavSection = {
  {/* MOBILE HEADER */}
  <header className="md:hidden bg-indigo-950 text-white p-4 flex justify-between items-center border-b border-slate-800 shrink-0 z-30">
  <div className="flex items-center gap-2">
- <HardHat className="w-5 h-5 text-indigo-400" />
- <span className="font-extrabold text-xs uppercase tracking-wider">{activeCompanySetup.portalTitle || 'CNC FAB PORTAL'}</span>
+ <img src={warraqMark} alt="Warraq" className="w-6 h-6 rounded-md shrink-0" />
+ <span className="font-extrabold text-xs uppercase tracking-wider">{activeCompanySetup.portalTitle || 'Warraq'}</span>
  </div>
  <button
  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -929,13 +929,11 @@ type NavSection = {
  {/* Logo Brand Header & Collapse Toggle */}
  <div className="p-4 border-b border-indigo-900/50 flex items-center justify-between gap-2">
  <div className="flex items-center gap-2.5 min-w-0">
- <span className="p-2 bg-indigo-600 rounded-xl text-white shadow-md shadow-indigo-600/30 shrink-0">
- <HardHat className="w-5 h-5 text-amber-300" />
- </span>
+ <img src={warraqMark} alt="Warraq" className="w-9 h-9 rounded-lg shadow-md shadow-black/30 shrink-0" />
  {!isSidebarCollapsed && (
  <div className="min-w-0">
- <h1 className="font-extrabold text-xs uppercase text-white tracking-widest truncate">{activeCompanySetup.portalTitle || 'CNC FAB PORTAL'}</h1>
- <span className="text-[9px] text-indigo-300/80 font-bold block uppercase tracking-wider truncate">{activeCompanySetup.portalSubtitle || 'Shop ERP System'}</span>
+ <h1 className="font-extrabold text-xs uppercase text-white tracking-widest truncate">{activeCompanySetup.portalTitle || 'Warraq'}</h1>
+ <span className="text-[9px] text-indigo-300/80 font-bold block uppercase tracking-wider truncate">{activeCompanySetup.portalSubtitle || 'ERP System'}</span>
  </div>
  )}
  </div>

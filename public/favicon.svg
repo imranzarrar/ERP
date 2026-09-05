@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">
+  <defs>
+    <radialGradient id="warraqTileSheen" cx="30%" cy="16%" r="80%">
+      <stop offset="0%" stop-color="#2C3830"/>
+      <stop offset="60%" stop-color="#1B2620"/>
+      <stop offset="100%" stop-color="#151E19"/>
+    </radialGradient>
+    <linearGradient id="warraqBrassGrad" x1="10%" y1="0%" x2="95%" y2="100%">
+      <stop offset="0%" stop-color="#EDD09A"/>
+      <stop offset="45%" stop-color="#C4993F"/>
+      <stop offset="100%" stop-color="#8A6A28"/>
+    </linearGradient>
+    <linearGradient id="warraqBrassGradSoft" x1="10%" y1="0%" x2="95%" y2="100%">
+      <stop offset="0%" stop-color="#CBA968" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#77571F" stop-opacity="0.95"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="240" height="240" rx="52" fill="url(#warraqTileSheen)"/>
+  <circle cx="120" cy="120" r="106" fill="none" stroke="#D9B268" stroke-width="1.5" opacity="0.4"/>
+  <circle cx="120" cy="120" r="88" fill="none" stroke="#D9B268" stroke-width="3.5" opacity="0.62"/>
+  <circle cx="120" cy="120" r="83" fill="none" stroke="#77571F" stroke-width="1" opacity="0.4"/>
+  <path d="M 120.00 160.00 Q 110.03 117.31 85.50 92.28 Q 91.32 126.85 120.00 160.00 Z" fill="url(#warraqBrassGradSoft)" stroke="#5C4517" stroke-width="0.75" stroke-opacity="0.45"/>
+  <path d="M 120.00 160.00 Q 148.68 126.85 154.50 92.28 Q 129.97 117.31 120.00 160.00 Z" fill="url(#warraqBrassGradSoft)" stroke="#5C4517" stroke-width="0.75" stroke-opacity="0.45"/>
+  <path d="M 120.00 160.00 Q 132.50 105.48 120.00 66.00 Q 107.50 105.48 120.00 160.00 Z" fill="url(#warraqBrassGrad)" stroke="#5C4517" stroke-width="0.75" stroke-opacity="0.45"/>
+  <circle cx="120" cy="160" r="7" fill="none" stroke="#EFE1BC" stroke-width="2" opacity="0.9"/>
+  <circle cx="120" cy="160" r="2.8" fill="#EFE1BC"/>
+</svg>
