@@ -1448,7 +1448,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  const emptyBranchForm = {
    name: '', code: '', streetName: '', buildingNumber: '', district: '', city: '',
    postalCode: '', countryCode: 'SA', phone: '', isDefault: false, isActive: true,
-   defaultWarehouseId: '',
+   defaultWarehouseId: '', autoCreateWarehouse: true,
  };
  const [branchForm, setBranchForm] = React.useState(emptyBranchForm);
  // Only 'sales'-type, active warehouses are eligible — a branch's default is what an
@@ -1464,7 +1464,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
      name: b.name || '', code: b.code || '', streetName: b.streetName || '', buildingNumber: b.buildingNumber || '',
      district: b.district || '', city: b.city || '', postalCode: b.postalCode || '', countryCode: b.countryCode || 'SA',
      phone: b.phone || '', isDefault: Boolean(b.isDefault), isActive: b.isActive !== false,
-     defaultWarehouseId: b.defaultWarehouseId || '',
+     defaultWarehouseId: b.defaultWarehouseId || '', autoCreateWarehouse: false,
    });
  };
  const clearBranchForm = () => { setEditingBranchId(null); setBranchForm(emptyBranchForm); };
@@ -1519,6 +1519,8 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
          // same convention already used for the first tax slab / first active bank.
          isDefault: branchForm.isDefault || companyBranches.length === 0,
          defaultWarehouseId: branchForm.defaultWarehouseId || null,
+         // Only meaningful for a genuinely new branch — the server ignores it on an edit.
+         autoCreateWarehouse: branchForm.autoCreateWarehouse,
        }),
      });
      const data = await res.json().catch(() => ({}));
@@ -3964,7 +3966,17 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5" />
  <span>{t('Set as default for this company')}{companyBranches.length === 0 ? ` (${t('automatic — first branch')})` : ''}</span>
  </label>
- {branchEligibleWarehouses.length > 0 && (
+ {!editingBranchId && (
+ <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer pt-1">
+ <input type="checkbox" checked={branchForm.autoCreateWarehouse} onChange={e => setBranchForm({ ...branchForm, autoCreateWarehouse: e.target.checked, defaultWarehouseId: '' })}
+ className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 mt-0.5" />
+ <span>
+ {t('Automatically create a matching warehouse for this branch')}
+ <span className="block text-[10px] text-slate-400 font-normal mt-0.5">{t('Most retail branches are their own warehouse — the selling floor and the stock location are the same place. Uncheck this only if this branch will share an existing warehouse instead.')}</span>
+ </span>
+ </label>
+ )}
+ {(!branchForm.autoCreateWarehouse || Boolean(editingBranchId)) && branchEligibleWarehouses.length > 0 && (
  <div className="space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Default Sales Warehouse')}</label>
  <select value={branchForm.defaultWarehouseId} onChange={e => setBranchForm({ ...branchForm, defaultWarehouseId: e.target.value })}

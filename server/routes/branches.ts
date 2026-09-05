@@ -30,6 +30,15 @@ router.post('/branches', async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     const data = { ...req.body };
+    const isNewBranch = !data.id;
+    // Not a branches column — pulled off before the insert. Governs whether a matching
+    // warehouse is auto-provisioned below; defaults to true (opt-out, not opt-in) since
+    // most retail branches ARE their own warehouse — the selling floor and the stock
+    // location are the same place, so requiring a manual second step to wire that up was
+    // pure friction. Only ever consulted for a genuinely new branch (see below); ignored
+    // on an edit.
+    const autoCreateWarehouse = data.autoCreateWarehouse !== false;
+    delete data.autoCreateWarehouse;
 
     let existing: typeof schema.branches.$inferSelect | undefined;
     if (data.id) {
@@ -79,26 +88,61 @@ router.post('/branches', async (req: any, res) => {
       }
     }
 
+    // A genuinely new branch, auto-provisioning on, and no explicit default warehouse
+    // already chosen (never override a caller's own pick — e.g. deliberately sharing an
+    // existing central warehouse instead of getting a new one). See the architecture
+    // note above: for most retail branches the selling floor IS the warehouse.
+    const shouldAutoCreateWarehouse = isNewBranch && autoCreateWarehouse && !data.defaultWarehouseId;
+    const newWarehouseId = shouldAutoCreateWarehouse ? generateId() : null;
+    // Can't set this on the branch insert itself — the warehouse row doesn't exist yet
+    // (branches.defaultWarehouseId -> warehouses.id, and warehouses.branchId -> this
+    // branch's id, so the branch must be inserted first, then the warehouse, then this
+    // gets backfilled onto the branch in the same transaction below).
+    const branchDataForInsert = newWarehouseId ? { ...data, defaultWarehouseId: null } : data;
+
     // Setting this branch as default atomically un-defaults any other — same pattern as
     // taxSlabs.isDefault (server/routes/masterEntities.ts's tax-slabs route) — a partial
     // unique index alone would otherwise just throw a constraint violation on the second
     // "set default" click instead of transparently swapping which branch holds it.
-    if (data.isDefault === true) {
-      await db.transaction(async (tx) => {
+    await db.transaction(async (tx) => {
+      if (data.isDefault === true) {
         await tx.update(schema.branches).set({ isDefault: false })
           .where(and(eq(schema.branches.companyId, req.targetCompanyId), eq(schema.branches.isDefault, true)));
-        await tx.insert(schema.branches).values(data).onConflictDoUpdate({
-          target: schema.branches.id,
-          set: data
-        });
-      });
-    } else {
-      await db.insert(schema.branches).values(data).onConflictDoUpdate({
+      }
+      await tx.insert(schema.branches).values(branchDataForInsert).onConflictDoUpdate({
         target: schema.branches.id,
-        set: data
+        set: branchDataForInsert
       });
-    }
-    res.json({ success: true, id: data.id });
+
+      if (newWarehouseId) {
+        // Reuses the exact same "this company's very first warehouse auto-becomes its
+        // default" rule POST /api/warehouses applies (masterEntities.ts), so a branch's
+        // auto-provisioned warehouse behaves identically to a manually-created one.
+        const [anyWarehouse] = await tx.select({ id: schema.warehouses.id }).from(schema.warehouses)
+          .where(eq(schema.warehouses.companyId, data.companyId));
+        const isCompanyDefault = !anyWarehouse;
+        if (isCompanyDefault) {
+          await tx.update(schema.warehouses).set({ isCompanyDefault: false })
+            .where(and(eq(schema.warehouses.companyId, data.companyId), eq(schema.warehouses.isCompanyDefault, true)));
+        }
+        await tx.insert(schema.warehouses).values({
+          id: newWarehouseId,
+          // Mirrors the branch's own name/code — for most retail branches the selling
+          // floor genuinely IS the warehouse, so a different invented name here (e.g.
+          // "<Branch> Warehouse") would just be a second name for the same place. Also
+          // sidesteps baking an English suffix onto a possibly-Arabic/Urdu branch name.
+          name: data.name,
+          code: data.code,
+          isActive: true,
+          companyId: data.companyId,
+          branchId: data.id,
+          type: 'sales',
+          isCompanyDefault,
+        });
+        await tx.update(schema.branches).set({ defaultWarehouseId: newWarehouseId }).where(eq(schema.branches.id, data.id));
+      }
+    });
+    res.json({ success: true, id: data.id, warehouseId: newWarehouseId || undefined });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -123,6 +167,13 @@ router.patch('/branches/:id/toggle-active', async (req: any, res) => {
     // A branch can't be un-defaulted by deactivation alone (the toggle only flips
     // isActive) — deliberately left as-is; an admin choosing to deactivate their default
     // branch is a real decision, not something to silently second-guess here.
+    // Deliberately does NOT touch that branch's warehouse(s) either — explicit product
+    // decision (2026-09): a closing branch's stock still needs to be dispatched OUT to
+    // another warehouse first, and a dispatch's source warehouse must be active
+    // (server/routes/inventory.ts's POST /warehouse-dispatches rejects a deactivated
+    // source). Deactivating the warehouse alongside the branch would make that transfer
+    // impossible. The warehouse can be deactivated separately, manually, once it's
+    // actually been emptied.
     await db.update(schema.branches).set({ isActive: nextActive }).where(eq(schema.branches.id, id));
     res.json({ success: true, isActive: nextActive });
   } catch (error: any) {
