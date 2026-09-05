@@ -98,17 +98,17 @@ export default function LoginScreen({
 
 
  return (
-    <div id="login-container" dir={isRTL ? 'rtl' : 'ltr'} className="min-h-screen bg-indigo-950 flex flex-col justify-center items-center p-4 relative overflow-hidden font-sans selection:bg-indigo-600 selection:text-white">
+    <div id="login-container" dir={isRTL ? 'rtl' : 'ltr'} className="min-h-screen bg-slate-950 flex flex-col justify-center items-center p-4 relative overflow-hidden font-sans selection:bg-amber-500 selection:text-slate-950">
       {/* Decorative background grid and ambient glows */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-60"></div>
 
-      <div className="absolute top-4 end-4 z-20 flex items-center gap-1 bg-indigo-900/40 border border-indigo-500/20 rounded-xl p-1">
+      <div className="absolute top-4 end-4 z-20 flex items-center gap-1 bg-slate-900/60 border border-slate-700/40 rounded-xl p-1">
         {(['en', 'ar', 'ur'] as const).map(l => (
           <button
             key={l}
             type="button"
             onClick={() => onLangChange(l)}
-            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase transition-colors ${lang === l ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}
+            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase transition-colors ${lang === l ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'}`}
           >
             {l}
           </button>
@@ -117,12 +117,17 @@ export default function LoginScreen({
 
       <div className="w-full max-w-md space-y-6 z-10">
         <div className="text-center space-y-2">
-          <div className="inline-flex p-3 bg-indigo-900/30 border border-indigo-500/20 rounded-2xl shadow-inner text-indigo-400">
+          <div className="inline-flex p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl shadow-inner text-amber-400">
             {showForgotPassword ? <Mail className="w-8 h-8" /> : <Shield className="w-8 h-8 animate-pulse" />}
           </div>
-          <h2 className="text-xl font-black text-white tracking-widest uppercase">
-            {showForgotPassword ? t('Reset Your Password') : t('INDUSTRIAL ERP PORTAL')}
-          </h2>
+          {showForgotPassword ? (
+            <h2 className="text-xl font-black text-white tracking-widest uppercase">{t('Reset Your Password')}</h2>
+          ) : (
+            <div>
+              <h2 className="text-2xl font-black text-white tracking-tight">{t('Warraq ERP System')}</h2>
+              <p className="text-sm font-bold text-amber-400 tracking-wide mt-0.5">{t('ZATCA Integrated Invoicing Solution')}</p>
+            </div>
+          )}
           <p className="text-xs text-slate-400 font-medium max-w-xs mx-auto">
             {showForgotPassword
               ? t('Enter your username and, if your account has an email on file, we\'ll send a reset link to it.')
@@ -131,18 +136,18 @@ export default function LoginScreen({
         </div>
 
         {showForgotPassword ? (
-          <form onSubmit={handleForgotPassword} className="space-y-4 p-8 bg-indigo-950/80 backdrop-blur-xl border border-indigo-900/50 rounded-3xl shadow-2xl shadow-indigo-950/50">
+          <form onSubmit={handleForgotPassword} className="space-y-4 p-8 bg-slate-900/80 backdrop-blur-xl border border-slate-800/60 rounded-3xl shadow-2xl shadow-black/40">
             <div>
-              <label className="block text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1.5">{t('Username')}</label>
+              <label className="block text-[10px] font-bold text-amber-300 uppercase tracking-wider mb-1.5">{t('Username')}</label>
               <div className="relative group">
-                <div className="absolute inset-y-0 start-0 pl-3.5 flex items-center pointer-events-none text-slate-500 group-focus-within:text-indigo-400 transition-colors">
+                <div className="absolute inset-y-0 start-0 pl-3.5 flex items-center pointer-events-none text-slate-500 group-focus-within:text-amber-400 transition-colors">
                   <UserIcon className="w-4 h-4" />
                 </div>
                 <input
                   type="text"
                   value={forgotUsername}
                   onChange={(e) => setForgotUsername(e.target.value)}
-                  className="w-full bg-indigo-950/50 border border-indigo-900/80 text-white rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-sm shadow-inner placeholder-slate-600 font-medium"
+                  className="w-full bg-slate-950/60 border border-slate-800/70 text-white rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all text-sm shadow-inner placeholder-slate-600 font-medium"
                   placeholder={t('Your username')}
                   autoComplete="username"
                 />
@@ -165,7 +170,7 @@ export default function LoginScreen({
             <button
               type="submit"
               disabled={forgotSubmitting}
-              className="w-full relative group overflow-hidden bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 px-4 rounded-xl transition duration-200 shadow-xl shadow-indigo-900/20 active:scale-[0.98] outline-none mt-2"
+              className="w-full relative group overflow-hidden bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-bold py-3.5 px-4 rounded-xl transition duration-200 shadow-xl shadow-amber-900/20 active:scale-[0.98] outline-none mt-2"
             >
               <span className="relative z-10 flex items-center justify-center gap-2">
                 <Mail className="w-4 h-4" />
@@ -182,20 +187,20 @@ export default function LoginScreen({
             </button>
           </form>
         ) : (
-        <form onSubmit={handleLogin} className="space-y-4 p-8 bg-indigo-950/80 backdrop-blur-xl border border-indigo-900/50 rounded-3xl shadow-2xl shadow-indigo-950/50">
+        <form onSubmit={handleLogin} className="space-y-4 p-8 bg-slate-900/80 backdrop-blur-xl border border-slate-800/60 rounded-3xl shadow-2xl shadow-black/40">
 
           <div className="space-y-4">
             <div>
-              <label className="block text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1.5">{t('User Identity')}</label>
+              <label className="block text-[10px] font-bold text-amber-300 uppercase tracking-wider mb-1.5">{t('User Identity')}</label>
               <div className="relative group">
-                <div className="absolute inset-y-0 start-0 pl-3.5 flex items-center pointer-events-none text-slate-500 group-focus-within:text-indigo-400 transition-colors">
+                <div className="absolute inset-y-0 start-0 pl-3.5 flex items-center pointer-events-none text-slate-500 group-focus-within:text-amber-400 transition-colors">
                   <UserIcon className="w-4 h-4" />
                 </div>
                 <input
                   type="text"
                   value={usernameInput}
                   onChange={(e) => setUsernameInput(e.target.value)}
-                  className="w-full bg-indigo-950/50 border border-indigo-900/80 text-white rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-sm shadow-inner placeholder-slate-600 font-medium"
+                  className="w-full bg-slate-950/60 border border-slate-800/70 text-white rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all text-sm shadow-inner placeholder-slate-600 font-medium"
                   placeholder={t('Username or Account ID')}
                   autoComplete="username"
                 />
@@ -203,16 +208,16 @@ export default function LoginScreen({
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-1.5">{t('Security Key')}</label>
+              <label className="block text-[10px] font-bold text-amber-300 uppercase tracking-wider mb-1.5">{t('Security Key')}</label>
               <div className="relative group">
-                <div className="absolute inset-y-0 start-0 pl-3.5 flex items-center pointer-events-none text-slate-500 group-focus-within:text-indigo-400 transition-colors">
+                <div className="absolute inset-y-0 start-0 pl-3.5 flex items-center pointer-events-none text-slate-500 group-focus-within:text-amber-400 transition-colors">
                   <Lock className="w-4 h-4" />
                 </div>
                 <input
                   type="password"
                   value={passwordInput}
                   onChange={(e) => setPasswordInput(e.target.value)}
-                  className="w-full bg-indigo-950/50 border border-indigo-900/80 text-white rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-sm shadow-inner placeholder-slate-600 font-medium tracking-widest"
+                  className="w-full bg-slate-950/60 border border-slate-800/70 text-white rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all text-sm shadow-inner placeholder-slate-600 font-medium tracking-widest"
                   placeholder="••••••••"
                   autoComplete="current-password"
                 />
@@ -229,7 +234,7 @@ export default function LoginScreen({
 
           <button
             type="submit"
-            className="w-full relative group overflow-hidden bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 px-4 rounded-xl transition duration-200 shadow-xl shadow-indigo-900/20 active:scale-[0.98] outline-none mt-4"
+            className="w-full relative group overflow-hidden bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-3.5 px-4 rounded-xl transition duration-200 shadow-xl shadow-amber-900/20 active:scale-[0.98] outline-none mt-4"
           >
             <span className="relative z-10 flex items-center justify-center gap-2">
               <Key className="w-4 h-4" />
