@@ -6,7 +6,7 @@ import * as schema from '../src/db/schema.js';
 import { generateId } from '../src/id.js';
 
 // Covers AdminSettings.handleAddCompany's starter-resource creation (bank/customer/
-// vendor/template/fiscal month), migrated off the generic onUpdateDb blob sync onto
+// vendor/warehouse/template/fiscal month), migrated off the generic onUpdateDb blob sync onto
 // dedicated real routes. Real HTTP against the already-running dev server + real
 // Postgres, no mocks — matches this project's established testing convention. Creates
 // its own throwaway company (via the real super-admin-gated POST /api/companies route,
@@ -66,6 +66,7 @@ afterAll(async () => {
     await db.delete(schema.auditLogs).where(eq(schema.auditLogs.companyId, newCompanyId));
     await db.delete(schema.fiscalMonths).where(eq(schema.fiscalMonths.companyId, newCompanyId));
     await db.delete(schema.documentTemplates).where(eq(schema.documentTemplates.companyId, newCompanyId));
+    await db.delete(schema.warehouses).where(eq(schema.warehouses.companyId, newCompanyId));
     await db.delete(schema.vendors).where(eq(schema.vendors.companyId, newCompanyId));
     await db.delete(schema.customers).where(eq(schema.customers.companyId, newCompanyId));
     await db.delete(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, newCompanyId));
@@ -119,6 +120,12 @@ describe('New-company starter resources (AdminSettings.handleAddCompany)', () =>
     });
     expect(vendorRes.status).toBe(200);
 
+    const newWarehouse = { id: generateId(), name: finalizedCompany.name, code: 'MAIN', isActive: true, type: 'sales' };
+    const warehouseRes = await api(superAdminSessionId, '/api/warehouses', {
+      method: 'POST', body: JSON.stringify({ ...newWarehouse, companyId: newCompanyId }),
+    });
+    expect(warehouseRes.status).toBe(200);
+
     const newTemplate = {
       id: generateId(), name: 'Standard English (A4)', language: 'English',
       pageSize: '8.27in x 11.69in (A4)', isActive: true, printHeader: true, printFooter: true,
@@ -149,6 +156,12 @@ describe('New-company starter resources (AdminSettings.handleAddCompany)', () =>
 
     const [vendorRow] = await db.select().from(schema.vendors).where(eq(schema.vendors.id, newVendor.id));
     expect(vendorRow?.companyId).toBe(newCompanyId);
+
+    const [warehouseRow] = await db.select().from(schema.warehouses).where(eq(schema.warehouses.id, newWarehouse.id));
+    expect(warehouseRow?.companyId).toBe(newCompanyId);
+    expect(warehouseRow?.name).toBe(finalizedCompany.name);
+    // The company's very first warehouse ever — POST /api/warehouses auto-promotes it.
+    expect(warehouseRow?.isCompanyDefault).toBe(true);
 
     const [templateRow] = await db.select().from(schema.documentTemplates).where(eq(schema.documentTemplates.id, newTemplate.id));
     expect(templateRow?.companyId).toBe(newCompanyId);

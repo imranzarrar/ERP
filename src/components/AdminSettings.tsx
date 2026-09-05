@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTranslation, translateMonthLabel, usePermissions } from '../hooks';
 import { DatabaseState, saveDatabase, openNewMonth, closeMonth, SEED_BANKS, SEED_TAX_SLABS, SEED_TEMPLATES, getBankBalance, checkRecurringPreconditions, calculateMonthPnL, SEED_USERS, generateId } from '../dbStore';
-import { CompanySetup, BankAccount, TaxSlab, DocumentTemplate, FiscalMonth, User, UserRole, Investor, Customer, Vendor, Role } from '../types';
+import { CompanySetup, BankAccount, TaxSlab, DocumentTemplate, FiscalMonth, User, UserRole, Investor, Customer, Vendor, Role, Warehouse } from '../types';
 import { PermissionNode, buildPermissionTree, allPermissionNodeIds } from '../permissionSchema';
 import { THEME_PROFILES, applyTheme } from '../theme';
 import VatReturnsPanel from './VatReturnsPanel';
@@ -918,6 +918,28 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  companyId: finalizedCompany.id
  };
 
+ // Every company gets one default warehouse from day one, same reasoning as branches'
+ // own auto-provisioned warehouse (server/routes/branches.ts): without one, a company
+ // that never bothers creating a branch at all (a genuine single-location business)
+ // would have zero warehouses until someone remembers to create one manually, and any
+ // stock-item sale hard-fails until then. Named after the company itself (not a
+ // hardcoded English label like "Main Warehouse") since the company name could be
+ // Arabic/Urdu — mirrors the same naming reasoning used for a branch's own warehouse.
+ // POST /api/warehouses already auto-promotes a company's very first warehouse to
+ // isCompanyDefault, so nothing extra is needed here for that.
+ const newWarehouse: Warehouse = {
+ id: generateId(),
+ name: finalizedCompany.name,
+ code: 'MAIN',
+ isActive: true,
+ companyId: finalizedCompany.id,
+ type: 'sales',
+ // Always true here — this is unconditionally the company's very first warehouse in
+ // this flow (a brand-new company, zero pre-existing warehouses possible), matching
+ // what the server independently computes for the same reason (POST /api/warehouses).
+ isCompanyDefault: true,
+ };
+
  const newTemplate: DocumentTemplate = {
  id: generateId(),
  name: 'Standard English (A4)',
@@ -997,6 +1019,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  if (!(await createResource('/api/banks', newBank, 'bank account'))) return;
  if (!(await createResource('/api/customers', newCustomer, 'customer'))) return;
  if (!(await createResource('/api/vendors', newVendor, 'vendor'))) return;
+ if (!(await createResource('/api/warehouses', newWarehouse, 'warehouse'))) return;
  if (!(await createResource('/api/templates', newTemplate, 'document template'))) return;
  for (const month of newMonths) {
  if (!(await createResource('/api/transactions/months', month, 'fiscal month'))) return;
@@ -1011,6 +1034,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  banks: [...prev.banks, newBank],
  customers: [...prev.customers, newCustomer],
  vendors: [...prev.vendors, newVendor],
+ warehouses: [...(prev.warehouses || []), newWarehouse],
  templates: [...prev.templates, newTemplate],
  months: [...prev.months, ...newMonths]
  }));
@@ -2882,7 +2906,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <div className="p-3 bg-amber-50/50 border border-amber-100/60 rounded-2xl">
  <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wide">⭐ Automatic Seed Provisioning</p>
  <p className="text-[9px] text-amber-700 mt-1 leading-normal">
- To save you setup effort, registering this profile will auto-provision standard business resources: A Main Operating Bank, a Walk-in Customer, a Cash Vendor, a Standard English PDF Template, and an open Operational Month period (June 2026).
+ To save you setup effort, registering this profile will auto-provision standard business resources: A Main Operating Bank, a Walk-in Customer, a Cash Vendor, a Main Warehouse, a Standard English PDF Template, and an open Operational Month period ({new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}).
  </p>
  </div>
 
