@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1020" font-family="Inter, sans-serif">
+  <defs>
+    <link xmlns="http://www.w3.org/1999/xhtml"/>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&amp;family=Inter:wght@400;500;600;700&amp;family=IBM+Plex+Sans+Arabic:wght@500;600;700&amp;family=IBM+Plex+Mono:wght@500;600&amp;display=swap');
+      .fraunces{ font-family:'Fraunces', serif; }
+      .inter{ font-family:'Inter', sans-serif; }
+      .arabic{ font-family:'IBM Plex Sans Arabic', sans-serif; }
+      .mono{ font-family:'IBM Plex Mono', monospace; }
+    </style>
+
+    <filter id="cardLift" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="10" flood-color="#2A2410" flood-opacity="0.10"/>
+    </filter>
+
+    <linearGradient id="brassGrad" x1="10%" y1="0%" x2="95%" y2="100%">
+      <stop offset="0%" stop-color="#EDD09A"/>
+      <stop offset="45%" stop-color="#C4993F"/>
+      <stop offset="100%" stop-color="#8A6A28"/>
+    </linearGradient>
+    <linearGradient id="brassGradSoft" x1="10%" y1="0%" x2="95%" y2="100%">
+      <stop offset="0%" stop-color="#CBA968" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#77571F" stop-opacity="0.95"/>
+    </linearGradient>
+    <radialGradient id="tileSheen" cx="30%" cy="16%" r="80%">
+      <stop offset="0%" stop-color="#2C3830"/>
+      <stop offset="60%" stop-color="#1B2620"/>
+      <stop offset="100%" stop-color="#151E19"/>
+    </radialGradient>
+
+    <!-- ============ THE MARK (master symbol, reused via <use>) ============ -->
+    <symbol id="mark" viewBox="0 0 240 240">
+      <rect x="0" y="0" width="240" height="240" rx="52" fill="url(#tileSheen)"/>
+      <circle cx="120" cy="120" r="106" fill="none" stroke="#D9B268" stroke-width="1.5" opacity="0.4"/>
+      <circle cx="120" cy="120" r="88" fill="none" stroke="#D9B268" stroke-width="3.5" opacity="0.62"/>
+      <circle cx="120" cy="120" r="83" fill="none" stroke="#77571F" stroke-width="1" opacity="0.4"/>
+      <path d="M 120.00 160.00 Q 110.03 117.31 85.50 92.28 Q 91.32 126.85 120.00 160.00 Z" fill="url(#brassGradSoft)" stroke="#5C4517" stroke-width="0.75" stroke-opacity="0.45"/>
+      <path d="M 120.00 160.00 Q 148.68 126.85 154.50 92.28 Q 129.97 117.31 120.00 160.00 Z" fill="url(#brassGradSoft)" stroke="#5C4517" stroke-width="0.75" stroke-opacity="0.45"/>
+      <path d="M 120.00 160.00 Q 132.50 105.48 120.00 66.00 Q 107.50 105.48 120.00 160.00 Z" fill="url(#brassGrad)" stroke="#5C4517" stroke-width="0.75" stroke-opacity="0.45"/>
+      <circle cx="120" cy="160" r="7" fill="none" stroke="#EFE1BC" stroke-width="2" opacity="0.9"/>
+      <circle cx="120" cy="160" r="2.8" fill="#EFE1BC"/>
+    </symbol>
+  </defs>
+
+  <!-- ============ BACKGROUND ============ -->
+  <rect x="0" y="0" width="1440" height="1020" fill="#F6F2E7"/>
+
+  <!-- ============ TITLE STRIP ============ -->
+  <text x="40" y="52" class="mono" font-size="12" fill="#8A8271" letter-spacing="1.5">WARRAQ — BRAND MARK &amp; LOGO SUITE</text>
+  <text x="1400" y="52" class="mono" font-size="12" fill="#8A8271" letter-spacing="1.5" text-anchor="end">V1.0</text>
+  <line x1="40" y1="68" x2="1400" y2="68" stroke="#E3DAC2" stroke-width="1"/>
+
+  <!-- ============ CARD 1 — PRIMARY LOCKUP (light) ============ -->
+  <rect x="40" y="110" width="666" height="380" rx="14" fill="#FCFAF3" stroke="#E3DAC2" stroke-width="1.5" filter="url(#cardLift)"/>
+  <text x="66" y="140" class="mono" font-size="11" fill="#8A8271" letter-spacing="1.2">PRIMARY LOCKUP</text>
+
+  <use href="#mark" x="76" y="210" width="140" height="140"/>
+  <text x="240" y="270" class="fraunces" font-size="58" font-weight="600" fill="#1E2A22">Warraq</text>
+  <text x="242" y="298" class="inter" font-size="13" font-weight="600" fill="#8A8271" letter-spacing="2.5">ENTERPRISE RESOURCE PLANNING</text>
+  <text x="242" y="330" class="arabic" font-size="24" font-weight="600" fill="#AD8636">ورّاق</text>
+
+  <!-- ============ CARD 2 — ICON MARK + SCALE ============ -->
+  <rect x="734" y="110" width="666" height="380" rx="14" fill="#FCFAF3" stroke="#E3DAC2" stroke-width="1.5" filter="url(#cardLift)"/>
+  <text x="760" y="140" class="mono" font-size="11" fill="#8A8271" letter-spacing="1.2">ICON MARK — SCALES TO FAVICON</text>
+
+  <use href="#mark" x="774" y="177" width="176" height="176"/>
+
+  <use href="#mark" x="990" y="180" width="100" height="100"/>
+  <use href="#mark" x="1112" y="200" width="64" height="64"/>
+  <use href="#mark" x="1206" y="216" width="36" height="36"/>
+
+  <text x="990" y="310" class="mono" font-size="11" fill="#8A8271">100px</text>
+  <text x="1112" y="310" class="mono" font-size="11" fill="#8A8271">64px</text>
+  <text x="1206" y="310" class="mono" font-size="11" fill="#8A8271">36px</text>
+
+  <line x1="774" y1="380" x2="1366" y2="380" stroke="#E3DAC2" stroke-width="1"/>
+  <text x="774" y="410" class="inter" font-size="12.5" fill="#3C4A3F">The seal ring + fanned page-strokes read clearly down to app-icon size —</text>
+  <text x="774" y="430" class="inter" font-size="12.5" fill="#3C4A3F">no fine detail is lost below 32px, unlike a literal manuscript illustration would.</text>
+
+  <!-- ============ CARD 3 — REVERSED LOCKUP (dark) ============ -->
+  <rect x="40" y="518" width="666" height="380" rx="14" fill="#1B2620" filter="url(#cardLift)"/>
+  <text x="66" y="548" class="mono" font-size="11" fill="#7C8A7F" letter-spacing="1.2">REVERSED — FOR DARK SURFACES</text>
+
+  <use href="#mark" x="76" y="616" width="140" height="140"/>
+  <text x="240" y="676" class="fraunces" font-size="58" font-weight="600" fill="#F3EFE3">Warraq</text>
+  <text x="242" y="704" class="inter" font-size="13" font-weight="600" fill="#7C8A7F" letter-spacing="2.5">ENTERPRISE RESOURCE PLANNING</text>
+  <text x="242" y="736" class="arabic" font-size="24" font-weight="600" fill="#D9B268">ورّاق</text>
+
+  <line x1="66" y1="820" x2="640" y2="820" stroke="#2C3A32" stroke-width="1"/>
+  <text x="66" y="850" class="inter" font-size="12.5" fill="#B9C2BB">Sidebar / navigation chrome, dark-mode surfaces, and printed</text>
+  <text x="66" y="870" class="inter" font-size="12.5" fill="#B9C2BB">letterhead use this variant — the mark itself never changes.</text>
+
+  <!-- ============ CARD 4 — ARABIC-FIRST / RTL LOCKUP ============ -->
+  <rect x="734" y="518" width="666" height="380" rx="14" fill="#FCFAF3" stroke="#E3DAC2" stroke-width="1.5" filter="url(#cardLift)"/>
+  <text x="1340" y="548" class="mono" font-size="11" fill="#8A8271" letter-spacing="1.2" text-anchor="end">RTL LOCKUP — ARABIC-FIRST</text>
+
+  <use href="#mark" x="1230" y="595" width="140" height="140"/>
+  <text x="1204" y="670" class="arabic" font-size="52" font-weight="700" fill="#1E2A22" text-anchor="end">ورّاق</text>
+  <text x="1204" y="700" class="inter" font-size="13" font-weight="600" fill="#8A8271" letter-spacing="2" text-anchor="end">WARRAQ · SME SUITE</text>
+
+  <line x1="774" y1="820" x2="1366" y2="820" stroke="#E3DAC2" stroke-width="1"/>
+  <text x="1366" y="850" class="inter" font-size="12.5" fill="#3C4A3F" text-anchor="end">Mirrors as a whole unit for RTL — the icon moves to the</text>
+  <text x="1366" y="870" class="inter" font-size="12.5" fill="#3C4A3F" text-anchor="end">reading-start side rather than flipping internally.</text>
+
+  <!-- ============ FOOTER — PALETTE + TYPE KEY ============ -->
+  <rect x="40" y="932" width="1360" height="56" rx="10" fill="#FCFAF3" stroke="#E3DAC2" stroke-width="1.5" filter="url(#cardLift)"/>
+
+  <circle cx="76" cy="960" r="12" fill="#1B2620"/>
+  <text x="98" y="965" class="mono" font-size="12" fill="#3C4A3F">Ink #1B2620</text>
+
+  <circle cx="246" cy="960" r="12" fill="url(#brassGrad)"/>
+  <text x="268" y="965" class="mono" font-size="12" fill="#3C4A3F">Brass #AD8636</text>
+
+  <circle cx="436" cy="960" r="12" fill="#2F5D44"/>
+  <text x="458" y="965" class="mono" font-size="12" fill="#3C4A3F">Forest #2F5D44</text>
+
+  <circle cx="626" cy="960" r="12" fill="#F6F2E7" stroke="#E3DAC2" stroke-width="1.5"/>
+  <text x="648" y="965" class="mono" font-size="12" fill="#3C4A3F">Paper #F6F2E7</text>
+
+  <line x1="850" y1="945" x2="850" y2="975" stroke="#E3DAC2" stroke-width="1.5"/>
+
+  <text x="880" y="957" class="fraunces" font-size="14" font-weight="600" fill="#1E2A22">Fraunces</text>
+  <text x="880" y="975" class="inter" font-size="10.5" fill="#8A8271">Display / wordmark</text>
+
+  <text x="1030" y="957" class="inter" font-size="14" font-weight="600" fill="#1E2A22">Inter</text>
+  <text x="1030" y="975" class="inter" font-size="10.5" fill="#8A8271">UI / body</text>
+
+  <text x="1150" y="957" class="arabic" font-size="14" font-weight="700" fill="#1E2A22">IBM Plex Sans Arabic</text>
+  <text x="1150" y="975" class="inter" font-size="10.5" fill="#8A8271">Arabic wordmark</text>
+</svg>

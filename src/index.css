@@ -29,6 +29,12 @@
 @import "@fontsource/lora/500.css";
 @import "@fontsource/lora/600.css";
 @import "@fontsource/lora/700.css";
+/* Fraunces — the Warraq brand wordmark's display serif (per the brand suite's
+   primary/reversed/RTL lockups), used only for the literal "Warraq" wordmark
+   (LoginScreen.tsx) — not a general-purpose heading font, keep --font-display
+   (Space Grotesk) as the app's own UI display face. */
+@import "@fontsource/fraunces/500.css";
+@import "@fontsource/fraunces/600.css";
 @import "tailwindcss";
 
 @theme {
@@ -50,6 +56,11 @@
      which Latin template font is selected, since none of this app's Latin template
      fonts have real Arabic coverage either.  */
   --font-arabic: "Cairo", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* The Warraq brand wordmark's own display serif, per the brand suite — deliberately
+     separate from --font-display (Space Grotesk), which stays the app's general UI
+     heading face. Only ever applied to the literal "Warraq" wordmark. */
+  --font-brand: "Fraunces", "Lora", ui-serif, Georgia, serif;
 
   /* Helvetica/Calibri — deliberately system fonts, not self-hosted webfonts like the
      others above: Helvetica ships on macOS, Calibri ships on Windows (both installed on
