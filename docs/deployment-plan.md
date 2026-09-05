@@ -1,6 +1,6 @@
 # Hostinger VPS Deployment Plan
 
-**Status: VPS purchased, deploy scripts built, one-time server setup not yet run.** Load the `hostinger-deploy` skill before touching any of this. The `deploy/` scripts referenced below now exist in the repo — see "Files built" further down for what each one does. The one-time provisioning (Part 1) has not been run against the real VPS yet; that's the next step, and it's the user's own SSH session that runs it (see "VPS access model" below).
+**Status: LIVE.** The app is running in production at `https://warraq.compbrain.io` (Nginx + Let's Encrypt SSL, PM2 2-instance cluster, Postgres on the same box). Load the `hostinger-deploy` skill before touching any of this — it has the full guardrails plus a real incident (PM2 startup registered under the wrong OS user) worth reading before touching PM2 lifecycle commands.
 
 ## Decisions already locked in (confirmed with the user)
 

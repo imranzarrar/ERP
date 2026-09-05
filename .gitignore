@@ -24,6 +24,15 @@ db-backups/
 # secrets
 src/db/dbCredentials.ts
 
+# Reference-only material never read by the running app at runtime (no server route
+# serves them, nothing spawns the SDK jar, no frontend link references them — confirmed
+# before untracking) — kept locally for developer reference, deliberately not shipped to
+# production. See CLAUDE.md's ZATCA section for the dual-gate verification protocol these
+# support (a manual developer step, not something the app itself invokes).
+/ZATCA Help/
+/tools/zatca-sdk/
+/docs/zatca/
+
 # editor
 .vscode/*
 !.vscode/extensions.json
