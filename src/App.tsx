@@ -561,6 +561,12 @@ export default function App() {
              return newDb;
           });
         }}
+        onGoToSignup={() => {
+          const url = new URL(window.location.href);
+          url.searchParams.set('onboard', '1');
+          window.history.replaceState({}, '', url.toString());
+          setOnboard('1');
+        }}
         />
     );
   }

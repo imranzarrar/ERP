@@ -12,6 +12,9 @@ interface LoginScreenProps {
  lang: 'en' | 'ar' | 'ur';
  onLangChange: (lang: 'en' | 'ar' | 'ur') => void;
  db: DatabaseState;
+ // Navigates to the public company-onboarding form (?onboard=1) — see
+ // src/components/CompanyOnboardingScreen.tsx and App.tsx's onGoToSignup handler.
+ onGoToSignup: () => void;
 }
 
 export default function LoginScreen({
@@ -19,6 +22,7 @@ export default function LoginScreen({
  lang,
  onLangChange,
  db,
+ onGoToSignup,
 }: LoginScreenProps) {
  const { t, isRTL } = useTranslation(db, lang);
  const [usernameInput, setUsernameInput] = React.useState('');
@@ -254,6 +258,17 @@ export default function LoginScreen({
           >
             {t('Forgot password?')}
           </button>
+
+          <div className="pt-3 mt-1 border-t border-[#3A4A3E]/50 text-center">
+            <span className="text-[11px] text-slate-500">{t('New here?')} </span>
+            <button
+              type="button"
+              onClick={onGoToSignup}
+              className="text-[11px] font-bold text-[#D9B268] hover:text-[#C4993F] transition-colors"
+            >
+              {t('Sign up your company')}
+            </button>
+          </div>
         </form>
         )}
       </div>
