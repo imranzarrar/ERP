@@ -61,7 +61,7 @@ const KNOWN_NON_FK_ID_FIELDS = new Set(['themeId', 'monthId']);
 // Tables with no companyId column at all, by deliberate design (translations is a
 // global, shared-across-every-tenant UI dictionary — see its own schema.ts comment).
 // A handler that only ever touches these needs no company-ownership check.
-const COMPANYLESS_TABLES = ['schema.translations', 'schema.roleTemplates', 'schema.companyOnboardingRequests'];
+const COMPANYLESS_TABLES = ['schema.translations', 'schema.roleTemplates', 'schema.companyOnboardingRequests', 'schema.deletedCompanyLog'];
 
 // Property/identifier names never worth flagging regardless of taint.
 const ALWAYS_SAFE_NAMES = new Set(['id', 'companyId']); // companyId checked separately below

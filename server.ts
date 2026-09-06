@@ -35,6 +35,7 @@ import taxReturnsRouter from './server/routes/taxReturns.js';
 import employeesRouter from './server/routes/employees.js';
 import sessionsRouter from './server/routes/sessions.js';
 import roleTemplatesRouter from './server/routes/roleTemplates.js';
+import companiesRouter from './server/routes/companies.js';
 import { publicRouter as onboardingPublicRouter, adminRouter as onboardingAdminRouter } from './server/routes/onboarding.js';
 
 // A user's effective permissions come from every Role assigned to them (see the
@@ -276,7 +277,19 @@ async function startServer() {
         console.error("[Database] Auth middleware user query failed:", err.message);
       }
 
-      if (user && user.isDeleted !== 1) {
+      let companyCancelled = false;
+      if (user && user.isDeleted !== 1 && !isSuperAdminUser(user)) {
+        // Runs on every authenticated request (not just login), so a company cancelled
+        // mid-session cuts that company's users off on their very next API call — no
+        // separate session-invalidation step needed. Skipped for a super-admin: their own
+        // companyId is just a default selection, not a restriction, and they must still be
+        // able to operate inside a Cancelled company to review/delete its data.
+        const [userCompany] = await db.select({ registrationStatus: schema.companies.registrationStatus })
+          .from(schema.companies).where(eq(schema.companies.id, user.companyId));
+        companyCancelled = userCompany?.registrationStatus === 'Cancelled';
+      }
+
+      if (user && user.isDeleted !== 1 && !companyCancelled) {
         req.user = user;
         try {
           req.user.permissions = await resolveUserPermissions(user.id);
@@ -405,7 +418,19 @@ async function startServer() {
     if (user && user.isDeleted === 1) {
       return res.status(401).json({ error: 'User account has been deleted' });
     }
-    
+
+    // A company whose registration was Cancelled (see companies.registrationStatus,
+    // server/routes/companies.ts) can no longer log in — skipped for a super-admin, whose
+    // own companyId is just their default selection, not a restriction (they must still be
+    // able to log in and go review/delete a Cancelled company's data).
+    if (user && !isSuperAdminUser(user)) {
+      const [userCompany] = await db.select({ registrationStatus: schema.companies.registrationStatus })
+        .from(schema.companies).where(eq(schema.companies.id, user.companyId));
+      if (userCompany?.registrationStatus === 'Cancelled') {
+        return res.status(401).json({ error: 'This account is no longer active. Contact your administrator.' });
+      }
+    }
+
     // Only a bcrypt-verified match is accepted. A plaintext-equality fallback and an
     // auto-granted default password for null-password accounts were both removed —
     // both were standing authentication backdoors.
@@ -853,6 +878,7 @@ async function startServer() {
   app.use('/api', sessionsRouter);
   app.use('/api', onboardingAdminRouter);
   app.use('/api/role-templates', roleTemplatesRouter);
+  app.use('/api/companies', companiesRouter);
   app.use('/api/users', usersRouter);
   app.use('/api/roles', rolesRouter);
   app.use('/api/transactions', transactionsRouter);
@@ -1106,6 +1132,7 @@ async function startServer() {
         // library, so both are hard-emptied for anyone who isn't a real super-admin.
         roleTemplates: isSuper ? (state.roleTemplates || []) : [],
         companyOnboardingRequests: isSuper ? (state.companyOnboardingRequests || []) : [],
+        deletedCompanyLog: isSuper ? (state.deletedCompanyLog || []) : [],
         templates: state.templates.filter((t: any) => t.companyId === companyId),
         products: state.products.filter((p: any) => p.companyId === companyId),
         customers: state.customers.filter((c: any) => c.companyId === companyId),

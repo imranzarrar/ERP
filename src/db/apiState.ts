@@ -10,6 +10,7 @@ export async function getFullState() {
     const companies = await db.select().from(schema.companies);
     const roleTemplates = await db.select().from(schema.roleTemplates);
     const companyOnboardingRequests = await db.select().from(schema.companyOnboardingRequests).orderBy(desc(schema.companyOnboardingRequests.createdAt));
+    const deletedCompanyLog = await db.select().from(schema.deletedCompanyLog).orderBy(desc(schema.deletedCompanyLog.deletedAt));
     const users = await db.select().from(schema.users);
     const roles = await db.select().from(schema.roles);
     const userRoles = await db.select().from(schema.userRoles);
@@ -250,6 +251,10 @@ export async function getFullState() {
         ...r,
         createdAt: r.createdAt ? r.createdAt.toISOString() : null,
         reviewedAt: r.reviewedAt ? r.reviewedAt.toISOString() : null,
+      })),
+      deletedCompanyLog: deletedCompanyLog.map(r => ({
+        ...r,
+        deletedAt: r.deletedAt ? r.deletedAt.toISOString() : null,
       })),
       users,
       roles,

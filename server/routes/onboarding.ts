@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
-import { eq, and, isNotNull, desc } from 'drizzle-orm';
+import { eq, and, isNotNull, desc, sql } from 'drizzle-orm';
 import { isSuperAdminUser } from '../lib/authz.js';
 import { generateId } from '../../src/id.js';
 import { provisionStarterResources } from '../lib/companyProvisioning.js';
@@ -63,10 +63,33 @@ publicRouter.post('/onboarding-requests', async (req: any, res) => {
     const companyName = cap(req.body?.companyName, 200);
     const companyEmail = cap(req.body?.companyEmail, 200).toLowerCase();
     const contactName = cap(req.body?.contactName, 200);
-    const contactEmail = cap(req.body?.contactEmail, 200).toLowerCase();
+    // The individual contact's own email is optional — the company email is the only
+    // email actually required on this form. When left blank, the company email doubles
+    // as the contact email (it becomes the new user's username/login at approval time —
+    // see the approve route below), so the rest of the pipeline never needs to special-
+    // case a missing contact email.
+    const contactEmailRaw = cap(req.body?.contactEmail, 200).toLowerCase();
+    const contactEmail = contactEmailRaw || companyEmail;
 
-    if (!companyName || !contactName || !EMAIL_RE.test(companyEmail) || !EMAIL_RE.test(contactEmail)) {
-      return res.status(400).json({ error: 'Company name, a valid company email, contact name, and a valid contact email are all required.' });
+    if (!companyName || !contactName || !EMAIL_RE.test(companyEmail) || (contactEmailRaw && !EMAIL_RE.test(contactEmailRaw))) {
+      return res.status(400).json({ error: 'Company name, a valid company email, and contact name are required. If provided, the contact email must be valid.' });
+    }
+
+    // Duplicate check, by explicit product decision — unlike the honeypot/rate-limit
+    // checks above (which stay silent to avoid confirming anything to a bot), a real
+    // prospective customer needs to know why their submission didn't go through. The
+    // contact email becomes the new user's username/login at approval time (see the
+    // approve route below), so a collision here would otherwise surface confusingly late.
+    const [existingUser] = await db.select({ id: schema.users.id }).from(schema.users)
+      .where(sql`LOWER(${schema.users.email}) = ${contactEmail}`);
+    if (existingUser) {
+      return res.status(409).json({ error: 'An account with this email already exists. Please contact your administrator if you believe this is a mistake.' });
+    }
+    const [existingRequest] = await db.select({ id: schema.companyOnboardingRequests.id })
+      .from(schema.companyOnboardingRequests)
+      .where(and(eq(schema.companyOnboardingRequests.contactEmail, contactEmail), eq(schema.companyOnboardingRequests.status, 'Pending')));
+    if (existingRequest) {
+      return res.status(409).json({ error: 'A pending onboarding request with this email already exists. Please wait for it to be reviewed.' });
     }
 
     const request = {
@@ -192,6 +215,10 @@ adminRouter.post('/admin/onboarding-requests/:id/approve', async (req: any, res)
         portalTitle: brandTitle,
         portalSubtitle: 'Shop ERP System',
         counters: { quotation: 1001, invoice: 1001, expense: 1001, voucher: 1001 },
+        // Every self-signup company starts as an unconfirmed trial — a super-admin marks
+        // it 'Registered' once the prospective customer actually completes registration
+        // (payment, handled outside this system) via AdminSettings' Companies tab.
+        registrationStatus: 'Trial',
       });
 
       await provisionStarterResources(tx, { companyId: newCompanyId, companyName: request.companyName });
@@ -207,21 +234,22 @@ adminRouter.post('/admin/onboarding-requests/:id/approve', async (req: any, res)
         });
       }
 
-      // Derive a username from the contact email's local part, de-duplicated against
+      // Username is the contact's full email address (already lowercased at submission —
+      // see the public route's `.toLowerCase()` on contactEmail), de-duplicated against
       // existing usernames — this app has no DB-level unique constraint on username (the
       // login route's own case-insensitive lookup is the only thing that cares), but a
       // collision would still make the new account ambiguous to log into.
-      const localPart = request.contactEmail.split('@')[0].replace(/[^a-z0-9._-]/gi, '').toLowerCase() || 'user';
-      let candidateUsername = localPart;
+      const baseUsername = request.contactEmail;
+      let candidateUsername = baseUsername;
       let suffix = 0;
-      // Bounded retry — a pathological number of collisions on one local-part is not a
+      // Bounded retry — a pathological number of collisions on one email is not a
       // real-world case worth an unbounded loop.
       while (suffix < 50) {
         const [existingUsername] = await tx.select({ id: schema.users.id }).from(schema.users)
           .where(eq(schema.users.username, candidateUsername));
         if (!existingUsername) break;
         suffix += 1;
-        candidateUsername = `${localPart}${suffix}`;
+        candidateUsername = `${baseUsername}+${suffix}`;
       }
 
       newUserId = generateId();

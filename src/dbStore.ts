@@ -36,6 +36,7 @@ import {
   Role,
   RoleTemplate,
   CompanyOnboardingRequest,
+  DeletedCompanyLogEntry,
   UserRoleAssignment,
   PurchaseBill,
   PurchaseReturn,
@@ -56,6 +57,7 @@ export interface DatabaseState {
   roles?: Role[];
   roleTemplates?: RoleTemplate[];
   companyOnboardingRequests?: CompanyOnboardingRequest[];
+  deletedCompanyLog?: DeletedCompanyLogEntry[];
   userRoles?: UserRoleAssignment[];
   branches?: Branch[];
   userBranches?: UserBranchAssignment[];

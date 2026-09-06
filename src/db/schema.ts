@@ -55,6 +55,14 @@ export const companies = pgTable('companies', {
   // environment. Auto-flipped true when that environment's onboarding completes
   // (see server/routes/zatca.ts); can also be toggled manually by a Super Admin.
   zatcaEnabled: boolean('zatca_enabled').default(false),
+  // 'Trial' | 'Registered' | 'Cancelled'. Defaults 'Registered' so every existing company
+  // (created before this field existed, or created directly by a super-admin via the old
+  // Companies Directory "Register New Organization" form) is unaffected — only the
+  // onboarding-approval route (server/routes/onboarding.ts) ever inserts 'Trial' explicitly,
+  // for a self-signup company awaiting real (outside-the-system, e.g. payment) confirmation.
+  // 'Cancelled' blocks login for that company's users (see isAuthenticated in server.ts) and
+  // is the only status that exposes the "Delete Company & All Data" purge in the admin UI.
+  registrationStatus: text('registration_status').notNull().default('Registered'),
 });
 
 // Per-(company, environment) ZATCA onboarding state — sandbox/simulation/production are
@@ -938,6 +946,21 @@ export const companyOnboardingRequests = pgTable('company_onboarding_requests', 
   rejectionReason: text('rejection_reason'),
   createdCompanyId: uuid('created_company_id').references(() => companies.id),
   createdAt: timestamp('created_at').defaultNow(),
+});
+
+// Cross-tenant by design — a tombstone for the "Delete Company & All Data" purge
+// (server/routes/companies.ts). Deliberately NOT a live FK to companies.id: by the time
+// this row is read back, the company it describes no longer exists (that's the whole
+// point of the purge), so companyId here is just a plain identifying value, not a
+// reference. Survives on its own after everything else belonging to that company —
+// including its own auditLogs — has been deleted, so "who purged what, when" is never lost.
+export const deletedCompanyLog = pgTable('deleted_company_log', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull(),
+  companyName: text('company_name').notNull(),
+  deletedByUserId: uuid('deleted_by_user_id').notNull(),
+  deletedByUsername: text('deleted_by_username').notNull(),
+  deletedAt: timestamp('deleted_at').defaultNow(),
 });
 
 export const posHeldInvoices = pgTable('pos_held_invoices', {

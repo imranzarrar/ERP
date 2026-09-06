@@ -34,8 +34,8 @@ export default function CompanyOnboardingScreen({ lang, onLangChange, db, onBack
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
-    if (!form.companyName.trim() || !form.companyEmail.trim() || !form.contactName.trim() || !form.contactEmail.trim()) {
-      setErrorMessage(t('Company name, company email, contact name, and contact email are all required.'));
+    if (!form.companyName.trim() || !form.companyEmail.trim() || !form.contactName.trim()) {
+      setErrorMessage(t('Company name, company email, and contact name are required.'));
       return;
     }
     setSubmitting(true);
@@ -119,7 +119,7 @@ export default function CompanyOnboardingScreen({ lang, onLangChange, db, onBack
             <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{t('Company Details')}</div>
 
             <div>
-              <label className={labelClass}>{t('Company Name')}</label>
+              <label className={labelClass}>{t('Company Name')}<span className="text-rose-500"> *</span></label>
               <div className="relative group">
                 <div className={iconWrapClass}><Building2 className="w-4 h-4" /></div>
                 <input type="text" required value={form.companyName} onChange={update('companyName')} className={inputClass} placeholder={t('e.g. CNC Woodworks Ltd')} />
@@ -128,7 +128,7 @@ export default function CompanyOnboardingScreen({ lang, onLangChange, db, onBack
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelClass}>{t('Company Email')}</label>
+                <label className={labelClass}>{t('Company Email')}<span className="text-rose-500"> *</span></label>
                 <div className="relative group">
                   <div className={iconWrapClass}><Mail className="w-4 h-4" /></div>
                   <input type="email" required value={form.companyEmail} onChange={update('companyEmail')} className={inputClass} placeholder="billing@example.com" />
@@ -165,7 +165,7 @@ export default function CompanyOnboardingScreen({ lang, onLangChange, db, onBack
             <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest pt-2">{t('Your Contact Details')}</div>
 
             <div>
-              <label className={labelClass}>{t('Your Name')}</label>
+              <label className={labelClass}>{t('Your Name')}<span className="text-rose-500"> *</span></label>
               <div className="relative group">
                 <div className={iconWrapClass}><UserIcon className="w-4 h-4" /></div>
                 <input type="text" required value={form.contactName} onChange={update('contactName')} className={inputClass} placeholder={t('Full name')} />
@@ -174,10 +174,10 @@ export default function CompanyOnboardingScreen({ lang, onLangChange, db, onBack
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelClass}>{t('Your Email')}</label>
+                <label className={labelClass}>{t('Your Email')} <span className="text-slate-500 normal-case font-normal">{t('(optional — defaults to company email)')}</span></label>
                 <div className="relative group">
                   <div className={iconWrapClass}><Mail className="w-4 h-4" /></div>
-                  <input type="email" required value={form.contactEmail} onChange={update('contactEmail')} className={inputClass} placeholder="you@example.com" />
+                  <input type="email" value={form.contactEmail} onChange={update('contactEmail')} className={inputClass} placeholder="you@example.com" />
                 </div>
               </div>
               <div>

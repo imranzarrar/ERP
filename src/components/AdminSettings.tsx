@@ -1135,6 +1135,45 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
    }
  };
 
+ const handleSetRegistrationStatus = async (companyId: string, status: 'Trial' | 'Registered' | 'Cancelled') => {
+   try {
+     const res = await fetch(`/api/companies/${companyId}/registration-status`, {
+       method: 'PATCH',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ status }),
+     });
+     const data = await res.json().catch(() => ({}));
+     if (!res.ok || data.error) {
+       return triggerError(data.error || 'Failed to update registration status.');
+     }
+     triggerSuccess(`Registration marked "${status}".`);
+     if (onRefreshDb) await onRefreshDb();
+   } catch (err: any) {
+     triggerError(err.message || 'Failed to update registration status.');
+   }
+ };
+
+ // The single most destructive action in this app — permanently purges a company and
+ // every row belonging to it (server/routes/companies.ts). Only reachable here for a
+ // Cancelled company (the server refuses otherwise too, as a second gate), and only after
+ // typing the company's exact name — a plain Confirm click is not enough for this one.
+ const handleConfirmDeleteCompany = async () => {
+   if (!deletingCompany) return;
+   try {
+     const res = await fetch(`/api/companies/${deletingCompany.id}`, { method: 'DELETE' });
+     const data = await res.json().catch(() => ({}));
+     if (!res.ok || data.error) {
+       return triggerError(data.error || 'Failed to delete company.');
+     }
+     triggerSuccess(`"${deletingCompany.name}" and all of its data have been permanently deleted.`);
+     setDeletingCompany(null);
+     setDeleteCompanyConfirmText('');
+     if (onRefreshDb) await onRefreshDb();
+   } catch (err: any) {
+     triggerError(err.message || 'Failed to delete company.');
+   }
+ };
+
  // ----------------------------------------
  // SUB-TAB: COMPANY SETUP
  // ----------------------------------------
@@ -2111,6 +2150,8 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  const [userCompanyFilter, setUserCompanyFilter] = React.useState<string>('all');
  const [editingUser, setEditingUser] = React.useState<User | null>(null);
  const [confirmDeleteUserId, setConfirmDeleteUserId] = React.useState<string | null>(null);
+ const [deletingCompany, setDeletingCompany] = React.useState<{ id: string; name: string } | null>(null);
+ const [deleteCompanyConfirmText, setDeleteCompanyConfirmText] = React.useState('');
 
  const [userForm, setUserForm] = React.useState({
  username: '',
@@ -2824,9 +2865,18 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  </div>
  </div>
 
+ <div className="flex flex-col items-end gap-1">
  <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 font-extrabold rounded text-[9px] uppercase tracking-wider">
  {company.currency || 'SAR'}
  </span>
+ {company.registrationStatus && company.registrationStatus !== 'Registered' && (
+ <span className={`px-2 py-0.5 font-extrabold rounded text-[9px] uppercase tracking-wider ${
+ company.registrationStatus === 'Trial' ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'
+ }`}>
+ {t(company.registrationStatus)}
+ </span>
+ )}
+ </div>
  </div>
 
  <div className="space-y-1.5 text-[11px] border-t border-slate-100 pt-3">
@@ -2865,6 +2915,28 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
        />
        <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
      </label>
+   </div>
+ </div>
+ <div className="flex items-center justify-between border-t border-slate-100/50 pt-1.5 mt-1.5">
+   <span className="text-slate-400 flex items-center gap-1">
+     <span>📋</span> {t('Registration:')}
+   </span>
+   <div className="flex items-center gap-1.5">
+     {(company.registrationStatus || 'Registered') === 'Trial' && (
+       <>
+         <button type="button" onClick={() => handleSetRegistrationStatus(company.id!, 'Registered')} className="text-[9px] font-bold text-emerald-600 hover:text-emerald-800 uppercase cursor-pointer">{t('Mark Registered')}</button>
+         <button type="button" onClick={() => handleSetRegistrationStatus(company.id!, 'Cancelled')} className="text-[9px] font-bold text-rose-500 hover:text-rose-700 uppercase cursor-pointer">{t('Cancel')}</button>
+       </>
+     )}
+     {(company.registrationStatus || 'Registered') === 'Registered' && (
+       <button type="button" onClick={() => handleSetRegistrationStatus(company.id!, 'Cancelled')} className="text-[9px] font-bold text-rose-500 hover:text-rose-700 uppercase cursor-pointer">{t('Cancel Registration')}</button>
+     )}
+     {company.registrationStatus === 'Cancelled' && (
+       <>
+         <button type="button" onClick={() => handleSetRegistrationStatus(company.id!, 'Registered')} className="text-[9px] font-bold text-emerald-600 hover:text-emerald-800 uppercase cursor-pointer">{t('Reinstate')}</button>
+         <button type="button" onClick={() => setDeletingCompany({ id: company.id!, name: company.name })} className="text-[9px] font-black text-white bg-rose-600 hover:bg-rose-700 px-2 py-0.5 rounded uppercase tracking-wider cursor-pointer">{t('Delete Company & All Data')}</button>
+       </>
+     )}
    </div>
  </div>
  </div>
@@ -7721,6 +7793,49 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold rounded-2xl transition shadow-sm cursor-pointer"
  >
  {t('Yes, Delete User')}
+ </button>
+ </div>
+ </div>
+ </div>
+ )}
+
+ {/* Delete Company & All Data Modal — the single most destructive action in this app,
+     so a plain Confirm click isn't enough: the admin must type the company's exact
+     name. Only ever reachable for a company already marked Cancelled (see the
+     Registration row above); the server refuses otherwise too, as a second gate. */}
+ {deletingCompany && (
+ <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex justify-center items-center p-4 overflow-y-auto">
+ <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl p-6 w-full max-w-md my-auto">
+ <div className="flex items-center gap-2 text-rose-600 mb-2">
+ <AlertTriangle className="w-5 h-5" />
+ <h3 className="text-lg font-bold">{t('Delete Company & All Data')}</h3>
+ </div>
+ <p className="text-sm text-slate-600 mb-4 font-medium leading-relaxed">
+ {t('This permanently deletes')} <strong className="text-slate-900">"{deletingCompany.name}"</strong> {t('and every invoice, customer, product, user, and record belonging to it — across the entire system. This cannot be undone.')}
+ </p>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+ {t('Type the company name to confirm:')} <span className="font-mono text-slate-600 normal-case">{deletingCompany.name}</span>
+ </label>
+ <input
+ type="text"
+ autoFocus
+ value={deleteCompanyConfirmText}
+ onChange={(e) => setDeleteCompanyConfirmText(e.target.value)}
+ className="w-full mt-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-rose-500"
+ />
+ <div className="flex justify-end gap-3 mt-6">
+ <button
+ onClick={() => { setDeletingCompany(null); setDeleteCompanyConfirmText(''); }}
+ className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-2xl transition cursor-pointer"
+ >
+ {t('Cancel')}
+ </button>
+ <button
+ disabled={deleteCompanyConfirmText !== deletingCompany.name}
+ onClick={handleConfirmDeleteCompany}
+ className="px-4 py-2 bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-2xl transition shadow-sm cursor-pointer"
+ >
+ {t('Permanently Delete')}
  </button>
  </div>
  </div>

@@ -61,6 +61,19 @@ export interface CompanyOnboardingRequest {
   createdAt?: string;
 }
 
+// A tombstone for the "Delete Company & All Data" purge (server/routes/companies.ts) —
+// companyId is NOT a live reference (the company it names no longer exists by the time
+// this is read back), just an identifying value. Cross-tenant, super-admin-only, same
+// visibility rule as CompanyOnboardingRequest above.
+export interface DeletedCompanyLogEntry {
+  id: string;
+  companyId: string;
+  companyName: string;
+  deletedByUserId: string;
+  deletedByUsername: string;
+  deletedAt?: string;
+}
+
 // Row of the userRoles many-to-many junction table.
 export interface UserRoleAssignment {
   userId: string;
@@ -245,6 +258,12 @@ export interface CompanySetup {
   // regardless of environment. Defaults false for new companies; auto-enabled when
   // the active environment finishes onboarding, or toggled manually by a Super Admin.
   zatcaEnabled?: boolean;
+  // 'Trial' (self-signup, awaiting real confirmation e.g. payment — set only by
+  // onboarding-approval, server/routes/onboarding.ts) | 'Registered' (default, for every
+  // pre-existing/admin-created company) | 'Cancelled' (blocks login for this company's
+  // users, and is the only status that exposes "Delete Company & All Data" in the admin
+  // UI). See server/routes/companies.ts.
+  registrationStatus?: 'Trial' | 'Registered' | 'Cancelled';
   // Per-document-type number formatting override, keyed by DOCUMENT_TYPE_REGISTRY's `key`
   // (server/lib/documentNumbering.ts). Absent key or absent field = use that type's
   // registry default — every existing company has this unset, which is the entire
