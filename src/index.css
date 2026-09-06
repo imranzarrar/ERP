@@ -124,6 +124,19 @@
   background: #94a3b8;
 }
 
+/* Every clickable control shows a pointer cursor. Browsers default a native <button> to
+   `cursor: default`, not `pointer` (only <a href> gets pointer for free) — that reads as
+   non-interactive even though these all have real onClick handlers (Print/View/Edit/
+   Cancel/Approve/Reject/Add and every other action button throughout this app). Genuinely
+   inactive controls are excluded so a disabled action doesn't look clickable. */
+button:not(:disabled),
+select:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+input[type="checkbox"]:not(:disabled),
+input[type="radio"]:not(:disabled) {
+  cursor: pointer;
+}
+
 /* Print Overrides */
 @media print {
   /* Browsers strip background-color/background-image/box-shadow from print/PDF output by
