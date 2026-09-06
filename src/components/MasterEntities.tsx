@@ -1,5 +1,5 @@
 import React from 'react';
-import { useTranslation, usePermissions } from '../hooks';
+import { useTranslation, usePermissions, useDirtyGuard } from '../hooks';
 // from 'react';
 import { DatabaseState, saveDatabase } from '../dbStore';
 import { generateId } from '../id';
@@ -34,11 +34,15 @@ interface MasterEntitiesProps {
  onDone: () => void;
  onEdit: (id: string) => void;
  onCreateNew: () => void;
+ // Reports whether the create/edit form has unsaved changes, for App.tsx's handleNavigate
+ // guard (see useDirtyGuard in hooks.ts). Shared across all six sub-tabs (customers/
+ // vendors/products/categories/units/warehouses) since they're all one component instance.
+ onDirtyChange?: (dirty: boolean) => void;
 }
 
 type SubTab = 'customers' | 'vendors' | 'products' | 'categories' | 'units' | 'warehouses';
 
-export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, forceSubTab, mode, editId, onDone, onEdit, onCreateNew }: MasterEntitiesProps) {
+export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, forceSubTab, mode, editId, onDone, onEdit, onCreateNew, onDirtyChange }: MasterEntitiesProps) {
  const { t, isRTL, lang } = useTranslation(db);
  const currentUser = db.currentUser;
  const { can } = usePermissions(currentUser);
@@ -180,6 +184,57 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
   const [addPucPurchasePrice, setAddPucPurchasePrice] = React.useState('');
   const [addPucSalePrice, setAddPucSalePrice] = React.useState('');
 
+ // Unsaved-changes guard — one shared snapshot covering all six sub-tabs' own fields
+ // (only the ones relevant to the currently active sub-tab ever differ from their
+ // defaults, so this stays correct regardless of which entity type is being edited).
+ // Deliberately excludes activeProductWarehouses/addPw*/addPuc* — those are secondary,
+ // separately-persisted mini-forms (a product's warehouse-location and packaging-unit
+ // mappings are saved immediately via their own dedicated actions, not as part of this
+ // main Save submission), same reasoning as InvoiceModule.tsx excluding formWarehouseId.
+ const { isDirty: isEntityFormDirty, markClean: markFormClean } = useDirtyGuard({
+   name, email, phone, address, taxRegNumber, buyerType, zatcaVatNumber, zatcaStreetName,
+   zatcaBuildingNumber, zatcaDistrict, zatcaCity, zatcaPostalCode, entityCrNumber,
+   prodName, prodType, prodPrice, prodCostPrice, prodUnit, prodIsPos, prodCategory, prodImage,
+   prodBarcode, prodSku, prodCatalogType, prodCategoryId, prodDefaultWarehouseId, prodBinLocation,
+   prodMinLevel, prodMaxLevel, prodReorderLeadTime, prodGridPosition, prodModifierGroupIds,
+   catName, catParentId, catSalesGl, catPurchaseGl, catCogsGl,
+   unitName, unitCode,
+   whName, whCode, whAddress, whIsActive, whBranchId, whType, whIsCompanyDefault,
+ });
+
+ React.useEffect(() => {
+   if (mode === 'add') onDirtyChange?.(isEntityFormDirty);
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [isEntityFormDirty, mode]);
+
+ React.useEffect(() => {
+   return () => onDirtyChange?.(false);
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, []);
+
+ // Baseline for a genuinely fresh add (no editId) — fields are already at their useState
+ // defaults by this point (this component fully remounts on every mode/sub-tab transition,
+ // same as Invoice/Quotation/Expense), so the snapshot is just those literal defaults.
+ React.useEffect(() => {
+   if (mode !== 'add' || editId) return;
+   markFormClean({
+     name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
+     zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
+     zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
+     prodName: '', prodType: 'Sales', prodPrice: '', prodCostPrice: '', prodUnit: 'No',
+     prodIsPos: false, prodCategory: '', prodImage: '', prodBarcode: '', prodSku: '',
+     prodCatalogType: 'item', prodCategoryId: '', prodDefaultWarehouseId: '', prodBinLocation: '',
+     prodMinLevel: '', prodMaxLevel: '', prodReorderLeadTime: '', prodGridPosition: '',
+     prodModifierGroupIds: [] as string[],
+     catName: '', catParentId: '', catSalesGl: '4000 - Product Sales',
+     catPurchaseGl: '1200 - Inventory Asset', catCogsGl: '5000 - Cost of Goods Sold',
+     unitName: '', unitCode: '',
+     whName: '', whCode: '', whAddress: '', whIsActive: true, whBranchId: '',
+     whType: 'sales' as const, whIsCompanyDefault: false,
+   });
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [mode, editId, forceSubTab]);
+
  const clearForm = () => {
  setEditingId(null);
  setName('');
@@ -312,6 +367,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
     }
     triggerSuccess(editingId ? 'Customer updated successfully.' : 'Customer added successfully.');
     clearForm();
+    onDirtyChange?.(false);
     if (onRefreshDb) await onRefreshDb();
     onDone();
   } catch (err: any) {
@@ -393,6 +449,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  onUpdateDbLocal(() => newDb);
  triggerSuccess(editingId ? 'Vendor updated successfully.' : 'Vendor added successfully.');
  clearForm();
+ onDirtyChange?.(false);
  onDone();
  } catch(err) {
  triggerError('Failed to save vendor.');
@@ -501,6 +558,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  onUpdateDbLocal(() => newDb);
  triggerSuccess(editingId ? 'Product updated successfully.' : 'Product added successfully.');
  clearForm();
+ onDirtyChange?.(false);
  if (onRefreshDb) await onRefreshDb();
  onDone();
  } catch(err) {
@@ -621,6 +679,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
       }
       triggerSuccess(editingId ? 'Category updated successfully.' : 'Category added successfully.');
       clearForm();
+      onDirtyChange?.(false);
       if (onRefreshDb) await onRefreshDb();
       onDone();
     } catch (err) {
@@ -674,6 +733,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
       }
       triggerSuccess(editingId ? 'Unit updated successfully.' : 'Unit added successfully.');
       clearForm();
+      onDirtyChange?.(false);
       if (onRefreshDb) await onRefreshDb();
       onDone();
     } catch (err) {
@@ -736,6 +796,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
       }
       triggerSuccess(editingId ? 'Warehouse updated successfully.' : 'Warehouse added successfully.');
       clearForm();
+      onDirtyChange?.(false);
       if (onRefreshDb) await onRefreshDb();
       onDone();
     } catch (err) {
@@ -974,8 +1035,113 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
    : forceSubTab === 'categories' ? db.productCategories
    : forceSubTab === 'units' ? db.unitsOfMeasure
    : db.warehouses;
- const entity = list.find((e: any) => e.id === editId);
- if (entity) handleStartEdit(entity, forceSubTab);
+ const entity: any = list.find((e: any) => e.id === editId);
+ if (entity) {
+   handleStartEdit(entity, forceSubTab);
+   // Baseline for the dirty-guard, built from the entity's own fields (not the state
+   // variables handleStartEdit just called setters for — those haven't updated yet
+   // within this synchronous effect). Only the fields handleStartEdit actually sets for
+   // this entity type need real values; every other sub-tab's fields stay at their
+   // useState defaults regardless, so reusing the same literal here for those is exact.
+   if (forceSubTab === 'products') {
+     markFormClean({
+       name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
+       zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
+       zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
+       prodName: entity.name, prodType: entity.type, prodPrice: entity.unitPrice.toString(),
+       prodCostPrice: entity.costPrice != null ? entity.costPrice.toString() : '',
+       prodUnit: entity.unit || 'No', prodIsPos: entity.isPosItem || false,
+       prodCategory: entity.category || '', prodImage: entity.base64Image || '',
+       prodBarcode: entity.barcode || '', prodSku: entity.sku || '',
+       prodCatalogType: entity.catalogType || 'item', prodCategoryId: entity.categoryId || '',
+       prodDefaultWarehouseId: entity.defaultWarehouseId || '', prodBinLocation: entity.binLocation || '',
+       prodMinLevel: entity.minLevel ? String(entity.minLevel) : '',
+       prodMaxLevel: entity.maxLevel ? String(entity.maxLevel) : '',
+       prodReorderLeadTime: entity.reorderLeadTime || '',
+       prodGridPosition: entity.posGridPosition != null ? String(entity.posGridPosition) : '',
+       prodModifierGroupIds: Array.isArray(entity.modifierGroupIds) ? entity.modifierGroupIds : [],
+       catName: '', catParentId: '', catSalesGl: '4000 - Product Sales',
+       catPurchaseGl: '1200 - Inventory Asset', catCogsGl: '5000 - Cost of Goods Sold',
+       unitName: '', unitCode: '',
+       whName: '', whCode: '', whAddress: '', whIsActive: true, whBranchId: '',
+       whType: 'sales' as const, whIsCompanyDefault: false,
+     });
+   } else if (forceSubTab === 'categories') {
+     markFormClean({
+       name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
+       zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
+       zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
+       prodName: '', prodType: 'Sales', prodPrice: '', prodCostPrice: '', prodUnit: 'No',
+       prodIsPos: false, prodCategory: '', prodImage: '', prodBarcode: '', prodSku: '',
+       prodCatalogType: 'item', prodCategoryId: '', prodDefaultWarehouseId: '', prodBinLocation: '',
+       prodMinLevel: '', prodMaxLevel: '', prodReorderLeadTime: '', prodGridPosition: '',
+       prodModifierGroupIds: [] as string[],
+       catName: entity.name, catParentId: entity.parentCategoryId || '',
+       catSalesGl: entity.salesGlGroup || '4000 - Product Sales',
+       catPurchaseGl: entity.purchaseGlGroup || '1200 - Inventory Asset',
+       catCogsGl: entity.cogsGlGroup || '5000 - Cost of Goods Sold',
+       unitName: '', unitCode: '',
+       whName: '', whCode: '', whAddress: '', whIsActive: true, whBranchId: '',
+       whType: 'sales' as const, whIsCompanyDefault: false,
+     });
+   } else if (forceSubTab === 'units') {
+     markFormClean({
+       name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
+       zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
+       zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
+       prodName: '', prodType: 'Sales', prodPrice: '', prodCostPrice: '', prodUnit: 'No',
+       prodIsPos: false, prodCategory: '', prodImage: '', prodBarcode: '', prodSku: '',
+       prodCatalogType: 'item', prodCategoryId: '', prodDefaultWarehouseId: '', prodBinLocation: '',
+       prodMinLevel: '', prodMaxLevel: '', prodReorderLeadTime: '', prodGridPosition: '',
+       prodModifierGroupIds: [] as string[],
+       catName: '', catParentId: '', catSalesGl: '4000 - Product Sales',
+       catPurchaseGl: '1200 - Inventory Asset', catCogsGl: '5000 - Cost of Goods Sold',
+       unitName: entity.name, unitCode: entity.code,
+       whName: '', whCode: '', whAddress: '', whIsActive: true, whBranchId: '',
+       whType: 'sales' as const, whIsCompanyDefault: false,
+     });
+   } else if (forceSubTab === 'warehouses') {
+     markFormClean({
+       name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
+       zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
+       zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
+       prodName: '', prodType: 'Sales', prodPrice: '', prodCostPrice: '', prodUnit: 'No',
+       prodIsPos: false, prodCategory: '', prodImage: '', prodBarcode: '', prodSku: '',
+       prodCatalogType: 'item', prodCategoryId: '', prodDefaultWarehouseId: '', prodBinLocation: '',
+       prodMinLevel: '', prodMaxLevel: '', prodReorderLeadTime: '', prodGridPosition: '',
+       prodModifierGroupIds: [] as string[],
+       catName: '', catParentId: '', catSalesGl: '4000 - Product Sales',
+       catPurchaseGl: '1200 - Inventory Asset', catCogsGl: '5000 - Cost of Goods Sold',
+       unitName: '', unitCode: '',
+       whName: entity.name, whCode: entity.code, whAddress: entity.address || '',
+       whIsActive: entity.isActive ?? true, whBranchId: (entity as any).branchId || '',
+       whType: (((entity as any).type === 'backend') ? 'backend' : 'sales'),
+       whIsCompanyDefault: (entity as any).isCompanyDefault === true,
+     });
+   } else {
+     // customers or vendors — same shared field shape.
+     markFormClean({
+       name: entity.name, email: entity.email || '', phone: entity.phone || '',
+       address: entity.address || '', taxRegNumber: entity.taxRegNumber || '',
+       buyerType: (entity.buyerType === 'B2C' ? 'B2C' : 'B2B'),
+       zatcaVatNumber: entity.vatNumber || '', zatcaStreetName: entity.streetName || '',
+       zatcaBuildingNumber: entity.buildingNumber || '', zatcaDistrict: entity.district || '',
+       zatcaCity: entity.city || '', zatcaPostalCode: entity.postalCode || '',
+       entityCrNumber: entity.crNumber || '',
+       prodName: '', prodType: 'Sales', prodPrice: '', prodCostPrice: '', prodUnit: 'No',
+       prodIsPos: false, prodCategory: '', prodImage: '', prodBarcode: '', prodSku: '',
+       prodCatalogType: 'item', prodCategoryId: '', prodDefaultWarehouseId: '', prodBinLocation: '',
+       prodMinLevel: '', prodMaxLevel: '', prodReorderLeadTime: '', prodGridPosition: '',
+       prodModifierGroupIds: [] as string[],
+       catName: '', catParentId: '', catSalesGl: '4000 - Product Sales',
+       catPurchaseGl: '1200 - Inventory Asset', catCogsGl: '5000 - Cost of Goods Sold',
+       unitName: '', unitCode: '',
+       whName: '', whCode: '', whAddress: '', whIsActive: true, whBranchId: '',
+       whType: 'sales' as const, whIsCompanyDefault: false,
+     });
+   }
+ }
+ // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [mode, editId, forceSubTab, db.customers, db.vendors, db.products, db.productCategories, db.unitsOfMeasure, db.warehouses]);
 
  if (!canViewCustomers && !canViewVendors && !canViewProducts && !canViewCategories && !canViewUnits && !canViewWarehouses) {

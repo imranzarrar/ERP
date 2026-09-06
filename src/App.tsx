@@ -920,6 +920,7 @@ type NavSection = {
  onDone={() => handleNavigate(sub)}
  onEdit={(id) => { setEditTarget({ module: sub, id }); handleNavigate(`${sub}-add`, true); }}
  onCreateNew={() => handleNavigate(`${sub}-add`)}
+ onDirtyChange={(dirty) => { isCurrentFormDirtyRef.current = dirty; }}
  />
  );
 
@@ -1621,6 +1622,7 @@ type NavSection = {
            onRefreshDb={triggerDbRefresh}
            onPrintDoc={(type, data) => setPrintDoc({ type, data })}
            defaultTab={activeTab === 'inventory' ? 'stock' : (activeTab.replace('inventory-', '') as any)}
+           onDirtyChange={(dirty) => { isCurrentFormDirtyRef.current = dirty; }}
          />
        )}
 

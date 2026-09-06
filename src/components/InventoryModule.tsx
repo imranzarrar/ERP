@@ -1,5 +1,5 @@
 import React from 'react';
-import { useTranslation, usePermissions } from '../hooks';
+import { useTranslation, usePermissions, useDirtyGuard } from '../hooks';
 import { DatabaseState, generateId, getDefaultTaxSlabId } from '../dbStore';
 import {
   Warehouse,
@@ -67,6 +67,13 @@ interface InventoryModuleProps {
   onPrintDoc?: (type: 'PaymentReceipt' | 'WarehouseDispatch' | 'WarehouseReceiving', data: any) => void;
   currentUser: any;
   defaultTab?: 'stock' | 'pr' | 'po' | 'grn' | 'warehouses' | 'bills' | 'returns' | 'stocktakes' | 'dispatch' | 'receiving';
+  // Reports whether ANY of this module's 8 create forms currently has unsaved changes,
+  // for App.tsx's handleNavigate guard (see useDirtyGuard in hooks.ts). Unlike Invoice/
+  // Quotation/Expense, this component has no onDone/mode prop — each form is its own
+  // internal open/close boolean, not a nav-tab transition — so its own Cancel/Close
+  // buttons are guarded locally (see confirmDiscard below) rather than solely relying on
+  // this callback; this callback exists only for the sidebar-navigates-elsewhere case.
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 export default function InventoryModule({
@@ -75,7 +82,8 @@ export default function InventoryModule({
   onRefreshDb,
   onPrintDoc,
   currentUser,
-  defaultTab = 'stock'
+  defaultTab = 'stock',
+  onDirtyChange
 }: InventoryModuleProps) {
   const { t } = useTranslation(db);
   const { can } = usePermissions(currentUser);
@@ -293,6 +301,51 @@ export default function InventoryModule({
     return { productId: baseHit.id, unitOfMeasureId: null, purchasePrice: baseHit.costPrice ?? baseHit.unitPrice, salePrice: baseHit.unitPrice };
   }, [db.productUnitConversions, db.products]);
 
+  // Unsaved-changes guard — one useDirtyGuard per document type (see hooks.ts). This
+  // component has no onDone/mode prop like Invoice/Quotation/Expense; each form is its
+  // own internal open/close boolean rather than a nav-tab transition, so a form's own
+  // Cancel/Close buttons never go through App.tsx's handleNavigate at all. confirmDiscard
+  // below guards those buttons directly; onDirtyChange (reported from the OR of all 8) is
+  // only for the case where the user navigates elsewhere via the sidebar while a form here
+  // is open and dirty.
+  const { isDirty: isPrDirty, markClean: markPrClean } = useDirtyGuard(prForm);
+  const { isDirty: isPoDirty, markClean: markPoClean } = useDirtyGuard(poForm);
+  const { isDirty: isGrnDirty, markClean: markGrnClean } = useDirtyGuard(grnForm);
+  const { isDirty: isBillDirty, markClean: markBillClean } = useDirtyGuard(billForm);
+  const { isDirty: isReturnDirty, markClean: markReturnClean } = useDirtyGuard(returnForm);
+  const { isDirty: isStockTakeDirty, markClean: markStockTakeClean } = useDirtyGuard(stockTakeForm);
+  const { isDirty: isDispatchDirty, markClean: markDispatchClean } = useDirtyGuard(dispatchForm);
+  const { isDirty: isReceivingDirty, markClean: markReceivingClean } = useDirtyGuard(receivingForm);
+
+  // Baseline each form the moment it opens (its own state has already been reset/seeded
+  // to starting values by whichever "New X"/"Edit X"/"Receive" handler flipped this same
+  // visibility flag, in the same synchronous event — so the value read here is correct).
+  React.useEffect(() => { if (isCreatingPr) markPrClean(prForm); }, [isCreatingPr, editingPrId]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => { if (isCreatingPo) markPoClean(poForm); }, [isCreatingPo]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => { if (isCreatingGrn) markGrnClean(grnForm); }, [isCreatingGrn]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => { if (isCreatingBill) markBillClean(billForm); }, [isCreatingBill]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => { if (isCreatingReturn) markReturnClean(returnForm); }, [isCreatingReturn]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => { if (isCreatingStockTake) markStockTakeClean(stockTakeForm); }, [isCreatingStockTake]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => { if (isCreatingDispatch) markDispatchClean(dispatchForm); }, [isCreatingDispatch]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => { if (receivingAgainstDispatch) markReceivingClean(receivingForm); }, [receivingAgainstDispatch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const anyInventoryFormDirty = isPrDirty || isPoDirty || isGrnDirty || isBillDirty || isReturnDirty || isStockTakeDirty || isDispatchDirty || isReceivingDirty;
+  React.useEffect(() => {
+    onDirtyChange?.(anyInventoryFormDirty);
+  }, [anyInventoryFormDirty]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  React.useEffect(() => {
+    return () => onDirtyChange?.(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Guards a form's own Cancel/Close button — returns false (caller must bail out, not
+  // proceed with closing) when the form is dirty and the user chooses not to discard.
+  const confirmDiscard = (isDirty: boolean): boolean => {
+    if (isDirty && !window.confirm(t('You have unsaved changes. Leave without saving?'))) return false;
+    return true;
+  };
+
   // Automatically update activeSubTab if defaultTab changes
   React.useEffect(() => {
     setActiveSubTab(defaultTab);
@@ -440,6 +493,7 @@ export default function InventoryModule({
 
       triggerSuccess(isEdit ? t('Purchase requisition updated successfully.') : t('Purchase requisition submitted successfully.'));
       setPrForm({ requestedBy: currentUser?.username || '', notes: '', branchId: myPrimaryBranchId, items: [] });
+      markPrClean({ requestedBy: currentUser?.username || '', notes: '', branchId: myPrimaryBranchId, items: [] });
       setEditingPrId(null);
       setIsCreatingPr(false);
       setViewingPr(null);
@@ -459,6 +513,13 @@ export default function InventoryModule({
     });
     setViewingPr(null);
     setIsCreatingPr(true);
+  };
+
+  const handleCancelPr = () => {
+    if (!confirmDiscard(isPrDirty)) return;
+    setIsCreatingPr(false);
+    setEditingPrId(null);
+    setPrForm({ requestedBy: currentUser?.username || '', notes: '', branchId: myPrimaryBranchId, items: [] });
   };
 
   // Withdraw a Pending PR — the submitter's own action (inventory.pr), separate from the
@@ -589,12 +650,18 @@ export default function InventoryModule({
 
       triggerSuccess(t('Purchase order issued successfully.'));
       setPoForm({ vendorId: '', requisitionId: '', deliveryDate: '', notes: '', branchId: myPrimaryBranchId, items: [] });
+      markPoClean({ vendorId: '', requisitionId: '', deliveryDate: '', notes: '', branchId: myPrimaryBranchId, items: [] });
       setIsCreatingPo(false);
     } catch (err: any) {
       triggerError(err?.message || t('Failed to issue purchase order.'));
     } finally {
       setIsSubmittingPo(false);
     }
+  };
+
+  const handleCancelPoForm = () => {
+    if (!confirmDiscard(isPoDirty)) return;
+    setIsCreatingPo(false);
   };
 
   // Cancel PO — goes through the real backend route (PATCH
@@ -773,12 +840,28 @@ export default function InventoryModule({
         driverName: '',
         items: []
       });
+      markGrnClean({
+        purchaseOrderId: '',
+        warehouseId: warehouses[0]?.id || '',
+        vendorId: '',
+        isDsd: false,
+        receivedBy: currentUser?.username || '',
+        notes: '',
+        vehicleNumber: '',
+        driverName: '',
+        items: []
+      });
       setIsCreatingGrn(false);
     } catch (err: any) {
       triggerError(err?.message || t('Failed to record goods receipt.'));
     } finally {
       setIsSubmittingGrn(false);
     }
+  };
+
+  const handleCancelGrnForm = () => {
+    if (!confirmDiscard(isGrnDirty)) return;
+    setIsCreatingGrn(false);
   };
 
   // Reverse a GRN — correction path for a wrong-quantity/wrong-batch receipt. Reverts the
@@ -862,12 +945,28 @@ export default function InventoryModule({
         notes: '',
         items: []
       });
+      markDispatchClean({
+        fromWarehouseId: warehouses[0]?.id || '',
+        toWarehouseId: '',
+        vehicleNumber: '',
+        driverName: '',
+        driverContact: '',
+        expectedArrivalDate: '',
+        dispatchedBy: currentUser?.username || '',
+        notes: '',
+        items: []
+      });
       setIsCreatingDispatch(false);
     } catch (err: any) {
       triggerError(err?.message || t('Failed to create dispatch.'));
     } finally {
       setIsSubmittingDispatch(false);
     }
+  };
+
+  const handleCancelDispatchForm = () => {
+    if (!confirmDiscard(isDispatchDirty)) return;
+    setIsCreatingDispatch(false);
   };
 
   // Seed the Receiving confirm form from a dispatch's own items — quantityReceived
@@ -940,12 +1039,18 @@ export default function InventoryModule({
       }));
       if (onRefreshDb) await onRefreshDb();
       triggerSuccess(t('Receiving recorded and stock added to the destination warehouse.'));
+      markReceivingClean(receivingForm);
       setReceivingAgainstDispatch(null);
     } catch (err: any) {
       triggerError(err?.message || t('Failed to record receiving.'));
     } finally {
       setIsSubmittingReceiving(false);
     }
+  };
+
+  const handleCancelReceivingForm = () => {
+    if (!confirmDiscard(isReceivingDirty)) return;
+    setReceivingAgainstDispatch(null);
   };
 
   // Cancel a still-pending (not yet received) dispatch — restores the source warehouse's
@@ -1052,12 +1157,19 @@ export default function InventoryModule({
       }));
       triggerSuccess(t('Purchase bill created successfully.'));
       setBillForm({ grnIds: [], dueDate: '', bankId: '' });
+      markBillClean({ grnIds: [], dueDate: '', bankId: '' });
       setIsCreatingBill(false);
     } catch (err: any) {
       triggerError(err?.message || t('Failed to create purchase bill.'));
     } finally {
       setIsSubmittingBill(false);
     }
+  };
+
+  const handleCancelBillForm = () => {
+    if (!confirmDiscard(isBillDirty)) return;
+    setIsCreatingBill(false);
+    setBillForm({ grnIds: [], dueDate: '', bankId: '' });
   };
 
   const handlePayBill = async (e: React.FormEvent) => {
@@ -1142,12 +1254,19 @@ export default function InventoryModule({
       onUpdateDbLocal(prev => ({ ...prev, purchaseReturns: [...(prev.purchaseReturns || []), newReturn] }));
       triggerSuccess(t('Purchase return recorded successfully.'));
       setReturnForm({ grnId: '', notes: '', items: [] });
+      markReturnClean({ grnId: '', notes: '', items: [] });
       setIsCreatingReturn(false);
     } catch (err: any) {
       triggerError(err?.message || t('Failed to create purchase return.'));
     } finally {
       setIsSubmittingReturn(false);
     }
+  };
+
+  const handleCancelReturnForm = () => {
+    if (!confirmDiscard(isReturnDirty)) return;
+    setIsCreatingReturn(false);
+    setReturnForm({ grnId: '', notes: '', items: [] });
   };
 
   const handleCancelReturn = async (returnId: string) => {
@@ -1198,12 +1317,19 @@ export default function InventoryModule({
       onUpdateDbLocal(prev => ({ ...prev, physicalStockTakes: [...(prev.physicalStockTakes || []), newStockTake] }));
       triggerSuccess(t('Stock take started successfully.'));
       setStockTakeForm({ warehouseId: warehouses[0]?.id || '', performedBy: currentUser?.username || '', notes: '', items: [] });
+      markStockTakeClean({ warehouseId: warehouses[0]?.id || '', performedBy: currentUser?.username || '', notes: '', items: [] });
       setIsCreatingStockTake(false);
     } catch (err: any) {
       triggerError(err?.message || t('Failed to start stock take.'));
     } finally {
       setIsSubmittingStockTake(false);
     }
+  };
+
+  const handleCancelStockTakeForm = () => {
+    if (!confirmDiscard(isStockTakeDirty)) return;
+    setIsCreatingStockTake(false);
+    setStockTakeForm({ warehouseId: warehouses[0]?.id || '', performedBy: currentUser?.username || '', notes: '', items: [] });
   };
 
   const handleFinalizeStockTake = async (stockTakeId: string) => {
@@ -2628,7 +2754,7 @@ export default function InventoryModule({
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <h3 className="text-lg font-bold text-gray-900">{editingPrId ? t('Edit Purchase Requisition (PR)') : t('Create Purchase Requisition (PR)')}</h3>
               <button
-                onClick={() => { setIsCreatingPr(false); setEditingPrId(null); setPrForm({ requestedBy: currentUser?.username || '', notes: '', branchId: myPrimaryBranchId, items: [] }); }}
+                onClick={handleCancelPr}
                 className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition"
               >
                 {t('Back to List')}
@@ -2767,7 +2893,7 @@ export default function InventoryModule({
               <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
                 <button
                   type="button"
-                  onClick={() => { setIsCreatingPr(false); setEditingPrId(null); setPrForm({ requestedBy: currentUser?.username || '', notes: '', branchId: myPrimaryBranchId, items: [] }); }}
+                  onClick={handleCancelPr}
                   className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
                 >
                   {t('Cancel')}
@@ -2792,7 +2918,7 @@ export default function InventoryModule({
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <h3 className="text-lg font-bold text-gray-900">{t('Raise Purchase Order (PO)')}</h3>
               <button 
-                onClick={() => setIsCreatingPo(false)} 
+                onClick={handleCancelPoForm} 
                 className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition"
               >
                 {t('Back to List')}
@@ -3082,7 +3208,7 @@ export default function InventoryModule({
               <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
                 <button
                   type="button"
-                  onClick={() => setIsCreatingPo(false)}
+                  onClick={handleCancelPoForm}
                   className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
                 >
                   {t('Cancel')}
@@ -3107,7 +3233,7 @@ export default function InventoryModule({
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <h3 className="text-lg font-bold text-gray-900">{t('Receive Goods / GRN Ledger')}</h3>
               <button 
-                onClick={() => setIsCreatingGrn(false)} 
+                onClick={handleCancelGrnForm} 
                 className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition"
               >
                 {t('Back to List')}
@@ -3404,7 +3530,7 @@ export default function InventoryModule({
               <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
                 <button
                   type="button"
-                  onClick={() => setIsCreatingGrn(false)}
+                  onClick={handleCancelGrnForm}
                   className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
                 >
                   {t('Cancel')}
@@ -3430,7 +3556,7 @@ export default function InventoryModule({
               <h3 className="text-lg font-bold text-gray-900">{t('New Warehouse Dispatch')}</h3>
               <button
                 type="button"
-                onClick={() => setIsCreatingDispatch(false)}
+                onClick={handleCancelDispatchForm}
                 className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition"
               >
                 {t('Back to List')}
@@ -3661,7 +3787,7 @@ export default function InventoryModule({
               <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
                 <button
                   type="button"
-                  onClick={() => setIsCreatingDispatch(false)}
+                  onClick={handleCancelDispatchForm}
                   className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
                 >
                   {t('Cancel')}
@@ -3693,7 +3819,7 @@ export default function InventoryModule({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setReceivingAgainstDispatch(null)}
+                  onClick={handleCancelReceivingForm}
                   className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition"
                 >
                   {t('Back to List')}
@@ -3794,7 +3920,7 @@ export default function InventoryModule({
                 <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
                   <button
                     type="button"
-                    onClick={() => setReceivingAgainstDispatch(null)}
+                    onClick={handleCancelReceivingForm}
                     className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
                   >
                     {t('Cancel')}
@@ -4099,7 +4225,7 @@ export default function InventoryModule({
           <div className="overflow-hidden flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <h3 className="text-lg font-bold text-gray-900">{t('New Purchase Bill')}</h3>
-              <button onClick={() => { setIsCreatingBill(false); setBillForm({ grnIds: [], dueDate: '', bankId: '' }); }} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition">
+              <button onClick={handleCancelBillForm} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition">
                 {t('Back to List')}
               </button>
             </div>
@@ -4142,7 +4268,7 @@ export default function InventoryModule({
                 </div>
               </div>
               <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
-                <button type="button" onClick={() => { setIsCreatingBill(false); setBillForm({ grnIds: [], dueDate: '', bankId: '' }); }} className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition">
+                <button type="button" onClick={handleCancelBillForm} className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition">
                   {t('Cancel')}
                 </button>
                 <button type="submit" disabled={billForm.grnIds.length === 0 || isSubmittingBill} className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed">
@@ -4229,7 +4355,7 @@ export default function InventoryModule({
           <div className="overflow-hidden flex flex-col">
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <h3 className="text-lg font-bold text-gray-900">{t('New Purchase Return')}</h3>
-              <button onClick={() => { setIsCreatingReturn(false); setReturnForm({ grnId: '', notes: '', items: [] }); }} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition">
+              <button onClick={handleCancelReturnForm} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition">
                 {t('Back to List')}
               </button>
             </div>
@@ -4332,7 +4458,7 @@ export default function InventoryModule({
                 </div>
               </div>
               <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
-                <button type="button" onClick={() => { setIsCreatingReturn(false); setReturnForm({ grnId: '', notes: '', items: [] }); }} className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition">
+                <button type="button" onClick={handleCancelReturnForm} className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition">
                   {t('Cancel')}
                 </button>
                 <button type="submit" disabled={!returnForm.grnId || returnForm.items.length === 0 || isSubmittingReturn} className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed">
@@ -4429,7 +4555,7 @@ export default function InventoryModule({
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <h3 className="text-lg font-bold text-gray-900">{t('New Stock Take')}</h3>
               <button
-                onClick={() => { setIsCreatingStockTake(false); setStockTakeForm({ warehouseId: warehouses[0]?.id || '', performedBy: currentUser?.username || '', notes: '', items: [] }); }}
+                onClick={handleCancelStockTakeForm}
                 className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 bg-white transition"
               >
                 {t('Back to List')}
@@ -4536,7 +4662,7 @@ export default function InventoryModule({
               <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
                 <button
                   type="button"
-                  onClick={() => { setIsCreatingStockTake(false); setStockTakeForm({ warehouseId: warehouses[0]?.id || '', performedBy: currentUser?.username || '', notes: '', items: [] }); }}
+                  onClick={handleCancelStockTakeForm}
                   className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition"
                 >
                   {t('Cancel')}
