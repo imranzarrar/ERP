@@ -39,7 +39,7 @@ import {
  Sliders,
  ShoppingCart,
  ShieldCheck,
- Shield, MapPin, Hash, FileCheck} from 'lucide-react';
+ Shield, MapPin, Hash, FileCheck, Monitor, LogOut} from 'lucide-react';
 import { ensureCompatibleImage } from '../imageUtils';
 import { DEFAULT_DOCUMENT_LAYOUT, DETAILED_TAX_INVOICE_LAYOUT, COL_SPAN_MD, COL_SPAN_PRINT } from '../documentTemplateDefaults';
 import { XMLParser } from 'fast-xml-parser';
@@ -361,6 +361,9 @@ const CATEGORY_GROUPS: { id: string; label: string; icon: any; subTabs: Settings
       // Export/import/force-push/audit-purge live here - dangerous whole-tenant-data
       // operations, never proposed for delegation.
       { id: 'database', label: 'Database Backup & Sync', icon: Database, adminOnly: true },
+      // Forcibly ending another staff member's session is the same tier as the above -
+      // admin-only, not a delegable permission leaf.
+      { id: 'sessions', label: 'Active Sessions', icon: Monitor, adminOnly: true },
     ]
   }
 ];
@@ -462,7 +465,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
   const fetchMonths = async () => {
     if (!db.selectedCompanyId) return;
     try {
-      const resp = await fetch(`/api/transactions/months?companyId=${db.selectedCompanyId}`);
+      const resp = await fetch(`/api/transactions/months`);
       if (!resp.ok) {
         console.warn(`Failed to fetch fiscalMonths in AdminSettings (status ${resp.status})`);
         return;
@@ -608,6 +611,48 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
      fetchAuditLogs();
    }
  }, [activeTab, db.selectedCompanyId, auditSearch, auditActionFilter, auditTypeFilter]);
+
+ const [activeSessions, setActiveSessions] = React.useState<any[]>([]);
+ const [sessionsLoading, setSessionsLoading] = React.useState(false);
+ const [revokingSid, setRevokingSid] = React.useState<string | null>(null);
+ const [currentSessionId, setCurrentSessionId] = React.useState<string | null>(null);
+
+ const loadActiveSessions = React.useCallback(async () => {
+   setSessionsLoading(true);
+   try {
+     const res = await fetch('/api/admin/sessions');
+     const data = await res.json().catch(() => ({}));
+     if (res.ok) {
+       setActiveSessions(data.sessions || []);
+       setCurrentSessionId(data.currentSessionId || null);
+     } else {
+       setActiveSessions([]);
+     }
+   } finally {
+     setSessionsLoading(false);
+   }
+ }, []);
+
+ React.useEffect(() => {
+   if (activeTab === 'sessions') loadActiveSessions();
+ }, [activeTab, loadActiveSessions]);
+
+ const handleRevokeSession = async (sid: string, username: string) => {
+   if (!window.confirm(t('Revoke this session? The user will be signed out immediately.') + ` (${username})`)) return;
+   setRevokingSid(sid);
+   try {
+     const res = await fetch(`/api/admin/sessions/${sid}`, { method: 'DELETE' });
+     const data = await res.json().catch(() => ({}));
+     if (res.ok) {
+       triggerSuccess(t('Session revoked.'));
+       loadActiveSessions();
+     } else {
+       triggerError(data.error || t('Failed to revoke session.'));
+     }
+   } finally {
+     setRevokingSid(null);
+   }
+ };
 
  const handleExportDb = async () => {
  try {
@@ -2000,7 +2045,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  try {
  const m = result.db.months.find((x: any) => x.id === `${monthForm.year}-${monthForm.month}`);
  if (m) {
- const res = await fetch(`/api/transactions/months?companyId=${db.selectedCompanyId}`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(m) });
+ const res = await fetch(`/api/transactions/months`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(m) });
  if (!res.ok) {
  const body = await res.json().catch(() => ({}));
  triggerError(body.error || 'Failed to open fiscal month — the server rejected this request.');
@@ -2040,7 +2085,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  if (m) {
  // This action tells the admin the month is "permanently closed and locked" — a
  // rejected server write must never be reported as that permanent an outcome.
- const res = await fetch(`/api/transactions/months?companyId=${db.selectedCompanyId}`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(m) });
+ const res = await fetch(`/api/transactions/months`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(m) });
  if (!res.ok) {
  const body = await res.json().catch(() => ({}));
  triggerError(body.error || 'Failed to close fiscal month — the server rejected this request. The month has NOT been closed.');
@@ -7189,6 +7234,70 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
      </table>
    </div>
  </div>
+ </div>
+ </div>
+ )}
+
+ {activeTab === 'sessions' && (
+ <div className="space-y-6 animate-fade-in">
+ <div className="flex items-center justify-between">
+ <div>
+ <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">{t('Active Sessions')}</h3>
+ <p className="text-[11px] text-slate-400 mt-0.5">{t('Everyone currently signed in')}{db.currentUser?.isSuperAdmin ? '' : ` — ${t('this company only')}`}. {t('Revoking a session signs that user out immediately on their next action.')}</p>
+ </div>
+ <button
+ onClick={loadActiveSessions}
+ disabled={sessionsLoading}
+ className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0"
+ >
+ <RefreshCw className={`w-3.5 h-3.5 ${sessionsLoading ? 'animate-spin' : ''}`} />
+ {t('Refresh')}
+ </button>
+ </div>
+
+ <div className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+ <table className="w-full text-xs">
+ <thead>
+ <tr className="bg-slate-50 text-slate-500">
+ <th className="p-3 text-start">{t('User')}</th>
+ {db.currentUser?.isSuperAdmin && <th className="p-3 text-start">{t('Company')}</th>}
+ <th className="p-3 text-start">{t('Last Activity')}</th>
+ <th className="p-3 text-start">{t('Expires')}</th>
+ <th className="p-3 text-end">{t('Actions')}</th>
+ </tr>
+ </thead>
+ <tbody>
+ {sessionsLoading ? (
+ <tr><td colSpan={5} className="p-6 text-center text-slate-400">{t('Loading...')}</td></tr>
+ ) : activeSessions.length === 0 ? (
+ <tr><td colSpan={5} className="p-6 text-center text-slate-400">{t('No active sessions found.')}</td></tr>
+ ) : activeSessions.map((s) => (
+ <tr key={s.sid} className="border-b border-slate-100 last:border-0">
+ <td className="p-3 font-semibold text-slate-800">
+ {s.username || t('Unknown')}
+ {s.sid === currentSessionId && <span className="ms-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">{t('This device')}</span>}
+ </td>
+ {db.currentUser?.isSuperAdmin && <td className="p-3 text-slate-600">{s.companyName || '-'}</td>}
+ <td className="p-3 text-slate-600 font-mono text-[10px]">{s.lastActivity ? new Date(s.lastActivity).toLocaleString() : '-'}</td>
+ <td className="p-3 text-slate-600 font-mono text-[10px]">{s.expire ? new Date(s.expire).toLocaleString() : '-'}</td>
+ <td className="p-3 text-end">
+ {s.sid === currentSessionId ? (
+ <span className="text-[10px] text-slate-400">{t('Use Sign Out instead')}</span>
+ ) : (
+ <button
+ type="button"
+ disabled={revokingSid === s.sid}
+ onClick={() => handleRevokeSession(s.sid, s.username || t('Unknown'))}
+ className="text-[10px] font-bold text-rose-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1"
+ >
+ <LogOut className="w-3 h-3" /> {revokingSid === s.sid ? t('Revoking...') : t('Revoke')}
+ </button>
+ )}
+ </td>
+ </tr>
+ ))}
+ </tbody>
+ </table>
  </div>
  </div>
  )}

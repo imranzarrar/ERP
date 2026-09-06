@@ -1,5 +1,5 @@
 import React from 'react';
-import { useTranslation } from '../hooks';
+import { useTranslation, useDirtyGuard } from '../hooks';
 import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, getDefaultTaxSlabId, calculateInvoiceTotals } from '../dbStore';
 import { generateId } from '../id';
 import { getMonthToDateRange } from '../dateUtils';
@@ -34,9 +34,12 @@ interface ExpenseModuleProps {
  onDone: () => void;
  onCreateNew: () => void;
  onRefreshDb?: () => Promise<void>;
+ // Reports whether the create form has unsaved changes, for App.tsx's handleNavigate
+ // guard (see useDirtyGuard in hooks.ts).
+ onDirtyChange?: (dirty: boolean) => void;
 }
 
-export default function ExpenseModule({ db, onPrintDoc, mode, onDone, onCreateNew, onRefreshDb }: ExpenseModuleProps) {
+export default function ExpenseModule({ db, onPrintDoc, mode, onDone, onCreateNew, onRefreshDb, onDirtyChange }: ExpenseModuleProps) {
  const { t, isRTL, lang } = useTranslation(db);
  const currentUser = db.currentUser;
  // The branch an admin configured as this user's primary in Staff Permissions
@@ -92,8 +95,18 @@ export default function ExpenseModule({ db, onPrintDoc, mode, onDone, onCreateNe
  setFormBillNumber('');
  setFormExpenseType('Admin Expenses');
  setFormAmountPaidNow('');
+ // Baseline for the unsaved-changes guard — built from these same local values, not the
+ // state variables (which haven't updated yet within this synchronous effect).
+ markFormClean({
+   formDate: initialDate, formVendorId: defaultVendor, formTaxSlabId: defaultTax, formBankId: defaultBank,
+   formPaymentStatus: 'Paid', formAmountPaidNow: '', formDescription: '', formAmount: '',
+   formBillNumber: '', formExpenseType: 'Admin Expenses', formClassification: 'Expense',
+   formAttachmentUrl: '', formBranchId: myPrimaryBranchId,
+   formItems: [{ description: '', unitCost: 0, quantity: 1 }],
+ });
  }
  setPayingExpense(null);
+ // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [db.selectedCompanyId, openMonth?.id, myPrimaryBranchId]);
 
  const triggerError = (msg: string) => {
@@ -157,6 +170,22 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  // Optional itemised line items support
  const [showItemised, setShowItemised] = React.useState(false);
  const [formItems, setFormItems] = React.useState<Omit<ExpenseItem, 'id'>[]>([]);
+
+ const { isDirty: isExpenseFormDirty, markClean: markFormClean } = useDirtyGuard({
+   formDate, formVendorId, formTaxSlabId, formBankId, formPaymentStatus, formAmountPaidNow,
+   formDescription, formAmount, formBillNumber, formExpenseType, formClassification,
+   formAttachmentUrl, formBranchId, formItems,
+ });
+
+ React.useEffect(() => {
+   if (view === 'create') onDirtyChange?.(isExpenseFormDirty);
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [isExpenseFormDirty, view]);
+
+ React.useEffect(() => {
+   return () => onDirtyChange?.(false);
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, []);
 
  // Autocomplete support
  const [activeAutocompleteIdx, setActiveAutocompleteIdx] = React.useState<number | null>(null);
@@ -304,6 +333,9 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  }
   if (onRefreshDb) await onRefreshDb();
  triggerSuccess('Expense saved successfully. Cash flows registered in ledger.');
+ // Synchronously, before navigating away — see InvoiceModule.tsx's identical comment for
+ // why this can't just wait on the isDirty effect.
+ onDirtyChange?.(false);
  onDone();
  } catch (err: any) {
  triggerError(err?.message || 'Failed to save expense — check your connection and try again.');

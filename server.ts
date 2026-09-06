@@ -33,6 +33,7 @@ import settingsResourcesRouter from './server/routes/settingsResources.js';
 import branchesRouter from './server/routes/branches.js';
 import taxReturnsRouter from './server/routes/taxReturns.js';
 import employeesRouter from './server/routes/employees.js';
+import sessionsRouter from './server/routes/sessions.js';
 
 // A user's effective permissions come from every Role assigned to them (see the
 // `userRoles` junction table in src/db/schema.ts), not a per-user column — this is the
@@ -86,7 +87,8 @@ async function startServer() {
       try {
         this.pgStore = new PgSession({
           pool: pool as any,
-          tableName: 'user_sessions'
+          tableName: 'user_sessions',
+          ttl: SESSION_TTL_SECONDS,
         });
 
         this.pgStore.on('error', (err: any) => {
@@ -176,6 +178,15 @@ async function startServer() {
     throw new Error('SESSION_SECRET environment variable must be set — refusing to start with a default/guessable session secret.');
   }
 
+  // Explicit, coordinated session lifetime. Previously neither the cookie (`maxAge`) nor
+  // connect-pg-simple's own `ttl` option was set here, so the store silently applied its
+  // undocumented internal default (86400s/24h) while the cookie itself never expired on
+  // its own terms at all — an accidental policy, not a chosen one. 7 days is a deliberate
+  // default for a business app (daily re-login is friction, not meaningfully more secure
+  // given the admin-revocation feature below covers the "force someone out now" case);
+  // override via SESSION_TTL_SECONDS in app.secrets if a shorter/longer window is wanted.
+  const SESSION_TTL_SECONDS = Number(process.env.SESSION_TTL_SECONDS) || 7 * 24 * 60 * 60;
+
   app.use(session({
     store: new ResilientSessionStore(),
     secret: process.env.SESSION_SECRET,
@@ -183,7 +194,8 @@ async function startServer() {
     saveUninitialized: false,
     cookie: {
       secure: true,
-      sameSite: 'none'
+      sameSite: 'none',
+      maxAge: SESSION_TTL_SECONDS * 1000,
     }
   }));
 
@@ -194,6 +206,9 @@ async function startServer() {
   // NEVER trusted as identity on its own — that was a full authentication bypass.
   const isAuthenticated = async (req: any, res: any, next: any) => {
     let userId = req.session?.userId;
+    // Same-request-only bridge for the non-cookie (x-session-id) path's companyId — see
+    // its assignment below for why this exists instead of writing to req.session.
+    let sessionCompanyIdOverride: string | undefined;
 
     const headerSessionId = req.headers['x-session-id'] || req.headers['X-Session-ID'];
     const querySessionId = req.query.sessionId || req.query.session_id;
@@ -220,9 +235,29 @@ async function startServer() {
           if (sessionData && sessionData.userId) {
             userId = sessionData.userId;
             req.activeSessionId = String(resolvedSessionId);
-            if (req.session) {
-              req.session.userId = sessionData.userId;
-              req.session.companyId = sessionData.companyId;
+            // Deliberately NOT `req.session.userId = ...` / `req.session.companyId = ...`
+            // here. req.session on this path is a fresh, disconnected object express-
+            // session allocates per-request (see the comment above) — assigning to it
+            // doesn't persist anything, but it DOES mark that throwaway session
+            // "modified", which makes express-session insert a brand-new row into
+            // user_sessions under req.sessionID at the end of every single request (was a
+            // real, unbounded row-growth bug — confirmed via express-session's own
+            // shouldSave() and connect-pg-simple's INSERT-on-set). The companyId is still
+            // needed a few lines below for this same request's target-company
+            // resolution, so it's carried in a local variable instead.
+            sessionCompanyIdOverride = sessionData.companyId;
+
+            // Sliding expiration for the primary (non-cookie) auth path: connect-pg-
+            // simple's own TTL only refreshes via express-session's `rolling` option,
+            // which is cookie-flow-specific and never engages here. Extend explicitly,
+            // but only when meaningfully stale (past the halfway point), so this isn't a
+            // write on every request — same reasoning as the row-growth fix above.
+            const remainingMs = sessionRow.expire.getTime() - Date.now();
+            if (remainingMs < (SESSION_TTL_SECONDS * 1000) / 2) {
+              db.update(schema.user_sessions)
+                .set({ expire: new Date(Date.now() + SESSION_TTL_SECONDS * 1000), lastActivity: new Date() })
+                .where(eq(schema.user_sessions.sid, String(resolvedSessionId)))
+                .catch((err) => console.error('[Auth] Session touch failed:', err));
             }
           }
         }
@@ -268,8 +303,8 @@ async function startServer() {
           } else {
             req.targetCompanyId = companyId;
           }
-        } else if (req.session?.companyId) {
-          req.targetCompanyId = req.session.companyId;
+        } else if (sessionCompanyIdOverride || req.session?.companyId) {
+          req.targetCompanyId = sessionCompanyIdOverride || req.session.companyId;
         } else {
           req.targetCompanyId = user.companyId;
         }
@@ -403,6 +438,15 @@ async function startServer() {
           return res.status(500).json({ error: 'Session save failed' });
         }
         console.log("Session saved successfully, SessionID:", req.sessionID);
+
+        // Backfill the admin-session-list columns (server/routes/sessions.ts) onto the
+        // row express-session's own save() above just wrote. A separate statement because
+        // connect-pg-simple's own INSERT/UPDATE only ever names sid/sess/expire — it has
+        // no way to also set these app-level columns in the same write.
+        db.update(schema.user_sessions)
+          .set({ userId: user.id, companyId: user.companyId, lastActivity: new Date() })
+          .where(eq(schema.user_sessions.sid, req.sessionID))
+          .catch((e) => console.error('[Auth] Failed to backfill session row on login:', e));
 
         // Exclude the password hash from the client response
         const safeUser: any = { ...user };
@@ -590,7 +634,11 @@ async function startServer() {
       if (existingRow) {
         const mergedSess = { ...(existingRow.sess as any), companyId };
         await db.update(schema.user_sessions)
-          .set({ sess: mergedSess })
+          // Also mirrors onto the app-level `companyId` column (server/routes/sessions.ts's
+          // admin session list reads this column directly, not the sess blob) so a
+          // super-admin's switched-to company is reflected there too, not just the home
+          // company recorded at login.
+          .set({ sess: mergedSess, companyId })
           .where(eq(schema.user_sessions.sid, req.activeSessionId));
       }
     } catch (err) {
@@ -795,6 +843,7 @@ async function startServer() {
   app.use('/api', branchesRouter);
   app.use('/api', taxReturnsRouter);
   app.use('/api', employeesRouter);
+  app.use('/api', sessionsRouter);
   app.use('/api/users', usersRouter);
   app.use('/api/roles', rolesRouter);
   app.use('/api/transactions', transactionsRouter);

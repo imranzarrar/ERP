@@ -409,6 +409,24 @@ export default function App() {
   // navigating to 'invoices-view' (post-create, or a list row's own View link).
   const [viewTarget, setViewTarget] = React.useState<{ id: string } | null>(null);
 
+  // Whichever transactional form is currently open reports its own live dirty state here
+  // (via onDirtyChange, see useDirtyGuard in hooks.ts) so handleNavigate — the single
+  // choke point nearly all navigation already funnels through — can warn before
+  // discarding in-progress work. A ref, not state: it's read synchronously inside
+  // handleNavigate/beforeunload and doesn't need to trigger a re-render on its own.
+  const isCurrentFormDirtyRef = React.useRef(false);
+
+  React.useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isCurrentFormDirtyRef.current) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, []);
+
   const [settingsTab, setSettingsTab] = React.useState<string>('company');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState<boolean>(false);
   const [navSearchQuery, setNavSearchQuery] = React.useState<string>('');
@@ -845,6 +863,10 @@ type NavSection = {
   // Cancel/Done handlers, "Create New" buttons) clears a stale edit target; only the
   // explicit onEdit path (below) passes true to carry the target across the navigate.
   const handleNavigate = (tabId: string, preserveEditTarget: boolean = false) => {
+ if (isCurrentFormDirtyRef.current) {
+   if (!window.confirm(t('You have unsaved changes. Leave without saving?'))) return;
+   isCurrentFormDirtyRef.current = false;
+ }
  const resolvedTabId = tabId.startsWith('settings-') ? 'settings' : tabId;
  if (!isTabAllowed(resolvedTabId)) return;
  // Every module below (InvoiceModule, QuotationModule, MasterEntities, etc.) renders
@@ -1482,6 +1504,7 @@ type NavSection = {
  onEdit={(id) => { setEditTarget({ module: 'quotations', id }); handleNavigate('quotations-add', true); }}
  onCreateNew={() => handleNavigate('quotations-add')}
  onConverted={() => handleNavigate('invoices')}
+ onDirtyChange={(dirty) => { isCurrentFormDirtyRef.current = dirty; }}
  />
  )}
  {(activeTab === 'invoices' || activeTab === 'invoices-add') && (
@@ -1494,6 +1517,7 @@ type NavSection = {
  onDone={() => handleNavigate('invoices')}
  onCreateNew={() => handleNavigate('invoices-add')}
  onViewInvoice={(id) => { setViewTarget({ id }); handleNavigate('invoices-view'); }}
+ onDirtyChange={(dirty) => { isCurrentFormDirtyRef.current = dirty; }}
  />
  )}
  {activeTab === 'invoices-view' && viewTarget && (
@@ -1513,6 +1537,7 @@ type NavSection = {
  onCreateNew={() => handleNavigate('expenses-add')}
  onPrintDoc={(type, data) => setPrintDoc({ type, data })}
  onRefreshDb={triggerDbRefresh}
+ onDirtyChange={(dirty) => { isCurrentFormDirtyRef.current = dirty; }}
  />
  )}
  {activeTab === 'recurring' && isAdmin && (
@@ -1585,7 +1610,7 @@ type NavSection = {
  {(activeTab === 'units' || activeTab === 'units-add') && renderMasterEntities('units')}
  {(activeTab === 'warehouses' || activeTab === 'warehouses-add') && renderMasterEntities('warehouses')}
  {(activeTab === 'pos' || activeTab.startsWith('pos-')) && (
-            <PosModule db={activeDb} onUpdateDbLocal={handleUpdateDbLocal} onRefreshDb={triggerDbRefresh} currentUser={currentUser} defaultTab={activeTab === 'pos' ? 'terminal' : activeTab.replace('pos-', '') as any} onClose={() => setActiveTab('dashboard')} onViewInvoice={(id) => { setViewTarget({ id }); handleNavigate('invoices-view'); }} />
+            <PosModule db={activeDb} onUpdateDbLocal={handleUpdateDbLocal} onRefreshDb={triggerDbRefresh} currentUser={currentUser} defaultTab={activeTab === 'pos' ? 'terminal' : activeTab.replace('pos-', '') as any} onClose={() => handleNavigate('dashboard')} onViewInvoice={(id) => { setViewTarget({ id }); handleNavigate('invoices-view'); }} />
           )}
   {(activeTab === 'products' || activeTab === 'products-add') && renderMasterEntities('products')}
  {(activeTab === 'inventory' || activeTab.startsWith('inventory-')) && (

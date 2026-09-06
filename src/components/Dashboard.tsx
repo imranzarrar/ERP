@@ -64,7 +64,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
   const fetchMonths = async () => {
     if (!db.selectedCompanyId) return;
     try {
-      const resp = await fetch(`/api/transactions/months?companyId=${db.selectedCompanyId}`);
+      const resp = await fetch(`/api/transactions/months`);
       if (!resp.ok) {
         console.warn(`Failed to fetch fiscalMonths in Dashboard (status ${resp.status})`);
         return;

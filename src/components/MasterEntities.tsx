@@ -797,7 +797,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
       if (onRefreshDb) await onRefreshDb();
       
       // Update local view list
-      const pwRes = await fetch(`/api/product-warehouses?companyId=${db.selectedCompanyId}`);
+      const pwRes = await fetch(`/api/product-warehouses`);
       if (pwRes.ok) {
         const pwData = await pwRes.json();
         setActiveProductWarehouses(pwData.filter((pw: any) => pw.productId === productId));
@@ -820,7 +820,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
       if (onRefreshDb) await onRefreshDb();
       
       // Update local view list
-      const pwRes = await fetch(`/api/product-warehouses?companyId=${db.selectedCompanyId}`);
+      const pwRes = await fetch(`/api/product-warehouses`);
       if (pwRes.ok) {
         const pwData = await pwRes.json();
         setActiveProductWarehouses(pwData.filter((pw: any) => pw.productId === productId));

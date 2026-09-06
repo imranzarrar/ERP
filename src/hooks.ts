@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react';
 import type { TranslationItem, User } from './types';
 import type { DatabaseState } from './dbStore';
 import { SEED_TRANSLATIONS } from './dbStore';
@@ -90,6 +91,26 @@ const PERMISSION_PATH_ALIASES: Record<string, string> = {
   // delegable reports now (trialBalance/salesVat/purchaseVat/bankLedger/profitLoss/
   // outstanding) — a caller must name the specific one it means.
 };
+
+// Generalizes the snapshot-vs-current dirty-check AdminSettings.tsx's Canvas Designer
+// already uses (`hasUnsavedCanvasChanges = JSON.stringify(current) !== JSON.stringify(snapshot)`)
+// into a reusable hook for transactional forms (Invoice/Quotation/Expense/etc). A form
+// module calls `markClean()` when it opens a create/edit session and again right after a
+// successful save; `isDirty` then reflects whether `currentValues` has changed since that
+// last mark. Callers pack their many individual useState fields into one object at the
+// call site (see InvoiceModule.tsx) — there's no app-wide unified form-state shape to hook
+// into automatically.
+export function useDirtyGuard(currentValues: unknown) {
+  const [snapshot, setSnapshot] = useState<string | null>(null);
+
+  const markClean = useCallback((values: unknown) => {
+    setSnapshot(JSON.stringify(values));
+  }, []);
+
+  const isDirty = snapshot !== null && JSON.stringify(currentValues) !== snapshot;
+
+  return { isDirty, markClean };
+}
 
 export function usePermissions(currentUser: User | undefined) {
   // Delegate entirely to normalizePermissions (src/types.ts) — the single source of

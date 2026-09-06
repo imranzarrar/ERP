@@ -48,7 +48,7 @@ export default function PosModule({ db, onUpdateDbLocal, onRefreshDb, currentUse
   const fetchMonths = async () => {
     if (!db.selectedCompanyId) return;
     try {
-      const resp = await fetch(`/api/transactions/months?companyId=${db.selectedCompanyId}`);
+      const resp = await fetch(`/api/transactions/months`);
       if (!resp.ok) {
         console.warn(`Failed to fetch fiscalMonths in PosModule (status ${resp.status})`);
         return;

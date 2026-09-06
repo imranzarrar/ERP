@@ -1,5 +1,5 @@
 import React from 'react';
-import { useTranslation } from '../hooks';
+import { useTranslation, useDirtyGuard } from '../hooks';
 import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, getDefaultTaxSlabId, calculateInvoiceTotals } from '../dbStore';
 import { generateId } from '../id';
 import { Quotation, QuotationItem, Customer, TaxSlab, User, normalizePermissions } from '../types';
@@ -54,9 +54,12 @@ interface QuotationModuleProps {
  // Called after a quotation is successfully converted into an invoice — navigates
  // to the Invoices List, mirroring the direct invoice-creation flow.
  onConverted: () => void;
+ // Reports whether the create/edit form has unsaved changes, for App.tsx's handleNavigate
+ // guard (see useDirtyGuard in hooks.ts).
+ onDirtyChange?: (dirty: boolean) => void;
 }
 
-export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPrintDoc, mode, editId, onDone, onEdit, onCreateNew, onConverted }: QuotationModuleProps) {
+export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPrintDoc, mode, editId, onDone, onEdit, onCreateNew, onConverted, onDirtyChange }: QuotationModuleProps) {
  const { t, isRTL, lang } = useTranslation(db);
  const currentUser = db.currentUser;
  // The branch an admin configured as this user's primary in Staff Permissions
@@ -122,6 +125,16 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  setFormCustomerId(defaultCust);
  setFormTaxSlabId(defaultTax);
  setFormBranchId(myPrimaryBranchId);
+ // Baseline for the unsaved-changes guard — built from these same local values, not the
+ // state variables (which haven't updated yet within this synchronous effect). formNotes/
+ // formDiscountPercentage/formItems aren't touched by this create-defaults effect, so
+ // their tracked baseline is just their own useState initial values.
+ markFormClean({
+   formDate: initialDate, formCustomerId: defaultCust, formTaxSlabId: defaultTax,
+   formBranchId: myPrimaryBranchId, formNotes: '', formDiscountPercentage: 0,
+   formItems: [{ description: '', unitCost: 0, quantity: 1, discountAmount: 0 }],
+ });
+ // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [mode, editId, db.selectedCompanyId, openMonth?.id, myPrimaryBranchId]);
 
  // Prefill the form once the record to edit has loaded from the server.
@@ -136,12 +149,19 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  setFormBranchId(q.branchId || '');
  setFormNotes(q.notes);
  setFormDiscountPercentage(q.discountPercentage || 0);
- setFormItems(q.items.map(item => ({
+ const mappedItems = q.items.map(item => ({
  description: item.description,
  unitCost: item.unitCost,
  quantity: item.quantity,
  discountAmount: item.discountAmount || 0
- })));
+ }));
+ setFormItems(mappedItems);
+ markFormClean({
+   formDate: q.date, formCustomerId: q.customerId, formTaxSlabId: q.taxSlabId,
+   formBranchId: q.branchId || '', formNotes: q.notes, formDiscountPercentage: q.discountPercentage || 0,
+   formItems: mappedItems,
+ });
+ // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [mode, editId, db.quotations]);
 
  React.useEffect(() => {
@@ -172,6 +192,20 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  const [formItems, setFormItems] = React.useState<Omit<QuotationItem, 'id'>[]>([
  { description: '', unitCost: 0, quantity: 1, discountAmount: 0 }
  ]);
+
+ const { isDirty: isQuotationFormDirty, markClean: markFormClean } = useDirtyGuard({
+   formDate, formCustomerId, formTaxSlabId, formBranchId, formNotes, formDiscountPercentage, formItems,
+ });
+
+ React.useEffect(() => {
+   if (view === 'create' || view === 'edit') onDirtyChange?.(isQuotationFormDirty);
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [isQuotationFormDirty, view]);
+
+ React.useEffect(() => {
+   return () => onDirtyChange?.(false);
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, []);
 
  // Autocomplete support
  const [activeAutocompleteIdx, setActiveAutocompleteIdx] = React.useState<number | null>(null);
@@ -318,8 +352,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
     };
 
     try {
-      const targetComp = db.selectedCompanyId;
-      const response = await fetch(`/api/transactions/quotations?companyId=${targetComp}`, {
+      const response = await fetch(`/api/transactions/quotations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ quotationData: qData })
@@ -332,6 +365,9 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
       
       triggerSuccess("Quotation saved successfully.");
       if (onRefreshDb) await onRefreshDb();
+      // Synchronously, before navigating away — see InvoiceModule.tsx's identical comment
+      // for why this can't just wait on the isDirty effect.
+      onDirtyChange?.(false);
       onDone();
     } catch (err: any) {
       triggerError(err.message);
@@ -340,11 +376,10 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
 
  const handleStatusChange = async (qId: string, newStatus: Quotation['status']) => {
   try {
-    const targetComp = db.selectedCompanyId;
     const q = db.quotations.find(x => x.id === qId);
     if (!q) return;
 
-    const response = await fetch(`/api/transactions/quotations/${qId}?companyId=${targetComp}`, {
+    const response = await fetch(`/api/transactions/quotations/${qId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -379,8 +414,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  // handleStatusChange(qId, 'Cancelled') generic-PUT approach.
  const handleCancelQuotation = async (qId: string) => {
   try {
-    const targetComp = db.selectedCompanyId;
-    const response = await fetch(`/api/transactions/quotations/${qId}/cancel?companyId=${targetComp}`, {
+    const response = await fetch(`/api/transactions/quotations/${qId}/cancel`, {
       method: 'POST',
     });
 
@@ -448,8 +482,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  }
 
   try {
-    const targetComp = db.selectedCompanyId;
-    const response = await fetch(`/api/transactions/quotations/${convertingQ.id}/convert?companyId=${targetComp}`, {
+    const response = await fetch(`/api/transactions/quotations/${convertingQ.id}/convert`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

@@ -586,7 +586,16 @@ export const SEED_TRANSLATIONS: TranslationItem[] = [
 
 export const INITIAL_DB: DatabaseState = {
   companies: SEED_COMPANIES,
-  selectedCompanyId: SEED_COMPANIES[0].id,
+  // Deliberately empty, not SEED_COMPANIES[0].id — App.tsx's post-login merge treats a
+  // falsy selectedCompanyId as "no real selection yet" and pins a super-admin to their
+  // actual home company on first load; a truthy seed placeholder here defeated that check
+  // permanently (a super-admin's selectedCompanyId was silently stuck on this seed
+  // company forever, since it's never falsy), which any downstream client-side filter
+  // keyed off db.selectedCompanyId (e.g. getActiveOpenMonth/getOpenMonths) then silently
+  // used instead of the real, correctly-server-scoped data. Confirmed live: a super-admin
+  // saw "No Active Fiscal Month Detected" on login despite a real open month existing,
+  // until manually switching companies overwrote this with a real value.
+  selectedCompanyId: '',
   users: SEED_USERS,
   currentUser: SEED_USERS[0],
   companySetup: SEED_COMPANIES[0],

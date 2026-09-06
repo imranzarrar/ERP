@@ -934,11 +934,26 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
 }));
 
 // Owned by the `connect-pg-simple` session-store library, not app-generated —
-// intentionally excluded from the UUID migration.
+// intentionally excluded from the UUID migration. `sid`/`sess`/`expire` are the only
+// columns that library's own queries ever read or write (its INSERT/UPDATE statements
+// name columns explicitly), so the three columns below are safe app-level additions
+// piggybacking on the same row — connect-pg-simple neither knows about nor touches them.
+// Populated at login and refreshed on each authenticated request (see server.ts's
+// isAuthenticated/login-route session-lifecycle comments); used by the admin "active
+// sessions" list/revoke feature (server/routes/sessions.ts) to avoid parsing the opaque
+// `sess` JSON blob for every row on every list request.
 export const user_sessions = pgTable('user_sessions', {
   sid: text('sid').primaryKey(),
   sess: jsonb('sess').notNull(),
   expire: timestamp('expire', { precision: 6, mode: 'date' }).notNull(),
+  // `onDelete: 'cascade'` deliberately — a session for a deleted user/company is
+  // meaningless, and without this, deleting a user with any stale-but-unexpired session
+  // row (a real login some test/admin action never explicitly logged out of) throws a FK
+  // violation instead of succeeding. Confirmed live: without cascade, several existing
+  // tests' own afterAll user-cleanup broke the moment these columns were added.
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  companyId: uuid('company_id').references(() => companies.id, { onDelete: 'cascade' }),
+  lastActivity: timestamp('last_activity', { mode: 'date' }),
 });
 
 // Pure append-only log table — no benefit from unguessable/client-generated ids and

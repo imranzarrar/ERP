@@ -1,5 +1,5 @@
 import React from 'react';
-import { useTranslation } from '../hooks';
+import { useTranslation, useDirtyGuard } from '../hooks';
 // from 'react';
 import { DatabaseState, saveDatabase, getActiveOpenMonth, isDateInOpenMonth, getDefaultTaxSlabId, calculateInvoiceTotals } from '../dbStore';
 import { generateId } from '../id';
@@ -61,9 +61,13 @@ interface InvoiceModuleProps {
  // save (replacing the old auto-open-print-modal behavior) and by the list row's own
  // View link.
  onViewInvoice: (id: string) => void;
+ // Reports whether the create form has unsaved changes, for App.tsx's handleNavigate
+ // guard (see useDirtyGuard in hooks.ts). Not relevant to 'list' mode — there's no form
+ // to lose there.
+ onDirtyChange?: (dirty: boolean) => void;
 }
 
-export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrintDoc, mode, onDone, onCreateNew, onViewInvoice }: InvoiceModuleProps) {
+export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrintDoc, mode, onDone, onCreateNew, onViewInvoice, onDirtyChange }: InvoiceModuleProps) {
  const { t, isRTL, lang } = useTranslation(db);
  const currentUser = db.currentUser;
  // The branch an admin configured as this user's primary in Staff Permissions
@@ -149,14 +153,27 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  const defaultCust = db.customers.find(c => c.isSystem && (c.companyId === db.selectedCompanyId || !c.companyId))?.id || db.customers.find(c => c.companyId === db.selectedCompanyId || !c.companyId)?.id || '';
  const defaultTax = getDefaultTaxSlabId(db);
  const defaultBank = db.banks.find(b => b.isDefault && b.companyId === db.selectedCompanyId)?.id || db.banks.find(b => b.companyId === db.selectedCompanyId)?.id || '';
+ const defaultItems = [{ description: '', unitCost: 0, quantity: 1, discountAmount: 0, taxSlabId: defaultTax }];
  setFormDate(initialDate);
  setFormCustomerId(defaultCust);
  setFormTaxSlabId(defaultTax);
  setFormBankId(defaultBank);
- setFormItems([{ description: '', unitCost: 0, quantity: 1, discountAmount: 0, taxSlabId: defaultTax }]);
+ setFormItems(defaultItems);
  setFormBranchId(myPrimaryBranchId);
  setFormAmountPaidNow('');
+ // Baseline for the unsaved-changes guard below — built from these same local values
+ // (not the state variables, which haven't updated yet within this synchronous effect)
+ // so the very first render after auto-population never reads as "dirty". formWarehouseId
+ // is deliberately excluded — it's re-derived by its own effect after formBranchId settles
+ // (see resolvedDefaultWarehouseId above), which would otherwise race this snapshot.
+ markFormClean({
+   formDate: initialDate, formCustomerId: defaultCust, formTaxSlabId: defaultTax, formBankId: defaultBank,
+   formPaymentStatus: 'Paid', formAmountPaidNow: '', formNotes: '', formAttachmentUrl: '',
+   formDiscountPercentage: 0, formItems: defaultItems, formBranchId: myPrimaryBranchId,
+   formSalesAssociateId: '',
+ });
  }
+ // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [db.selectedCompanyId, openMonth?.id, myPrimaryBranchId]);
 
  const triggerError = (msg: string) => {
@@ -241,6 +258,24 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
    }
    // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [formBranchId]);
+
+ const { isDirty: isInvoiceFormDirty, markClean: markFormClean } = useDirtyGuard({
+   formDate, formCustomerId, formTaxSlabId, formBankId, formPaymentStatus, formAmountPaidNow, formNotes,
+   formAttachmentUrl, formDiscountPercentage, formItems, formBranchId, formSalesAssociateId,
+ });
+
+ React.useEffect(() => {
+   if (view === 'create') onDirtyChange?.(isInvoiceFormDirty);
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [isInvoiceFormDirty, view]);
+
+ React.useEffect(() => {
+   // Clears the parent's dirty flag the moment this form unmounts (navigating away via
+   // any path, not just the tracked fields), so a stale "dirty" state can never leak into
+   // whichever screen renders next.
+   return () => onDirtyChange?.(false);
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, []);
 
  // Autocomplete support
  const [activeAutocompleteIdx, setActiveAutocompleteIdx] = React.useState<number | null>(null);
@@ -397,7 +432,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  // even been made.
  setIsSavingInvoice(true);
  try {
-   const response = await fetch(`/api/transactions/invoices?companyId=${db.selectedCompanyId}`, {
+   const response = await fetch(`/api/transactions/invoices`, {
      method: 'POST',
      headers: { 'Content-Type': 'application/json' },
      body: JSON.stringify({ invoiceData })
@@ -420,6 +455,11 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
 
    const newInv = refreshed.invoices?.find((i: Invoice) => i.id === result.invoiceId);
    triggerSuccess(`Invoice ${newInv?.invoiceNumber || ''} issued successfully.`);
+   // Clear the unsaved-changes flag synchronously, before navigating away below —
+   // onDirtyChange's own effect wouldn't fire until after this render, which would be too
+   // late and would wrongly trigger App.tsx's "unsaved changes" prompt right after a
+   // successful save.
+   onDirtyChange?.(false);
 
    if (newInv) {
      // Finalized creation flow: land on the invoice's dedicated View screen (Print,
