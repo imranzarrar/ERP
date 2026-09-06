@@ -2197,3 +2197,36 @@ Follow-up to item 101, which deliberately scoped the first pass to Invoice/Quota
 - `src/components/MasterEntities.tsx` — six-sub-tab combined dirty-guard
 - `src/components/InventoryModule.tsx` — eight-document-type dirty-guard, `confirmDiscard` helper, 14 guarded Cancel/Close buttons
 - `src/App.tsx` — `onDirtyChange` wiring for both
+
+---
+
+## 104. Public Company Onboarding — Self-Signup, Admin Approval, Role Templates (Sep 2026)
+
+Previously, onboarding a new tenant required a super-admin to manually create the company (Admin Settings → Companies Directory) and then separately create its first user by hand — no self-service path existed, and company creation didn't even auto-create a user. Added a public, unauthenticated signup form; the admin reviews a queue and approves/rejects; approval atomically creates the company, its usual starter resources, and the requester's own user account.
+
+**Role Templates — a new, deliberately cross-tenant concept.** At approval time the admin picks either "Full Company Admin" access (`role:'admin'`, bypasses all granular checks) or a specific **Role Template** — a reusable, admin-curated permission set NOT tied to any one company (new `roleTemplates` table, no `companyId` at all, unlike `roles` whose `companyId` is `NOT NULL`). Template mode clones it into a brand-new `roles` row scoped to the new company and assigns it via the existing `userRoles` mechanism. Deliberate, surfaced-in-the-UI limitation: Roles CRUD (`server/routes/roles.ts`) has no delegable permission leaf at all (admin-tier only), so a Role-Template user can never create/edit Roles for their own company later — only "Full Company Admin" unlocks that.
+
+**No plaintext password ever generated or emailed.** The approved user gets an unusable random bcrypt hash; the exact same `passwordResetTokens`/`sendPasswordResetEmail` mechanism `forgot-password` already uses is triggered immediately so they set their own password via a real, working link (verified end-to-end: the emailed link's token was consumed via the real `/api/auth/reset-password` route and the new password logged in successfully, both in an automated test and live in the browser).
+
+**Atomic, server-side provisioning.** The existing admin-driven company creation (`AdminSettings.tsx`'s `handleAddCompany`) does 6 sequential client-side `fetch()` calls with no transaction — acceptable there, but a public approval action must never end up "half provisioned." Extracted `server/lib/companyProvisioning.ts`'s `provisionStarterResources()` (direct `tx.insert()`s inside one `db.transaction`, same payload shapes as `handleAddCompany`) and reused it. **Along the way, found and fixed a real, pre-existing gap this surfaced**: neither this new flow nor the existing `handleAddCompany` ever created a default tax slab — a brand-new company had zero VAT options until someone added one by hand. Added a "Standard VAT" (15%, `isDefault: true`) slab to the new provisioning helper; `handleAddCompany` itself was left as explicitly out of scope for this session (flagged to the user, not fixed).
+
+**Public-route hardening** (first public POST in this app that writes anything beyond login/password-reset): honeypot field (silently accepted-and-dropped, same generic response either way — no signal to a bot about why), a plain in-process sliding-window rate limiter (5/hour/IP, no new dependency), every field length-capped, the same email-regex validation `users.ts` already uses, and the response never distinguishes success/honeypot/rate-limited/error — matching `forgot-password`'s own account-enumeration-safe convention exactly.
+
+**A second, unrelated data-isolation class closed as a direct consequence.** `roleTemplates`/`companyOnboardingRequests` are genuinely global/cross-tenant tables — `server.ts`'s `GET /api/state` handler spreads the full unfiltered state and only *overrides* specific keys per-company (the exact shape that already caused real cross-tenant leaks twice before, items 64 and 94), so both new arrays were added to that override object as `isSuper ? state.X : []` from the start, verified by an automated test asserting a non-super-admin's `/api/state` response always gets `[]` for both.
+
+**A real, live bug found and fixed during manual verification, not caught by any automated test**: after a real browser approval, the Admin Settings "Onboarding Requests" list kept showing "No onboarding requests yet." even though the DB row and the raw `/api/state` JSON both had it — `src/App.tsx` hydrates `db` from two separate hand-maintained `setDb(prev => ({...prev, field: data.field || [] ...}))` merge blocks that don't spread `data` wholesale (a documented, recurring trap in this codebase — see BACKLOG history around `modifierGroups`); neither new field had been added to either block. Fixed by adding both fields to both blocks. This class of bug is invisible from the API/DB layer alone — only a real browser check against a live login caught it, which is exactly why the verification plan for this feature insisted on one.
+
+**Verified**: `tsc --noEmit`, `check:isolation`, and the full suite (374/374, 17 new) all clean. New `tests/companyOnboarding.test.ts` covers submission validation/honeypot/rate-limiting, admin list/approve/reject auth boundaries (401/403), both approval modes end-to-end (company + all 6 starter resources + tax slab + user + optional cloned Role, with a real password-reset-and-login round trip), double-approval/double-rejection rejection, and the `/api/state` leak guard. Also manually walked through live: submitted via `?onboard=1`, approved from a real super-admin session, confirmed the new company/user/starter-resources/reset-token all exist correctly in Postgres.
+
+### Critical files
+- `src/db/schema.ts` — `roleTemplates`, `companyOnboardingRequests` tables
+- `server/lib/companyProvisioning.ts` (new) — atomic starter-resource helper, now including the tax-slab fix
+- `server/lib/mailer.ts` — 3 new send functions
+- `server/routes/onboarding.ts` (new) — public submission + admin list/approve/reject
+- `server/routes/roleTemplates.ts` (new)
+- `server.ts` — public route registration, `/api/state` leak guard
+- `src/db/apiState.ts` — wires both new tables into `getFullState()`
+- `src/App.tsx` — `?onboard=1` entry point (mirrors `resetToken`), pending-count sidebar badge, **both** `setDb` merge blocks
+- `src/components/CompanyOnboardingScreen.tsx` (new)
+- `src/components/AdminSettings.tsx` — 'onboarding' + 'roleTemplates' tabs
+- `tests/companyOnboarding.test.ts` (new)

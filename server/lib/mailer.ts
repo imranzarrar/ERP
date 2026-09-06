@@ -60,3 +60,75 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string, usern
     `,
   });
 }
+
+// Fired the moment a new company-onboarding request is submitted (server/routes/
+// onboarding.ts's public POST) — sent to every super-admin with an email on file, not a
+// single fixed address, so this keeps working with no extra config as super-admins come
+// and go. Best-effort/fire-and-forget by every caller — a mail failure must never block
+// the public submission itself from succeeding.
+export async function sendOnboardingReceivedEmail(toAdmins: string[], request: { companyName: string; contactName: string; contactEmail: string }): Promise<void> {
+  const config = getSmtpConfig();
+  if (!config || toAdmins.length === 0) return;
+  const transporter = getTransporter();
+  await transporter.sendMail({
+    from: config.from,
+    to: toAdmins.join(','),
+    subject: `New company onboarding request: ${request.companyName}`,
+    text: `A new company onboarding request was submitted.\n\nCompany: ${request.companyName}\nContact: ${request.contactName} (${request.contactEmail})\n\nReview it in Admin Settings > Onboarding Requests.`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color: #1e1b4b;">New company onboarding request</h2>
+        <p><strong>Company:</strong> ${request.companyName}</p>
+        <p><strong>Contact:</strong> ${request.contactName} (${request.contactEmail})</p>
+        <p style="color:#64748b;font-size:12px;">Review it in Admin Settings &gt; Onboarding Requests.</p>
+      </div>
+    `,
+  });
+}
+
+// Fired once an onboarding request is approved and the new user's password-reset token
+// has been issued — this is the ONLY way the new user ever gets access; no plaintext
+// password is ever generated or emailed (see server/routes/onboarding.ts).
+export async function sendOnboardingApprovedEmail(to: string, resetUrl: string, companyName: string): Promise<void> {
+  const config = getSmtpConfig();
+  if (!config) throw new Error('SMTP is not configured (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD missing from environment).');
+  const transporter = getTransporter();
+  await transporter.sendMail({
+    from: config.from,
+    to,
+    subject: `Your company account "${companyName}" is ready`,
+    text: `Good news — "${companyName}" has been approved and your account is ready.\n\nSet your password to get started. This link expires in 1 hour and can only be used once.\n\n${resetUrl}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color: #1e1b4b;">Your account is ready</h2>
+        <p>Good news — <strong>${companyName}</strong> has been approved and your account is ready.</p>
+        <p>Set your password to get started. This link expires in <strong>1 hour</strong> and can only be used once.</p>
+        <p style="margin: 24px 0;">
+          <a href="${resetUrl}" style="background:#4f46e5;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Set Your Password</a>
+        </p>
+      </div>
+    `,
+  });
+}
+
+export async function sendOnboardingRejectedEmail(to: string, companyName: string, reason?: string): Promise<void> {
+  const config = getSmtpConfig();
+  if (!config) throw new Error('SMTP is not configured (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD missing from environment).');
+  const transporter = getTransporter();
+  const reasonText = reason ? `\n\nReason: ${reason}` : '';
+  const reasonHtml = reason ? `<p><strong>Reason:</strong> ${reason}</p>` : '';
+  await transporter.sendMail({
+    from: config.from,
+    to,
+    subject: `Update on your "${companyName}" account request`,
+    text: `Thanks for your interest in setting up "${companyName}". After review, we're not able to proceed with this request at this time.${reasonText}\n\nIf you have questions, feel free to reach out to us directly.`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color: #1e1b4b;">Update on your account request</h2>
+        <p>Thanks for your interest in setting up <strong>${companyName}</strong>. After review, we're not able to proceed with this request at this time.</p>
+        ${reasonHtml}
+        <p style="color:#64748b;font-size:12px;">If you have questions, feel free to reach out to us directly.</p>
+      </div>
+    `,
+  });
+}

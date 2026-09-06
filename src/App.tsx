@@ -23,6 +23,7 @@ import InventoryReportsModule from './components/InventoryReportsModule';
 import LoginScreen from './components/LoginScreen';
 import warraqMark from './assets/warraq-mark.svg';
 import ResetPasswordScreen from './components/ResetPasswordScreen';
+import CompanyOnboardingScreen from './components/CompanyOnboardingScreen';
 import InventoryModule from './components/InventoryModule';
 import EmployeesModule from './components/EmployeesModule';
 import ModifierGroupsModule from './components/ModifierGroupsModule';
@@ -79,6 +80,10 @@ export default function App() {
  // branch below so it works the same way regardless of whether a stale session happens
  // to still be present in this browser.
  const [resetToken, setResetToken] = React.useState<string | null>(() => new URLSearchParams(window.location.search).get('resetToken'));
+ // Public company-onboarding signup (?onboard=1) — reached the exact same way
+ // resetToken is: a query param checked before the login gate, no real router needed,
+ // since this SPA has none. See server/routes/onboarding.ts for the route this posts to.
+ const [onboard, setOnboard] = React.useState<string | null>(() => new URLSearchParams(window.location.search).get('onboard'));
 
  React.useEffect(() => {
   if (!sessionUserId) {
@@ -131,6 +136,12 @@ export default function App() {
     const merged = {
       ...prev,
       companies,
+      // See src/db/schema.ts's roleTemplates/companyOnboardingRequests comments — both
+      // are global/cross-tenant, already hard-emptied server-side (server.ts's /api/state
+      // filteredState) for anyone but a real super-admin, so no client-side filtering
+      // needed here, unlike every company-scoped field below.
+      roleTemplates: data.roleTemplates || [],
+      companyOnboardingRequests: data.companyOnboardingRequests || [],
       users,
       quotations: data.quotations || [],
       invoices: data.invoices || [],
@@ -242,6 +253,11 @@ export default function App() {
             const merged = {
               ...prev,
               companies,
+              // See the matching comment in the initial-load effect above — same gap,
+              // same fix: both are global/cross-tenant and already hard-emptied
+              // server-side for anyone but a real super-admin.
+              roleTemplates: data.roleTemplates || [],
+              companyOnboardingRequests: data.companyOnboardingRequests || [],
               users,
               quotations: data.quotations || [],
               invoices: data.invoices || [],
@@ -493,6 +509,22 @@ export default function App() {
     );
   }
 
+  if (onboard) {
+    return (
+      <CompanyOnboardingScreen
+        lang={preLoginLang}
+        onLangChange={handlePreLoginLangChange}
+        db={db}
+        onBackToLogin={() => {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('onboard');
+          window.history.replaceState({}, '', url.toString());
+          setOnboard(null);
+        }}
+      />
+    );
+  }
+
   if (!dbLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-indigo-50/30">
@@ -535,6 +567,13 @@ export default function App() {
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.isSuperAdmin === true;
   const isSuperAdmin = currentUser?.isSuperAdmin === true;
+  // Pending company-onboarding requests needing review — super-admin only, since only a
+  // super-admin can act on them (server/routes/onboarding.ts). GET /api/state already
+  // hard-empties this array for anyone else (server.ts), so this is safe even before the
+  // isSuperAdmin check below.
+  const pendingOnboardingCount = isSuperAdmin
+    ? (db.companyOnboardingRequests || []).filter((r: any) => r.status === 'Pending').length
+    : 0;
   const { can } = usePermissions(currentUser);
   // A nav entry can require any ONE of several permissions (e.g. the Settings shell is
   // reachable if the actor holds *any* delegable settings-adjacent permission, not one
@@ -1197,6 +1236,11 @@ type NavSection = {
                               {isSubItemSelected && (
                                 <span className="absolute -top-0.5 -end-0.5 w-2.5 h-2.5 bg-amber-400 rounded-full border-2 border-indigo-950" />
                               )}
+                              {item.id === 'settings' && pendingOnboardingCount > 0 && (
+                                <span className="absolute -top-1 -end-1 min-w-[16px] h-4 px-1 bg-rose-500 text-white text-[9px] font-bold rounded-full border-2 border-indigo-950 flex items-center justify-center">
+                                  {pendingOnboardingCount > 9 ? '9+' : pendingOnboardingCount}
+                                </span>
+                              )}
                             </button>
                           </div>
                         );
@@ -1225,6 +1269,11 @@ type NavSection = {
                             <div className="flex items-center gap-2.5 min-w-0">
                               <Icon className={`w-4 h-4 shrink-0 ${(isSelected || isSubItemSelected) ? 'text-indigo-300' : 'text-slate-500'}`} />
                               <span className="truncate">{item.label}</span>
+                              {item.id === 'settings' && pendingOnboardingCount > 0 && (
+                                <span className="shrink-0 min-w-[16px] h-4 px-1 bg-rose-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                                  {pendingOnboardingCount > 9 ? '9+' : pendingOnboardingCount}
+                                </span>
+                              )}
                             </div>
                             {actualHasSubItems && (
                               <ChevronDown className={`w-3.5 h-3.5 text-slate-500 shrink-0 transition-transform ${isGroupExpanded ? 'rotate-180' : ''}`} />

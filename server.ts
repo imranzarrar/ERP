@@ -34,6 +34,8 @@ import branchesRouter from './server/routes/branches.js';
 import taxReturnsRouter from './server/routes/taxReturns.js';
 import employeesRouter from './server/routes/employees.js';
 import sessionsRouter from './server/routes/sessions.js';
+import roleTemplatesRouter from './server/routes/roleTemplates.js';
+import { publicRouter as onboardingPublicRouter, adminRouter as onboardingAdminRouter } from './server/routes/onboarding.js';
 
 // A user's effective permissions come from every Role assigned to them (see the
 // `userRoles` junction table in src/db/schema.ts), not a per-user column — this is the
@@ -599,6 +601,11 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  // Public company-onboarding submission — the one write endpoint in this app reachable
+  // with no session at all besides login/password-reset. See server/routes/onboarding.ts
+  // for its own input validation/honeypot/rate-limit hardening.
+  app.use('/api', onboardingPublicRouter);
+
   // Protect remaining routes
   app.use('/api', isAuthenticated);
 
@@ -844,6 +851,8 @@ async function startServer() {
   app.use('/api', taxReturnsRouter);
   app.use('/api', employeesRouter);
   app.use('/api', sessionsRouter);
+  app.use('/api', onboardingAdminRouter);
+  app.use('/api/role-templates', roleTemplatesRouter);
   app.use('/api/users', usersRouter);
   app.use('/api/roles', rolesRouter);
   app.use('/api/transactions', transactionsRouter);
@@ -1091,6 +1100,12 @@ async function startServer() {
       const filteredState = {
         ...state,
         companies: isSuper ? state.companies : state.companies.filter((c: any) => c.id === companyId),
+        // Cross-tenant/platform-level data, same reasoning as `companies` above — a
+        // super-admin manages these across every tenant; a company-scoped user has no
+        // business seeing another tenant's pending signups or the shared template
+        // library, so both are hard-emptied for anyone who isn't a real super-admin.
+        roleTemplates: isSuper ? (state.roleTemplates || []) : [],
+        companyOnboardingRequests: isSuper ? (state.companyOnboardingRequests || []) : [],
         templates: state.templates.filter((t: any) => t.companyId === companyId),
         products: state.products.filter((p: any) => p.companyId === companyId),
         customers: state.customers.filter((c: any) => c.companyId === companyId),

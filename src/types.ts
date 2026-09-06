@@ -24,6 +24,43 @@ export interface Role {
   createdAt?: string;
 }
 
+// Cross-tenant by design, unlike Role above (whose companyId is required) — a reusable,
+// platform-curated permission set NOT tied to any single company. Cloned into a brand-new
+// company's own Role at company-onboarding-approval time (server/routes/onboarding.ts),
+// since a just-created company has no Roles of its own to pick from yet.
+export interface RoleTemplate {
+  id: string;
+  name: string;
+  description?: string | null;
+  permissions: UserPermissions;
+  createdAt?: string;
+}
+
+// A prospective customer's public self-signup submission (src/components/
+// CompanyOnboardingScreen.tsx posts to POST /api/onboarding-requests, no session). Cross-
+// tenant by design — submitted before any company/user exists — visible only to a
+// super-admin (server.ts's GET /api/state hard-empties this for anyone else).
+export interface CompanyOnboardingRequest {
+  id: string;
+  companyName: string;
+  companyEmail: string;
+  companyPhone?: string | null;
+  companyAddress?: string | null;
+  vatNumber?: string | null;
+  crNumber?: string | null;
+  currency?: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone?: string | null;
+  notes?: string | null;
+  status: 'Pending' | 'Approved' | 'Rejected';
+  reviewedById?: string | null;
+  reviewedAt?: string | null;
+  rejectionReason?: string | null;
+  createdCompanyId?: string | null;
+  createdAt?: string;
+}
+
 // Row of the userRoles many-to-many junction table.
 export interface UserRoleAssignment {
   userId: string;

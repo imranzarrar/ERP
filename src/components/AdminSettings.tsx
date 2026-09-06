@@ -39,7 +39,7 @@ import {
  Sliders,
  ShoppingCart,
  ShieldCheck,
- Shield, MapPin, Hash, FileCheck, Monitor, LogOut} from 'lucide-react';
+ Shield, MapPin, Hash, FileCheck, Monitor, LogOut, Inbox, Layers} from 'lucide-react';
 import { ensureCompatibleImage } from '../imageUtils';
 import { DEFAULT_DOCUMENT_LAYOUT, DETAILED_TAX_INVOICE_LAYOUT, COL_SPAN_MD, COL_SPAN_PRINT } from '../documentTemplateDefaults';
 import { XMLParser } from 'fast-xml-parser';
@@ -310,6 +310,8 @@ const CATEGORY_GROUPS: { id: string; label: string; icon: any; subTabs: Settings
     icon: Building,
     subTabs: [
       { id: 'companies', label: 'Companies Directory', icon: Building, superAdminOnly: true },
+      { id: 'onboarding', label: 'Onboarding Requests', icon: Inbox, superAdminOnly: true },
+      { id: 'roleTemplates', label: 'Role Templates', icon: Layers, superAdminOnly: true },
       { id: 'company', label: 'Company Profile', icon: Settings, requiredPermission: 'companyProfile.read' },
       { id: 'zatca', label: 'ZATCA Phase 2 E-Invoicing', icon: ShieldCheck, adminOnly: true },
       { id: 'banks', label: 'Bank Accounts', icon: Wallet, requiredPermission: 'banks.read' },
@@ -2198,6 +2200,118 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
     }
   };
 
+  // --- Role Templates: a cross-tenant, admin-curated permission-set library (unlike
+  // Roles above, which are always scoped to one company) — cloned into a brand-new
+  // company's own Roles at onboarding-approval time. Same editor shape as Roles, just
+  // pointed at /api/role-templates.
+  const [confirmDeleteRoleTemplateId, setConfirmDeleteRoleTemplateId] = React.useState<string | null>(null);
+  const [roleTemplateForm, setRoleTemplateForm] = React.useState<{ id: string | null; name: string; description: string; permissions: any }>({
+    id: null, name: '', description: '', permissions: {}
+  });
+
+  const handleSaveRoleTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!roleTemplateForm.name.trim()) return triggerError('Template name is required.');
+    try {
+      const resp = await fetch('/api/role-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: roleTemplateForm.id,
+          name: roleTemplateForm.name.trim(),
+          description: roleTemplateForm.description.trim() || null,
+          permissions: roleTemplateForm.permissions,
+        })
+      });
+      const result = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        return triggerError(result.error || 'Failed to save role template.');
+      }
+      triggerSuccess(roleTemplateForm.id ? 'Role template updated successfully.' : 'Role template created successfully.');
+      setRoleTemplateForm({ id: null, name: '', description: '', permissions: {} });
+      if (onRefreshDb) await onRefreshDb();
+    } catch (err: any) {
+      triggerError('Failed to save role template: ' + err.message);
+    }
+  };
+
+  const handleDeleteRoleTemplate = async (id: string) => {
+    try {
+      const resp = await fetch(`/api/role-templates/${id}`, { method: 'DELETE' });
+      const result = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        return triggerError(result.error || 'Failed to delete role template.');
+      }
+      triggerSuccess('Role template removed.');
+      setConfirmDeleteRoleTemplateId(null);
+      if (onRefreshDb) await onRefreshDb();
+    } catch (err: any) {
+      triggerError('Failed to delete role template: ' + err.message);
+    }
+  };
+
+  // --- Company Onboarding Requests: review/approve/reject a public signup
+  // (src/components/CompanyOnboardingScreen.tsx). Approve atomically creates the
+  // company + starter resources + user server-side (server/routes/onboarding.ts).
+  const [reviewingRequestId, setReviewingRequestId] = React.useState<string | null>(null);
+  const [approvalMode, setApprovalMode] = React.useState<'admin' | 'template'>('admin');
+  const [approvalTemplateId, setApprovalTemplateId] = React.useState('');
+  const [rejectingRequestId, setRejectingRequestId] = React.useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = React.useState('');
+  const [onboardingActionLoading, setOnboardingActionLoading] = React.useState(false);
+
+  const handleApproveOnboarding = async (id: string) => {
+    if (approvalMode === 'template' && !approvalTemplateId) {
+      return triggerError('Select a role template first.');
+    }
+    setOnboardingActionLoading(true);
+    try {
+      const resp = await fetch(`/api/admin/onboarding-requests/${id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: approvalMode, roleTemplateId: approvalMode === 'template' ? approvalTemplateId : undefined })
+      });
+      const result = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        return triggerError(result.error || 'Failed to approve this request.');
+      }
+      triggerSuccess(result.emailSent
+        ? 'Company approved — the new user has been emailed a link to set their password.'
+        : `Company approved. Email isn't configured on this server, so share this set-password link with them yourself: ${result.resetUrl}`);
+      setReviewingRequestId(null);
+      setApprovalMode('admin');
+      setApprovalTemplateId('');
+      if (onRefreshDb) await onRefreshDb();
+    } catch (err: any) {
+      triggerError('Failed to approve this request: ' + err.message);
+    } finally {
+      setOnboardingActionLoading(false);
+    }
+  };
+
+  const handleRejectOnboarding = async (id: string) => {
+    setOnboardingActionLoading(true);
+    try {
+      const resp = await fetch(`/api/admin/onboarding-requests/${id}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: rejectionReason.trim() || undefined })
+      });
+      const result = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        return triggerError(result.error || 'Failed to reject this request.');
+      }
+      triggerSuccess('Request rejected.');
+      setRejectingRequestId(null);
+      setRejectionReason('');
+      if (onRefreshDb) await onRefreshDb();
+    } catch (err: any) {
+      triggerError('Failed to reject this request: ' + err.message);
+    } finally {
+      setOnboardingActionLoading(false);
+    }
+  };
+
  const handleAddUser = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!userForm.username.trim()) return triggerError('Username is required.');
@@ -2967,8 +3081,257 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  </div>
  )}
 
+ {/* TAB: COMPANY ONBOARDING REQUESTS */}
+ {activeTab === 'onboarding' && (
+ <div className="space-y-6 animate-fade-in">
+ <div>
+ <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">{t('Onboarding Requests')}</h3>
+ <p className="text-[11px] text-slate-400 mt-0.5">{t('Public company signup requests (submitted via the ?onboard=1 link). Approving one atomically creates the company, its starter resources, and a user account for the requester.')}</p>
+ </div>
+
+ {successMsg && (
+ <div className="p-3 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-100 text-xs font-semibold">{successMsg}</div>
+ )}
+ {errorMsg && (
+ <div className="p-3 bg-rose-50 text-rose-700 rounded-2xl border border-rose-100 text-xs font-semibold break-all">{errorMsg}</div>
+ )}
+
+ <div className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+ <table className="w-full text-xs">
+ <thead>
+ <tr className="bg-slate-50 text-slate-500">
+ <th className="p-3 text-start">{t('Company')}</th>
+ <th className="p-3 text-start">{t('Contact')}</th>
+ <th className="p-3 text-start">{t('Submitted')}</th>
+ <th className="p-3 text-center">{t('Status')}</th>
+ <th className="p-3 text-end">{t('Actions')}</th>
+ </tr>
+ </thead>
+ <tbody>
+ {(db.companyOnboardingRequests || []).length === 0 ? (
+ <tr><td colSpan={5} className="p-6 text-center text-slate-400">{t('No onboarding requests yet.')}</td></tr>
+ ) : (db.companyOnboardingRequests || []).map(r => (
+ <React.Fragment key={r.id}>
+ <tr className="border-b border-slate-100 last:border-0">
+ <td className="p-3">
+ <p className="font-semibold text-slate-800">{r.companyName}</p>
+ <p className="text-[10px] text-slate-400">{r.companyEmail}</p>
+ </td>
+ <td className="p-3">
+ <p className="text-slate-700">{r.contactName}</p>
+ <p className="text-[10px] text-slate-400">{r.contactEmail}</p>
+ </td>
+ <td className="p-3 text-slate-500 font-mono text-[10px]">{r.createdAt ? new Date(r.createdAt).toLocaleString() : '-'}</td>
+ <td className="p-3 text-center">
+ <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${
+ r.status === 'Pending' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+ r.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+ 'bg-slate-100 text-slate-500 border-slate-200'
+ }`}>{r.status}</span>
+ </td>
+ <td className="p-3 text-end">
+ {r.status === 'Pending' && (
+ <div className="flex justify-end gap-3">
+ <button type="button" onClick={() => { setReviewingRequestId(reviewingRequestId === r.id ? null : r.id); setRejectingRequestId(null); }} className="text-[10px] font-bold text-indigo-600 hover:underline">{t('Approve')}</button>
+ <button type="button" onClick={() => { setRejectingRequestId(rejectingRequestId === r.id ? null : r.id); setReviewingRequestId(null); }} className="text-[10px] font-bold text-rose-600 hover:underline">{t('Reject')}</button>
+ </div>
+ )}
+ {r.status === 'Approved' && r.reviewedAt && (
+ <span className="text-[10px] text-slate-400">{t('Approved')} {new Date(r.reviewedAt).toLocaleDateString()}</span>
+ )}
+ {r.status === 'Rejected' && (
+ <span className="text-[10px] text-slate-400" title={r.rejectionReason || ''}>{t('Rejected')}</span>
+ )}
+ </td>
+ </tr>
+ {reviewingRequestId === r.id && (
+ <tr className="bg-indigo-50/40 border-b border-slate-100">
+ <td colSpan={5} className="p-4">
+ <div className="space-y-3">
+ <div className="flex flex-wrap items-center gap-4">
+ <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
+ <input type="radio" checked={approvalMode === 'admin'} onChange={() => setApprovalMode('admin')} />
+ {t('Full Company Admin access')}
+ </label>
+ <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
+ <input type="radio" checked={approvalMode === 'template'} onChange={() => setApprovalMode('template')} />
+ {t('Assign a Role Template')}
+ </label>
+ {approvalMode === 'template' && (
+ <select value={approvalTemplateId} onChange={(e) => setApprovalTemplateId(e.target.value)} className="bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500">
+ <option value="">{t('Choose template...')}</option>
+ {(db.roleTemplates || []).map(rt => (
+ <option key={rt.id} value={rt.id}>{rt.name}</option>
+ ))}
+ </select>
+ )}
+ </div>
+ {approvalMode === 'template' && (
+ <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-2.5">
+ {t('This user will NOT be able to create or edit Roles for their own company later — only a Company Admin or platform Super Admin can. Choose "Full Company Admin access" instead if that matters.')}
+ </p>
+ )}
+ <div className="flex gap-2">
+ <button type="button" disabled={onboardingActionLoading} onClick={() => handleApproveOnboarding(r.id)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-[10px] font-bold transition">
+ {onboardingActionLoading ? t('Working...') : t('Confirm Approval')}
+ </button>
+ <button type="button" onClick={() => setReviewingRequestId(null)} className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-xl text-[10px] font-bold transition">{t('Cancel')}</button>
+ </div>
+ </div>
+ </td>
+ </tr>
+ )}
+ {rejectingRequestId === r.id && (
+ <tr className="bg-rose-50/40 border-b border-slate-100">
+ <td colSpan={5} className="p-4">
+ <div className="space-y-3">
+ <textarea
+ value={rejectionReason}
+ onChange={(e) => setRejectionReason(e.target.value)}
+ placeholder={t('Optional reason (shown to the requester by email)')}
+ className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-rose-500"
+ rows={2}
+ />
+ <div className="flex gap-2">
+ <button type="button" disabled={onboardingActionLoading} onClick={() => handleRejectOnboarding(r.id)} className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl text-[10px] font-bold transition">
+ {onboardingActionLoading ? t('Working...') : t('Confirm Rejection')}
+ </button>
+ <button type="button" onClick={() => { setRejectingRequestId(null); setRejectionReason(''); }} className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-xl text-[10px] font-bold transition">{t('Cancel')}</button>
+ </div>
+ </div>
+ </td>
+ </tr>
+ )}
+ </React.Fragment>
+ ))}
+ </tbody>
+ </table>
+ </div>
+ </div>
+ )}
+
+ {/* TAB: ROLE TEMPLATES */}
+ {activeTab === 'roleTemplates' && (
+ <div className="space-y-6 animate-fade-in">
+ <div>
+ <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">{t('Role Templates')}</h3>
+ <p className="text-[11px] text-slate-400 mt-0.5">{t('A reusable, cross-company permission-set library — unlike ordinary Roles, these are not tied to any one company. Cloned into a brand-new company\'s own Roles when you approve an onboarding request in template mode.')}</p>
+ </div>
+
+ {successMsg && (
+ <div className="p-3 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-100 text-xs font-semibold">{successMsg}</div>
+ )}
+ {errorMsg && (
+ <div className="p-3 bg-rose-50 text-rose-700 rounded-2xl border border-rose-100 text-xs font-semibold">{errorMsg}</div>
+ )}
+
+ <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+ <div className="lg:col-span-5 space-y-4">
+ <form onSubmit={handleSaveRoleTemplate} className="bg-white border border-slate-200/60 rounded-2xl p-5 shadow-sm space-y-4">
+ <div className="flex items-center justify-between">
+ <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+ {roleTemplateForm.id ? t('Edit Template') : t('Create New Template')}
+ </h4>
+ {roleTemplateForm.id && (
+ <button
+ type="button"
+ onClick={() => setRoleTemplateForm({ id: null, name: '', description: '', permissions: {} })}
+ className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[9px] font-bold uppercase transition"
+ >
+ {t('Cancel Edit')}
+ </button>
+ )}
+ </div>
+
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Template Name')}</label>
+ <input
+ type="text"
+ required
+ placeholder={t('e.g. Sales Manager, Accountant')}
+ value={roleTemplateForm.name}
+ onChange={(e) => setRoleTemplateForm(prev => ({ ...prev, name: e.target.value }))}
+ className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold"
+ />
+ </div>
+
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Description')} ({t('optional')})</label>
+ <input
+ type="text"
+ placeholder={t('What is this template for?')}
+ value={roleTemplateForm.description}
+ onChange={(e) => setRoleTemplateForm(prev => ({ ...prev, description: e.target.value }))}
+ className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+ />
+ </div>
+
+ <PermissionTree
+ permissions={roleTemplateForm.permissions}
+ onChange={(updated) => setRoleTemplateForm(prev => ({ ...prev, permissions: updated }))}
+ t={t}
+ />
+
+ <button
+ type="submit"
+ className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl py-2 font-bold text-xs transition shadow-sm cursor-pointer"
+ >
+ {roleTemplateForm.id ? t('Update Template') : t('Create Template')}
+ </button>
+ </form>
+ </div>
+
+ <div className="lg:col-span-7 space-y-4">
+ <div className="bg-white border border-slate-200/60 rounded-2xl p-5 shadow-sm">
+ <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-4">
+ {t('Templates')} ({(db.roleTemplates || []).length})
+ </h4>
+ <div className="space-y-2.5">
+ {(db.roleTemplates || []).length === 0 && (
+ <p className="text-xs text-slate-400 italic py-6 text-center">{t('No role templates created yet.')}</p>
+ )}
+ {(db.roleTemplates || []).map(rt => (
+ <div key={rt.id} className="p-3 bg-slate-50 border border-slate-200/60 rounded-2xl flex items-center justify-between gap-3">
+ <div className="min-w-0">
+ <p className="text-xs font-bold text-slate-800 truncate">{rt.name}</p>
+ {rt.description && <p className="text-[10px] text-slate-400 truncate">{rt.description}</p>}
+ </div>
+ <div className="flex items-center gap-1.5 shrink-0">
+ <button
+ type="button"
+ onClick={() => setRoleTemplateForm({ id: rt.id, name: rt.name, description: rt.description || '', permissions: rt.permissions || {} })}
+ className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all cursor-pointer"
+ title={t('Edit template')}
+ >
+ <Edit2 className="w-3.5 h-3.5" />
+ </button>
+ {confirmDeleteRoleTemplateId === rt.id ? (
+ <>
+ <button type="button" onClick={() => handleDeleteRoleTemplate(rt.id)} className="px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-bold transition">{t('Confirm')}</button>
+ <button type="button" onClick={() => setConfirmDeleteRoleTemplateId(null)} className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg text-[10px] font-bold transition">{t('Cancel')}</button>
+ </>
+ ) : (
+ <button
+ type="button"
+ onClick={() => setConfirmDeleteRoleTemplateId(rt.id)}
+ className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+ title={t('Delete template')}
+ >
+ <Trash2 className="w-3.5 h-3.5" />
+ </button>
+ )}
+ </div>
+ </div>
+ ))}
+ </div>
+ </div>
+ </div>
+ </div>
+ </div>
+ )}
+
  {/* TAB: COMPANY */}
- 
+
         {activeTab === 'pos' && (() => {
           const activeCompany = db.companies.find(c => c.id === db.selectedCompanyId)!;
           const gridColumns = posDraft.gridColumns || 5;

@@ -34,6 +34,8 @@ import {
   Employee,
   ModifierGroup,
   Role,
+  RoleTemplate,
+  CompanyOnboardingRequest,
   UserRoleAssignment,
   PurchaseBill,
   PurchaseReturn,
@@ -52,6 +54,8 @@ export interface DatabaseState {
   selectedCompanyId: string;
   users: User[];
   roles?: Role[];
+  roleTemplates?: RoleTemplate[];
+  companyOnboardingRequests?: CompanyOnboardingRequest[];
   userRoles?: UserRoleAssignment[];
   branches?: Branch[];
   userBranches?: UserBranchAssignment[];

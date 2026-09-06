@@ -1,0 +1,339 @@
+import express from 'express';
+import crypto from 'crypto';
+import bcrypt from 'bcrypt';
+import { db } from '../../src/db/index.js';
+import * as schema from '../../src/db/schema.js';
+import { eq, and, isNotNull, desc } from 'drizzle-orm';
+import { isSuperAdminUser } from '../lib/authz.js';
+import { generateId } from '../../src/id.js';
+import { provisionStarterResources } from '../lib/companyProvisioning.js';
+import { isMailerConfigured, sendOnboardingReceivedEmail, sendOnboardingApprovedEmail, sendOnboardingRejectedEmail } from '../lib/mailer.js';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Two routers: `publicRouter` is mounted BEFORE isAuthenticated in server.ts (the same
+// pre-line-603 block as /api/auth/forgot-password) since this is the one write endpoint
+// in the whole app reachable with no session at all. `adminRouter` is mounted after, for
+// the review/approve/reject actions.
+export const publicRouter = express.Router();
+export const adminRouter = express.Router();
+
+function cap(value: any, maxLen: number): string {
+  return String(value || '').trim().slice(0, maxLen);
+}
+
+// Plain in-process sliding-window rate limiter — no new dependency, fine for this app's
+// single-VPS PM2 deployment (each cluster worker tracks its own window independently,
+// which only makes the effective limit slightly more generous under multiple workers,
+// never less safe). Pruned lazily on each check rather than a background timer.
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const RATE_LIMIT_MAX_PER_WINDOW = 5;
+const submissionTimestampsByIp = new Map<string, number[]>();
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const existing = (submissionTimestampsByIp.get(ip) || []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
+  if (existing.length >= RATE_LIMIT_MAX_PER_WINDOW) {
+    submissionTimestampsByIp.set(ip, existing);
+    return true;
+  }
+  existing.push(now);
+  submissionTimestampsByIp.set(ip, existing);
+  return false;
+}
+
+// --- Public: submit a new onboarding request ---
+publicRouter.post('/onboarding-requests', async (req: any, res) => {
+  // Never reveals anything about *why* a submission was dropped (honeypot, rate limit) —
+  // always the same generic success, matching forgot-password's own account-enumeration-
+  // safe convention. This is the one write endpoint in the app reachable with no session.
+  const genericResponse = { message: 'Thank you — your request has been received. We will be in touch shortly.' };
+
+  try {
+    // Honeypot: a field real browsers never fill in (hidden via CSS on the form, never
+    // shown to a human). A bot filling every field trips this; a real submitter can't.
+    if (String(req.body?.website || '').trim() !== '') {
+      return res.json(genericResponse);
+    }
+
+    const ip = String(req.ip || req.socket?.remoteAddress || 'unknown');
+    if (isRateLimited(ip)) {
+      return res.json(genericResponse);
+    }
+
+    const companyName = cap(req.body?.companyName, 200);
+    const companyEmail = cap(req.body?.companyEmail, 200).toLowerCase();
+    const contactName = cap(req.body?.contactName, 200);
+    const contactEmail = cap(req.body?.contactEmail, 200).toLowerCase();
+
+    if (!companyName || !contactName || !EMAIL_RE.test(companyEmail) || !EMAIL_RE.test(contactEmail)) {
+      return res.status(400).json({ error: 'Company name, a valid company email, contact name, and a valid contact email are all required.' });
+    }
+
+    const request = {
+      id: generateId(),
+      companyName,
+      companyEmail,
+      companyPhone: cap(req.body?.companyPhone, 50) || null,
+      companyAddress: cap(req.body?.companyAddress, 500) || null,
+      vatNumber: cap(req.body?.vatNumber, 50) || null,
+      crNumber: cap(req.body?.crNumber, 50) || null,
+      currency: cap(req.body?.currency, 10) || 'SAR',
+      contactName,
+      contactEmail,
+      contactPhone: cap(req.body?.contactPhone, 50) || null,
+      notes: cap(req.body?.notes, 2000) || null,
+      status: 'Pending' as const,
+    };
+
+    await db.insert(schema.companyOnboardingRequests).values(request);
+
+    // Fire-and-forget — a mail failure must never block the submission itself, matching
+    // forgot-password's own pattern exactly.
+    (async () => {
+      try {
+        if (!isMailerConfigured()) return;
+        const admins = await db.select({ email: schema.users.email })
+          .from(schema.users)
+          .where(and(eq(schema.users.isSuperAdmin, true), isNotNull(schema.users.email)));
+        const adminEmails = admins.map((a) => a.email).filter(Boolean) as string[];
+        await sendOnboardingReceivedEmail(adminEmails, request);
+      } catch (err: any) {
+        console.error('[Onboarding] Failed to send admin notification email:', err.message);
+      }
+    })();
+
+    res.json(genericResponse);
+  } catch (error: any) {
+    console.error('[Onboarding] Submission failed:', error.message);
+    // Still the generic response — an internal error must not leak detail to an
+    // unauthenticated caller either.
+    res.json(genericResponse);
+  }
+});
+
+// --- Admin: list requests ---
+adminRouter.get('/admin/onboarding-requests', async (req: any, res) => {
+  try {
+    if (!isSuperAdminUser(req.user)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const requests = await db.select().from(schema.companyOnboardingRequests)
+      .orderBy(desc(schema.companyOnboardingRequests.createdAt));
+    res.json(requests);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Admin: approve — atomically creates the company, its starter resources, the new
+// user, and (in template mode) a cloned Role, all in one transaction. ---
+adminRouter.post('/admin/onboarding-requests/:id/approve', async (req: any, res) => {
+  try {
+    if (!isSuperAdminUser(req.user)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { id } = req.params;
+    const mode: 'admin' | 'template' = req.body?.mode === 'template' ? 'template' : 'admin';
+    const roleTemplateId = req.body?.roleTemplateId;
+    if (mode === 'template' && !roleTemplateId) {
+      return res.status(400).json({ error: 'roleTemplateId is required when mode is "template".' });
+    }
+
+    let template: any = null;
+    if (mode === 'template') {
+      [template] = await db.select().from(schema.roleTemplates).where(eq(schema.roleTemplates.id, roleTemplateId));
+      if (!template) {
+        return res.status(404).json({ error: 'Role template not found.' });
+      }
+    }
+
+    let newUserId: string;
+    let newCompanyId: string;
+    let contactEmail: string;
+    let contactName: string;
+    let companyName: string;
+
+    await db.transaction(async (tx) => {
+      // Lock the request row — without this, two admins clicking Approve at nearly the
+      // same moment (or a double-click) could both pass the status check and provision
+      // two companies for one request. Mirrors expenses.ts's /:id/pay lock exactly.
+      const [request] = await tx.select().from(schema.companyOnboardingRequests)
+        .where(eq(schema.companyOnboardingRequests.id, id)).for('update');
+      if (!request) {
+        const err: any = new Error('Onboarding request not found.');
+        err.status = 404;
+        throw err;
+      }
+      if (request.status !== 'Pending') {
+        const err: any = new Error(`This request has already been ${request.status.toLowerCase()}.`);
+        err.status = 400;
+        throw err;
+      }
+
+      companyName = request.companyName;
+      contactEmail = request.contactEmail;
+      contactName = request.contactName;
+      newCompanyId = generateId();
+
+      const brandTitle = request.companyName.substring(0, 10).toUpperCase() + ' PORTAL';
+      await tx.insert(schema.companies).values({
+        id: newCompanyId,
+        name: request.companyName,
+        address: request.companyAddress || '',
+        phone: request.companyPhone || '',
+        email: request.companyEmail,
+        logoUrl: '',
+        customHeader: '',
+        customFooter: '',
+        vatNumber: request.vatNumber,
+        crNumber: request.crNumber,
+        themeId: 'classic-executive',
+        currency: request.currency || 'SAR',
+        portalTitle: brandTitle,
+        portalSubtitle: 'Shop ERP System',
+        counters: { quotation: 1001, invoice: 1001, expense: 1001, voucher: 1001 },
+      });
+
+      await provisionStarterResources(tx, { companyId: newCompanyId, companyName: request.companyName });
+
+      let roleIdForNewUser: string | null = null;
+      if (mode === 'template' && template) {
+        roleIdForNewUser = generateId();
+        await tx.insert(schema.roles).values({
+          id: roleIdForNewUser,
+          companyId: newCompanyId,
+          name: template.name,
+          permissions: template.permissions,
+        });
+      }
+
+      // Derive a username from the contact email's local part, de-duplicated against
+      // existing usernames — this app has no DB-level unique constraint on username (the
+      // login route's own case-insensitive lookup is the only thing that cares), but a
+      // collision would still make the new account ambiguous to log into.
+      const localPart = request.contactEmail.split('@')[0].replace(/[^a-z0-9._-]/gi, '').toLowerCase() || 'user';
+      let candidateUsername = localPart;
+      let suffix = 0;
+      // Bounded retry — a pathological number of collisions on one local-part is not a
+      // real-world case worth an unbounded loop.
+      while (suffix < 50) {
+        const [existingUsername] = await tx.select({ id: schema.users.id }).from(schema.users)
+          .where(eq(schema.users.username, candidateUsername));
+        if (!existingUsername) break;
+        suffix += 1;
+        candidateUsername = `${localPart}${suffix}`;
+      }
+
+      newUserId = generateId();
+      // A long random password nobody will ever use — the new user's only path to access
+      // is the emailed set-password link below, never a plaintext password.
+      const unusablePassword = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
+      await tx.insert(schema.users).values({
+        id: newUserId,
+        username: candidateUsername,
+        email: request.contactEmail,
+        password: unusablePassword,
+        role: mode === 'admin' ? 'admin' : 'user',
+        companyId: newCompanyId,
+        isSuperAdmin: false,
+        isActive: true,
+        uiLanguage: 'en',
+      });
+
+      if (roleIdForNewUser) {
+        await tx.insert(schema.userRoles).values({ userId: newUserId, roleId: roleIdForNewUser });
+      }
+
+      await tx.update(schema.companyOnboardingRequests).set({
+        status: 'Approved',
+        reviewedById: req.user.id,
+        reviewedAt: new Date(),
+        createdCompanyId: newCompanyId,
+      }).where(eq(schema.companyOnboardingRequests.id, id));
+    });
+
+    // Outside the transaction, matching forgot-password's own token-issuance pattern —
+    // this is a separate, best-effort concern from the atomic provisioning above.
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    await db.insert(schema.passwordResetTokens).values({
+      id: generateId(),
+      userId: newUserId!,
+      tokenHash,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    });
+    const origin = process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const resetUrl = `${origin}/?resetToken=${rawToken}`;
+
+    let emailSent = false;
+    if (isMailerConfigured()) {
+      try {
+        await sendOnboardingApprovedEmail(contactEmail!, resetUrl, companyName!);
+        emailSent = true;
+      } catch (err: any) {
+        console.error('[Onboarding] Failed to send approval email:', err.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      companyId: newCompanyId!,
+      userId: newUserId!,
+      emailSent,
+      // Only returned when mail isn't configured (e.g. local dev without SMTP) — lets a
+      // super-admin manually hand the new user their set-password link. Never exposed
+      // when the email actually went out.
+      resetUrl: emailSent ? undefined : resetUrl,
+    });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+// --- Admin: reject ---
+adminRouter.post('/admin/onboarding-requests/:id/reject', async (req: any, res) => {
+  try {
+    if (!isSuperAdminUser(req.user)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const { id } = req.params;
+    const reason = cap(req.body?.reason, 1000) || null;
+
+    let contactEmail: string | undefined;
+    let companyName: string | undefined;
+
+    await db.transaction(async (tx) => {
+      const [request] = await tx.select().from(schema.companyOnboardingRequests)
+        .where(eq(schema.companyOnboardingRequests.id, id)).for('update');
+      if (!request) {
+        const err: any = new Error('Onboarding request not found.');
+        err.status = 404;
+        throw err;
+      }
+      if (request.status !== 'Pending') {
+        const err: any = new Error(`This request has already been ${request.status.toLowerCase()}.`);
+        err.status = 400;
+        throw err;
+      }
+      contactEmail = request.contactEmail;
+      companyName = request.companyName;
+
+      await tx.update(schema.companyOnboardingRequests).set({
+        status: 'Rejected',
+        reviewedById: req.user.id,
+        reviewedAt: new Date(),
+        rejectionReason: reason,
+      }).where(eq(schema.companyOnboardingRequests.id, id));
+    });
+
+    if (isMailerConfigured() && contactEmail && companyName) {
+      sendOnboardingRejectedEmail(contactEmail, companyName, reason || undefined).catch((err) => {
+        console.error('[Onboarding] Failed to send rejection email:', err.message);
+      });
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});

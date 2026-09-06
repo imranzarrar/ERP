@@ -900,6 +900,46 @@ export const translations = pgTable('translations', {
   ur: text('ur').notNull(),
 });
 
+// Cross-tenant by design — deliberately NOT company-scoped, unlike `roles` above (whose
+// companyId is NOT NULL). A reusable, platform-curated permission-set library, same JSON
+// shape as roles.permissions, that gets CLONED into a brand-new company's own `roles`
+// table at company-onboarding-approval time (server/routes/onboarding.ts) — a just-created
+// company has no roles of its own yet, so picking an existing one isn't possible.
+export const roleTemplates = pgTable('role_templates', {
+  id: uuid('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description'),
+  permissions: jsonb('permissions').notNull().default({}),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  nameUnique: uniqueIndex('role_templates_name_unique').on(table.name),
+}));
+
+// Cross-tenant by design, same reasoning as roleTemplates above — submitted by a
+// prospective customer before any company or session exists. `createdCompanyId` is only
+// ever set once a request is Approved; every other tenant-facing table this app has is
+// scoped by a companyId that plainly doesn't exist yet at submission time.
+export const companyOnboardingRequests = pgTable('company_onboarding_requests', {
+  id: uuid('id').primaryKey(),
+  companyName: text('company_name').notNull(),
+  companyEmail: text('company_email').notNull(),
+  companyPhone: text('company_phone'),
+  companyAddress: text('company_address'),
+  vatNumber: text('vat_number'),
+  crNumber: text('cr_number'),
+  currency: text('currency').default('SAR'),
+  contactName: text('contact_name').notNull(),
+  contactEmail: text('contact_email').notNull(),
+  contactPhone: text('contact_phone'),
+  notes: text('notes'),
+  status: text('status').notNull().default('Pending'), // 'Pending' | 'Approved' | 'Rejected'
+  reviewedById: uuid('reviewed_by_id').references(() => users.id),
+  reviewedAt: timestamp('reviewed_at'),
+  rejectionReason: text('rejection_reason'),
+  createdCompanyId: uuid('created_company_id').references(() => companies.id),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
 export const posHeldInvoices = pgTable('pos_held_invoices', {
   id: uuid('id').primaryKey(),
   shiftId: uuid('shift_id').references(() => posShifts.id).notNull(),
