@@ -110,10 +110,12 @@ export default function InventoryModule({
   const [error, setError] = React.useState<string | null>(null);
   const triggerSuccess = (msg: string) => {
     setSuccess(msg);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     setTimeout(() => setSuccess(null), 3500);
   };
   const triggerError = (msg: string) => {
     setError(msg);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     setTimeout(() => setError(null), 4500);
   };
   const [isSubmittingPr, setIsSubmittingPr] = React.useState(false);

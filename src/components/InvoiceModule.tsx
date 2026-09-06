@@ -1027,7 +1027,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
 
  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 text-xs">
  <div className="lg:col-span-2 space-y-0.5">
- <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Invoice Date')}</label>
+ <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Invoice Date')}<span className="text-rose-500"> *</span></label>
  <input
  type="date"
  required
@@ -1038,7 +1038,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  </div>
 
  <div className="lg:col-span-3 space-y-0.5">
- <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Customer')}</label>
+ <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Customer')}<span className="text-rose-500"> *</span></label>
  <select
  required
  value={formCustomerId}
@@ -1052,7 +1052,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  </div>
 
  <div className="lg:col-span-2 space-y-0.5">
- <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('VAT Slab')}</label>
+ <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('VAT Slab')}<span className="text-rose-500"> *</span></label>
  <select
  required
  value={formTaxSlabId}
@@ -1115,7 +1115,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
 
  {/* Bank configuration is Admin-only editable; staff see read-only bank */}
  <div className="lg:col-span-3 space-y-0.5">
- <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Post Inflow Bank")}</label>
+ <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Post Inflow Bank")}{isAdmin && <span className="text-rose-500"> *</span>}</label>
  {isAdmin ? (
  <select
  required
@@ -1226,9 +1226,9 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  <thead>
  <tr className="bg-slate-100/90 border-b border-slate-200 text-[10px] font-extrabold text-slate-600 uppercase tracking-wider">
  <th className="py-2.5 px-3 text-start w-10">#</th>
- <th className="py-2.5 px-3 text-start">{t('Item Description / Catalogue Search')}</th>
- <th className="py-2.5 px-3 text-end w-32">{t('Unit Price')} ({currencySymbol})</th>
- <th className="py-2.5 px-3 text-center w-24">{t('Quantity')}</th>
+ <th className="py-2.5 px-3 text-start">{t('Item Description / Catalogue Search')}<span className="text-rose-500"> *</span></th>
+ <th className="py-2.5 px-3 text-end w-32">{t('Unit Price')} ({currencySymbol})<span className="text-rose-500"> *</span></th>
+ <th className="py-2.5 px-3 text-center w-24">{t('Quantity')}<span className="text-rose-500"> *</span></th>
  <th className="py-2.5 px-3 text-end w-28">{t('Discount')} ({currencySymbol})</th>
  <th className="py-2.5 px-3 text-center w-36">{t('Tax Slab')}</th>
  <th className="py-2.5 px-3 text-end w-32">{t('Total')} ({currencySymbol})</th>

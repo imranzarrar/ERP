@@ -1275,7 +1275,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  ) : (
  <>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Entity Name')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Entity Name')}<span className="text-rose-500"> *</span></label>
  <input
  type="text"
  required
@@ -1427,7 +1427,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  ) : (
  <>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Product / Service Name')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Product / Service Name')}<span className="text-rose-500"> *</span></label>
  <input
  type="text"
  required
@@ -1566,7 +1566,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Sales Price')} ({db.companySetup?.currency || 'SAR'})</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Sales Price')} ({db.companySetup?.currency || 'SAR'})<span className="text-rose-500"> *</span></label>
  <input
  type="number"
  required
@@ -1887,7 +1887,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  ) : (
  <>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Category Name')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Category Name')}<span className="text-rose-500"> *</span></label>
  <input
  type="text"
  required
@@ -1916,7 +1916,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <h5 className="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider">{t('Accounting GL Mapping')}</h5>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Sales/Revenue GL Account')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Sales/Revenue GL Account')}<span className="text-rose-500"> *</span></label>
  <input
  type="text"
  required
@@ -1928,7 +1928,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Inventory Asset GL Account')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Inventory Asset GL Account')}<span className="text-rose-500"> *</span></label>
  <input
  type="text"
  required
@@ -1940,7 +1940,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('COGS / Expense GL Account')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('COGS / Expense GL Account')}<span className="text-rose-500"> *</span></label>
  <input
  type="text"
  required
@@ -1985,7 +1985,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  ) : (
  <>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('ZATCA Unit Code')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('ZATCA Unit Code')}<span className="text-rose-500"> *</span></label>
  {/* Constrained to the allowed UN/ECE Recommendation 20 codes ZATCA's UBL invoices
      require (src/zatcaUnitCodes.ts) — this used to be free text (placeholder literally
      suggested "PCS, BOX", neither a real code), so a unit created here could never
@@ -2013,7 +2013,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Display Name')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Display Name')}<span className="text-rose-500"> *</span></label>
  <input
  type="text"
  required
@@ -2058,7 +2058,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  ) : (
  <>
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Warehouse Name')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Warehouse Name')}<span className="text-rose-500"> *</span></label>
  <input
  type="text"
  required
@@ -2070,7 +2070,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Warehouse Code')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Warehouse Code')}<span className="text-rose-500"> *</span></label>
  <input
  type="text"
  required

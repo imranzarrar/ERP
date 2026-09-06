@@ -759,7 +759,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
 
  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Expense Issue Date')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Expense Issue Date')}<span className="text-rose-500"> *</span></label>
  <input
  type="date"
  required
@@ -770,7 +770,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Vendor')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Vendor')}<span className="text-rose-500"> *</span></label>
  <select
  required
  value={formVendorId}
@@ -784,7 +784,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Input Tax Slab')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Input Tax Slab')}<span className="text-rose-500"> *</span></label>
  <select
  required
  value={formTaxSlabId}
@@ -815,7 +815,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
 
  {/* Bank is Admin-only editable; staff see read-only bank */}
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Disbursement Bank')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Disbursement Bank')}{isAdmin && <span className="text-rose-500"> *</span>}</label>
  {isAdmin ? (
  <select
  required
@@ -836,7 +836,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Bill #')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Bill #')}<span className="text-rose-500"> *</span></label>
  <input
  type="text"
  required
@@ -848,7 +848,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Type of Expense')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Type of Expense')}<span className="text-rose-500"> *</span></label>
  <select
  required
  value={formExpenseType}
@@ -932,7 +932,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  </div>
 
  <div className="col-span-1 md:col-span-2 space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('General Description / Summary')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('General Description / Summary')}<span className="text-rose-500"> *</span></label>
  <input
  type="text"
  required
@@ -956,9 +956,9 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  <thead>
  <tr className="bg-slate-100/90 border-b border-slate-200 text-[10px] font-extrabold text-slate-600 uppercase tracking-wider">
  <th className="py-2.5 px-3 text-start w-10">#</th>
- <th className="py-2.5 px-3 text-start">{t('Item Description / Catalog Search')}</th>
- <th className="py-2.5 px-3 text-end w-32">{t('Unit Cost')} ({currencySymbol})</th>
- <th className="py-2.5 px-3 text-center w-24">{t('Quantity')}</th>
+ <th className="py-2.5 px-3 text-start">{t('Item Description / Catalog Search')}<span className="text-rose-500"> *</span></th>
+ <th className="py-2.5 px-3 text-end w-32">{t('Unit Cost')} ({currencySymbol})<span className="text-rose-500"> *</span></th>
+ <th className="py-2.5 px-3 text-center w-24">{t('Quantity')}<span className="text-rose-500"> *</span></th>
  <th className="py-2.5 px-3 text-end w-32">{t('Total')} ({currencySymbol})</th>
  <th className="py-2.5 px-3 text-center w-12"></th>
  </tr>
@@ -1049,7 +1049,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  {/* Amount input (lockable if itemised) */}
  <div className="space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase">
- {showItemised ? t('Total Amount (Calculated from lines)') : `${t('Total Expense Amount')} (${currencySymbol})`}
+ {showItemised ? t('Total Amount (Calculated from lines)') : <>{t('Total Expense Amount')} ({currencySymbol})<span className="text-rose-500"> *</span></>}
  </label>
  <input
  type="number"
@@ -1094,7 +1094,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
 
  <form onSubmit={handleConfirmPay} className="space-y-4">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Payment Settlement Date')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Payment Settlement Date')}<span className="text-rose-500"> *</span></label>
  <input
  type="date"
  required
@@ -1105,7 +1105,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Disbursement Bank')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Disbursement Bank')}{isAdmin && <span className="text-rose-500"> *</span>}</label>
  {isAdmin ? (
  <select
  required
@@ -1126,7 +1126,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Payment Amount')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Payment Amount')}<span className="text-rose-500"> *</span></label>
  <div className="relative">
  <input
  type="number"

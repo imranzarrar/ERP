@@ -142,6 +142,7 @@ export default function App() {
       // needed here, unlike every company-scoped field below.
       roleTemplates: data.roleTemplates || [],
       companyOnboardingRequests: data.companyOnboardingRequests || [],
+      deletedCompanyLog: data.deletedCompanyLog || [],
       users,
       quotations: data.quotations || [],
       invoices: data.invoices || [],
@@ -258,6 +259,7 @@ export default function App() {
               // server-side for anyone but a real super-admin.
               roleTemplates: data.roleTemplates || [],
               companyOnboardingRequests: data.companyOnboardingRequests || [],
+              deletedCompanyLog: data.deletedCompanyLog || [],
               users,
               quotations: data.quotations || [],
               invoices: data.invoices || [],
@@ -914,6 +916,12 @@ type NavSection = {
  }
  const resolvedTabId = tabId.startsWith('settings-') ? 'settings' : tabId;
  if (!isTabAllowed(resolvedTabId)) return;
+ // The main content area scrolls at the window/document level (no inner overflow
+ // container — see <main> at the render below), and remounting the `key={activeTab}`
+ // subtree does not reset that scroll position on its own. Without this, saving a long
+ // form while scrolled down (e.g. Add Product) lands on the next page's content at the
+ // same scroll offset, leaving its own success banner off-screen above the fold.
+ window.scrollTo({ top: 0, behavior: 'smooth' });
  // Every module below (InvoiceModule, QuotationModule, MasterEntities, etc.) renders
  // straight off the App-level `db` prop and has no fetch-on-mount of its own — `db` is
  // only ever populated from the server at initial login and via triggerDbRefresh() calls

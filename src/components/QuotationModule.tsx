@@ -995,7 +995,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
 
  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 text-xs">
  <div className="lg:col-span-2 space-y-0.5">
- <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Document Date')}</label>
+ <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Document Date')}<span className="text-rose-500"> *</span></label>
  <input
  type="date"
  required
@@ -1006,7 +1006,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  </div>
 
  <div className="lg:col-span-3 space-y-0.5">
- <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Customer Selection')}</label>
+ <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Customer Selection')}<span className="text-rose-500"> *</span></label>
  <select
  required
  value={formCustomerId}
@@ -1020,7 +1020,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  </div>
 
  <div className="lg:col-span-2 space-y-0.5">
- <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('VAT Slab')}</label>
+ <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('VAT Slab')}<span className="text-rose-500"> *</span></label>
  <select
  required
  value={formTaxSlabId}
@@ -1087,9 +1087,9 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  <thead>
  <tr className="bg-slate-100/90 border-b border-slate-200 text-[10px] font-extrabold text-slate-600 uppercase tracking-wider">
  <th className="py-2.5 px-3 text-start w-10">#</th>
- <th className="py-2.5 px-3 text-start">{t('Item Description / Catalogue Search')}</th>
- <th className="py-2.5 px-3 text-end w-32">{t('Unit Price')} ({currencySymbol})</th>
- <th className="py-2.5 px-3 text-center w-24">{t('Quantity')}</th>
+ <th className="py-2.5 px-3 text-start">{t('Item Description / Catalogue Search')}<span className="text-rose-500"> *</span></th>
+ <th className="py-2.5 px-3 text-end w-32">{t('Unit Price')} ({currencySymbol})<span className="text-rose-500"> *</span></th>
+ <th className="py-2.5 px-3 text-center w-24">{t('Quantity')}<span className="text-rose-500"> *</span></th>
  <th className="py-2.5 px-3 text-end w-28">{t('Discount')} ({currencySymbol})</th>
  <th className="py-2.5 px-3 text-end w-32">{t('Total')} ({currencySymbol})</th>
  <th className="py-2.5 px-3 text-center w-12"></th>
@@ -1298,7 +1298,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  {/* Top Configuration Grid */}
  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Customer Relationship')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Customer Relationship')}<span className="text-rose-500"> *</span></label>
  <select
  required
  value={convForm.customerId}
@@ -1312,7 +1312,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Invoice Issue Date')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Invoice Issue Date')}<span className="text-rose-500"> *</span></label>
  <input
  type="date"
  required
@@ -1323,7 +1323,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Post Inflows Bank')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Post Inflows Bank')}<span className="text-rose-500"> *</span></label>
  <select
  required
  value={convForm.bankId}
@@ -1337,7 +1337,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('VAT Slab Configuration')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('VAT Slab Configuration')}<span className="text-rose-500"> *</span></label>
  <select
  required
  value={convForm.taxSlabId}
@@ -1364,7 +1364,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Payment Status')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Payment Status')}<span className="text-rose-500"> *</span></label>
  <select
  required
  value={convForm.paymentStatus}
@@ -1409,7 +1409,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  return (
  <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-2.5 bg-slate-50 border border-slate-100 p-2.5 rounded-xl items-center">
  <div className="md:col-span-5 col-span-12 space-y-1">
- <label className="text-[9px] text-slate-400 font-semibold uppercase">{t('Description')}</label>
+ <label className="text-[9px] text-slate-400 font-semibold uppercase">{t('Description')}<span className="text-rose-500"> *</span></label>
  <input
  type="text"
  required
@@ -1421,7 +1421,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  </div>
 
  <div className="md:col-span-2 col-span-4 space-y-1">
- <label className="text-[9px] text-slate-400 font-semibold uppercase">{t('Unit Cost')} ({currencySymbol})</label>
+ <label className="text-[9px] text-slate-400 font-semibold uppercase">{t('Unit Cost')} ({currencySymbol})<span className="text-rose-500"> *</span></label>
  <input
  type="number"
  required
@@ -1434,7 +1434,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  </div>
 
  <div className="md:col-span-1.5 col-span-4 space-y-1">
- <label className="text-[9px] text-slate-400 font-semibold uppercase">{t('Qty')}</label>
+ <label className="text-[9px] text-slate-400 font-semibold uppercase">{t('Qty')}<span className="text-rose-500"> *</span></label>
  <input
  type="number"
  required
