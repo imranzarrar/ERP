@@ -7,7 +7,6 @@
 // inserted fresh; existing keys only get their blank ar/ur columns filled in, matching the
 // established convention (see .claude/skills/ux-translation/SKILL.md) of never overwriting
 // a row that already has real content.
-import 'dotenv/config';
 import dotenv from 'dotenv';
 dotenv.config({ path: 'app.secrets' });
 import pg from 'pg';
