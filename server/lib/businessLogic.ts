@@ -148,9 +148,9 @@ export async function resolveSaleWarehouse(
   const productIds = Array.from(new Set(items.map(i => i.productId).filter(Boolean))) as string[];
   if (productIds.length === 0) return explicitWarehouseId || null;
 
-  const products = await tx.select({ id: schema.productsServices.id, type: schema.productsServices.type })
+  const products = await tx.select({ id: schema.productsServices.id, itemKind: schema.productsServices.itemKind })
     .from(schema.productsServices).where(inArray(schema.productsServices.id, productIds));
-  const hasStockItem = products.some((p: any) => p.type === 'item');
+  const hasStockItem = products.some((p: any) => p.itemKind === 'item');
   if (!hasStockItem) return explicitWarehouseId || null;
 
   const warehouseId = explicitWarehouseId || await resolveDefaultSaleWarehouseId(tx, companyId, branchId);
@@ -204,13 +204,13 @@ export async function assertStockAvailable(
   if (requestedByProduct.size === 0) return;
 
   const productIds = Array.from(requestedByProduct.keys());
-  const products = await tx.select({ id: schema.productsServices.id, name: schema.productsServices.name, type: schema.productsServices.type })
+  const products = await tx.select({ id: schema.productsServices.id, name: schema.productsServices.name, itemKind: schema.productsServices.itemKind })
     .from(schema.productsServices).where(inArray(schema.productsServices.id, productIds));
   const productById = new Map(products.map((p: any) => [p.id, p]));
 
   for (const [productId, requestedQty] of requestedByProduct) {
     const product = productById.get(productId) as any;
-    if (!product || product.type !== 'item') continue;
+    if (!product || product.itemKind !== 'item') continue;
     const available = await getUnbatchedStockQty(tx, companyId, productId, warehouseId);
     if (requestedQty > available) {
       const err: any = new Error(`Insufficient stock for "${product.name}": ${available} on hand at the selected warehouse, ${requestedQty} requested.`);
@@ -221,22 +221,22 @@ export async function assertStockAvailable(
 }
 
 // Deducts a sold quantity from inventoryStocks for one invoice/POS line and records the
-// movement in the stock ledger. Only applies to catalog-linked lines on true "item" type
-// products — a free-typed line (no productId) has nothing to deduct, and a "service" line
-// (productId set but type === 'service') has no physical stock at all, so both are no-ops
-// here rather than errors. Also no-ops when no warehouseId is given (nothing was resolved
-// for this sale, e.g. a services-only invoice) — a sale must never be blocked by
-// incomplete inventory setup by itself (that's what assertStockAvailable's opt-in flag is
-// for). Clamped at 0 rather than allowed to go negative, matching every other
-// stock-mutating route in this app (GRN reversal, Purchase Return, Stock Adjustment).
-// `quantitySold` is in whatever unit the line was entered in (`unitOfMeasureId`, null =
-// the product's own base unit) — converted to base-unit terms here, once, before it ever
-// touches inventoryStocks/the ledger.
+// movement in the stock ledger. Only applies to catalog-linked lines on true item-kind
+// products (productsServices.itemKind === 'item') — a free-typed line (no productId) has
+// nothing to deduct, and a service line (productId set but itemKind === 'service') has no
+// physical stock at all, so both are no-ops here rather than errors. Also no-ops when no
+// warehouseId is given (nothing was resolved for this sale, e.g. a services-only invoice)
+// — a sale must never be blocked by incomplete inventory setup by itself (that's what
+// assertStockAvailable's opt-in flag is for). Clamped at 0 rather than allowed to go
+// negative, matching every other stock-mutating route in this app (GRN reversal, Purchase
+// Return, Stock Adjustment). `quantitySold` is in whatever unit the line was entered in
+// (`unitOfMeasureId`, null = the product's own base unit) — converted to base-unit terms
+// here, once, before it ever touches inventoryStocks/the ledger.
 export async function deductStockForSale(tx: any, companyId: string, productId: string, quantitySold: number, referenceId: string, date: Date, warehouseId?: string | null, unitOfMeasureId?: string | null) {
   if (!warehouseId) return;
-  const [product] = await tx.select({ type: schema.productsServices.type })
+  const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
     .from(schema.productsServices).where(eq(schema.productsServices.id, productId)).for('update');
-  if (!product || product.type !== 'item') return;
+  if (!product || product.itemKind !== 'item') return;
 
   const baseQuantitySold = await toBaseQuantity(tx, productId, unitOfMeasureId, companyId, quantitySold);
 
@@ -251,6 +251,54 @@ export async function deductStockForSale(tx: any, companyId: string, productId: 
 
   const priorQty = existingStock ? Number(existingStock.quantity) : 0;
   const newQty = Math.max(0, round2(priorQty - baseQuantitySold));
+
+  if (existingStock) {
+    await tx.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
+  } else {
+    await tx.insert(schema.inventoryStocks).values({
+      id: generateId(), productId, warehouseId, batchNumber: null, quantity: String(newQty), companyId,
+    });
+  }
+
+  await writeStockLedgerEntry(tx, {
+    productId, warehouseId, companyId,
+    transactionType: 'Sale', referenceId, date,
+    quantityChange: newQty - priorQty,
+    endingQuantity: newQty, batchNumber: null,
+  });
+}
+
+// The mirror image of deductStockForSale — restores a previously-sold quantity to
+// inventoryStocks when a sale is reversed (an invoice is cancelled, or a Credit Note is
+// issued against it). Two pre-existing gaps this closes: POST /invoices/:id/cancel never
+// touched inventoryStocks at all, and Credit Note creation had an explicit code comment
+// admitting the same ("a pre-existing, separate gap: deductStockForSale is never called
+// from this route"). Same itemKind==='item' and warehouseId guards as deductStockForSale
+// — a service line or a sale with no resolved warehouse never had anything deducted in the
+// first place, so there is nothing to restore, and this must stay a no-op rather than an
+// error for either case. Logged as transactionType: 'Sale' (matching the original
+// deduction's own ledger type, just a positive quantityChange), the same convention GRN
+// reversal already uses (still 'GRN', not a separate "reversal" enum value) — see
+// server/routes/inventory.ts's GRN-reversal loop.
+export async function restockForSaleReversal(tx: any, companyId: string, productId: string, quantityToRestore: number, referenceId: string, date: Date, warehouseId?: string | null, unitOfMeasureId?: string | null) {
+  if (!warehouseId) return;
+  const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
+    .from(schema.productsServices).where(eq(schema.productsServices.id, productId)).for('update');
+  if (!product || product.itemKind !== 'item') return;
+
+  const baseQuantity = await toBaseQuantity(tx, productId, unitOfMeasureId, companyId, quantityToRestore);
+
+  const [existingStock] = await tx.select().from(schema.inventoryStocks)
+    .where(and(
+      eq(schema.inventoryStocks.productId, productId),
+      eq(schema.inventoryStocks.warehouseId, warehouseId),
+      eq(schema.inventoryStocks.companyId, companyId),
+      isNull(schema.inventoryStocks.batchNumber)
+    ))
+    .for('update');
+
+  const priorQty = existingStock ? Number(existingStock.quantity) : 0;
+  const newQty = round2(priorQty + baseQuantity);
 
   if (existingStock) {
     await tx.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));

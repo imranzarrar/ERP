@@ -118,7 +118,7 @@ beforeAll(async () => {
 
   productId = generateId();
   await db.insert(schema.productsServices).values({
-    id: productId, name: 'Test Widget', description: 'x', unitPrice: '10.00', type: 'item', companyId,
+    id: productId, name: 'Test Widget', description: 'x', unitPrice: '10.00', itemKind: 'item', companyId,
   });
 
   warehouseId = generateId();
@@ -388,7 +388,7 @@ describe('POST /api/inventory/stock-adjustments', () => {
   it('rejects a negative adjustment with no existing stock row to deduct from', async () => {
     const freshProductId = generateId();
     await db.insert(schema.productsServices).values({
-      id: freshProductId, name: 'Fresh Widget', description: 'x', unitPrice: '5.00', type: 'item', companyId,
+      id: freshProductId, name: 'Fresh Widget', description: 'x', unitPrice: '5.00', itemKind: 'item', companyId,
     });
     const { status } = await api(adminSessionId, '/api/inventory/stock-adjustments', {
       method: 'POST',

@@ -113,7 +113,7 @@ beforeAll(async () => {
   await db.insert(schema.bankAccounts).values({ id: bankId, bankName: 'Test Bank', accountNumber: '0009991', accountTitle: 'Tax Returns Test Co', openingBalance: '0', isActive: true, isDefault: true, companyId });
 
   productId = generateId();
-  await db.insert(schema.productsServices).values({ id: productId, name: 'Test Widget', description: 'x', unitPrice: '10.00', type: 'item', companyId });
+  await db.insert(schema.productsServices).values({ id: productId, name: 'Test Widget', description: 'x', unitPrice: '10.00', itemKind: 'item', companyId });
 
   warehouseId = generateId();
   await db.insert(schema.warehouses).values({ id: warehouseId, name: 'Main Store', code: 'MAIN', address: 'x', isActive: true, companyId });

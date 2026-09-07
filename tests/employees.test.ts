@@ -88,7 +88,7 @@ beforeAll(async () => {
   // 'service' (not 'item') — a stock item would require a resolvable sales warehouse,
   // which is unrelated to what this file tests (salesAssociateId attribution only).
   productId = generateId();
-  await db.insert(schema.productsServices).values({ id: productId, name: 'Test Widget', description: 'x', unitPrice: '10.00', type: 'service', companyId });
+  await db.insert(schema.productsServices).values({ id: productId, name: 'Test Widget', description: 'x', unitPrice: '10.00', itemKind: 'service', companyId });
   bankId = generateId();
   await db.insert(schema.bankAccounts).values({ id: bankId, bankName: 'Test Bank', accountNumber: '000', accountTitle: 'Test Account', openingBalance: '0', companyId });
 

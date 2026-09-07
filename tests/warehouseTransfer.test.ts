@@ -99,7 +99,7 @@ beforeAll(async () => {
   await db.insert(schema.fiscalMonths).values({ id: monthId, name: monthId, status: 'Open', companyId }).onConflictDoNothing();
 
   productId = generateId();
-  await db.insert(schema.productsServices).values({ id: productId, name: 'Transfer Widget', description: 'x', unitPrice: '10.00', type: 'item', companyId });
+  await db.insert(schema.productsServices).values({ id: productId, name: 'Transfer Widget', description: 'x', unitPrice: '10.00', itemKind: 'item', companyId });
 
   branchAId = generateId();
   await db.insert(schema.branches).values({ id: branchAId, companyId, name: 'Branch A', code: 'WTA', isActive: true, isDefault: true });
@@ -162,7 +162,7 @@ beforeAll(async () => {
   otherWarehouseId = generateId();
   await db.insert(schema.warehouses).values({ id: otherWarehouseId, name: 'Other Co Warehouse', code: 'OCWH', isActive: true, companyId: otherCompanyId, type: 'sales' });
   otherProductId = generateId();
-  await db.insert(schema.productsServices).values({ id: otherProductId, name: 'Other Co Widget', description: 'x', unitPrice: '10.00', type: 'item', companyId: otherCompanyId });
+  await db.insert(schema.productsServices).values({ id: otherProductId, name: 'Other Co Widget', description: 'x', unitPrice: '10.00', itemKind: 'item', companyId: otherCompanyId });
   otherAdminUserId = generateId();
   const otherAdminUsername = `whtransfer_other_admin_${otherAdminUserId}`;
   await db.insert(schema.users).values({ id: otherAdminUserId, username: otherAdminUsername, password: passwordHash, role: 'admin', companyId: otherCompanyId, isSuperAdmin: false, uiLanguage: 'en' });

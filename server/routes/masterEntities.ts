@@ -233,6 +233,18 @@ router.post('/products', async (req: any, res) => {
 
     data.companyId = req.targetCompanyId;
 
+    // Real server-side validation for the two fields that drive stock behavior
+    // (businessLogic.ts, inventory.ts) — previously this route did no validation at all on
+    // the old `type` column, silently persisting whatever string arrived; a bad/garbage
+    // value here isn't just cosmetic, it determines whether this product's sales/purchases
+    // ever touch inventoryStocks.
+    if (data.itemKind !== undefined && data.itemKind !== 'item' && data.itemKind !== 'service') {
+      return res.status(400).json({ error: "itemKind must be 'item' or 'service'." });
+    }
+    if (data.salesPurchaseFlow !== undefined && ![0, 1, 2].includes(Number(data.salesPurchaseFlow))) {
+      return res.status(400).json({ error: 'salesPurchaseFlow must be 0 (Both), 1 (Sales), or 2 (Purchase).' });
+    }
+
     // The client (MasterEntities.tsx) already enforces size/dimension limits before
     // upload, but that's a UI convenience only — a direct API call bypasses it entirely,
     // and base64Image has no length limit at the DB column level. Re-checked here against

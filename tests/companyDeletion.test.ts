@@ -140,7 +140,7 @@ describe('Company registration status + Delete Company & All Data', () => {
     const productId = generateId();
     await db.insert(schema.productsServices).values({
       id: productId, companyId, name: 'Test Product', description: 'x', unitPrice: '10.00',
-      type: 'item', categoryId, defaultWarehouseId: defaultWarehouse.id,
+      itemKind: 'item', categoryId, defaultWarehouseId: defaultWarehouse.id,
     });
 
     const invoiceId = generateId();

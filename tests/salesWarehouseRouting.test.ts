@@ -88,9 +88,9 @@ beforeAll(async () => {
   await db.insert(schema.bankAccounts).values({ id: bankId, bankName: 'Test Bank', accountNumber: '0009991', accountTitle: 'Sales WH Test Co', openingBalance: '0', isActive: true, isDefault: true, companyId });
 
   stockProductId = generateId();
-  await db.insert(schema.productsServices).values({ id: stockProductId, name: 'Stock Widget', description: 'x', unitPrice: '10.00', type: 'item', companyId });
+  await db.insert(schema.productsServices).values({ id: stockProductId, name: 'Stock Widget', description: 'x', unitPrice: '10.00', itemKind: 'item', companyId });
   serviceProductId = generateId();
-  await db.insert(schema.productsServices).values({ id: serviceProductId, name: 'Consulting Hour', description: 'x', unitPrice: '50.00', type: 'service', companyId });
+  await db.insert(schema.productsServices).values({ id: serviceProductId, name: 'Consulting Hour', description: 'x', unitPrice: '50.00', itemKind: 'service', companyId });
 
   branchAId = generateId();
   await db.insert(schema.branches).values({ id: branchAId, companyId, name: 'Branch A', code: 'BRA', isActive: true, isDefault: true });
@@ -138,9 +138,9 @@ beforeAll(async () => {
   noWhBankId = generateId();
   await db.insert(schema.bankAccounts).values({ id: noWhBankId, bankName: 'Test Bank', accountNumber: '0009992', accountTitle: 'No WH Test Co', openingBalance: '0', isActive: true, isDefault: true, companyId: noWarehouseCompanyId });
   noWhServiceProductId = generateId();
-  await db.insert(schema.productsServices).values({ id: noWhServiceProductId, name: 'Consulting Hour', description: 'x', unitPrice: '50.00', type: 'service', companyId: noWarehouseCompanyId });
+  await db.insert(schema.productsServices).values({ id: noWhServiceProductId, name: 'Consulting Hour', description: 'x', unitPrice: '50.00', itemKind: 'service', companyId: noWarehouseCompanyId });
   noWhStockProductId = generateId();
-  await db.insert(schema.productsServices).values({ id: noWhStockProductId, name: 'Stock Widget', description: 'x', unitPrice: '10.00', type: 'item', companyId: noWarehouseCompanyId });
+  await db.insert(schema.productsServices).values({ id: noWhStockProductId, name: 'Stock Widget', description: 'x', unitPrice: '10.00', itemKind: 'item', companyId: noWarehouseCompanyId });
 
   noWhAdminUserId = generateId();
   const noWhAdminUsername = `nowh_admin_${noWhAdminUserId}`;

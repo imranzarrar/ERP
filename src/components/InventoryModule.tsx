@@ -140,6 +140,15 @@ export default function InventoryModule({
   const warehouseReceivings = (db.warehouseReceivings || []).filter((r: WarehouseReceiving) => r.companyId === companyId);
   const banks = (db.banks || []).filter((b: any) => b.isActive && b.companyId === companyId);
   const products = (db.products || []).filter(p => p.companyId === companyId);
+  // A separate, narrower list for the add-item PICKERS only (PR/PO/GRN/Dispatch/
+  // Receiving/Return/Stock-Take) — `products` above stays unfiltered because it's also
+  // used to look up/display products already referenced on existing saved line items
+  // (via .find()), which must keep resolving correctly regardless of a product's current
+  // itemKind. Services have no physical stock concept and should never be selectable when
+  // creating a NEW stock-moving line — see server/routes/inventory.ts's matching
+  // server-side itemKind==='item' guards on every stock-write path (defense-in-depth for
+  // a direct API call bypassing this filter).
+  const stockItemProducts = products.filter((p: any) => p.itemKind === 'item');
   const vendors = (db.vendors || []).filter(v => v.companyId === companyId);
 
   // Search & Filters
@@ -2814,7 +2823,7 @@ export default function InventoryModule({
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
                       >
                         <option value="">{t('-- Select Product --')}</option>
-                        {products.map(p => (
+                        {stockItemProducts.map(p => (
                           <option key={p.id} value={p.id}>{p.name} ({p.sku || 'N/A'})</option>
                         ))}
                       </select>
@@ -3032,7 +3041,7 @@ export default function InventoryModule({
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
                       >
                         <option value="">{t('-- Select Product --')}</option>
-                        {products.map(p => (
+                        {stockItemProducts.map(p => (
                           <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
                       </select>
@@ -3397,7 +3406,7 @@ export default function InventoryModule({
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
                       >
                         <option value="">{t('-- Select Product --')}</option>
-                        {products.map(p => (
+                        {stockItemProducts.map(p => (
                           <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
                       </select>
@@ -3683,7 +3692,7 @@ export default function InventoryModule({
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
                       >
                         <option value="">{t('-- Select Product --')}</option>
-                        {products.map(p => (
+                        {stockItemProducts.map(p => (
                           <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
                       </select>
@@ -4038,7 +4047,7 @@ export default function InventoryModule({
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
                   >
                     <option value="">{t('-- Choose Material --')}</option>
-                    {products.map(p => (
+                    {stockItemProducts.map(p => (
                       <option key={p.id} value={p.id}>{p.name} ({p.sku || 'N/A'})</option>
                     ))}
                   </select>
@@ -4402,7 +4411,7 @@ export default function InventoryModule({
                       <select value={newReturnItem.productId} onChange={(e) => setNewReturnItem({ ...newReturnItem, productId: e.target.value, unitOfMeasureId: '' })}
                         className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs">
                         <option value="">{t('Select product')}</option>
-                        {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        {stockItemProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                       </select>
                     </div>
                     <div className="col-span-2 space-y-1">
@@ -4604,7 +4613,7 @@ export default function InventoryModule({
                       <select value={newStockTakeItem.productId} onChange={(e) => setNewStockTakeItem({ ...newStockTakeItem, productId: e.target.value, unitOfMeasureId: '' })}
                         className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs">
                         <option value="">{t('Select product')}</option>
-                        {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        {stockItemProducts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                       </select>
                     </div>
                     <div className="col-span-2 space-y-1">

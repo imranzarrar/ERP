@@ -70,7 +70,7 @@ beforeAll(async () => {
 
   productId = generateId();
   await db.insert(schema.productsServices).values({
-    id: productId, name: 'Latte', description: 'Latte', unitPrice: '15', type: 'service', unit: 'No', isPosItem: true, companyId,
+    id: productId, name: 'Latte', description: 'Latte', unitPrice: '15', itemKind: 'service', unit: 'No', isPosItem: true, companyId,
   });
 
   const currentMonthId = new Date().toISOString().slice(0, 7);
@@ -175,7 +175,7 @@ describe('Tenant isolation for product <-> modifier group attachment', () => {
   it('rejects attaching another company\'s modifier group id to your own product', async () => {
     const { status, body } = await api(adminSessionId, '/api/products', {
       method: 'POST',
-      body: JSON.stringify({ id: productId, name: 'Latte', description: 'Latte', unitPrice: 15, type: 'service', isPosItem: true, modifierGroupIds: [otherCompanyModifierGroupId] }),
+      body: JSON.stringify({ id: productId, name: 'Latte', description: 'Latte', unitPrice: 15, itemKind: 'service', isPosItem: true, modifierGroupIds: [otherCompanyModifierGroupId] }),
     });
     expect(status).toBe(400);
     expect(body.error).toMatch(/not found for this company/i);
@@ -187,7 +187,7 @@ describe('Tenant isolation for product <-> modifier group attachment', () => {
   it('accepts attaching your own company\'s modifier group', async () => {
     const { status } = await api(adminSessionId, '/api/products', {
       method: 'POST',
-      body: JSON.stringify({ id: productId, name: 'Latte', description: 'Latte', unitPrice: 15, type: 'service', isPosItem: true, posGridPosition: 1, modifierGroupIds: [createdModifierGroupId] }),
+      body: JSON.stringify({ id: productId, name: 'Latte', description: 'Latte', unitPrice: 15, itemKind: 'service', isPosItem: true, posGridPosition: 1, modifierGroupIds: [createdModifierGroupId] }),
     });
     expect(status).toBe(200);
 

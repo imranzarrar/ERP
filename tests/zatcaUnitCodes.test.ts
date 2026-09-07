@@ -152,7 +152,7 @@ describe('Unit code flows from product through invoice into the real ZATCA XML',
         method: 'POST',
         body: JSON.stringify({
           id, name: `Test Product (${u.code})`, description: `Sold in ${u.name}`,
-          unitPrice: 50, type: 'item', unit: u.code, isPosItem: false,
+          unitPrice: 50, itemKind: 'item', unit: u.code, isPosItem: false,
         }),
       });
       expect(status).toBe(200);

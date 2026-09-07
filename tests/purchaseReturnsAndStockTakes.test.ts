@@ -83,7 +83,7 @@ beforeAll(async () => {
   await db.insert(schema.vendors).values({ id: vendorId, name: 'Test Vendor', phone: '0', email: 'v@example.com', address: 'x', companyId });
 
   productId = generateId();
-  await db.insert(schema.productsServices).values({ id: productId, name: 'Return Test Widget', description: 'x', unitPrice: '10.00', type: 'item', companyId });
+  await db.insert(schema.productsServices).values({ id: productId, name: 'Return Test Widget', description: 'x', unitPrice: '10.00', itemKind: 'item', companyId });
 
   warehouseId = generateId();
   await db.insert(schema.warehouses).values({ id: warehouseId, name: 'Main Store', code: 'MAIN', address: 'x', isActive: true, companyId });

@@ -260,7 +260,7 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Filter Product')}</label>
                   <select value={selectedProductId} onChange={e => setSelectedProductId(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none">
                     <option value="ALL">{t('All Products')}</option>
-                    {companyProducts.filter((p: any) => p.type === 'item').map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {companyProducts.filter((p: any) => p.itemKind === 'item').map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
               )}

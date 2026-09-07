@@ -81,7 +81,7 @@ beforeAll(async () => {
 
   productId = generateId();
   await db.insert(schema.productsServices).values({
-    id: productId, name: 'Test Widget', description: 'Test Widget', unitPrice: '100', type: 'item', unit: 'KGM', companyId,
+    id: productId, name: 'Test Widget', description: 'Test Widget', unitPrice: '100', itemKind: 'item', unit: 'KGM', companyId,
   });
 
   // A stock ('item' type) sale now requires a resolvable sales warehouse

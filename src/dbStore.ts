@@ -215,22 +215,22 @@ export const SEED_TAX_SLABS: TaxSlab[] = [
 ];
 
 export const SEED_PRODUCTS: ProductService[] = [
-  // Sales items
-  { id: '019fa55c-622a-7bbb-a6f4-545c4ed3b356', name: 'MDF 18mm CNC Custom Cutting', description: 'Precision CNC cutting of 18mm MDF sheet per board including setups', unitPrice: 120.00, type: 'Sales', unit: 'No', companyId: '019fa55c-622a-7cd5-b949-e61689455b41' },
-  { id: '019fa55c-622a-77b2-a450-09039d9e5db0', name: 'Oak Wood 3D Engraving Service', description: 'Advanced 3D relief engraving per square meter', unitPrice: 350.00, type: 'Sales', unit: 'Lumpsum', companyId: '019fa55c-622a-7cd5-b949-e61689455b41' },
-  { id: '019fa55c-622a-7047-8e62-f1a64346efa8', name: 'Cabinet Joint Finger Joint Milling', description: 'Custom CNC finger jointing service for kitchen cabinets per unit', unitPrice: 45.00, type: 'Sales', unit: 'No', companyId: '019fa55c-622a-7cd5-b949-e61689455b41' },
-  { id: '019fa55c-622a-7769-a719-89c739ba62ab', name: 'Acrylic Mesh Work fabrication', description: 'Delicate pattern cutting on 5mm acrylic mesh screens per meter', unitPrice: 90.00, type: 'Sales', unit: 'Lumpsum', companyId: '019fa55c-622a-7cd5-b949-e61689455b41' },
-  // Purchase items
-  { id: '019fa55c-622a-7d4d-b914-4eaedf1dae86', name: 'Solid Oak Timber Board 2.4m', description: 'Imported European red oak solid boards', unitPrice: 180.00, type: 'Purchase', unit: 'No', companyId: '019fa55c-622a-7cd5-b949-e61689455b41' },
-  { id: '019fa55c-622a-73cc-93f5-1c2b70fc6ea3', name: 'MDF Sheet 1220x2440x18mm', description: 'Raw MDF sheet 18mm thickness', unitPrice: 32.50, type: 'Purchase', unit: 'No', companyId: '019fa55c-622a-7cd5-b949-e61689455b41' },
-  { id: '019fa55c-622a-7cb8-b26a-00888d4fd32b', name: 'Carbide CNC Router Bits 6mm', description: 'Industrial grade solid carbide spiral flute upcut bits', unitPrice: 15.00, type: 'Purchase', unit: 'No', companyId: '019fa55c-622a-7cd5-b949-e61689455b41' },
-  { id: '019fa55c-622a-7742-94ae-23b45ebec8e5', name: 'Wood Adhesive Glue 5kg', description: 'High-strength waterproof PVA adhesive', unitPrice: 28.00, type: 'Purchase', unit: 'Lumpsum', companyId: '019fa55c-622a-7cd5-b949-e61689455b41' },
-  // LaserCut Sales
-  { id: '019fa55c-622a-78f2-81cc-78ac17bed898', name: 'Laser Cut 5mm Acrylic Sheet', description: 'Precision laser cutting of acrylic sheets per hour', unitPrice: 150.00, type: 'Sales', unit: 'No', companyId: '019fa55c-622a-736c-ba38-beb9f2291fe3' },
-  { id: '019fa55c-622a-7ee7-abab-57f687029517', name: 'Polishing & Finishing', description: 'Flame polishing service for flawless acrylic edges', unitPrice: 50.00, type: 'Sales', unit: 'Lumpsum', companyId: '019fa55c-622a-736c-ba38-beb9f2291fe3' },
-  // LaserCut Purchases
-  { id: '019fa55c-622a-7875-b0e2-00e45135a736', name: 'Raw 5mm Cast Acrylic Sheet', description: 'Cast transparent acrylic sheets 1.2m x 2.4m', unitPrice: 45.00, type: 'Purchase', unit: 'No', companyId: '019fa55c-622a-736c-ba38-beb9f2291fe3' },
-  { id: '019fa55c-622a-7586-8cdb-6843929c3ecc', name: 'Laser Tube Gas Refill', description: 'Industrial CO2 laser tube recharging service', unitPrice: 120.00, type: 'Purchase', unit: 'Lumpsum', companyId: '019fa55c-622a-736c-ba38-beb9f2291fe3' }
+  // Sales items — fabrication/finishing services, no physical stock of their own
+  { id: '019fa55c-622a-7bbb-a6f4-545c4ed3b356', name: 'MDF 18mm CNC Custom Cutting', description: 'Precision CNC cutting of 18mm MDF sheet per board including setups', unitPrice: 120.00, salesPurchaseFlow: 1, itemKind: 'service', unit: 'No', companyId: '019fa55c-622a-7cd5-b949-e61689455b41' },
+  { id: '019fa55c-622a-77b2-a450-09039d9e5db0', name: 'Oak Wood 3D Engraving Service', description: 'Advanced 3D relief engraving per square meter', unitPrice: 350.00, salesPurchaseFlow: 1, itemKind: 'service', unit: 'Lumpsum', companyId: '019fa55c-622a-7cd5-b949-e61689455b41' },
+  { id: '019fa55c-622a-7047-8e62-f1a64346efa8', name: 'Cabinet Joint Finger Joint Milling', description: 'Custom CNC finger jointing service for kitchen cabinets per unit', unitPrice: 45.00, salesPurchaseFlow: 1, itemKind: 'service', unit: 'No', companyId: '019fa55c-622a-7cd5-b949-e61689455b41' },
+  { id: '019fa55c-622a-7769-a719-89c739ba62ab', name: 'Acrylic Mesh Work fabrication', description: 'Delicate pattern cutting on 5mm acrylic mesh screens per meter', unitPrice: 90.00, salesPurchaseFlow: 1, itemKind: 'service', unit: 'Lumpsum', companyId: '019fa55c-622a-7cd5-b949-e61689455b41' },
+  // Purchase items — real physical raw-material stock
+  { id: '019fa55c-622a-7d4d-b914-4eaedf1dae86', name: 'Solid Oak Timber Board 2.4m', description: 'Imported European red oak solid boards', unitPrice: 180.00, salesPurchaseFlow: 2, itemKind: 'item', unit: 'No', companyId: '019fa55c-622a-7cd5-b949-e61689455b41' },
+  { id: '019fa55c-622a-73cc-93f5-1c2b70fc6ea3', name: 'MDF Sheet 1220x2440x18mm', description: 'Raw MDF sheet 18mm thickness', unitPrice: 32.50, salesPurchaseFlow: 2, itemKind: 'item', unit: 'No', companyId: '019fa55c-622a-7cd5-b949-e61689455b41' },
+  { id: '019fa55c-622a-7cb8-b26a-00888d4fd32b', name: 'Carbide CNC Router Bits 6mm', description: 'Industrial grade solid carbide spiral flute upcut bits', unitPrice: 15.00, salesPurchaseFlow: 2, itemKind: 'item', unit: 'No', companyId: '019fa55c-622a-7cd5-b949-e61689455b41' },
+  { id: '019fa55c-622a-7742-94ae-23b45ebec8e5', name: 'Wood Adhesive Glue 5kg', description: 'High-strength waterproof PVA adhesive', unitPrice: 28.00, salesPurchaseFlow: 2, itemKind: 'item', unit: 'Lumpsum', companyId: '019fa55c-622a-7cd5-b949-e61689455b41' },
+  // LaserCut Sales — cutting/finishing services, no physical stock of their own
+  { id: '019fa55c-622a-78f2-81cc-78ac17bed898', name: 'Laser Cut 5mm Acrylic Sheet', description: 'Precision laser cutting of acrylic sheets per hour', unitPrice: 150.00, salesPurchaseFlow: 1, itemKind: 'service', unit: 'No', companyId: '019fa55c-622a-736c-ba38-beb9f2291fe3' },
+  { id: '019fa55c-622a-7ee7-abab-57f687029517', name: 'Polishing & Finishing', description: 'Flame polishing service for flawless acrylic edges', unitPrice: 50.00, salesPurchaseFlow: 1, itemKind: 'service', unit: 'Lumpsum', companyId: '019fa55c-622a-736c-ba38-beb9f2291fe3' },
+  // LaserCut Purchases — real physical raw-material stock, and a maintenance service
+  { id: '019fa55c-622a-7875-b0e2-00e45135a736', name: 'Raw 5mm Cast Acrylic Sheet', description: 'Cast transparent acrylic sheets 1.2m x 2.4m', unitPrice: 45.00, salesPurchaseFlow: 2, itemKind: 'item', unit: 'No', companyId: '019fa55c-622a-736c-ba38-beb9f2291fe3' },
+  { id: '019fa55c-622a-7586-8cdb-6843929c3ecc', name: 'Laser Tube Gas Refill', description: 'Industrial CO2 laser tube recharging service', unitPrice: 120.00, salesPurchaseFlow: 2, itemKind: 'service', unit: 'Lumpsum', companyId: '019fa55c-622a-736c-ba38-beb9f2291fe3' }
 ];
 
 export const SEED_CUSTOMERS: Customer[] = [

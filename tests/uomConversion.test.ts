@@ -82,7 +82,7 @@ beforeAll(async () => {
   await db.insert(schema.warehouses).values({ id: warehouseId, name: 'Main Store', code: 'MAIN', isActive: true, companyId, type: 'sales', isCompanyDefault: true });
 
   productId = generateId();
-  await db.insert(schema.productsServices).values({ id: productId, name: 'Cell 4 AMP', description: 'x', unitPrice: '10.00', type: 'item', barcode: 'CELL-BASE-001', companyId });
+  await db.insert(schema.productsServices).values({ id: productId, name: 'Cell 4 AMP', description: 'x', unitPrice: '10.00', itemKind: 'item', barcode: 'CELL-BASE-001', companyId });
 
   cartonUnitId = generateId();
   await db.insert(schema.unitsOfMeasure).values({ id: cartonUnitId, name: 'Carton-12', code: 'SET', isActive: true, companyId });

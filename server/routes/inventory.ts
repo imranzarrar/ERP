@@ -409,6 +409,18 @@ router.post('/goods-receipt-notes', async (req: any, res) => {
       // unit the line used, for billing/display); every inventory-quantity and averaging
       // calculation below uses the base-unit-converted values instead.
       for (const item of grnData.items) {
+        // Item-picker filtering (client) already restricts GRN lines to itemKind==='item'
+        // — this is defense-in-depth against a direct API call. A service line skips both
+        // the inventoryStocks write and the average-cost fold below entirely (a service
+        // has no physical stock or purchase-cost-averaging concept), same no-op-not-error
+        // convention as deductStockForSale.
+        const [product] = await tx.select({
+          itemKind: schema.productsServices.itemKind,
+          averageCost: schema.productsServices.averageCost,
+          totalQuantityPurchased: schema.productsServices.totalQuantityPurchased,
+        }).from(schema.productsServices).where(eq(schema.productsServices.id, item.productId)).for('update');
+        if (!product || product.itemKind !== 'item') continue;
+
         const baseQtyReceived = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReceived));
         const baseUnitCost = await toBaseUnitCost(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.unitCost));
 
@@ -455,19 +467,13 @@ router.post('/goods-receipt-notes', async (req: any, res) => {
         // totalQuantityPurchased (not current on-hand quantity) as the weight so the
         // average is unaffected by sales/adjustments that have drawn stock down since
         // earlier receipts — a pure moving-average-cost calculation, forward-only.
-        const [product] = await tx.select({
-          averageCost: schema.productsServices.averageCost,
-          totalQuantityPurchased: schema.productsServices.totalQuantityPurchased,
-        }).from(schema.productsServices).where(eq(schema.productsServices.id, item.productId)).for('update');
-        if (product) {
-          const priorQty = Number(product.totalQuantityPurchased || 0);
-          const priorAvg = Number(product.averageCost || 0);
-          const newQty = priorQty + baseQtyReceived;
-          const newAvg = newQty > 0 ? round4((priorQty * priorAvg + baseQtyReceived * baseUnitCost) / newQty) : priorAvg;
-          await tx.update(schema.productsServices)
-            .set({ averageCost: String(newAvg), totalQuantityPurchased: String(round2(newQty)) })
-            .where(eq(schema.productsServices.id, item.productId));
-        }
+        const priorQty = Number(product.totalQuantityPurchased || 0);
+        const priorAvg = Number(product.averageCost || 0);
+        const newQty = priorQty + baseQtyReceived;
+        const newAvg = newQty > 0 ? round4((priorQty * priorAvg + baseQtyReceived * baseUnitCost) / newQty) : priorAvg;
+        await tx.update(schema.productsServices)
+          .set({ averageCost: String(newAvg), totalQuantityPurchased: String(round2(newQty)) })
+          .where(eq(schema.productsServices.id, item.productId));
       }
 
       // Determine the linked PO's fulfillment status from actual received-vs-ordered
@@ -561,6 +567,10 @@ router.post('/goods-receipt-notes/:id/reverse', async (req: any, res) => {
       const items = await tx.select().from(schema.goodsReceiptNoteItems).where(eq(schema.goodsReceiptNoteItems.grnId, id));
 
       for (const item of items) {
+        const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
+          .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
+        if (!product || product.itemKind !== 'item') continue;
+
         const batchCondition = item.batchNumber
           ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
           : isNull(schema.inventoryStocks.batchNumber);
@@ -843,6 +853,10 @@ router.post('/warehouse-dispatches', async (req: any, res) => {
       // for a wrong count, a dispatch claiming to move stock that doesn't exist is a plain
       // data-entry error and should never silently succeed at a lower quantity.
       for (const item of dispatchData.items) {
+        const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
+          .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
+        if (!product || product.itemKind !== 'item') continue;
+
         const baseQtyDispatched = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityDispatched));
 
         const batchCondition = item.batchNumber
@@ -996,6 +1010,10 @@ router.post('/warehouse-receivings', async (req: any, res) => {
       // Add to the destination warehouse using the ACTUAL received quantity (may be less
       // or more than dispatched — that's exactly what discrepancyNotes is for).
       for (const row of itemRows) {
+        const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
+          .from(schema.productsServices).where(eq(schema.productsServices.id, row.productId));
+        if (!product || product.itemKind !== 'item') continue;
+
         const baseQtyReceived = await toBaseQuantity(tx, row.productId, row.unitOfMeasureId, companyId, Number(row.quantityReceived));
 
         const batchCondition = row.batchNumber
@@ -1093,6 +1111,10 @@ router.post('/warehouse-dispatches/:id/cancel', async (req: any, res) => {
       const cancelDate = new Date();
 
       for (const item of items) {
+        const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
+          .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
+        if (!product || product.itemKind !== 'item') continue;
+
         const baseQtyDispatched = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityDispatched));
         const batchCondition = item.batchNumber
           ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
@@ -1175,6 +1197,14 @@ router.post('/stock-adjustments', async (req: any, res) => {
         throw err;
       }
       await assertProductsOwnedByCompany(tx, companyId, [productId]);
+
+      const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
+        .from(schema.productsServices).where(eq(schema.productsServices.id, productId));
+      if (!product || product.itemKind !== 'item') {
+        const err: any = new Error('Stock adjustments only apply to physical-item products, not services.');
+        err.status = 400;
+        throw err;
+      }
 
       const batchCondition = batchNumber
         ? eq(schema.inventoryStocks.batchNumber, batchNumber)
@@ -1697,6 +1727,10 @@ router.post('/purchase-returns', async (req: any, res) => {
       const insertedItems = await tx.insert(schema.purchaseReturnItems).values(itemRows).returning();
 
       for (const item of returnData.items) {
+        const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
+          .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
+        if (!product || product.itemKind !== 'item') continue;
+
         const baseQtyReturned = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReturned));
         const batchCondition = item.batchNumber
           ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
@@ -1766,6 +1800,10 @@ router.patch('/purchase-returns/:id/cancel', async (req: any, res) => {
 
       const items = await tx.select().from(schema.purchaseReturnItems).where(eq(schema.purchaseReturnItems.returnId, id));
       for (const item of items) {
+        const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
+          .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
+        if (!product || product.itemKind !== 'item') continue;
+
         const baseQtyReturned = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReturned));
         const batchCondition = item.batchNumber
           ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
@@ -1943,6 +1981,10 @@ router.post('/stock-takes/:id/finalize', async (req: any, res) => {
       const items = await tx.select().from(schema.physicalStockTakeItems).where(eq(schema.physicalStockTakeItems.stockTakeId, id));
 
       for (const item of items) {
+        const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
+          .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
+        if (!product || product.itemKind !== 'item') continue;
+
         const batchCondition = item.batchNumber
           ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
           : isNull(schema.inventoryStocks.batchNumber);

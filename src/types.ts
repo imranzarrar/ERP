@@ -323,12 +323,18 @@ export interface ProductService {
   // products created before this field existed; every cost-default read falls back to
   // unitPrice in that case (see e.g. InventoryModule.tsx's resolveProductByCode).
   costPrice?: number;
-  // Confirmed via live data (2026-07-27): all four values are in real use, not a stale
-  // convention — 'item'/'service' and 'Sales'/'Purchase' represent two different,
-  // overlapping classification axes on the same field. Reconciling that overlap is a
-  // product decision, not a types fix — tracked in BACKLOG.md. This union only removes
-  // the meaningless `| string` catch-all that previously defeated type-checking entirely.
-  type: 'Sales' | 'Purchase' | 'item' | 'service';
+  // Split from the old overloaded `type` column (confirmed via live data 2026-07-27 that
+  // 'item'/'service' and 'Sales'/'Purchase' were two different, overlapping classification
+  // axes silently sharing one field — 'item' was also, separately, what server-side stock
+  // logic checked for, but the form never actually wrote it, making stock deduction dead
+  // code for every real product). Now two real fields:
+  // itemKind drives every stock-mutating code path (businessLogic.ts, inventory.ts routes)
+  // and which products the stock-document item-pickers even offer (InventoryModule.tsx).
+  itemKind: 'item' | 'service';
+  // Which item-pickers this product shows up in: 0 = Sales & Purchase (Both, the default),
+  // 1 = Sales only, 2 = Purchase only. See salesProducts/purchaseProducts filters in
+  // InvoiceModule.tsx/QuotationModule.tsx/ExpenseModule.tsx.
+  salesPurchaseFlow: 0 | 1 | 2;
   unit?: string;
   isPosItem?: boolean;
   category?: string;

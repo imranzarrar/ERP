@@ -2,7 +2,7 @@ import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, inArray, and, desc, or, isNull } from 'drizzle-orm';
-import { validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, postCreditNoteReversalVoucher, round2, round4, computePaymentStatus, computeInvoiceServerTotals, deductStockForSale, assertQuarterNotFiled, resolveSaleWarehouse, assertStockAvailable, assertProductsOwnedByCompany } from '../lib/businessLogic.js';
+import { validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, postCreditNoteReversalVoucher, round2, round4, computePaymentStatus, computeInvoiceServerTotals, deductStockForSale, restockForSaleReversal, assertQuarterNotFiled, resolveSaleWarehouse, assertStockAvailable, assertProductsOwnedByCompany } from '../lib/businessLogic.js';
 import { toBaseQuantity, toBaseUnitCost, loadZatcaCodesByUnitId } from '../lib/uomConversion.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { isStillChainTip, setHashChainState, ZatcaEnvironment } from '../lib/zatca/hashChain.js';
@@ -763,6 +763,17 @@ router.post('/invoices/:id/note', async (req: any, res) => {
           productId: item.productId,
           unitOfMeasureId: item.unitOfMeasureId,
         });
+
+        // Restock — a Credit Note structurally reverses the original sale, so any stock
+        // deducted at the time should come back. Debit Notes represent new, additional
+        // unpaid charges rather than a reversal (see the comment on the voucher-reversal
+        // call below), so they deliberately never restock. Uses the original invoice's own
+        // warehouseId (already inherited onto the note itself, see `warehouseId` above) —
+        // the same warehouse the stock was actually deducted from at sale time, not the
+        // note's own (nonexistent) concept of a warehouse.
+        if (type === 'CreditNote' && item.productId) {
+          await restockForSaleReversal(tx, companyId, item.productId, Number(item.quantity), newNote.id, new Date(), original.warehouseId, item.unitOfMeasureId);
+        }
       }
 
       // A Credit Note structurally reverses the original invoice — if any of it was
@@ -961,6 +972,21 @@ router.post('/invoices/:id/cancel', async (req: any, res) => {
       }
 
       await tx.update(schema.invoices).set({ status: 'Cancelled' }).where(eq(schema.invoices.id, id));
+
+      // Restock — a pre-existing gap: this route never touched inventoryStocks at all, so
+      // cancelling a sale never gave the stock back. Scoped to plain Invoices only — a
+      // Credit Note already restocks at its own creation (see the CreditNote branch
+      // above), so cancelling a Credit Note through this same generic route is a separate,
+      // not-yet-handled edge case (would need to re-deduct, the opposite direction) rather
+      // than something this fix should guess at; a Debit Note was never a stock reversal
+      // to begin with.
+      if (invoice.documentType !== 'CreditNote' && invoice.documentType !== 'DebitNote') {
+        const cancelledItems = await tx.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, id));
+        for (const item of cancelledItems) {
+          if (!item.productId) continue;
+          await restockForSaleReversal(tx, invoice.companyId, item.productId, Number(item.quantity), id, new Date(), invoice.warehouseId, item.unitOfMeasureId);
+        }
+      }
 
       // This invoice may already have reserved a real ZATCA chain position (icv/
       // previousInvoiceHash) even though it's being cancelled here — processInvoiceZatca

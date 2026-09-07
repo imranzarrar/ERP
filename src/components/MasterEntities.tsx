@@ -116,13 +116,15 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
 
  // Product fields
  const [prodName, setProdName] = React.useState('');
- const [prodType, setProdType] = React.useState<'Sales' | 'Purchase'>('Sales');
+ // 0 = Sales & Purchase (Both, the default), 1 = Sales only, 2 = Purchase only —
+ // productsServices.salesPurchaseFlow, replaces the old overloaded `type` column.
+ const [prodSalesPurchaseFlow, setProdSalesPurchaseFlow] = React.useState<0 | 1 | 2>(0);
  const [prodPrice, setProdPrice] = React.useState('');
  // Purchase/stock-valuation cost — separate from prodPrice (the selling price). Optional:
  // left blank, GRN/PO line cost defaults fall back to the selling price instead (see
  // InventoryModule.tsx's resolveProductByCode and its GRN/PO item-add handlers).
  const [prodCostPrice, setProdCostPrice] = React.useState('');
- const [prodUnit, setProdUnit] = React.useState('No');
+ const [prodUnit, setProdUnit] = React.useState('PCE');
   const [prodIsPos, setProdIsPos] = React.useState(false);
   const [prodCategory, setProdCategory] = React.useState('');
   const [prodImage, setProdImage] = React.useState('');
@@ -194,7 +196,7 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
  const { isDirty: isEntityFormDirty, markClean: markFormClean } = useDirtyGuard({
    name, email, phone, address, taxRegNumber, buyerType, zatcaVatNumber, zatcaStreetName,
    zatcaBuildingNumber, zatcaDistrict, zatcaCity, zatcaPostalCode, entityCrNumber,
-   prodName, prodType, prodPrice, prodCostPrice, prodUnit, prodIsPos, prodCategory, prodImage,
+   prodName, prodSalesPurchaseFlow, prodPrice, prodCostPrice, prodUnit, prodIsPos, prodCategory, prodImage,
    prodBarcode, prodSku, prodCatalogType, prodCategoryId, prodDefaultWarehouseId, prodBinLocation,
    prodMinLevel, prodMaxLevel, prodReorderLeadTime, prodGridPosition, prodModifierGroupIds,
    catName, catParentId, catSalesGl, catPurchaseGl, catCogsGl,
@@ -221,7 +223,7 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
      name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
      zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
      zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
-     prodName: '', prodType: 'Sales', prodPrice: '', prodCostPrice: '', prodUnit: 'No',
+     prodName: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
      prodIsPos: false, prodCategory: '', prodImage: '', prodBarcode: '', prodSku: '',
      prodCatalogType: 'item', prodCategoryId: '', prodDefaultWarehouseId: '', prodBinLocation: '',
      prodMinLevel: '', prodMaxLevel: '', prodReorderLeadTime: '', prodGridPosition: '',
@@ -251,10 +253,10 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
  setZatcaPostalCode('');
  setEntityCrNumber('');
  setProdName('');
- setProdType('Sales');
+ setProdSalesPurchaseFlow(0);
  setProdPrice('');
  setProdCostPrice('');
- setProdUnit('No');
+ setProdUnit('PCE');
     setProdIsPos(false);
     setProdCategory('');
     setProdImage('');
@@ -499,7 +501,8 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  savedProd = {
  ...newDb.products[idx],
  name: prodName,
- type: prodType,
+ salesPurchaseFlow: prodSalesPurchaseFlow,
+ itemKind: prodCatalogType,
  unitPrice: priceNum,
  costPrice: costPriceNum,
  unit: prodUnit,
@@ -526,7 +529,8 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  description: '',
  unitPrice: priceNum,
  costPrice: costPriceNum,
- type: prodType,
+ salesPurchaseFlow: prodSalesPurchaseFlow,
+ itemKind: prodCatalogType,
  unit: prodUnit,
       isPosItem: prodIsPos,
       category: prodCategory,
@@ -591,7 +595,13 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  id: generateId(),
  name: item.name,
  description: 'Restored from existing document',
- type: item.type,
+ // Real sold items (this function only ever scans invoice/quotation line items), so
+ // 'Sales' visibility is correct. itemKind defaults to 'item' explicitly — a restored
+ // product is exactly the "new product" case the schema's own default applies to
+ // (unlike the bulk historical backfill, which is conservative because it can't know
+ // what pre-existing, never-reviewed rows really are).
+ salesPurchaseFlow: 1,
+ itemKind: 'item',
  unitPrice: item.price,
  unit: 'No',
  companyId: db.selectedCompanyId
@@ -956,7 +966,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
    setEditingId(entity.id);
    if (type === 'products') {
      setProdName(entity.name);
-     setProdType(entity.type);
+     setProdSalesPurchaseFlow(entity.salesPurchaseFlow ?? 0);
      setProdPrice(entity.unitPrice.toString());
      setProdCostPrice(entity.costPrice != null ? entity.costPrice.toString() : '');
      setProdUnit(entity.unit || 'No');
@@ -965,7 +975,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
      setProdImage(entity.base64Image || '');
      setProdBarcode(entity.barcode || '');
      setProdSku(entity.sku || '');
-     setProdCatalogType(entity.catalogType || 'item');
+     setProdCatalogType(entity.itemKind || 'item');
      setProdCategoryId(entity.categoryId || '');
      setProdDefaultWarehouseId(entity.defaultWarehouseId || '');
      setProdBinLocation(entity.binLocation || '');
@@ -1048,12 +1058,12 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
        name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
        zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
        zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
-       prodName: entity.name, prodType: entity.type, prodPrice: entity.unitPrice.toString(),
+       prodName: entity.name, prodSalesPurchaseFlow: entity.salesPurchaseFlow ?? 0, prodPrice: entity.unitPrice.toString(),
        prodCostPrice: entity.costPrice != null ? entity.costPrice.toString() : '',
        prodUnit: entity.unit || 'No', prodIsPos: entity.isPosItem || false,
        prodCategory: entity.category || '', prodImage: entity.base64Image || '',
        prodBarcode: entity.barcode || '', prodSku: entity.sku || '',
-       prodCatalogType: entity.catalogType || 'item', prodCategoryId: entity.categoryId || '',
+       prodCatalogType: entity.itemKind || 'item', prodCategoryId: entity.categoryId || '',
        prodDefaultWarehouseId: entity.defaultWarehouseId || '', prodBinLocation: entity.binLocation || '',
        prodMinLevel: entity.minLevel ? String(entity.minLevel) : '',
        prodMaxLevel: entity.maxLevel ? String(entity.maxLevel) : '',
@@ -1071,7 +1081,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
        name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
        zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
        zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
-       prodName: '', prodType: 'Sales', prodPrice: '', prodCostPrice: '', prodUnit: 'No',
+       prodName: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
        prodIsPos: false, prodCategory: '', prodImage: '', prodBarcode: '', prodSku: '',
        prodCatalogType: 'item', prodCategoryId: '', prodDefaultWarehouseId: '', prodBinLocation: '',
        prodMinLevel: '', prodMaxLevel: '', prodReorderLeadTime: '', prodGridPosition: '',
@@ -1089,7 +1099,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
        name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
        zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
        zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
-       prodName: '', prodType: 'Sales', prodPrice: '', prodCostPrice: '', prodUnit: 'No',
+       prodName: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
        prodIsPos: false, prodCategory: '', prodImage: '', prodBarcode: '', prodSku: '',
        prodCatalogType: 'item', prodCategoryId: '', prodDefaultWarehouseId: '', prodBinLocation: '',
        prodMinLevel: '', prodMaxLevel: '', prodReorderLeadTime: '', prodGridPosition: '',
@@ -1105,7 +1115,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
        name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
        zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
        zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
-       prodName: '', prodType: 'Sales', prodPrice: '', prodCostPrice: '', prodUnit: 'No',
+       prodName: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
        prodIsPos: false, prodCategory: '', prodImage: '', prodBarcode: '', prodSku: '',
        prodCatalogType: 'item', prodCategoryId: '', prodDefaultWarehouseId: '', prodBinLocation: '',
        prodMinLevel: '', prodMaxLevel: '', prodReorderLeadTime: '', prodGridPosition: '',
@@ -1128,7 +1138,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
        zatcaBuildingNumber: entity.buildingNumber || '', zatcaDistrict: entity.district || '',
        zatcaCity: entity.city || '', zatcaPostalCode: entity.postalCode || '',
        entityCrNumber: entity.crNumber || '',
-       prodName: '', prodType: 'Sales', prodPrice: '', prodCostPrice: '', prodUnit: 'No',
+       prodName: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
        prodIsPos: false, prodCategory: '', prodImage: '', prodBarcode: '', prodSku: '',
        prodCatalogType: 'item', prodCategoryId: '', prodDefaultWarehouseId: '', prodBinLocation: '',
        prodMinLevel: '', prodMaxLevel: '', prodReorderLeadTime: '', prodGridPosition: '',
@@ -1541,12 +1551,13 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <div className="space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Transaction Flow Type')}</label>
  <select
- value={prodType}
- onChange={(e) => setProdType(e.target.value as any)}
+ value={String(prodSalesPurchaseFlow)}
+ onChange={(e) => setProdSalesPurchaseFlow(Number(e.target.value) as 0 | 1 | 2)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
  >
- <option value="Sales">{t('Sales Earning Flow (Invoicing / POS)')}</option>
- <option value="Purchase">{t('Purchase Supply Flow (Supplier procurement)')}</option>
+ <option value="0">{t('Sales & Purchase (Both)')}</option>
+ <option value="1">{t('Sales Earning Flow (Invoicing / POS)')}</option>
+ <option value="2">{t('Purchase Supply Flow (Supplier procurement)')}</option>
  </select>
  </div>
 
@@ -1558,6 +1569,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
  >
  <option value="No">{t('None / Default')}</option>
+ <option value="PCE">{t('Piece')} (PCE)</option>
  <option value="Lumpsum">{t('Lumpsum')}</option>
  {db.unitsOfMeasure.map(u => (
  <option key={u.id} value={u.code}>{u.name} ({u.code})</option>
@@ -2388,9 +2400,11 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <td className="p-4">{p.isPosItem ? t('Yes') : t('No')}</td>
  <td className="p-4 font-semibold">
  <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
- p.type === 'Sales' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'
+ (p as any).salesPurchaseFlow === 1 ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+ (p as any).salesPurchaseFlow === 2 ? 'bg-rose-50 text-rose-700 border border-rose-100' :
+ 'bg-indigo-50 text-indigo-700 border border-indigo-100'
  }`}>
- {t(p.type)}
+ {(p as any).salesPurchaseFlow === 1 ? t('Sales') : (p as any).salesPurchaseFlow === 2 ? t('Purchase') : t('Both')}
  </span>
  </td>
  <td className="p-4 font-semibold text-slate-600">{p.unit || t('No')}</td>

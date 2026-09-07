@@ -235,8 +235,8 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  const salesProducts = React.useMemo(() => {
    const baseProducts = (db.products || []).filter(p => {
      const isCompMatch = !p.companyId || p.companyId === db.selectedCompanyId;
-     const pType = (p.type || '').toLowerCase();
-     return isCompMatch && pType !== 'purchase';
+     // 0 = Both, 1 = Sales, 2 = Purchase — exclude only Purchase-only; Both/Sales show here.
+     return isCompMatch && p.salesPurchaseFlow !== 2;
    });
    const rows: (typeof baseProducts[number] & { unitOfMeasureId?: string | null; conversionFactor?: number })[] = [...baseProducts];
    for (const puc of (db.productUnitConversions || [])) {

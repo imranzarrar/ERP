@@ -86,7 +86,7 @@ beforeAll(async () => {
 
   productId = generateId();
   await db.insert(schema.productsServices).values({
-    id: productId, name: 'Bill Test Widget', description: 'x', unitPrice: '10.00', type: 'item', companyId,
+    id: productId, name: 'Bill Test Widget', description: 'x', unitPrice: '10.00', itemKind: 'item', companyId,
   });
 
   warehouseId = generateId();

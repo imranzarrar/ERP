@@ -427,7 +427,18 @@ export const productsServices = pgTable('products_services', {
   // this is null, so pre-existing products keep behaving exactly as before until an
   // admin sets a real cost price. Never itself used as a selling price.
   costPrice: decimal('cost_price', { precision: 12, scale: 2 }),
-  type: text('type').notNull(), // 'item' or 'service'
+  // Real, persisted item-vs-service classification — actually wired to the Add Product
+  // form's "Product Classification" control (previously a client-only, never-persisted
+  // value). Drives every stock-mutating code path: sales deduction/restock
+  // (businessLogic.ts), GRN/Purchase-Return/Warehouse-Transfer/Stock-Take/Adjustment
+  // (server/routes/inventory.ts), and which products the item-pickers on those forms even
+  // offer (InventoryModule.tsx). 'service' products never touch inventoryStocks.
+  itemKind: text('item_kind').notNull().default('item'), // 'item' | 'service'
+  // Which item-pickers this product shows up in: 0 = Sales & Purchase (Both, the default —
+  // most retail items are bought and resold), 1 = Sales only, 2 = Purchase only. Replaces
+  // the old `type` column's Sales/Purchase meaning; see salesProducts/purchaseProducts
+  // filters in InvoiceModule.tsx/QuotationModule.tsx/ExpenseModule.tsx.
+  salesPurchaseFlow: integer('sales_purchase_flow').notNull().default(0),
   unit: text('unit'),
   isPosItem: boolean('is_pos_item').default(false),
   category: text('category'),

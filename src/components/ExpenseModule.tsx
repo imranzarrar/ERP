@@ -202,8 +202,8 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  const purchaseProducts = React.useMemo(() => {
    return (db.products || []).filter(p => {
      const isCompMatch = !p.companyId || p.companyId === db.selectedCompanyId;
-     const pType = (p.type || '').toLowerCase();
-     return isCompMatch && pType !== 'sales';
+     // 0 = Both, 1 = Sales, 2 = Purchase — exclude only Sales-only; Both/Purchase show here.
+     return isCompMatch && p.salesPurchaseFlow !== 1;
    });
  }, [db.products, db.selectedCompanyId]);
 

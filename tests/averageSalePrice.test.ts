@@ -88,7 +88,7 @@ beforeAll(async () => {
 
   productId = generateId();
   await db.insert(schema.productsServices).values({
-    id: productId, name: 'Test Widget', description: 'x', unitPrice: '10.00', type: 'item', companyId,
+    id: productId, name: 'Test Widget', description: 'x', unitPrice: '10.00', itemKind: 'item', companyId,
   });
 
   // A catalog-linked ('item' type) line now requires a resolvable sales warehouse

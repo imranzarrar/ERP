@@ -91,7 +91,7 @@ beforeAll(async () => {
   customerId = generateId();
   await db.insert(schema.customers).values({ id: customerId, name: 'Test Customer', phone: '0', email: 'c@example.com', address: 'x', companyId });
   productId = generateId();
-  await db.insert(schema.productsServices).values({ id: productId, name: 'Test Widget', description: 'x', unitPrice: '10.00', type: 'item', companyId });
+  await db.insert(schema.productsServices).values({ id: productId, name: 'Test Widget', description: 'x', unitPrice: '10.00', itemKind: 'item', companyId });
 });
 
 afterAll(async () => {
