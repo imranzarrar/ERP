@@ -25,7 +25,11 @@ function uuid() {
 }
 
 async function main() {
-  const rows = JSON.parse(fs.readFileSync(new URL('./translations-export.json', import.meta.url)));
+  // Explicit 'utf8' rather than relying on implicit Buffer coercion — this file is full of
+  // Arabic/Urdu multi-byte text, and node-postgres itself only ever speaks UTF-8 on the
+  // wire (matches src/db/index.ts's own Pool, which sets no client_encoding override
+  // either — every Postgres DB this app talks to is UTF8, same as this file).
+  const rows = JSON.parse(fs.readFileSync(new URL('./translations-export.json', import.meta.url), 'utf8'));
   let inserted = 0, filled = 0, skipped = 0;
 
   for (const row of rows) {
