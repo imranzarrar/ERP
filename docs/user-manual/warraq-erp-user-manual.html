@@ -1,0 +1,1589 @@
+<title>Warraq — ERP User Manual</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+  :root {
+    /* Warraq brand palette — the app's own real "Classic Executive" default theme
+       (src/theme.ts), used as-is since it's the one color system this codebase
+       actually implements today. Matches docs/zatca/zatca-onboarding-user-manual.html. */
+    --w-primary: #4f46e5;
+    --w-primary-hover: #4338ca;
+    --w-primary-dark: #1e1b4b;
+    --w-primary-darktext: #312e81;
+    --w-accent: #6366f1;
+    --w-accent-light: #818cf8;
+    --w-light: #f5f3ff;
+    --w-light-border: #ddd6fe;
+    --w-midlight: #e0e7ff;
+    --w-darkmid: #3730a3;
+    --w-slate-950: #0b1120;
+    --w-slate-900: #0f172a;
+    --w-slate-800: #1e293b;
+
+    --good: #059669; --good-soft: #d1fae5; --good-ink: #065f46;
+    --warn: #d97706; --warn-soft: #fef3c7; --warn-ink: #92400e;
+    --crit: #e11d48; --crit-soft: #ffe4e6; --crit-ink: #9f1239;
+    --info: #2563eb; --info-soft: #dbeafe; --info-ink: #1e40af;
+
+    --ink: #1a1c23; --ink-soft: #565b6b; --paper: #f6f5fb; --paper-raised: #ffffff; --line: #e2e1ee;
+    --shadow: 0 1px 2px rgba(20,20,40,.06), 0 12px 28px -14px rgba(30,27,75,.28);
+    --font-display: "Space Grotesk", "Segoe UI Semibold", system-ui, sans-serif;
+    --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", "Consolas", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { color-scheme: light; }
+  body { margin: 0; }
+  .doc { background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 15.5px; line-height: 1.62; }
+  a { color: var(--w-primary); }
+  h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 700; color: var(--w-primary-dark); text-wrap: balance; letter-spacing: -0.01em; }
+  code { font-family: var(--font-mono); font-size: 0.85em; background: var(--w-light); border: 1px solid var(--w-light-border); padding: 0.05em 0.4em; border-radius: 4px; color: var(--w-primary-darktext); }
+
+  /* ============ COVER PAGE ============ */
+  .cover {
+    position: relative; overflow: hidden;
+    min-height: 29.2cm;
+    background: radial-gradient(circle at 15% 8%, #2d2a80 0%, var(--w-slate-950) 46%, #08060f 100%);
+    color: #fff;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 3.4cm 2.6cm 2cm;
+    page-break-after: always;
+  }
+  .cover::before {
+    content: ""; position: absolute; inset: 0; opacity: 0.5; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(129,140,248,.10) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(129,140,248,.10) 1px, transparent 1px);
+    background-size: 42px 42px;
+    -webkit-mask-image: radial-gradient(ellipse 90% 70% at 50% 30%, black 10%, transparent 75%);
+            mask-image: radial-gradient(ellipse 90% 70% at 50% 30%, black 10%, transparent 75%);
+  }
+  .cover::after {
+    content: ""; position: absolute; right: -12%; top: -14%; width: 62%; aspect-ratio: 1;
+    background: conic-gradient(from 200deg, #818cf8, #6366f1 30%, transparent 65%);
+    filter: blur(70px); opacity: 0.55; border-radius: 50%; pointer-events: none;
+  }
+  .cover-top { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; }
+  .cover-kicker { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.22em; text-transform: uppercase; color: #a5b4fc; border: 1px solid rgba(165,180,252,.35); padding: 0.4rem 0.85rem; border-radius: 100px; }
+  .cover-mark { display: flex; align-items: center; gap: 0.6rem; }
+  .cover-mark .glyph { width: 40px; height: 40px; border-radius: 11px; background: linear-gradient(135deg,#818cf8,#4f46e5 65%); display:flex; align-items:center; justify-content:center; font-family: var(--font-display); font-weight:800; font-size:1.25rem; color:#fff; box-shadow: 0 8px 22px -6px rgba(99,102,241,.65); }
+  .cover-mark span { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; letter-spacing: 0.02em; color: #e7e6fb; }
+
+  .cover-mid { position: relative; z-index: 2; margin-top: 4.4rem; }
+  .cover-eyebrow { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.14em; text-transform: uppercase; color: #a5b4fc; margin: 0 0 1.1rem; }
+  .cover-word { font-family: var(--font-display); font-weight: 800; font-size: clamp(3.6rem, 9vw, 6.4rem); line-height: 0.96; margin: 0; letter-spacing: -0.02em; background: linear-gradient(180deg,#ffffff 0%,#c7cbfb 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .cover-sub { font-family: var(--font-display); font-weight: 600; font-size: 1.35rem; color: #cfd2f7; margin: 0.3rem 0 0; }
+  .cover-title { font-size: 1.55rem; font-weight: 600; color: #fff; max-width: 34ch; margin: 2.2rem 0 0.8rem; font-family: var(--font-display); }
+  .cover-dek { font-size: 1.02rem; color: #b9bce8; max-width: 56ch; line-height: 1.6; margin: 0; }
+
+  .cover-bottom { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(4,1fr); gap: 1.6rem; border-top: 1px solid rgba(165,180,252,.22); padding-top: 1.6rem; }
+  .cover-bottom .stat b { display: block; font-family: var(--font-display); font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; color: #8b8fd0; margin-bottom: 0.35rem; font-weight: 600; }
+  .cover-bottom .stat span { font-size: 0.86rem; color: #e2e3f8; font-weight: 500; }
+
+  /* ============ BODY LAYOUT ============ */
+  .layout { display: grid; grid-template-columns: 268px minmax(0,1fr); max-width: 1320px; margin: 0 auto; }
+  @media (max-width: 880px) { .layout { grid-template-columns: 1fr; } .rail { position: static !important; border-right: none !important; border-bottom: 1px solid var(--line); } }
+  .rail { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; padding: 2rem 1.4rem 2rem; border-right: 1px solid var(--line); font-family: var(--font-display); background: var(--paper-raised); }
+  .rail-mark { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1.4rem; }
+  .rail-mark .glyph { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg,#818cf8,#4f46e5 65%); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:0.9rem; color:#fff; }
+  .rail-mark b { font-size: 0.88rem; color: var(--w-primary-dark); }
+  .rail nav { display: flex; flex-direction: column; gap: 0.02rem; }
+  .rail nav a { display: block; font-size: 0.735rem; color: var(--ink-soft); text-decoration: none; padding: 0.36rem 0 0.36rem 0.7rem; border-left: 2px solid transparent; font-weight: 500; }
+  .rail nav a:hover { color: var(--w-primary-dark); }
+  .rail nav a.active { color: var(--w-primary); border-left-color: var(--w-primary); font-weight: 700; }
+  .rail nav .rail-group { font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; color: #a3a6c2; font-weight: 700; margin: 0.9rem 0 0.2rem 0.7rem; }
+  .rail nav .rail-group:first-child { margin-top: 0; }
+
+  .content { padding: 3rem 3.25rem 6rem; min-width: 0; }
+  @media (max-width: 880px) { .content { padding: 2rem 1.25rem 4rem; } }
+
+  .about-note { background: var(--w-light); border: 1px solid var(--w-light-border); border-radius: 14px; padding: 1rem 1.3rem; font-size: 0.87rem; color: var(--w-primary-darktext); margin: 0 0 2.5rem; }
+  .about-note b { font-family: var(--font-display); }
+
+  section { max-width: 74ch; margin: 0 0 3rem; scroll-margin-top: 2rem; page-break-inside: avoid; }
+  section.wide { max-width: none; }
+  section h2 { font-size: 1.55rem; margin: 0 0 0.35rem; padding-top: 1.9rem; position: relative; }
+  section h2::before { content: ""; position: absolute; top: 0; left: 0; width: 46px; height: 4px; border-radius: 4px; background: linear-gradient(90deg,#4f46e5,#818cf8); }
+  .section-eyebrow { font-family: var(--font-mono); font-size: 0.72rem; color: var(--w-primary); font-weight: 600; letter-spacing: 0.04em; margin: 0 0 0.5rem; }
+  section h3 { font-size: 1.1rem; margin: 1.7rem 0 0.6rem; color: var(--ink); }
+  section h4 { font-size: 0.94rem; margin: 1.2rem 0 0.5rem; color: var(--w-primary-darktext); }
+  section p { margin: 0 0 1rem; }
+  ul.plain, ol.plain { padding-left: 1.2rem; margin: 0 0 1rem; }
+  ul.plain li, ol.plain li { margin-bottom: 0.45rem; }
+  ol.steps { padding-left: 1.4rem; margin: 0 0 1rem; }
+  ol.steps li { margin-bottom: 0.7rem; }
+
+  .callout { background: var(--paper-raised); border: 1px solid var(--line); border-left: 4px solid var(--w-primary); border-radius: 0 14px 14px 0; padding: 1.1rem 1.3rem; margin: 1.25rem 0; box-shadow: var(--shadow); }
+  .callout .label { font-family: var(--font-display); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--w-primary); margin-bottom: 0.4rem; font-weight: 700; }
+  .callout.risk { border-left-color: var(--warn); }
+  .callout.risk .label { color: var(--warn-ink); }
+  .callout.crit { border-left-color: var(--crit); }
+  .callout.crit .label { color: var(--crit-ink); }
+  .callout.good { border-left-color: var(--good); }
+  .callout.good .label { color: var(--good-ink); }
+
+  .pill { display: inline-flex; align-items: center; gap: 0.4rem; font-family: var(--font-display); font-size: 0.7rem; font-weight: 700; padding: 0.22rem 0.6rem 0.22rem 0.5rem; border-radius: 100px; white-space: nowrap; }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .pill.good { background: var(--good-soft); color: var(--good-ink); }
+  .pill.warn { background: var(--warn-soft); color: var(--warn-ink); }
+  .pill.crit { background: var(--crit-soft); color: var(--crit-ink); }
+  .pill.info { background: var(--info-soft); color: var(--info-ink); }
+  .pill.neutral { background: #f1f0fa; color: var(--ink-soft); border: 1px solid var(--line); }
+
+  .table-wrap { overflow-x: auto; margin: 1rem 0 1.75rem; border: 1px solid var(--line); border-radius: 12px; }
+  table.plan { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 520px; background: var(--paper-raised); }
+  table.plan th { text-align: left; font-family: var(--font-display); font-size: 0.66rem; letter-spacing: 0.05em; text-transform: uppercase; color: #fff; font-weight: 700; padding: 0.65rem 0.85rem; background: var(--w-primary-dark); white-space: nowrap; }
+  table.plan td { padding: 0.65rem 0.85rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.plan tbody tr:last-child td { border-bottom: none; }
+  table.plan td.id { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-soft); white-space: nowrap; }
+
+  /* Phase / feature cards */
+  .phase-card { background: var(--paper-raised); border: 1px solid var(--line); box-shadow: var(--shadow); border-radius: 18px; padding: 1.4rem 1.5rem; margin-bottom: 1.3rem; page-break-inside: avoid; }
+  .phase-card .phead { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 0.6rem; }
+  .phase-card .pnum { flex-shrink:0; width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg,var(--w-accent),var(--w-primary)); color:#fff; font-family: var(--font-display); font-weight: 800; font-size: 0.98rem; display:flex; align-items:center; justify-content:center; box-shadow: 0 6px 16px -6px rgba(79,70,229,.55); }
+  .phase-card .ptitle { font-family: var(--font-display); font-weight: 700; font-size: 1.06rem; color: var(--ink); }
+  .phase-card .ptag { font-family: var(--font-mono); font-size: 0.66rem; color: var(--w-primary); background: var(--w-light); padding: 0.15rem 0.5rem; border-radius: 100px; margin-left: auto; white-space: nowrap; font-weight: 600; }
+  .phase-card p { margin: 0 0 0.6rem; font-size: 0.92rem; }
+  .phase-card .field-list { margin: 0.6rem 0; padding: 0; list-style: none; }
+  .phase-card .field-list li { display: flex; gap: 0.6rem; padding: 0.4rem 0; border-bottom: 1px dashed var(--line); font-size: 0.86rem; }
+  .phase-card .field-list li:last-child { border-bottom: none; }
+  .phase-card .field-list b { font-family: var(--font-display); font-size: 0.8rem; min-width: 15ch; flex-shrink: 0; color: var(--w-primary-darktext); }
+  .phase-card .gate { font-size: 0.85rem; border-top: 1px dashed var(--line); padding-top: 0.6rem; margin-top: 0.6rem; color: var(--ink-soft); }
+  .phase-card .gate b { font-family: var(--font-display); font-size: 0.66rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--good-ink); display: block; margin-bottom: 0.25rem; }
+  .btn-chip { display: inline-block; font-family: var(--font-display); font-weight: 700; font-size: 0.76rem; background: linear-gradient(135deg,var(--w-accent),var(--w-primary)); color: #fff; padding: 0.32rem 0.75rem; border-radius: 12px; margin: 0.1rem 0.15rem; box-shadow: 0 4px 10px -4px rgba(79,70,229,.6); }
+
+  .checklist { list-style: none; margin: 0 0 1.25rem; padding: 0; }
+  .checklist li { display: flex; gap: 0.6rem; padding: 0.5rem 0; border-bottom: 1px dashed rgba(255,255,255,.18); font-size: 0.92rem; }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist input[type="checkbox"] { margin-top: 0.25rem; flex-shrink: 0; width: 15px; height: 15px; accent-color: var(--w-accent-light); }
+
+  .breadcrumb { font-family: var(--font-mono); font-size: 0.78rem; background: var(--w-primary-dark); color: #e0e1fb; padding: 0.7rem 1rem; border-radius: 10px; margin: 0.75rem 0 1.5rem; }
+  .breadcrumb b { color: #c7d2fe; }
+
+  .faq dt { font-family: var(--font-display); font-weight: 700; font-size: 0.94rem; margin: 1.4rem 0 0.4rem; color: var(--w-primary-dark); }
+  .faq dd { margin: 0 0 0; font-size: 0.9rem; color: var(--ink-soft); }
+
+  /* ---- Screen mockups (faithful reproductions of the real UI, not photos) ---- */
+  .screen { border-radius: 16px; overflow: hidden; box-shadow: 0 18px 40px -20px rgba(30,27,75,.45); border: 1px solid var(--line); margin: 1.1rem 0 1.6rem; background: #fff; page-break-inside: avoid; }
+  .screen .chrome { background: #e4e3f1; padding: 0.5rem 0.8rem; display: flex; align-items: center; gap: 0.4rem; border-bottom: 1px solid var(--line); }
+  .screen .chrome i { width: 9px; height: 9px; border-radius: 50%; background: #c9c8dc; display: inline-block; }
+  .screen .chrome span { font-family: var(--font-mono); font-size: 0.68rem; color: #7a7d95; margin-left: 0.5rem; }
+  .screen .body { padding: 1.1rem 1.2rem; font-size: 0.8rem; }
+  .fig-caption { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-soft); margin: -1.1rem 0 1.6rem; text-align: center; }
+
+  .mock-banner { border-radius: 12px; padding: 0.8rem 1rem; display:flex; gap:0.6rem; font-size: 0.76rem; margin-bottom: 0.9rem; }
+  .mock-banner.good { background: var(--good-soft); color: var(--good-ink); border: 1px solid #a7e3c8; }
+  .mock-banner.info { background: var(--info-soft); color: var(--info-ink); border: 1px solid #bcd3fb; }
+  .mock-banner.warn { background: var(--warn-soft); color: var(--warn-ink); border: 1px solid #fbd999; }
+  .mock-cards { display: grid; grid-template-columns: repeat(4,1fr); gap: 0.6rem; margin-bottom: 1rem; }
+  .mock-cards.c3 { grid-template-columns: repeat(3,1fr); }
+  .mock-card { background: #fafafe; border: 1px solid var(--line); border-radius: 10px; padding: 0.6rem 0.7rem; }
+  .mock-card b { display: block; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; color: #9a9db0; font-weight: 700; margin-bottom: 0.3rem; }
+  .mock-card span { font-size: 0.78rem; font-weight: 700; color: var(--ink); }
+  .mock-card.dark { background: var(--w-primary-dark); border-color: var(--w-primary-dark); }
+  .mock-card.dark b { color: #a5b4fc; }
+  .mock-card.dark span { color: #fff; }
+  .mock-envrow { display: grid; grid-template-columns: repeat(3,1fr); gap: 0.6rem; margin-bottom: 1rem; }
+  .mock-env { border-radius: 10px; padding: 0.65rem 0.75rem; border: 2px solid var(--line); font-size: 0.72rem; }
+  .mock-env.active { border-color: var(--w-primary); background: var(--w-light); }
+  .mock-env b { display:block; font-size: 0.78rem; margin-bottom:0.2rem; }
+  .mock-env .badge { display:inline-block; font-size: 0.58rem; font-weight:700; padding:0.1rem 0.4rem; border-radius:100px; text-transform:uppercase; }
+  .mock-steps { display:flex; gap: 0.35rem; margin-bottom: 1rem; flex-wrap: wrap; }
+  .mock-steps .s { flex:1; min-width: 90px; border-radius: 8px; padding: 0.4rem 0.55rem; font-size: 0.66rem; font-weight:700; display:flex; align-items:center; gap:0.35rem; }
+  .mock-steps .s.on { background: var(--w-primary); color:#fff; }
+  .mock-steps .s.done { background: var(--good-soft); color: var(--good-ink); }
+  .mock-steps .s.todo { background: #f1f0fa; color: #7a7d95; border: 1px solid var(--line); }
+  .mock-steps .s em { width:16px; height:16px; border-radius:50%; background:rgba(255,255,255,.3); display:inline-flex; align-items:center; justify-content:center; font-style:normal; font-size:0.6rem; flex-shrink:0; }
+  .mock-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  .mock-form.c3 { grid-template-columns: 1fr 1fr 1fr; }
+  .mock-field label { display:block; font-size: 0.64rem; font-weight: 700; color: #555; margin-bottom: 0.25rem; }
+  .mock-field .box { border: 1px solid #d7d6e6; border-radius: 8px; padding: 0.4rem 0.55rem; font-family: var(--font-mono); font-size: 0.72rem; background: #fbfbff; color: #333; }
+  .mock-field .hint { font-size: 0.6rem; color: #9a9db0; margin-top: 0.25rem; }
+  .mock-btn { display:inline-block; background: var(--w-primary); color:#fff; font-size:0.72rem; font-weight:700; padding: 0.45rem 0.9rem; border-radius: 10px; margin-top: 0.9rem; }
+  .mock-btn.ghost { background: #f1f0fa; color: var(--ink-soft); }
+  .mock-btn.good { background: var(--good); }
+  .mock-code { background: var(--w-slate-900); color: #86efac; font-family: var(--font-mono); font-size: 0.68rem; padding: 0.7rem 0.8rem; border-radius: 10px; word-break: break-all; margin-top: 0.6rem; line-height: 1.5; }
+  .mock-results { background: var(--w-slate-900); border-radius: 10px; padding: 0.8rem; margin-top: 0.6rem; }
+  .mock-results .row { display:flex; justify-content: space-between; align-items:center; background: var(--w-slate-800); border-radius: 8px; padding: 0.4rem 0.6rem; margin-bottom: 0.4rem; font-size: 0.68rem; color:#e2e2f5; }
+  .mock-results .row .st { font-weight:700; padding: 0.12rem 0.45rem; border-radius:6px; font-size:0.6rem; }
+  .mock-success { text-align:center; background: var(--good-soft); border: 1px solid #a7e3c8; border-radius: 14px; padding: 1.2rem; }
+  .mock-success .tick { width:36px; height:36px; border-radius:50%; background: var(--good); color:#fff; display:flex; align-items:center; justify-content:center; margin: 0 auto 0.6rem; font-weight:800; }
+
+  /* Data-table mockup (list screens) */
+  .mock-table-wrap { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  table.mock-table { width: 100%; border-collapse: collapse; font-size: 0.7rem; }
+  table.mock-table th { text-align: left; background: #f4f3fb; color: #6a6d85; font-weight: 700; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--line); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap; }
+  table.mock-table td { padding: 0.5rem 0.6rem; border-bottom: 1px solid #eeedf7; vertical-align: middle; white-space: nowrap; }
+  table.mock-table tbody tr:last-child td { border-bottom: none; }
+  table.mock-table .lnk { color: var(--w-primary); font-weight: 700; }
+  table.mock-table .num { font-family: var(--font-mono); text-align: right; }
+  .mock-toolbar { display:flex; justify-content: space-between; align-items:center; margin-bottom: 0.7rem; gap: 0.6rem; flex-wrap: wrap; }
+  .mock-toolbar h6 { margin: 0; font-family: var(--font-display); font-size: 0.85rem; color: var(--ink); }
+
+  /* Full app-shell mockup (sidebar + content), used sparingly for orientation figures */
+  .app-shell { display:flex; border-radius:16px; overflow:hidden; border:1px solid var(--line); box-shadow: 0 18px 40px -20px rgba(30,27,75,.45); margin:1.1rem 0 1.6rem; }
+  .app-shell .side { width:196px; flex-shrink:0; background:linear-gradient(180deg,#1e1b4b,#141230); color:#fff; padding:0.9rem 0.65rem; font-size:0.66rem; }
+  .app-shell .side .brand { display:flex; align-items:center; gap:0.4rem; font-family:var(--font-display); font-weight:800; font-size:0.72rem; margin-bottom:0.9rem; padding:0 0.2rem; color:#fff; }
+  .app-shell .side .brand em { font-style:normal; width:20px; height:20px; border-radius:6px; background:linear-gradient(135deg,#818cf8,#4f46e5); display:inline-flex; align-items:center; justify-content:center; font-weight:800; font-size:0.7rem; }
+  .app-shell .side .grp { text-transform:uppercase; letter-spacing:0.06em; font-size:0.55rem; color:#8286c2; margin:0.7rem 0 0.3rem 0.35rem; font-weight:700; }
+  .app-shell .side .grp:first-of-type { margin-top: 0.2rem; }
+  .app-shell .side .item { padding:0.36rem 0.5rem; border-radius:7px; margin-bottom:1px; color:#c7c8ec; font-weight:600; }
+  .app-shell .side .item.active { background:var(--w-primary); color:#fff; }
+  .app-shell .main { flex:1; background:#fdfdff; padding:1rem 1.15rem; font-size:0.78rem; min-width:0; }
+  .app-shell .main .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.9rem; padding-bottom:0.7rem; border-bottom:1px solid var(--line); }
+  .app-shell .main .topbar .chip { font-size:0.58rem; font-weight:700; padding:0.18rem 0.5rem; border-radius:100px; background:var(--w-light); color:var(--w-primary-darktext); }
+  .app-shell .main h5 { margin:0 0 0.15rem; font-family:var(--font-display); font-size:0.98rem; color:var(--ink); }
+  .app-shell .main .sub { color:var(--ink-soft); font-size:0.7rem; margin-bottom:0.9rem; }
+
+  .signoff { background: linear-gradient(160deg,var(--w-slate-950),#221f52); color: #fff; padding: 2.4rem 2.6rem; margin: 3rem 0 0; border-radius: 20px; }
+  .signoff h2 { color: #fff; }
+  .signoff h2::before { display: none; }
+  .signoff p, .signoff li { color: #c6c8ef; }
+
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .rail { display: none !important; }
+    .layout { grid-template-columns: 1fr !important; max-width: none; }
+    .content { padding: 0 1.4cm 1.2cm; }
+    section { page-break-inside: avoid; }
+    .phase-card, .screen, .callout, .app-shell, .cover-bottom { page-break-inside: avoid; }
+    a { color: var(--w-primary); text-decoration: none; }
+  }
+  ::selection { background: var(--w-light-border); color: var(--w-primary-dark); }
+</style>
+
+<div class="doc">
+
+  <!-- ============ COVER PAGE ============ -->
+  <div class="cover">
+    <div class="cover-top">
+      <div class="cover-mark"><span class="glyph">W</span><span>WARRAQ ERP SYSTEM</span></div>
+      <span class="cover-kicker">User Manual</span>
+    </div>
+    <div class="cover-mid">
+      <p class="cover-eyebrow">Master Data · Transactions · Reports · Configuration</p>
+      <h1 class="cover-word">Warraq</h1>
+      <p class="cover-sub">ERP System</p>
+      <p class="cover-title">The Complete Administrator's Guide</p>
+      <p class="cover-dek">Every module in the system, in the order you actually need to set them up: master data first, then the day-to-day transactions that depend on it, then the reports it produces, then the configuration screens that govern how it all behaves — matched exactly to the live application.</p>
+    </div>
+    <div class="cover-bottom">
+      <div class="stat"><b>Audience</b><span>Company Admin / Super Admin</span></div>
+      <div class="stat"><b>Coverage</b><span>40+ screens, every module</span></div>
+      <div class="stat"><b>Reading order</b><span>Master Data → Transactions → Reports → Config</span></div>
+      <div class="stat"><b>Companion doc</b><span>ZATCA Onboarding Guide</span></div>
+    </div>
+  </div>
+
+  <div class="layout">
+    <aside class="rail" id="rail">
+      <div class="rail-mark"><span class="glyph">W</span><b>Warraq — User Manual</b></div>
+      <nav>
+        <a href="#start">Before you start</a>
+        <a href="#navigate">Navigating Warraq</a>
+        <div class="rail-group">Master Data</div>
+        <a href="#partners">Customers &amp; Vendors</a>
+        <a href="#catalog">Products &amp; Catalog</a>
+        <a href="#warehouses">Warehouses</a>
+        <a href="#hr">Employees &amp; Job Titles</a>
+        <div class="rail-group">Transactions</div>
+        <a href="#pos">Point of Sale</a>
+        <a href="#sales">Quotations &amp; Sales Invoices</a>
+        <a href="#expenses">Expenses &amp; Recurring Postings</a>
+        <a href="#purchasing">Purchasing &amp; Inventory</a>
+        <div class="rail-group">Reports</div>
+        <a href="#fin-reports">Financial Reports</a>
+        <a href="#ops-reports">Sales, Purchase &amp; Inventory Reports</a>
+        <div class="rail-group">Configuration</div>
+        <a href="#config-org">Company, Branches &amp; Money</a>
+        <a href="#config-zatca">ZATCA E-Invoicing</a>
+        <a href="#config-roles">Users, Roles &amp; Permissions</a>
+        <a href="#config-ops">Templates, POS &amp; Translations</a>
+        <a href="#config-fiscal">Fiscal Periods, Capital &amp; VAT Filing</a>
+        <a href="#config-backup">Backup &amp; Data Portability</a>
+        <div class="rail-group">Reference</div>
+        <a href="#appendix">Glossary &amp; quick reference</a>
+      </nav>
+    </aside>
+
+    <main class="content">
+
+      <div class="about-note"><b>About the screens in this manual.</b> The panels styled like app windows throughout this document are faithful reproductions of the real Warraq screens — same labels, same layout, same colors as the live interface, using this manual's own sample company ("CNC Woodcraft &amp; Design") — redrawn for print clarity rather than captured as photographs. Everything they show matches the running application at the time this manual was written.</div>
+
+      <section id="start">
+        <h2>Before you start</h2>
+        <p>Warraq is organized around one idea: <b>nothing can be transacted until it's been defined.</b> You can't invoice a customer that doesn't exist, sell a product that was never catalogued, or receive goods into a warehouse that was never created. That's why this manual — and the sensible order to actually set up a new company — follows the same sequence throughout:</p>
+        <ol class="plain">
+          <li><b>Master Data</b> — the nouns of the business: customers, vendors, products, warehouses, employees. Set up once, referenced everywhere after.</li>
+          <li><b>Transactions</b> — the verbs: quotations, invoices, expenses, purchase orders, stock movements. What actually happens day to day, and it can only reference master data that already exists.</li>
+          <li><b>Reports</b> — what transactions add up to: profit &amp; loss, VAT returns, stock valuation, aging balances. Reports never create data, only summarize what transactions already produced.</li>
+          <li><b>Configuration</b> — the rules everything above plays by: company profile, branches, document numbering, user roles, ZATCA e-invoicing, fiscal periods. Mostly a one-time setup per company, revisited occasionally.</li>
+        </ol>
+        <div class="callout">
+          <div class="label">Who can do what</div>
+          <p style="margin:0;">Every screen in this app is gated by a permission leaf (e.g. <code>customers.create</code>, <code>invoice.read</code>) assigned through <b>Roles</b> (see §Users, Roles &amp; Permissions). A <b>Company Admin</b> or <b>Super Admin</b> account bypasses these checks entirely and always sees everything for their company. If a menu item described in this manual is missing from your own screen, it's almost always a role/permission gap, not a bug — ask your administrator to grant the matching permission.</p>
+        </div>
+        <p>Two more ideas worth knowing before you click anything:</p>
+        <ul class="plain">
+          <li><b>Multi-tenant.</b> Everything you see is scoped to one <b>company</b> at a time, chosen from the company switcher at the top of the app. A Super Admin can switch between every company on the platform; a normal user only ever sees their own company's data, and the server enforces this independently of what the screen shows.</li>
+          <li><b>Multi-branch.</b> Within a company, most transactional documents optionally belong to a <b>branch</b> (a physical location, e.g. "Riyadh HQ" or "Jeddah Coastal Branch"). A user restricted to one branch only sees that branch's documents; a company-wide user (or one with no branch restriction) sees everything. Branches are set up once in Configuration and referenced everywhere after.</li>
+        </ul>
+      </section>
+
+      <section id="navigate" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">Orientation</p>
+        <h2 style="max-width:74ch;">Navigating Warraq</h2>
+        <p style="max-width:74ch;">Every screen in this manual lives behind the same left-hand sidebar, grouped into five sections that appear in this order every time: <b>Operations &amp; Commerce</b>, <b>Inventory Management</b>, <b>Master Registries</b>, <b>Human Resources</b>, <b>Intelligence &amp; Reports</b>, and finally <b>Setup &amp; Governance</b> at the very bottom. Clicking a group header expands its own list of screens underneath it; only one group stays expanded at a time.</p>
+
+        <div class="app-shell">
+          <div class="side">
+            <div class="brand"><em>W</em>CNC Woodcraft &amp; Design</div>
+            <div class="grp">Operations &amp; Commerce</div>
+            <div class="item">Dashboard</div>
+            <div class="item">Point of Sale (POS)</div>
+            <div class="item">Sales &amp; Receivables</div>
+            <div class="item">Procurements</div>
+            <div class="grp">Inventory Management</div>
+            <div class="item active">Inventory System</div>
+            <div class="grp">Master Registries</div>
+            <div class="item">Trading Partners</div>
+            <div class="item">Product Catalog</div>
+            <div class="item">Warehouses</div>
+            <div class="grp">Human Resources</div>
+            <div class="item">Employees</div>
+            <div class="grp">Intelligence &amp; Reports</div>
+            <div class="item">Financial Reports</div>
+            <div class="item">Sales Reports</div>
+            <div class="item">Purchase Reports</div>
+            <div class="item">Inventory Reports</div>
+            <div class="grp">Setup &amp; Governance</div>
+            <div class="item">Settings &amp; Companies</div>
+          </div>
+          <div class="main">
+            <div class="topbar">
+              <div><b style="font-family:var(--font-display);font-size:0.8rem;">CNC Woodcraft &amp; Design</b></div>
+              <div style="display:flex;gap:0.4rem;">
+                <span class="chip">📅 June 2026 (Open)</span>
+                <span class="chip">🏢 All Branches</span>
+              </div>
+            </div>
+            <h5>Stock Registry</h5>
+            <div class="sub">Monitor physical inventory levels, serial numbers, batches, and locations in real-time.</div>
+            <div class="mock-cards c3">
+              <div class="mock-card"><b>Bin Location</b><span>Raw Wood Warehouse</span></div>
+              <div class="mock-card"><b>On-Hand Quantity</b><span style="color:var(--good-ink);">180</span></div>
+              <div class="mock-card"><b>Reorder Status</b><span>Above minimum</span></div>
+            </div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 1 — the sidebar's six groups (left) and a screen's own filter bar (top of content)</p>
+
+        <h3>The bar above every screen</h3>
+        <p>A row of controls sits above the dashboard and reappears, in a lighter form, at the top of most transactional screens:</p>
+        <ul class="plain">
+          <li><b>Company switcher</b> — Super Admins only. Changes which company's data the entire app displays. A normal user never sees this; their company is fixed to their account.</li>
+          <li><b>Portal Theme</b> — five color palettes (Classic Executive, Traditional Woodcraft, Amber Mahogany, CNC Steel Tech, Midnight Purple) a company can pick as its own visual identity. Purely cosmetic — it changes colors only, never behavior. This manual's screens use Classic Executive, Warraq's own default.</li>
+          <li><b>Month filter</b> ("📅 June 2026 (Open)") — which fiscal month's figures the Dashboard and reports summarize. See §Fiscal Periods for what "open" and "closed" mean.</li>
+          <li><b>Branch filter</b> ("🏢 All Branches") — narrows every KPI and list on screen to one physical location, or shows the company combined.</li>
+          <li><b>Language switcher</b> (EN / AR / UR) — the whole app, including this manual's live counterpart, re-renders right-to-left automatically when Arabic or Urdu is selected.</li>
+        </ul>
+        <div class="callout">
+          <div class="label">A pattern you'll see on every list screen</div>
+          <p style="margin:0;">Every list screen with a date range (invoices, expenses, reports, POS shift history…) defaults its <b>From Date</b> to the <b>1st of the current calendar month</b> and its <b>To Date</b> to <b>today</b> — never an empty filter, never a stale hardcoded date. Change either date and the list re-filters immediately; the default resets the next time you open the screen fresh.</p>
+        </div>
+      </section>
+
+
+      <section id="partners" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">Master Data / 01</p>
+        <h2 style="max-width:74ch;">Customers &amp; Vendors (Trading Partners)</h2>
+        <div class="breadcrumb"><b>Master Registries</b> → <b>Trading Partners</b> → <i>Customers CRM</i> / <i>Vendors Directory</i></div>
+        <p style="max-width:74ch;">Every sale needs a customer on file; every purchase needs a vendor on file. Both live under one "Trading Partners" group because they share the same shape — a commercial party with contact details and an optional VAT registration — but they're kept in two separate lists since a company almost never sells to and buys from the same party.</p>
+
+        <h3>Customer Registry (CRM)</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Master Registries → Trading Partners → Customers CRM</span></div>
+          <div class="body">
+            <div class="mock-toolbar"><h6>Active Customer Directory · 6 records</h6><span class="mock-btn" style="margin:0;">+ New Customer</span></div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Customer Profile Name</th><th>Contact Email</th><th>VAT Registration</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td class="lnk">Sultan Al-Ahmad Designs</td><td>sultan@ahmaddesign.com</td><td>Unregistered</td><td><span class="pill good">Active</span></td></tr>
+                <tr><td class="lnk">Riyadh Modern Furniture Factory</td><td>procure@rmff.com.sa</td><td>Unregistered</td><td><span class="pill good">Active</span></td></tr>
+                <tr><td class="lnk">شركة الرياض للمقاولات</td><td>info@riyadh-contracting.sa</td><td>Unregistered</td><td><span class="pill good">Active</span></td></tr>
+                <tr><td class="lnk">Walk-in Customer</td><td>—</td><td>Unregistered</td><td><span class="pill good">Active</span> <i>System Record</i></td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 2 — the Customer Registry; note the built-in "Walk-in Customer" that can never be deactivated or renamed</p>
+        <p>Names, addresses, and other free-text fields display in whatever script they were typed in (Arabic company names print correctly on Arabic invoices) — this list is not translated, since customer names are tenant data, not app vocabulary.</p>
+
+        <h4>New Customer form</h4>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>New Customer</span></div>
+          <div class="body">
+            <div class="mock-form">
+              <div class="mock-field" style="grid-column:1/-1;"><label>ENTITY NAME *</label><div class="box" style="color:#aaa;">e.g. CNC Woodworks Ltd</div></div>
+              <div class="mock-field"><label>EMAIL ADDRESS</label><div class="box" style="color:#aaa;">billing@example.com</div></div>
+              <div class="mock-field"><label>CONTACT PHONE</label><div class="box" style="color:#aaa;">+966 5...</div></div>
+              <div class="mock-field" style="grid-column:1/-1;"><label>PHYSICAL ADDRESS</label><div class="box" style="color:#aaa;">Street, City, Postal Code</div></div>
+              <div class="mock-field"><label>VAT REGISTRATION NUMBER</label><div class="box" style="color:#aaa;">e.g. 300123456700003</div></div>
+            </div>
+            <div style="margin-top:0.8rem;font-size:0.64rem;font-weight:700;color:#555;">ZATCA INVOICE TYPE</div>
+            <div style="display:flex;gap:0.5rem;margin-top:0.3rem;">
+              <div class="mock-btn ghost" style="margin:0;flex:1;text-align:center;">B2B — Standard Invoice</div>
+              <div class="mock-btn" style="margin:0;flex:1;text-align:center;">B2C — Simplified Invoice</div>
+            </div>
+            <p class="hint" style="margin-top:0.4rem;">Simplified (B2C): only the name above is required for ZATCA.</p>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 3 — the ZATCA invoice-type toggle decides which fields are mandatory</p>
+        <table class="plan" style="margin-top:0;"><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody>
+          <tr><td>Entity Name</td><td>The only field required for every customer, regardless of invoice type.</td></tr>
+          <tr><td>VAT Registration Number</td><td>Required only for <b>B2B</b> customers. Must be the customer's real 15-digit VAT number for ZATCA to accept invoices addressed to them as a Standard (B2B) invoice.</td></tr>
+          <tr><td>ZATCA Invoice Type</td><td><b>B2B</b> (Standard Invoice) — the customer is itself VAT-registered; invoices to them need their full legal address and VAT number. <b>B2C</b> (Simplified Invoice) — an end consumer; only the name is required, and ZATCA is notified by "reporting" rather than real-time "clearance."</td></tr>
+        </tbody></table>
+        <div class="callout risk">
+          <div class="label">Why this matters beyond bookkeeping</div>
+          <p style="margin:0;">The B2B/B2C choice made here directly decides which ZATCA workflow every invoice to this customer goes through later (§ZATCA E-Invoicing). Get it wrong and a real invoice can be rejected by ZATCA for a missing address — set it correctly once, here, and every invoice to this customer inherits it automatically.</p>
+        </div>
+
+        <h3>Vendor &amp; Suppliers Directory</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Master Registries → Trading Partners → Vendors Directory</span></div>
+          <div class="body">
+            <div class="mock-toolbar"><h6>Material Suppliers &amp; Vendors Registry · 3 records</h6><span class="mock-btn" style="margin:0;">+ New Vendor</span></div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Vendor / Material Supplier</th><th>Email</th><th>VAT Registration</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td>Cash Vendor</td><td>—</td><td>Unregistered</td><td><span class="pill good">Active</span> <i>System Record</i></td></tr>
+                <tr><td class="lnk">Gulf Wood &amp; Timber Suppliers</td><td>sales@gulfwood.com</td><td>Unregistered</td><td><span class="pill good">Active</span></td></tr>
+                <tr><td class="lnk">Al-Khobar CNC Toolings Co</td><td>orders@khobarcnc.sa</td><td>Unregistered</td><td><span class="pill good">Active</span></td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 4 — the Vendor Directory; "Cash Vendor" is a built-in system record for cash purchases with no formal supplier</p>
+        <p>New Vendor uses the same form shape as New Customer (name, contact, address, VAT number) minus the ZATCA invoice-type toggle — that distinction only matters for who <i>you</i> bill, not who bills <i>you</i>.</p>
+
+        <div class="callout good">
+          <div class="label">Where these show up later</div>
+          <p style="margin:0;">A customer becomes selectable the moment it's saved here — on Quotations, Sales Invoices, and the POS terminal's customer picker. A vendor becomes selectable on Purchase Requisitions, Purchase Orders, Goods Receipt Notes, Purchase Bills, and the Expenses screen's vendor field. Nothing else needs to be configured for a new party to start transacting.</p>
+        </div>
+      </section>
+
+
+      <section id="catalog" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">Master Data / 02</p>
+        <h2 style="max-width:74ch;">Products &amp; Catalog</h2>
+        <div class="breadcrumb"><b>Master Registries</b> → <b>Product Catalog</b> → <i>Products &amp; Pricing</i> / <i>Product Categories</i> / <i>Units of Measure</i></div>
+        <p style="max-width:74ch;">Anything that appears as a line item on a quotation, invoice, POS sale, purchase order, or GRN — a physical product or a billable service — is defined once here first.</p>
+
+        <h3>Products &amp; Service Catalog</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Master Registries → Product Catalog → Products &amp; Pricing</span></div>
+          <div class="body">
+            <div class="mock-toolbar"><h6>Product Catalog &amp; Service Rates · 13 records</h6><span class="mock-btn" style="margin:0;">+ New Product</span></div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Catalog Service / Item</th><th>POS Enabled</th><th>Type</th><th>Unit</th><th>Status</th><th class="num">Unit Rate</th></tr></thead>
+              <tbody>
+                <tr><td>UoM Test — Wood Screw</td><td>No</td><td><span class="pill crit">ITEM</span></td><td>PCE</td><td><span class="pill good">Active</span></td><td class="num">SAR 2.00</td></tr>
+                <tr><td>MDF 18mm CNC Custom Cutting</td><td>No</td><td><span class="pill good">SALES</span></td><td>No</td><td><span class="pill good">Active</span></td><td class="num">SAR 120.00</td></tr>
+                <tr><td>CNC Cut Plywood Panel — 18mm</td><td>No</td><td><span class="pill good">SALES</span></td><td>No</td><td><span class="pill good">Active</span></td><td class="num">SAR 250.00</td></tr>
+                <tr><td>Wood Adhesive Glue 5kg</td><td>No</td><td><span class="pill crit">PURCHASE</span></td><td>Lumpsum</td><td><span class="pill good">Active</span></td><td class="num">SAR 28.00</td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 5 — the product catalog, mixing physical stock items and billable services in one list</p>
+
+        <h4>New Product form</h4>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>New Product</span></div>
+          <div class="body">
+            <div class="mock-form">
+              <div class="mock-field" style="grid-column:1/-1;"><label>PRODUCT / SERVICE NAME *</label><div class="box" style="color:#aaa;">e.g. 20 Plywood Cutting</div></div>
+              <div class="mock-field" style="grid-column:1/-1;"><label>DESCRIPTION (OPTIONAL)</label><div class="box" style="color:#aaa;">Longer detail shown on quotations/invoices, if you want it</div></div>
+              <div class="mock-field"><label>PRODUCT CLASSIFICATION</label><div class="box">Physical Item (Stockable &amp; Counted)</div></div>
+              <div class="mock-field"><label>SYSTEM CATEGORY LINK</label><div class="box" style="color:#aaa;">-- No Category --</div></div>
+              <div class="mock-field" style="grid-column:1/-1;"><label>DEFAULT WAREHOUSE / BRANCH</label><div class="box" style="color:#aaa;">-- No Default Warehouse --</div></div>
+            </div>
+            <div style="margin-top:0.7rem;font-size:0.68rem;font-weight:700;color:var(--w-primary-darktext);">STOCK CONTROL &amp; THRESHOLDS</div>
+            <div class="mock-form" style="margin-top:0.4rem;">
+              <div class="mock-field"><label>BIN LOCATION / AISLES</label><div class="box" style="color:#aaa;">e.g. Shelf A-3</div></div>
+              <div class="mock-field"><label>MIN LEVEL</label><div class="box">0</div></div>
+              <div class="mock-field"><label>MAX LEVEL</label><div class="box" style="color:#aaa;">e.g. 500</div></div>
+              <div class="mock-field"><label>REORDER LEAD-TIME</label><div class="box" style="color:#aaa;">e.g. 3 business days</div></div>
+            </div>
+            <div class="mock-field" style="margin-top:0.6rem;"><label>TRANSACTION FLOW TYPE</label><div class="box">Sales Earning Flow (Invoicing / POS)</div></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 6 — physical items get stock-control fields; a pure service skips them</p>
+        <table class="plan" style="margin-top:0;"><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody>
+          <tr><td>Description</td><td>Optional — a product can be saved with just a name. When filled in, it's available to show on quotations/invoices alongside the item.</td></tr>
+          <tr><td>Product Classification</td><td><b>Physical Item</b> tracks real on-hand quantity (feeds Stock Registry, Stock Takes, valuation reports). A <b>Service</b> (e.g. "CNC Custom Cutting") has no quantity to track — it's billed but never runs out.</td></tr>
+          <tr><td>System Category Link</td><td>Optional grouping used for GL account mapping (see Product Categories below) and for report grouping. This is also the only category a product needs — there's no separate free-text POS category to keep in sync with it.</td></tr>
+          <tr><td>Default Warehouse/Branch</td><td>When every stock-item line on a sale agrees on the same product-level default, that warehouse is used automatically ahead of the branch/company default — still just a convenience, never a restriction; any warehouse can be picked manually instead.</td></tr>
+          <tr><td>Min / Max Level, Reorder Lead-Time</td><td>Drives the <b>Low Stock / Reorder Report</b> (§Inventory Reports) — purely advisory, does not block a sale when stock runs below minimum.</td></tr>
+          <tr><td>Transaction Flow Type</td><td>Whether this item normally appears on <b>sales</b> documents (invoicing/POS) or <b>purchase</b> documents (PO/GRN/Bills) — steers which pickers offer it by default.</td></tr>
+        </tbody></table>
+        <div class="callout risk">
+          <div class="label">Product images</div>
+          <p style="margin:0;">A product photo is stored directly in the database as the image itself (not a separate file), so size limits are enforced on upload: <b>150&nbsp;KB max</b>, <b>600px max</b> / <b>150px min</b> dimensions by default — configurable per company under <b>Settings &amp; Companies → Operations &amp; Config → POS Terminal Settings</b> (see §Templates, POS &amp; Translations). An oversized or too-small upload is rejected immediately with the reason, not silently resized.</p>
+        </div>
+
+        <h3>Product Categories</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Master Registries → Product Catalog → Product Categories</span></div>
+          <div class="body">
+            <div class="mock-toolbar"><h6>Inventory Category Tree &amp; GL Mappings</h6><span class="mock-btn" style="margin:0;">+ New Category</span></div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Category Name</th><th>Parent Category</th><th>Sales GL</th><th>Asset GL</th><th>COGS GL</th></tr></thead>
+              <tbody><tr><td colspan="5" style="text-align:center;color:#999;padding:1rem;">No categories defined yet — optional, add one to route this product line's postings to specific ledger accounts.</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 7 — a category exists mainly to map a whole product line to specific accounting ledger accounts</p>
+        <p>Categories can nest (a Parent Category field), letting you group e.g. "Raw Materials → Plywood → 18mm Plywood." Purely organizational unless GL mappings are filled in — those three optional fields redirect where sales/asset/cost-of-goods postings for products in this category land, instead of the company's default accounts.</p>
+
+        <h3>Units of Measure</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Master Registries → Product Catalog → Units of Measure</span></div>
+          <div class="body">
+            <div class="mock-toolbar"><h6>Units Of Measure Registry · 2 records</h6><span class="mock-btn" style="margin:0;">+ New Unit</span></div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Unit Name</th><th>Unit Code / Abbreviation</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td>Piece</td><td>PCE</td><td><span class="pill good">Active</span></td></tr>
+                <tr><td>Box-50</td><td>SET</td><td><span class="pill good">Active</span></td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 8 — a base unit (Piece) and a conversion unit (Box-50, holding 50 pieces)</p>
+        <p>A Unit of Measure lets a product be bought in one unit and sold in another — receive a "Box-50" of wood screws from a vendor, then sell them by the individual "Piece" — the system converts quantities automatically wherever the two units relate to the same product.</p>
+
+        <h3>Modifier Groups</h3>
+        <p>Reusable option sets for POS sales — e.g. a <i>Size</i> group (Small/Medium/Large) or a <i>Milk</i> group (Whole/Oat/None), each option optionally carrying its own price adjustment. A group is created once here, then attached to any product that needs it. See §Point of Sale's "Grid density &amp; product modifiers" for how a customer's picks actually price into the sale.</p>
+      </section>
+
+
+      <section id="warehouses" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">Master Data / 03</p>
+        <h2 style="max-width:74ch;">Warehouses</h2>
+        <div class="breadcrumb"><b>Master Registries</b> → <b>Warehouses</b> → <i>Physical Warehouses</i></div>
+        <p style="max-width:74ch;">A warehouse is a physical stock-holding location — a real address, not just a label. Stock quantities in the Stock Registry, GRN receipts, and stock takes are always counted per warehouse, never company-wide.</p>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Master Registries → Warehouses → Physical Warehouses</span></div>
+          <div class="body">
+            <div class="mock-toolbar"><h6>Physical Warehouses &amp; Stock Locations · 2 records</h6><span class="mock-btn" style="margin:0;">+ New Warehouse</span></div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Warehouse Code</th><th>Warehouse Name</th><th>Location Address</th><th>Type</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td>RW-001</td><td>Riyadh Branch Warehouse</td><td>No address specified</td><td><span class="pill info">SALES</span></td><td><span class="pill good">Active</span></td></tr>
+                <tr><td>WOOD-001</td><td>Raw Wood Warehouse</td><td>Old Sanaya Riyadh</td><td><span class="pill info">SALES</span></td><td><span class="pill good">Active</span></td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 9 — two warehouses, each with its own code and address</p>
+        <table class="plan" style="margin-top:0;"><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody>
+          <tr><td>Warehouse Code</td><td>Short internal identifier, appears wherever space is tight (e.g. Stock Registry rows).</td></tr>
+          <tr><td>Type</td><td><b>SALES</b> — stock here can be sold from (offered on invoices/POS). A purchase-only or in-transit warehouse can be marked differently to exclude it from sales pickers.</td></tr>
+        </tbody></table>
+        <div class="callout">
+          <div class="label">Warehouses and branches are two different things</div>
+          <p style="margin:0;">A <b>branch</b> (§Company, Branches &amp; Money) is an accounting/legal location a document is attributed to for reporting and ZATCA address purposes. A <b>warehouse</b> is where physical stock actually sits. A branch can have zero, one, or several warehouses; a company-wide user chooses freely between all warehouses, while a branch-restricted user's warehouse picker narrows to just their branch's own warehouses automatically.</p>
+        </div>
+      </section>
+
+
+      <section id="hr" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">Master Data / 04</p>
+        <h2 style="max-width:74ch;">Employees &amp; Job Titles</h2>
+        <div class="breadcrumb"><b>Human Resources</b> → <b>Employees</b> → <i>Employees</i> / <i>Job Titles</i></div>
+        <p style="max-width:74ch;">An <b>employee</b> is a real person on staff — deliberately kept separate from a <b>User</b> (a login account). Not every employee needs to log into Warraq (a workshop floor worker onboarded purely for record-keeping may never get a login); not every login is necessarily tied to a named employee. Keeping them apart means a future Timekeeping/Attendance module can key off "employee," never "user."</p>
+
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Human Resources → Employees</span></div>
+          <div class="body">
+            <div class="mock-toolbar"><h6>Employees</h6></div>
+            <div class="mock-table-wrap" style="margin-bottom:0.9rem;"><table class="mock-table">
+              <thead><tr><th>Employee</th><th>Job Title</th><th>Branch</th><th>Status</th></tr></thead>
+              <tbody><tr><td>0001 — Muhammad Imran</td><td>Sales Associate</td><td>Riyadh HQ Branch</td><td><span class="pill good">Active</span></td></tr></tbody>
+            </table></div>
+            <div style="font-size:0.68rem;font-weight:700;color:var(--w-primary-darktext);margin-bottom:0.4rem;">ONBOARD NEW EMPLOYEE</div>
+            <div class="mock-form">
+              <div class="mock-field"><label>FULL NAME</label><div class="box" style="color:#aaa;">—</div></div>
+              <div class="mock-field"><label>JOB TITLE</label><div class="box">-- Choose Job Title --</div></div>
+              <div class="mock-field"><label>BRANCH</label><div class="box">Head Office (Company-wide)</div></div>
+              <div class="mock-field"><label>HIRE DATE</label><div class="box" style="color:#aaa;">dd/mm/yyyy</div></div>
+            </div>
+            <p class="hint">Employee Number is generated automatically on save and cannot be changed afterward.</p>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 10 — the Employees list and onboarding form share one screen; note the row format "0001 — Name"</p>
+        <table class="plan" style="margin-top:0;"><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody>
+          <tr><td>Employee Number</td><td>System-generated, sequential, zero-padded (e.g. <code>0001</code>). Permanent — never reused, never editable. Every list and picker shows it before the name (<code>"0001 — Muhammad Imran"</code>) because names collide but numbers never do.</td></tr>
+          <tr><td>Job Title</td><td>Picked from Job Titles (below) — must be created there first.</td></tr>
+          <tr><td>Branch</td><td>"Head Office (Company-wide)" is a real, explicit option — not a blank default — meaning this employee isn't tied to any one physical location. Reassigning later between branches (or back to Head Office) is just a normal edit.</td></tr>
+        </tbody></table>
+
+        <h3>Job Titles</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Human Resources → Employees → Job Titles</span></div>
+          <div class="body">
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Title</th><th>Sales Role</th></tr></thead>
+              <tbody>
+                <tr><td>Accounts Head</td><td>—</td></tr>
+                <tr><td>Sales</td><td>—</td></tr>
+                <tr><td>Sales Associate</td><td><span class="pill good">Yes</span></td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 11 — the "Sales Role" flag decides who appears on the invoice's Sales Associate picker</p>
+        <div class="callout good">
+          <div class="label">Job Title vs. Role — don't confuse these</div>
+          <p style="margin:0;">A <b>Job Title</b> ("Sales Associate", "Cashier", "Warehouse Supervisor") is who someone is for HR and business-attribution purposes — it has no bearing on what they can click in the app. A <b>Role</b> (§Users, Roles &amp; Permissions) is a bundle of screen permissions assigned to a login account. The two are completely independent: an employee's job title never grants or restricts app access, and a user's role never appears on an invoice.</p>
+        </div>
+        <p>Marking a Job Title's <b>Sales Role</b> flag on makes every active employee holding that title selectable as the <b>Sales Associate</b> on a Sales Invoice (§Quotations &amp; Sales Invoices) — a pure attribution field for sales-bonus reporting, filtered to the invoice's own branch (plus Head Office employees) so a branch-restricted cashier never has to search a company-wide roster.</p>
+      </section>
+
+
+      <section id="pos" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">Transactions / 01</p>
+        <h2 style="max-width:74ch;">Point of Sale</h2>
+        <div class="breadcrumb"><b>Operations &amp; Commerce</b> → <b>Point of Sale (POS)</b> → <i>Terminal</i> / <i>Pending (Held)</i> / <i>Sales History</i> / <i>Shifts &amp; Z-Reports</i></div>
+        <p style="max-width:74ch;">A fast, walk-up-counter sale flow — pick items, take payment, print a receipt — as opposed to the multi-field Sales Invoice form (§Quotations &amp; Sales Invoices) built for negotiated commercial sales. Every POS sale still becomes a real row in the same <code>invoices</code> table underneath, so it appears in every report the same as any other sale.</p>
+
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Point of Sale → Terminal</span></div>
+          <div class="body">
+            <div style="display:flex;gap:0.3rem;margin-bottom:0.7rem;">
+              <span class="mock-btn" style="margin:0;background:var(--w-primary);">Terminal</span>
+              <span class="mock-btn ghost" style="margin:0;">Pending (Held)</span>
+              <span class="mock-btn ghost" style="margin:0;">Sales History</span>
+              <span class="mock-btn ghost" style="margin:0;">Shifts &amp; Z-Reports</span>
+            </div>
+            <div style="display:flex;gap:0.8rem;">
+              <div style="flex:2;display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;">
+                <div class="mock-card"><b>MDF 18mm Cutting</b><span>SAR 120.00</span></div>
+                <div class="mock-card"><b>CNC Plywood Panel</b><span>SAR 250.00</span></div>
+                <div class="mock-card"><b>Wood Adhesive Glue</b><span>SAR 28.00</span></div>
+              </div>
+              <div style="flex:1;background:#fafafe;border:1px solid var(--line);border-radius:10px;padding:0.6rem 0.7rem;">
+                <b style="font-size:0.7rem;">Current Sale</b>
+                <p style="font-size:0.68rem;color:#999;margin:1.2rem 0;text-align:center;">Cart empty</p>
+                <div style="border-top:1px dashed var(--line);padding-top:0.4rem;display:flex;justify-content:space-between;font-weight:800;font-size:0.78rem;"><span>Total</span><span>SAR 0.00</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 12 — the Terminal: a product grid on the left, running cart and total on the right</p>
+
+        <h4>The four Terminal tabs</h4>
+        <table class="plan" style="margin-top:0;"><thead><tr><th>Tab</th><th>Purpose</th></tr></thead><tbody>
+          <tr><td>Terminal</td><td>The live sale screen — search or tap a product, adjust quantity, choose a customer (defaults to "Walk-in"), take payment, print.</td></tr>
+          <tr><td>Pending (Held)</td><td>A cart can be "held" mid-sale (e.g. customer steps away) and resumed later without losing the items already added.</td></tr>
+          <tr><td>Sales History</td><td>Every POS sale for the selected date range, each linking to its underlying invoice record.</td></tr>
+          <tr><td>Shifts &amp; Z-Reports</td><td>Opens and closes a cashier's shift, tracking starting cash, total sales, and expected vs. actual cash at close-out (a "Z-Report").</td></tr>
+        </tbody></table>
+
+        <h4>Grid density &amp; product modifiers</h4>
+        <p>Built for touch-only counter hardware (coffee shops, restaurants) with no keyboard, where cashiers need a curated, tappable grid rather than a scrolling catalog list. Two related settings, both under <b>Settings &amp; Companies → Operations &amp; Config → POS Terminal Settings</b>:</p>
+        <table class="plan" style="margin-top:0;"><thead><tr><th>Setting</th><th>What it does</th></tr></thead><tbody>
+          <tr><td>Grid Density</td><td><b>Compact / Standard / Dense / Custom</b> — how many product tiles fit on screen at once. Each product also gets a priority position, so a shop can pin its best-selling 30 of 40 items as one-tap tiles while everything else stays reachable via category tabs and search.</td></tr>
+          <tr><td>Modifier Groups</td><td>Optional, reusable option sets (e.g. <i>Size</i>: Small/Medium/Large, <i>Milk</i>: Whole/Oat/None) attached to one or more products under <b>Master Registries → Product Catalog → Modifier Groups</b>. Any price difference a modifier carries folds directly into that line's unit price on the invoice — a product with no modifiers attached behaves exactly as before this existed.</td></tr>
+        </tbody></table>
+
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Point of Sale → Shifts &amp; Z-Reports</span></div>
+          <div class="body">
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Shift Time</th><th>User</th><th>Start Cash</th><th>Total Sales</th><th>Expected End</th><th>Actual End</th><th>Status</th></tr></thead>
+              <tbody><tr><td colspan="7" style="text-align:center;color:#999;padding:1rem;">No shifts recorded for selected period.</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 13 — a shift compares expected closing cash (opening + sales) against what was physically counted</p>
+        <div class="callout">
+          <div class="label">Branch-scoped, always</div>
+          <p style="margin:0;">Every shift, held sale, and POS sale is attributed to the branch the cashier is working under. A cashier restricted to "Jeddah Coastal Branch" never sees Riyadh's held carts or shift history, even by direct link.</p>
+        </div>
+      </section>
+
+
+      <section id="sales" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">Transactions / 02</p>
+        <h2 style="max-width:74ch;">Quotations &amp; Sales Invoices</h2>
+        <div class="breadcrumb"><b>Operations &amp; Commerce</b> → <b>Sales &amp; Receivables</b> → <i>Quotation Book</i> / <i>New Quotation</i> / <i>Sales Invoices</i> / <i>New Invoice</i></div>
+
+        <h3>Quotation Book</h3>
+        <p>A quotation is a non-binding price estimate — it never touches stock, never posts to accounting, and can be freely edited or cancelled. Converting an accepted quotation into a real invoice is one click and carries every line item across.</p>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Sales &amp; Receivables → Quotation Book</span></div>
+          <div class="body">
+            <div class="mock-cards">
+              <div class="mock-card"><b>Pipeline Value</b><span>747.50 SAR</span></div>
+              <div class="mock-card dark"><b>Converted Sales</b><span>0.00 SAR</span></div>
+              <div class="mock-card"><b>Open Proposals</b><span>5 Active</span></div>
+              <div class="mock-card"><b>Conversion Rate</b><span>0.0%</span></div>
+            </div>
+            <div class="mock-toolbar"><h6>Quotations &amp; Proposals Workspace</h6><span class="mock-btn" style="margin:0;">+ New Quotation</span></div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Doc No</th><th>Date</th><th>Customer</th><th class="num">Grand Total</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td class="lnk">QT-1006</td><td>2026-08-30</td><td>Sultan Al-Ahmad Designs</td><td class="num">115.00 SAR</td><td><span class="pill warn">Draft</span></td></tr>
+                <tr><td class="lnk">QT-1001</td><td>2026-08-16</td><td>Walk-in Customer</td><td class="num">287.50 SAR</td><td><span class="pill warn">Draft</span></td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 14 — KPI cards summarize the whole quotation pipeline before the list even loads</p>
+
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>New Quotation</span></div>
+          <div class="body">
+            <div class="mock-form c3">
+              <div class="mock-field"><label>DOCUMENT DATE</label><div class="box">01/06/2026</div></div>
+              <div class="mock-field"><label>CUSTOMER SELECTION</label><div class="box">Walk-in Customer (Default)</div></div>
+              <div class="mock-field"><label>VAT SLAB</label><div class="box">VAT (15%)</div></div>
+              <div class="mock-field"><label>BRANCH</label><div class="box">Default (your primary branch)</div></div>
+              <div class="mock-field"><label>HEADER DISCOUNT %</label><div class="box">0</div></div>
+              <div class="mock-field" style="grid-column:3;"><label>NOTES / MEMO</label><div class="box" style="color:#aaa;">Job specifications, deadlines</div></div>
+            </div>
+            <div class="mock-table-wrap" style="margin-top:0.7rem;"><table class="mock-table">
+              <thead><tr><th>#</th><th>Item Description</th><th class="num">Unit Price</th><th class="num">Qty</th><th class="num">Discount</th><th class="num">Total</th></tr></thead>
+              <tbody><tr><td>1</td><td style="color:#aaa;">Type or search item from catalog...</td><td class="num">0.00</td><td class="num">1</td><td class="num">0.00</td><td class="num">0.00</td></tr></tbody>
+            </table></div>
+            <div style="text-align:right;margin-top:0.6rem;font-size:0.72rem;"><b>Grand Estimate: 0.00 SAR</b></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 15 — a quotation's line items search directly against the Products catalog you built in Master Data</p>
+
+        <h3>Sales Invoices</h3>
+        <p>The real, legally binding commercial sale — the one document type this whole system, and ZATCA compliance, ultimately exists to produce correctly.</p>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Sales &amp; Receivables → Sales Invoices</span></div>
+          <div class="body">
+            <div class="mock-cards">
+              <div class="mock-card"><b>Total Invoiced</b><span>0.00 SAR</span></div>
+              <div class="mock-card dark"><b>Collected Revenue</b><span>0.00 SAR</span></div>
+              <div class="mock-card"><b>Pending Due</b><span>0.00 SAR</span></div>
+              <div class="mock-card"><b>Collection Rate</b><span>100.0%</span></div>
+            </div>
+            <div class="mock-toolbar"><h6>Sales Invoices Workspace</h6><span class="mock-btn" style="margin:0;">+ Issue New Invoice</span></div>
+            <div style="display:flex;gap:0.4rem;font-size:0.6rem;color:#999;margin-bottom:0.5rem;">Date From <b style="color:var(--ink);">01/09/2026</b> · Date To <b style="color:var(--ink);">02/09/2026</b> · ZATCA Status: All · Document Type: All</div>
+            <div class="mock-table-wrap"><table class="mock-table"><thead><tr><th>Invoice No</th><th>Type</th><th>Date</th><th>Customer</th><th class="num">Grand Total</th><th>Status</th><th>Payment</th><th>ZATCA</th></tr></thead>
+              <tbody><tr><td colspan="8" style="text-align:center;color:#999;padding:1rem;">No invoices issued for this period. Click "Issue Invoice" or convert from Quotations.</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 16 — the date filter defaults to the 1st of the current month through today (see §Navigating Warraq)</p>
+
+        <h4>New Sales Invoice form</h4>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>New Sales Invoice</span></div>
+          <div class="body">
+            <div class="mock-form c3">
+              <div class="mock-field"><label>INVOICE DATE</label><div class="box">01/06/2026</div></div>
+              <div class="mock-field"><label>CUSTOMER</label><div class="box">Walk-in Customer (Default)</div></div>
+              <div class="mock-field"><label>VAT SLAB</label><div class="box">VAT (15%)</div></div>
+              <div class="mock-field"><label>BRANCH</label><div class="box">Default (branch/company)</div></div>
+              <div class="mock-field"><label>SALES WAREHOUSE</label><div class="box">Default (branch/company)</div></div>
+              <div class="mock-field"><label>POST INFLOW BANK</label><div class="box">Riyadh Bank (Default: Yes)</div></div>
+              <div class="mock-field"><label>HEADER DISCOUNT %</label><div class="box">0</div></div>
+              <div class="mock-field"><label>INVOICE PAYMENT STATUS</label><div class="box">● Paid &nbsp;○ Pending / Credit</div></div>
+              <div class="mock-field"><label>DESIGN FILE (ATTACHMENT)</label><div class="box" style="color:#aaa;">Choose File — No file chosen</div></div>
+            </div>
+            <div class="mock-table-wrap" style="margin-top:0.7rem;"><table class="mock-table">
+              <thead><tr><th>#</th><th>Item</th><th class="num">Unit Price</th><th class="num">Qty</th><th class="num">Discount</th><th>Tax Slab</th><th class="num">Total</th></tr></thead>
+              <tbody><tr><td>1</td><td style="color:#aaa;">Type or search item...</td><td class="num">0.00</td><td class="num">1</td><td class="num">0.00</td><td>VAT (15%)</td><td class="num">0.00</td></tr></tbody>
+            </table></div>
+            <div style="text-align:right;margin-top:0.6rem;font-size:0.75rem;"><b>Grand Total: 0.00 SAR</b></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 17 — every field the Sales Invoice form asks for, including the ZATCA submission trigger fired on save</p>
+        <table class="plan" style="margin-top:0;"><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody>
+          <tr><td>Sales Warehouse</td><td>Where the sold stock is deducted from — matters for physical products, ignored for services.</td></tr>
+          <tr><td>Post Inflow Bank</td><td>Only meaningful when Payment Status is "Paid" — which bank account records the cash/transfer received.</td></tr>
+          <tr><td>Payment Status</td><td><b>Paid</b> books the receipt immediately. <b>Pending/Credit</b> leaves it as Accounts Receivable until collected later (via the invoice's own "Record Payment" action).</td></tr>
+          <tr><td>Per-line Tax Slab</td><td>Each line can carry its own VAT slab (e.g. a mixed invoice with a zero-rated export line and a standard 15% line) — it isn't forced to one rate for the whole document.</td></tr>
+        </tbody></table>
+        <div class="callout crit">
+          <div class="label">What happens the instant you save</div>
+          <p style="margin:0;">Saving finishes instantly on screen. Moments later, in the background, the invoice is automatically submitted to ZATCA for clearance/reporting (if the company has ZATCA enabled — see §ZATCA E-Invoicing) — you don't trigger this separately. Reopen the invoice a few seconds later to see whether ZATCA returned <span class="pill good">Cleared</span>/<span class="pill info">Reported</span> or <span class="pill crit">Rejected</span>.</p>
+        </div>
+        <div class="callout">
+          <div class="label">Once ZATCA has cleared or reported an invoice, it can no longer be locally cancelled</div>
+          <p style="margin:0;">ZATCA has no "void" API. If an invoice needs to be reversed after clearance, the only compliant path is issuing a <b>Credit Note</b> against it (an action available from the invoice's own menu) — never editing the original after the fact.</p>
+        </div>
+        <div class="callout risk">
+          <div class="label">What gets rejected when you save an invoice</div>
+          <p style="margin:0;">Five checks run before an invoice is accepted: it must have <b>at least one line item</b>; every line's <b>sales price must be greater than zero</b>; a line's <b>discount can't reduce that price to zero or below</b>; discounts can be entered in decimals (e.g. 2.50), not whole numbers only; and the invoice's <b>net total must be greater than zero</b>. All five apply to Credit Notes the same way, since a Credit Note is the same underlying document type.</p>
+        </div>
+        <p>Every invoice also has a <b>Download PDF</b> button, separate from Print — see the "Print vs. Download PDF" callout in §Templates, POS &amp; Translations for how the two deliberately differ.</p>
+      </section>
+
+
+      <section id="expenses" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">Transactions / 03</p>
+        <h2 style="max-width:74ch;">Expenses &amp; Recurring Postings</h2>
+        <div class="breadcrumb"><b>Operations &amp; Commerce</b> → <b>Procurements</b> → <i>Expenses</i> / <i>New Expense</i> / <i>Recurring &amp; Accruals</i></div>
+        <p style="max-width:74ch;">Anything the company pays out that isn't a formal Purchase Order against received goods — tool bits, utilities, rent, one-off services — is logged here as an expense.</p>
+
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>New Expense</span></div>
+          <div class="body">
+            <div class="mock-form c3">
+              <div class="mock-field"><label>EXPENSE ISSUE DATE</label><div class="box">01/06/2026</div></div>
+              <div class="mock-field"><label>VENDOR</label><div class="box">Cash Vendor (Default)</div></div>
+              <div class="mock-field"><label>INPUT TAX SLAB</label><div class="box">VAT (15%)</div></div>
+              <div class="mock-field"><label>BRANCH</label><div class="box">Default (your primary branch)</div></div>
+              <div class="mock-field"><label>DISBURSEMENT BANK</label><div class="box">Riyad Bank (Default: Yes)</div></div>
+              <div class="mock-field"><label>PAYMENT STATUS</label><div class="box">● Paid &nbsp;○ Pending Outstanding payment</div></div>
+              <div class="mock-field" style="grid-column:1/-1;"><label>PROCUREMENT CLASSIFICATION</label><div class="box">● Operating Expense (OpEx) &nbsp;○ Fixed Asset (CapEx)</div></div>
+              <div class="mock-field" style="grid-column:1/-1;"><label>GENERAL DESCRIPTION / SUMMARY</label><div class="box" style="color:#aaa;">e.g. Spiral upcut router bits purchase, factory glue</div></div>
+            </div>
+            <p class="hint" style="margin-top:0.4rem;">☐ Enable Itemised Purchase Breakdown — recommended for stock tracking</p>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 18 — the New Expense form; OpEx/CapEx classification decides how it hits the financials</p>
+        <table class="plan" style="margin-top:0;"><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody>
+          <tr><td>Operating Expense (OpEx)</td><td>Consumed immediately — hits the Profit &amp; Loss statement's Expenses line for the period, in full.</td></tr>
+          <tr><td>Fixed Asset (CapEx)</td><td>A capitalized purchase (e.g. new machinery) — recorded as an asset on the Balance Sheet rather than an immediate expense.</td></tr>
+          <tr><td>Enable Itemised Purchase Breakdown</td><td>Optionally records line-by-line items instead of one lump sum — recommended when the expense should also update stock quantities for tracked products.</td></tr>
+        </tbody></table>
+
+        <h3>Recurring &amp; Accruals</h3>
+        <p>For predictable, repeating costs (rent, utilities, salaries) that shouldn't need to be manually re-typed every month.</p>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Procurements → Recurring &amp; Accruals</span></div>
+          <div class="body">
+            <div style="display:flex;gap:0.3rem;margin-bottom:0.7rem;">
+              <span class="mock-btn" style="margin:0;">Month Postings &amp; Settle</span>
+              <span class="mock-btn ghost" style="margin:0;">Manage Templates</span>
+              <span class="mock-btn ghost" style="margin:0;">Manage Accrual Entries</span>
+            </div>
+            <div class="mock-banner info"><b>ℹ</b>Active recurring templates are <b>mandatory</b> to be posted (as Actual or Accrual) before the fiscal month can successfully close.</div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Template</th><th>Default Cost</th><th>Default Account</th><th>Status</th><th></th></tr></thead>
+              <tbody>
+                <tr><td>Factory High-Voltage Power Utility Bill</td><td>SAR 850.00</td><td>Riyad Bank</td><td><span class="pill warn">Unposted</span></td><td><span class="mock-btn" style="margin:0;">Post Expense</span></td></tr>
+                <tr><td>Monthly CNC Workshop Space Rent</td><td>SAR 2500.00</td><td>Riyad Bank</td><td><span class="pill warn">Unposted</span></td><td><span class="mock-btn" style="margin:0;">Post Expense</span></td></tr>
+                <tr><td>Workshop Supervisor Salary Pool</td><td>SAR 4500.00</td><td>Al Rajhi Bank</td><td><span class="pill warn">Unposted</span></td><td><span class="mock-btn" style="margin:0;">Post Expense</span></td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 19 — three recurring templates, none posted yet for the open month</p>
+        <div class="callout risk">
+          <div class="label">Why this can block closing a fiscal month</div>
+          <p style="margin:0;">Every active recurring template must be posted — either as a real, paid expense ("Actual") or as an accrual (a placeholder liability, settled with the real bill later) — before that fiscal month can be closed (§Fiscal Periods, Capital &amp; VAT Filing). This is deliberate: it stops a month from closing "clean" while a known recurring cost was simply forgotten.</p>
+        </div>
+        <p>An <b>accrual</b> posted this way sits in "Unsettled Accrual Ledger Entries" until the real invoice/bill for it arrives, at which point it's matched and settled — the accrual reverses and the real cost replaces it.</p>
+      </section>
+
+
+      <section id="purchasing" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">Transactions / 04</p>
+        <h2 style="max-width:74ch;">Purchasing &amp; Inventory</h2>
+        <div class="breadcrumb"><b>Inventory Management</b> → <b>Inventory System</b> → <i>Purchase Requisitions → Purchase Orders → Goods Receipt (GRN) → Purchase Bills → Purchase Returns → Physical Stock Takes → Stock Registry</i></div>
+        <p style="max-width:74ch;">This is one connected chain, not seven unrelated screens — each document normally feeds the next. Skipping straight to a Purchase Bill without a PO/GRN behind it is allowed, but the chain exists so a formal approval → order → receipt → invoice trail is available when you want it.</p>
+
+        <div class="mock-steps" style="margin-bottom:1.4rem;">
+          <div class="s done"><em>1</em>Requisition</div>
+          <div class="s done"><em>2</em>Purchase Order</div>
+          <div class="s done"><em>3</em>Goods Receipt</div>
+          <div class="s on"><em>4</em>Purchase Bill</div>
+          <div class="s todo"><em>↩</em>Return (if needed)</div>
+        </div>
+
+        <h3>1 — Purchase Requisitions (PR)</h3>
+        <p>An internal request: "we need to buy this" — raised by anyone with the permission, before a vendor is even chosen.</p>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Inventory System → Purchase Requisitions</span></div>
+          <div class="body">
+            <div class="mock-toolbar"><h6>Purchase Requisitions</h6><span class="mock-btn" style="margin:0;">+ New Requisition</span></div>
+            <div class="mock-table-wrap" style="margin-bottom:0.8rem;"><table class="mock-table">
+              <thead><tr><th>PR Number</th><th>Requested By</th><th>Date</th><th>Items</th><th>Status</th></tr></thead>
+              <tbody><tr><td class="lnk">PR-1001</td><td>Phase 2 Test</td><td>8/30/2026</td><td>1</td><td><span class="pill warn">Pending</span></td></tr></tbody>
+            </table></div>
+            <div class="mock-form">
+              <div class="mock-field"><label>REQUESTED BY</label><div class="box">imranz</div></div>
+              <div class="mock-field"><label>BRANCH</label><div class="box">Default (your primary branch)</div></div>
+              <div class="mock-field" style="grid-column:1/-1;"><label>ADD REQUESTED MATERIAL</label><div class="box" style="color:#aaa;">-- Select Product -- · Qty · Purpose</div></div>
+            </div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 20 — a PR needs no vendor or price yet, only what's needed and why</p>
+
+        <h3>2 — Purchase Orders (PO)</h3>
+        <p>The formal, priced commercial document sent to a specific vendor. Can be raised standalone or from an approved PR.</p>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Inventory System → Purchase Orders</span></div>
+          <div class="body">
+            <div class="mock-toolbar"><h6>Purchase Orders</h6><span class="mock-btn" style="margin:0;">+ New Purchase Order</span></div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>PO Number</th><th>Vendor</th><th>Date Created</th><th class="num">Total</th><th>Status</th></tr></thead>
+              <tbody><tr><td class="lnk">PO-1001</td><td>Cash Vendor</td><td>8/30/2026</td><td class="num">230.00 SAR</td><td><span class="pill info">Sent</span></td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 21 — once "Sent," a PO is waiting on physical goods to arrive (§3) and a vendor bill (§4)</p>
+
+        <h3>3 — Goods Receipt (GRN)</h3>
+        <p>Records that ordered goods actually physically arrived at a warehouse dock — this is the step that increases real on-hand stock quantity, not the PO or the Bill.</p>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Inventory System → Goods Receipt (GRN)</span></div>
+          <div class="body">
+            <div class="mock-toolbar"><h6>Goods Receipt (GRN)</h6><span class="mock-btn" style="margin:0;">+ Receive Goods (GRN)</span></div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>GRN Number</th><th>Vendor</th><th>Receiving Warehouse</th><th>Vehicle/Driver</th><th>Date Received</th><th>Received By</th></tr></thead>
+              <tbody><tr><td class="lnk">GRN-1001</td><td>Gulf Wood &amp; Timber Suppliers</td><td>Raw Wood Warehouse</td><td>—</td><td>9/1/2026</td><td>UoM Verification Script</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 22 — a GRN pins receipt to one specific warehouse; that warehouse's Stock Registry updates immediately</p>
+
+        <h3>4 — Purchase Bills</h3>
+        <p>The vendor's actual invoice to you, recorded against what was received. Deliberately built so totals are always computed from the linked GRN, never re-typed by hand — the reconciliation happens by construction, not by a person double-checking two documents.</p>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Inventory System → Purchase Bills</span></div>
+          <div class="body">
+            <div class="mock-toolbar"><h6>Purchase Bills</h6><span class="mock-btn" style="margin:0;">+ New Purchase Bill</span></div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Bill Number</th><th>Vendor</th><th class="num">Grand Total</th><th>Paid</th><th>Status</th></tr></thead>
+              <tbody><tr><td colspan="5" style="text-align:center;color:#999;padding:0.9rem;">No purchase bills recorded yet.</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 23 — "record vendor invoices against received goods — totals are always computed from the linked receipt, never entered by hand"</p>
+
+        <h3>5 — Purchase Returns</h3>
+        <p>Sending goods back to a vendor against a prior receipt, recording the resulting debit note (a reduction of what's owed to that vendor).</p>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Inventory System → Purchase Returns</span></div>
+          <div class="body">
+            <div class="mock-toolbar"><h6>Purchase Returns</h6><span class="mock-btn" style="margin:0;">+ New Purchase Return</span></div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Return Number</th><th>Vendor</th><th>Linked GRN</th><th>Date</th><th>Status</th></tr></thead>
+              <tbody><tr><td colspan="5" style="text-align:center;color:#999;padding:0.9rem;">No purchase returns recorded yet.</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 24 — like Purchase Bills, a return is always anchored to a specific prior GRN, not a free-standing document</p>
+
+        <h3>Physical Stock Takes</h3>
+        <p>A manual, periodic count of what's physically on the shelf, reconciled against what the system believes is there — the mechanism that catches shrinkage, damage, or data-entry drift over time.</p>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Inventory System → Physical Stock Takes</span></div>
+          <div class="body">
+            <div class="mock-toolbar"><h6>Physical Stock Takes</h6><span class="mock-btn" style="margin:0;">+ New Stock Take</span></div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Reference</th><th>Warehouse</th><th>Performed By</th><th>Date</th><th>Status</th></tr></thead>
+              <tbody><tr><td colspan="5" style="text-align:center;color:#999;padding:0.9rem;">No stock takes recorded yet.</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 25 — a completed stock take's variances feed the Stock Take Variance History report (§Inventory Reports)</p>
+
+        <h3>Stock Registry</h3>
+        <p>Not a document you create — a live, read-only view of exactly what's on hand, right now, per product and per warehouse. Every GRN, sale, return, and stock-take adjustment updates it in real time.</p>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Inventory System → Stock Registry</span></div>
+          <div class="body">
+            <div class="mock-toolbar"><h6>Stock Registry</h6><span class="mock-btn ghost" style="margin:0;">↗ Adjust Stock</span></div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Product / Material</th><th>Location / Warehouse</th><th>Batch Number</th><th>Expiry Date</th><th class="num">On-Hand Qty</th></tr></thead>
+              <tbody><tr><td>UoM Test — Wood Screw</td><td>Raw Wood Warehouse</td><td>—</td><td>—</td><td class="num" style="color:var(--good-ink);font-weight:800;">180</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 26 — a manual "Adjust Stock" action exists for corrections outside the normal PR/PO/GRN/Return/Take flow</p>
+      </section>
+
+
+      <section id="fin-reports" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">Reports / 01</p>
+        <h2 style="max-width:74ch;">Financial Reports</h2>
+        <div class="breadcrumb"><b>Intelligence &amp; Reports</b> → <b>Financial Reports</b> → 10 statements, listed below</div>
+        <p style="max-width:74ch;">Every financial report shares the same shell: a <b>From Date</b> / <b>To Date</b> filter (defaulting to month-to-date, see §Navigating Warraq), an <b>Export Statement (Print)</b> button, and a scoped-to-this-company banner. Reports never let you edit a number — every figure traces back to a real transaction you can find and open elsewhere in the app.</p>
+
+        <h3>Profit &amp; Loss</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Financial Reports → Profit &amp; Loss</span></div>
+          <div class="body">
+            <div style="display:flex;justify-content:flex-end;gap:0.3rem;margin-bottom:0.6rem;">
+              <span class="mock-btn ghost" style="margin:0;">Accrual Basis</span>
+              <span class="mock-btn" style="margin:0;">Cash Basis</span>
+            </div>
+            <div class="mock-cards" style="grid-template-columns:1fr 1fr;">
+              <div class="mock-card"><b>Total Revenue</b><span>SAR 3,815.25</span></div>
+              <div class="mock-card"><b>Net Cash Flow</b><span style="color:var(--good-ink);">SAR 1,545.25</span></div>
+            </div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 27 — the Accrual/Cash Basis toggle: Accrual counts a sale the moment it's invoiced, Cash counts it only when actually collected</p>
+
+        <h3>Balance Sheet — the one exception to "date range"</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Financial Reports → Balance Sheet</span></div>
+          <div class="body">
+            <div style="text-align:center;font-size:0.68rem;color:#999;margin-bottom:0.6rem;">As of 2026-09-02</div>
+            <div class="mock-cards" style="grid-template-columns:1fr 1fr 1fr;">
+              <div class="mock-card"><b>Total Assets</b><span>SAR 1,058,820.25</span></div>
+              <div class="mock-card"><b>Total Liabilities</b><span style="color:var(--crit-ink);">SAR 250.00</span></div>
+              <div class="mock-card"><b>Total Equity</b><span style="color:var(--good-ink);">SAR 5,900.00</span></div>
+            </div>
+            <p style="text-align:center;font-size:0.62rem;color:#999;margin:0.6rem 0 0;">Assets = (Liabilities + Equity) balance check: SAR 1,059,070.25</p>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 28 — unlike every other report here, Balance Sheet is a snapshot <i>as of</i> the To Date, not a range</p>
+        <div class="callout">
+          <div class="label">Why this one is different</div>
+          <p style="margin:0;">Assets, Liabilities, and Equity are point-in-time balances, not period activity — "how much cash exists right now" doesn't add up the way "how much was sold this month" does. So Balance Sheet quietly uses only the <b>To Date</b> as its as-of date and ignores the From Date, and always prints its own balance-check line at the bottom to prove the accounting equation holds.</p>
+        </div>
+
+        <h3>The other eight statements</h3>
+        <table class="plan" style="margin-top:0;"><thead><tr><th>Report</th><th>What it shows</th></tr></thead><tbody>
+          <tr><td>Trial Balance Ledger</td><td>Every ledger account's debit and credit total for the period, side by side — the fundamental double-entry check that the books balance.</td></tr>
+          <tr><td>Sales VAT Register</td><td>Every sale's VAT collected, the source data behind a VAT return.</td></tr>
+          <tr><td>Purchase VAT Register</td><td>Every purchase's VAT paid (input tax) — combined with the Sales VAT Register to calculate net VAT payable.</td></tr>
+          <tr><td>Bank Statement Ledger</td><td>Every transaction that moved money through one bank account, in date order — an internal reconciliation view against your real bank statement.</td></tr>
+          <tr><td>Outstanding Aging &amp; Balances</td><td>Every unpaid customer invoice, bucketed by how many days overdue — the same data feeding the Dashboard's "Pending Invoices" widget.</td></tr>
+          <tr><td>VAT Return Summary</td><td>A summarized, ready-to-file view feeding the actual VAT filing action (§Fiscal Periods, Capital &amp; VAT Filing).</td></tr>
+          <tr><td>Investor Profit Share</td><td>For companies with registered capital investors (§Fiscal Periods, Capital &amp; VAT Filing): each investor's share of profit for the period based on their recorded equity percentage.</td></tr>
+          <tr><td>Fiscal Month Closing History</td><td>An audit trail of every month ever closed for this company, and who closed it.</td></tr>
+        </tbody></table>
+      </section>
+
+
+      <section id="ops-reports" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">Reports / 02</p>
+        <h2 style="max-width:74ch;">Sales, Purchase &amp; Inventory Reports</h2>
+        <div class="breadcrumb"><b>Intelligence &amp; Reports</b> → <b>Sales Reports</b> / <b>Purchase Reports</b> / <b>Inventory Reports</b></div>
+        <p style="max-width:74ch;">Where Financial Reports speak in accounting terms (debits, VAT, ledger accounts), these three groups speak in operational terms — which customer, which product, which vendor, which warehouse.</p>
+
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Sales Reports → Sales Register</span></div>
+          <div class="body">
+            <div class="mock-form c3">
+              <div class="mock-field"><label>FROM DATE</label><div class="box">2026-09-01</div></div>
+              <div class="mock-field"><label>TO DATE</label><div class="box">2026-09-02</div></div>
+              <div class="mock-field"><label>FILTER CUSTOMER</label><div class="box">Show All Customers</div></div>
+            </div>
+            <div class="mock-table-wrap" style="margin-top:0.6rem;"><table class="mock-table">
+              <thead><tr><th>Invoice #</th><th>Date</th><th>Customer</th><th>Status</th><th>Payment</th><th>ZATCA</th><th class="num">Grand Total</th></tr></thead>
+              <tbody><tr><td colspan="6" style="text-align:right;font-weight:800;">Total Sales:</td><td class="num" style="font-weight:800;color:var(--good-ink);">SAR 0.00</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 29 — every list report in this family filters by Customer/Vendor and Branch in addition to the date range</p>
+
+        <h3>Sales Reports (6)</h3>
+        <table class="plan" style="margin-top:0;"><thead><tr><th>Report</th><th>What it shows</th></tr></thead><tbody>
+          <tr><td>Sales Register</td><td>Every sales invoice in a period, with status and payment detail — the master sales list.</td></tr>
+          <tr><td>Item-wise Sales Report</td><td>Sales totals broken down by individual product/service, not by invoice — "what actually sold."</td></tr>
+          <tr><td>Customer Statement of Account</td><td>One customer's full running ledger: every invoice, every payment, current balance owed.</td></tr>
+          <tr><td>Quotation Conversion Report</td><td>How many quotations became real invoices, and how long that took — the same conversion-rate metric shown on the Quotation Book's KPI card, in detail.</td></tr>
+          <tr><td>Sales by Staff</td><td>Totals attributed to each employee marked as the invoice's Sales Associate (§Employees &amp; Job Titles) — the report a sales-bonus calculation would be built from.</td></tr>
+          <tr><td>POS Shift Summary</td><td>Sales totals grouped by POS cashier shift, cross-referencing the Shifts &amp; Z-Reports screen.</td></tr>
+        </tbody></table>
+
+        <h3>Purchase Reports (4)</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Purchase Reports → Purchase Register</span></div>
+          <div class="body">
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Expense #</th><th>Date</th><th>Vendor</th><th>Classification</th><th>Payment</th><th class="num">Amount</th></tr></thead>
+              <tbody><tr><td colspan="5" style="text-align:right;font-weight:800;">Total:</td><td class="num" style="font-weight:800;color:var(--good-ink);">SAR 0.00</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 30 — Purchase Register combines Expenses and Purchase Bills into one vendor-spend view</p>
+        <table class="plan" style="margin-top:0;"><thead><tr><th>Report</th><th>What it shows</th></tr></thead><tbody>
+          <tr><td>Purchase Register</td><td>Every purchase expense in a period, by vendor and classification (OpEx/CapEx).</td></tr>
+          <tr><td>Vendor Statement of Account</td><td>One vendor's full running ledger — mirrors Customer Statement of Account, from the other side of the relationship.</td></tr>
+          <tr><td>Purchase Order Status Report</td><td>Every open PO and how far along the PO → GRN → Bill chain it's progressed.</td></tr>
+          <tr><td>GRN vs. PO Variance</td><td>Flags where what was actually received differs from what was ordered — quantity or price mismatches worth investigating.</td></tr>
+        </tbody></table>
+
+        <h3>Inventory Reports (5)</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Inventory Reports → Stock Valuation Report</span></div>
+          <div class="body">
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Product</th><th>Warehouse</th><th class="num">On Hand</th><th class="num">Unit Cost</th><th class="num">Value</th></tr></thead>
+              <tbody>
+                <tr><td>UoM Test — Wood Screw</td><td>Raw Wood Warehouse</td><td class="num">180</td><td class="num">SAR 1.56</td><td class="num">SAR 280.80</td></tr>
+                <tr><td colspan="4" style="text-align:right;font-weight:800;">Total Stock Value:</td><td class="num" style="font-weight:800;color:var(--good-ink);">SAR 280.80</td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 31 — Stock Valuation feeds the "Inventory Value" line on the Balance Sheet directly</p>
+        <table class="plan" style="margin-top:0;"><thead><tr><th>Report</th><th>What it shows</th></tr></thead><tbody>
+          <tr><td>Stock Valuation Report</td><td>On-hand quantity valued at average cost, per product and warehouse — the figure that becomes the Balance Sheet's Inventory Value.</td></tr>
+          <tr><td>Item Profitability Report</td><td>Margin per product: sales revenue against its costed value, to see which items are actually profitable.</td></tr>
+          <tr><td>Low Stock / Reorder Report</td><td>Every product currently below its Min Level (set in the product's own master-data record) — a shopping list for the next PR.</td></tr>
+          <tr><td>Stock Take Variance History</td><td>Every completed physical stock take and the gap it found between system quantity and physically counted quantity.</td></tr>
+          <tr><td>Stock Movement Ledger</td><td>A chronological audit trail of every single quantity change for a product — sale, receipt, return, or manual adjustment — the lowest-level detail behind every other inventory report.</td></tr>
+        </tbody></table>
+      </section>
+
+
+      <section id="config-org" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">Configuration / 01</p>
+        <h2 style="max-width:74ch;">Company, Branches &amp; Money</h2>
+        <div class="breadcrumb"><b>Setup &amp; Governance</b> → <b>Settings &amp; Companies</b> → <b>Organization &amp; Setup</b> tab group</div>
+        <p style="max-width:74ch;">Settings &amp; Companies is a single screen internally organized into five tab groups — <b>Organization &amp; Setup</b>, <b>Operations &amp; Config</b>, <b>Governance &amp; Staff</b>, <b>Fiscal &amp; Capital</b>, and <b>System &amp; Backup</b> — each covered by its own part of this manual. This part covers the first.</p>
+
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Settings &amp; Companies</span></div>
+          <div class="body">
+            <div style="display:flex;gap:0.3rem;margin-bottom:0.6rem;flex-wrap:wrap;">
+              <span class="mock-btn" style="margin:0;">Organization &amp; Setup</span>
+              <span class="mock-btn ghost" style="margin:0;">Operations &amp; Config</span>
+              <span class="mock-btn ghost" style="margin:0;">Governance &amp; Staff</span>
+              <span class="mock-btn ghost" style="margin:0;">Fiscal &amp; Capital</span>
+              <span class="mock-btn ghost" style="margin:0;">System &amp; Backup</span>
+            </div>
+            <div style="display:flex;gap:0.25rem;font-size:0.62rem;color:var(--ink-soft);flex-wrap:wrap;">
+              <span style="font-weight:800;color:var(--w-primary);">Companies Directory</span> ·
+              <span>Company Profile</span> ·
+              <span>ZATCA Phase 2 E-Invoicing</span> ·
+              <span>Bank Accounts</span> ·
+              <span>Tax Slabs</span> ·
+              <span>Branches (Locations)</span> ·
+              <span>Document Numbering</span>
+            </div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 32 — the five tab groups, each expanding into its own sub-tab strip</p>
+
+        <h3>Company Profile</h3>
+        <p>Global identity details applied to every printed quotation, invoice, and expense: logo, legal name, contact details, physical address. <b>Its "VAT Number" field is cosmetic-only</b> — printed on documents, but entirely separate from the real tax identity used for ZATCA (§ZATCA E-Invoicing), which is entered independently inside the ZATCA wizard itself. It stays optional (a company pre-ZATCA-onboarding may not have one to hand yet), but once you do enter a value it's checked immediately: exactly 15 digits, numeric only, or the save is rejected with the reason.</p>
+
+        <h3>Companies Directory</h3>
+        <p>Super Admin only. Lists every company on the whole Warraq platform, and is where a brand-new company is registered from scratch.</p>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Organization &amp; Setup → Companies Directory</span></div>
+          <div class="body">
+            <div style="font-size:0.68rem;font-weight:700;margin-bottom:0.5rem;">Register New Organization</div>
+            <div class="mock-form">
+              <div class="mock-field"><label>ORGANIZATION NAME</label><div class="box" style="color:#aaa;">e.g. Firoze Corporate</div></div>
+              <div class="mock-field"><label>CURRENCY</label><div class="box">SAR</div></div>
+              <div class="mock-field"><label>VAT NUMBER (OPTIONAL)</label><div class="box" style="color:#aaa;">15 digits</div></div>
+              <div class="mock-field"><label>THEME ACCENT</label><div class="box">Classic Executive</div></div>
+            </div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 33 — a fresh company starts fully isolated: its own customers, products, users, and ZATCA identity from day one</p>
+        <div class="callout">
+          <div class="label">What registering a company auto-provisions</div>
+          <p style="margin:0;">To save setup effort, saving this form (or approving an onboarding request — same underlying provisioning either way) immediately creates a standard starting kit: a Main Operating Bank account, a "Walk-in Customer" and a "Cash Vendor" system record, a Standard VAT (15%) tax slab, a "Main Warehouse", a default "Piece (PCE)" unit of measure, <b>three starter print templates</b> — <i>Compact A4</i> (English, active by default), <i>Compact A4 Arabic</i>, and <i>Detailed Compact</i> — all immediately selectable and editable (see §Templates, POS &amp; Translations), and an open fiscal month for the current calendar month. None of it is locked in — every one of these is a normal record you can rename, deactivate, or add more of afterward.</p>
+        </div>
+
+        <h3>Bank Accounts</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Organization &amp; Setup → Bank Accounts</span></div>
+          <div class="body">
+            <div class="mock-cards" style="grid-template-columns:1fr 1fr;">
+              <div class="mock-card"><b>Riyad Bank</b><span>SAR 1,015,102.25</span><div style="margin-top:0.3rem;"><span class="pill neutral">Default</span> <span class="pill good">Active</span></div></div>
+              <div class="mock-card"><b>Al Rajhi Bank</b><span>SAR 10,200.00</span><div style="margin-top:0.3rem;"><span class="pill good">Active</span></div></div>
+            </div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 34 — every invoice/expense's "bank" field picks from this list; the running balance updates as documents post</p>
+        <p>The <b>Default</b> bank pre-fills as the payment bank on new invoices/expenses. A bank can be marked <b>Inactive</b> once no longer used, without deleting its history.</p>
+
+        <h3>Tax Slabs</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Organization &amp; Setup → Tax Slabs</span></div>
+          <div class="body">
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Tax Description</th><th class="num">Percentage</th><th>Default</th></tr></thead>
+              <tbody>
+                <tr><td>Exempt (0%)</td><td class="num">0%</td><td>—</td></tr>
+                <tr><td>VAT (15%)</td><td class="num">15%</td><td><span class="pill good">Default</span></td></tr>
+                <tr><td>Reduced (5%)</td><td class="num">5%</td><td>—</td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 35 — Saudi Arabia's standard rate is 15%; additional slabs exist for exempt/zero-rated and special cases</p>
+        <div class="callout risk">
+          <div class="label">A ZATCA-specific detail</div>
+          <p style="margin:0;">An exempt or zero-rated slab must carry a <b>ZATCA exemption reason code</b> before it's used — an invoice built on an unreasoned exempt slab is flagged with a live warning and is at risk of a ZATCA sandbox validation error.</p>
+        </div>
+
+        <h3>Branches (Locations)</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Organization &amp; Setup → Branches (Locations)</span></div>
+          <div class="body">
+            <div class="mock-banner warn"><b>⚠</b>Backfill Unassigned Documents — attribute every existing document (invoices, quotations, vouchers, expenses, purchase orders/bills, warehouses) that has no branch yet to one branch. Safe to re-run — only touches currently unassigned rows.</div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Name</th><th>Code</th><th>City</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td>Riyadh HQ Branch</td><td>RUH</td><td>Riyadh</td><td><span class="pill good">Active</span></td></tr>
+                <tr><td>Jeddah Coastal Branch</td><td>JED</td><td>Jeddah</td><td><span class="pill good">Active</span></td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 36 — each invoice/quotation can be attributed to one branch, whose own address prints on the ZATCA e-invoice</p>
+        <div class="callout">
+          <div class="label">"Backfill Unassigned Documents" — when and why you'd run this</div>
+          <p style="margin:0;">A company that adopts branches <i>after</i> already having transaction history will have old documents with no branch set. This action assigns a chosen branch to every currently-unassigned document in one pass — restricted to unrestricted/admin callers only, and re-runnable safely since it only ever touches rows that are still unassigned. Once run for a document, it's a normal edit from then on, never automatically reassigned again.</p>
+        </div>
+
+        <h3>Document Numbering</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Organization &amp; Setup → Document Numbering</span></div>
+          <div class="body">
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Document Type</th><th>Prefix</th><th>Sep.</th><th>Pad</th><th>Show Branch Code</th><th>Next Number</th></tr></thead>
+              <tbody>
+                <tr><td>Quotation</td><td>QT</td><td>-</td><td>6</td><td>☐</td><td class="lnk">QT-1007</td></tr>
+                <tr><td>Invoice</td><td>INV</td><td>-</td><td>6</td><td>☐</td><td class="lnk">INV-1051</td></tr>
+                <tr><td>Credit Note</td><td>CN</td><td>-</td><td>6</td><td>☐</td><td class="lnk">CN-1015</td></tr>
+                <tr><td>Debit Note</td><td>DN</td><td>-</td><td>6</td><td>☐</td><td class="lnk">DN-1001 <span class="pill warn">Prefix Collision</span></td></tr>
+                <tr><td>Expense</td><td>EXP</td><td>-</td><td>6</td><td>☐</td><td class="lnk">EXP-1003</td></tr>
+                <tr><td>Purchase Requisition</td><td>PR</td><td>-</td><td>6</td><td>☐</td><td class="lnk">PR-1003</td></tr>
+                <tr><td>Purchase Order</td><td>PO</td><td>-</td><td>6</td><td>☐</td><td class="lnk">PO-1003</td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 37 — a "Prefix Collision" warning means two document types currently generate identically-formatted numbers</p>
+        <table class="plan" style="margin-top:0;"><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody>
+          <tr><td>Prefix / Separator</td><td>The literal text before the running number, e.g. <code>INV-</code>.</td></tr>
+          <tr><td>Pad Width</td><td>How many digits the number is zero-padded to (6 → <code>001051</code> shown as <code>1051</code> once past that width).</td></tr>
+          <tr><td>Show Branch Code</td><td>When on, the branch's short code (§Branches above) is woven into the printed number for that document type.</td></tr>
+          <tr><td>Reset</td><td>Whether the sequence restarts (e.g. yearly) or counts forever — the underlying counter always counts company-wide, never per-branch, even when a branch code appears in the printed number as cosmetic text.</td></tr>
+        </tbody></table>
+      </section>
+
+
+      <section id="config-zatca" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">Configuration / 02</p>
+        <h2 style="max-width:74ch;">ZATCA E-Invoicing</h2>
+        <div class="breadcrumb"><b>Settings &amp; Companies</b> → <b>Organization &amp; Setup</b> → <i>ZATCA Phase 2 E-Invoicing</i></div>
+        <p style="max-width:74ch;">Connecting a company to Saudi Arabia's mandatory e-invoicing gateway is involved enough to warrant its own dedicated manual — this section only summarizes what the screen is and how it fits into the rest of Warraq; for the full step-by-step walkthrough (all 5 onboarding steps, Sandbox/Simulation/Production differences, troubleshooting), see the companion <b>ZATCA Onboarding — Company Setup Guide</b>.</p>
+
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Organization &amp; Setup → ZATCA Phase 2 E-Invoicing</span></div>
+          <div class="body">
+            <div class="mock-banner good"><b>✓</b><div><b style="display:block;font-weight:800;">About this app's Sandbox code — not this company's onboarding progress.</b>The signing logic has been independently verified against ZATCA's real gateway.</div></div>
+            <div class="mock-cards">
+              <div class="mock-card"><b>Active for Live Processing</b><span>SANDBOX</span></div>
+              <div class="mock-card"><b>Sandbox Onboarding State</b><span style="color:var(--good-ink);">● Onboarded</span></div>
+              <div class="mock-card"><b>Next Sequence Counter (ICV)</b><span>#59</span></div>
+              <div class="mock-card"><b>Previous Invoice Hash (PIH)</b><span style="font-family:var(--font-mono);font-size:0.58rem;">NN8odn56oHc/…</span></div>
+            </div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 38 — Sandbox, Simulation, and Production each onboard independently, with their own identity and certificate</p>
+        <ul class="plain">
+          <li>Onboarding is <b>Company Admin / Super Admin only</b> — no permission toggle exists for it, since it touches the company's cryptographic signing keys.</li>
+          <li>Every <b>Invoice, Credit Note, and Debit Note</b> is automatically submitted to ZATCA moments after it's saved — this happens silently in the background, never something you trigger by hand.</li>
+          <li>A separate, company-wide switch (visible to Super Admins in Companies Directory) actually turns ZATCA submission on or off — it auto-enables the first time Sandbox onboarding completes, but stays off if a company's first completed environment is Simulation or Production instead.</li>
+          <li>Once ZATCA has returned <span class="pill good">Cleared</span> or <span class="pill info">Reported</span> for an invoice, it can never be locally cancelled — a Credit Note is the only compliant reversal.</li>
+        </ul>
+        <div class="callout">
+          <div class="label">Where a B2B/B2C customer's data matters here</div>
+          <p style="margin:0;">A <b>B2B</b> customer (§Customers &amp; Vendors) needs a complete address and VAT number on file or their invoices are refused clearance; a <b>B2C</b> customer only needs a name. Get this set correctly on the customer record once, and every invoice to them inherits the right ZATCA workflow automatically.</p>
+        </div>
+      </section>
+
+
+      <section id="config-roles" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">Configuration / 03</p>
+        <h2 style="max-width:74ch;">Users, Roles &amp; Permissions</h2>
+        <div class="breadcrumb"><b>Settings &amp; Companies</b> → <b>Governance &amp; Staff</b> → <i>Staff Permissions</i> / <i>Roles</i></div>
+
+        <h3>Staff Permissions — provisioning a login</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Governance &amp; Staff → Staff Permissions</span></div>
+          <div class="body">
+            <div class="mock-cards" style="grid-template-columns:1fr 1fr 1fr;">
+              <div class="mock-card"><b>Total Users</b><span>28</span></div>
+              <div class="mock-card"><b>Active Accounts</b><span style="color:var(--good-ink);">28</span></div>
+              <div class="mock-card"><b>Deactivated</b><span>0</span></div>
+            </div>
+            <div style="font-size:0.68rem;font-weight:700;margin:0.7rem 0 0.4rem;">+ Provision New Account</div>
+            <div class="mock-form">
+              <div class="mock-field"><label>ACCOUNT USERNAME</label><div class="box" style="color:#aaa;">e.g. Accountant Sarah, Sales Tariq</div></div>
+              <div class="mock-field"><label>ACCOUNT EMAIL</label><div class="box" style="color:#aaa;">sarah@company.com</div></div>
+              <div class="mock-field"><label>ASSIGNED COMPANY</label><div class="box">CNC Woodcraft &amp; Design</div></div>
+              <div class="mock-field"><label>RBAC SCOPE</label><div class="box">Full Authority</div></div>
+            </div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 39 — a new account is assigned a company, one or more Roles, and (optionally) branch restrictions</p>
+        <div class="callout risk">
+          <div class="label">Branch restriction lives here too</div>
+          <p style="margin:0;">Assigning specific branches to a user (instead of leaving them unrestricted) is what makes every branch-scoped filter throughout this manual actually narrow for them — invoice lists, warehouse pickers, employee pickers, POS shifts. Leaving a user with no branch assignment means company-wide access to every branch's documents.</p>
+        </div>
+        <div class="callout">
+          <div class="label">Passwords: policy and the forced first-change</div>
+          <p style="margin:0;">Any password you set here — for a brand-new account or when resetting an existing one — must be at least 6 characters and contain at least one letter and one digit. Whenever an admin sets a password for someone else, that account is flagged to change it on their very next login, before they can use anything else in the app; the account list itself never displays anyone's actual password. A logged-in user can always change their own password voluntarily from the key icon next to Sign Out, without needing an admin.</p>
+        </div>
+
+        <h3>Roles — reusable permission bundles</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Governance &amp; Staff → Roles</span></div>
+          <div class="body">
+            <div style="font-size:0.68rem;font-weight:700;margin-bottom:0.4rem;">Roles for CNC Woodcraft &amp; Design (5)</div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Role</th><th>Users Assigned</th></tr></thead>
+              <tbody>
+                <tr><td>Branch-Restricted Test Role</td><td>10</td></tr>
+                <tr><td>LocQA Restricted Role</td><td>2</td></tr>
+                <tr><td>LocQA All-Branches Role</td><td>1</td></tr>
+                <tr><td>Phase2 Restricted Role</td><td>1</td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 40 — a permission tree lets each Role cascade whole modules on/off, or granular leaves within one</p>
+        <table class="plan" style="margin-top:0;"><thead><tr><th>Concept</th><th>How it works</th></tr></thead><tbody>
+          <tr><td>Multiple roles per user</td><td>A user's effective permissions are the <b>union</b> of every Role assigned to them — a screen granted by any one of their roles is visible, regardless of what the others say.</td></tr>
+          <tr><td>No per-user override</td><td>There is no individual exception layered on top of role assignment — a deliberate design choice, not a missing feature. To change what one person can do, change their role assignment.</td></tr>
+          <tr><td>Admin / Super Admin bypass</td><td>An account marked <code>admin</code> or <code>super-admin</code> skips every granular permission check entirely and always sees everything for their scope.</td></tr>
+        </tbody></table>
+      </section>
+
+
+      <section id="config-ops" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">Configuration / 04</p>
+        <h2 style="max-width:74ch;">Document Templates, POS &amp; Translations</h2>
+        <div class="breadcrumb"><b>Settings &amp; Companies</b> → <b>Operations &amp; Config</b> → <i>Document Templates</i> / <i>POS Terminal Settings</i> / <i>Translations</i></div>
+
+        <h3>Document Templates</h3>
+        <p>Controls what a printed Quotation or Invoice actually looks like. A company can save as many templates as it wants — including several at once in different languages — and freely switch which one is <b>active</b> (the one pre-selected when printing) at any time. Every new company starts with three: <b>Compact A4</b> (a clean, minimal English layout with no boxes — logo top-left, seller/buyer plain text, the items table given all the vertical room, notes/QR/totals pinned to the page bottom), <b>Compact A4 Arabic</b> (the same layout, fully mirrored right-to-left with every label translated), and <b>Detailed Compact</b> (a denser traditional GCC tax-invoice layout — item codes, per-line tax and subtotal columns, itemized buyer address). All three, and anything else you design afterward, stay fully editable in the Canvas Designer.</p>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Operations &amp; Config → Document Templates</span></div>
+          <div class="body">
+            <div class="mock-cards">
+              <div class="mock-card dark"><b>Compact A4</b><span>English · A4 · Active</span></div>
+              <div class="mock-card"><b>Compact A4 Arabic</b><span>RTL · A4</span></div>
+              <div class="mock-card"><b>Detailed Compact</b><span>English · A4</span></div>
+            </div>
+            <p class="hint">Each carries independent toggles: Print Header / Footer / Logo / QR Code, plus ⚙️ Design, 👁️ Preview, and (Super Admin only) 📋 Copy to another company.</p>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 41 — the three starter templates every new company begins with; a thermal 4×6in receipt format is also available for POS</p>
+        <div class="callout crit">
+          <div class="label">Print is customizable per company. Download PDF is not — deliberately.</div>
+          <p style="margin:0;">The <b>Print</b> button on any invoice/quotation renders through whichever template is currently active for that company, exactly as designed here. The <b>Download PDF</b> button on the same document is completely independent: it always renders one fixed, consistent layout, the same for every company on the platform, regardless of what that company's own active Print template looks like. This is intentional — a company can restyle what its counter staff print freely, without ever risking a broken or half-finished custom template reaching a downloaded PDF a customer keeps. Download PDF is generated server-side (a real headless-browser render, not a client-side screenshot), so its formatting, fonts, and Arabic/Urdu rendering are identical no matter who downloads it or from where.</p>
+        </div>
+        <div class="callout">
+          <div class="label">Copying a template to another company (Super Admin only)</div>
+          <p style="margin:0;">Rather than rebuilding an identical layout by hand, a Super Admin can click 📋 on any template, pick a target company and a name, and an inactive copy is created there immediately — ready to review and activate on that company's own schedule. It never touches whatever template the target company already has active.</p>
+        </div>
+
+        <h3>POS Terminal Settings</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Operations &amp; Config → POS Terminal Settings</span></div>
+          <div class="body">
+            <p class="hint">☑ Auto-Print Receipts — automatically print thermal receipts after payment</p>
+            <div class="mock-form" style="margin-top:0.5rem;">
+              <div class="mock-field"><label>MAX POS PRODUCT IMAGE SIZE (KB)</label><div class="box">150</div><div class="hint">Recommended: 150KB — these ride along on every page load for every user.</div></div>
+              <div class="mock-field"><label>MAX IMAGE DIMENSIONS (PX)</label><div class="box">600</div><div class="hint">Uploads larger than this are rejected, not resized.</div></div>
+              <div class="mock-field"><label>MIN IMAGE DIMENSIONS (PX)</label><div class="box">150</div><div class="hint">Rejects blurry/low-quality uploads scaled up from something tiny.</div></div>
+            </div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 42 — these three limits are exactly what §Products &amp; Catalog referenced for the product photo uploader</p>
+
+        <h3>Translations</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Operations &amp; Config → Translations</span></div>
+          <div class="body">
+            <div class="mock-toolbar"><h6>UX Translations Dictionary · 2,625 keys</h6><span class="mock-btn" style="margin:0;">+ Add Translation</span></div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>UX Key</th><th>English</th><th>Arabic (AR)</th><th>Urdu (UR)</th></tr></thead>
+              <tbody>
+                <tr><td>Customers CRM</td><td>Customers CRM</td><td dir="rtl">إدارة العملاء</td><td>کسٹمر سی آر ایم</td></tr>
+                <tr><td>Products &amp; Pricing</td><td>Products &amp; Pricing</td><td dir="rtl">المنتجات والأسعار</td><td>مصنوعات اور قیمتیں</td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 43 — every label, button, and status in the app resolves through this dictionary in all three languages</p>
+        <div class="callout">
+          <div class="label">What belongs here — and what never should</div>
+          <p style="margin:0;">Only fixed app vocabulary lives in this dictionary — field labels, buttons, status words. A customer name, a product name, or any other text a company itself typed in is never translated here and should never be added — there's no fixed set of possible values for it to translate correctly, and the shared dictionary is common to every company on the platform.</p>
+        </div>
+      </section>
+
+
+      <section id="config-fiscal" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">Configuration / 05</p>
+        <h2 style="max-width:74ch;">Fiscal Periods, Capital &amp; VAT Filing</h2>
+        <div class="breadcrumb"><b>Settings &amp; Companies</b> → <b>Fiscal &amp; Capital</b> → <i>Month Opening / Closing</i> / <i>Capital &amp; Equity</i> / <i>VAT Returns (ZATCA Filing)</i></div>
+
+        <h3>Month Opening / Closing</h3>
+        <p>Every transaction date must fall inside a fiscal month that's currently <b>Open</b> — this is what "Month Open: June 2026" at the top of every screen actually enforces. Several months can be open at once (up to a server-enforced cap), closing oldest-first.</p>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Fiscal &amp; Capital → Month Opening / Closing</span></div>
+          <div class="body">
+            <div class="mock-table-wrap" style="margin-bottom:0.8rem;"><table class="mock-table">
+              <thead><tr><th>Fiscal Month</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                <tr><td>2026-08</td><td><span class="pill good">Open</span></td><td><span style="color:var(--crit-ink);font-weight:700;">Close &amp; Lock Month</span></td></tr>
+                <tr><td>June 2026 <span class="pill info">Global Open</span></td><td><span class="pill good">Open</span></td><td><span style="color:var(--crit-ink);font-weight:700;">Close &amp; Lock Month</span></td></tr>
+                <tr><td>May 2026</td><td><span class="pill neutral">Closed</span></td><td>Locked (Paid)</td></tr>
+                <tr><td>July 2026</td><td><span class="pill good">Open</span></td><td><span style="color:var(--crit-ink);font-weight:700;">Close &amp; Lock Month</span></td></tr>
+              </tbody>
+            </table></div>
+            <div style="font-size:0.68rem;font-weight:700;margin-bottom:0.4rem;">Open New Month</div>
+            <div class="mock-form" style="grid-template-columns:1fr 1fr auto;">
+              <div class="mock-field"><label>YEAR</label><div class="box">2026</div></div>
+              <div class="mock-field"><label>MONTH (MM)</label><div class="box">July (07)</div></div>
+              <div class="mock-btn" style="align-self:end;margin:0;">Create Fiscal Period</div>
+            </div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 44 — 3 months currently open (of up to 5 allowed concurrently); closing is permanent and locks every document dated within it</p>
+        <div class="callout risk">
+          <div class="label">What blocks a month from closing</div>
+          <p style="margin:0;">A month refuses to close while any active <b>Recurring &amp; Accruals</b> template (§Expenses &amp; Recurring Postings) for it is still unposted — the server enforces this with a clear message, not a silent failure.</p>
+        </div>
+
+        <h3>Capital &amp; Equity</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Fiscal &amp; Capital → Capital &amp; Equity</span></div>
+          <div class="body">
+            <div style="font-size:0.68rem;font-weight:700;margin-bottom:0.4rem;">Register New Investor</div>
+            <div class="mock-form">
+              <div class="mock-field"><label>INVESTOR NAME</label><div class="box" style="color:#aaa;">e.g. Abdullah bin Jameel</div></div>
+              <div class="mock-field"><label>ASSIGNED COMPANY</label><div class="box">CNC Woodcraft &amp; Design</div></div>
+              <div class="mock-field"><label>EQUITY SHARE (%)</label><div class="box" style="color:#aaa;">e.g. 50</div></div>
+              <div class="mock-field"><label>PROFIT SHARE (%)</label><div class="box" style="color:#aaa;">Defaults to Equity %</div></div>
+            </div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 45 — a registered investor's equity share drives the Investor Profit Share report (§Financial Reports)</p>
+        <p>Recording a real cash injection from an investor requires at least one investor registered first, then logs it as a capital contribution against a specific bank account — this is what moves the "Capital Contributed" line on the Balance Sheet.</p>
+
+        <h3>VAT Returns (ZATCA Filing)</h3>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>Fiscal &amp; Capital → VAT Returns (ZATCA Filing)</span></div>
+          <div class="body">
+            <div class="mock-form" style="grid-template-columns:1fr 1fr auto;margin-bottom:0.7rem;">
+              <div class="mock-field"><label>YEAR</label><div class="box">2026</div></div>
+              <div class="mock-field"><label>QUARTER</label><div class="box">Q3 (Jul-Sep)</div></div>
+              <div class="mock-btn" style="align-self:end;margin:0;">Generate</div>
+            </div>
+            <div class="mock-table-wrap"><table class="mock-table">
+              <thead><tr><th>Reference</th><th>Status</th><th class="num">Sales</th><th class="num">VAT on Sales</th><th class="num">Purchases</th><th class="num">VAT on Purchases</th><th class="num">Net Payable</th></tr></thead>
+              <tbody><tr><td>Q1-2026</td><td><span class="pill warn">Generated</span></td><td class="num">SAR 0.00</td><td class="num">SAR 0.00</td><td class="num">SAR 0.00</td><td class="num">SAR 0.00</td><td class="num" style="font-weight:800;">SAR 0.00</td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 46 — "Generate" computes the return from real Sales/Purchase data; "Mark as ZATCA Filed" is a separate, deliberate step</p>
+        <div class="callout crit">
+          <div class="label">Filing is permanent</div>
+          <p style="margin:0;">"Mark as ZATCA Filed" only records that you personally filed this return on ZATCA's own government VAT portal — it does not file anything for you. But once marked, it <b>permanently locks</b> every document in that quarter from further edits — only click it once the real filing on ZATCA's portal is actually done.</p>
+        </div>
+      </section>
+
+
+      <section id="config-backup" class="wide" style="max-width:74ch;">
+        <p class="section-eyebrow">Configuration / 06</p>
+        <h2>Backup &amp; Data Portability</h2>
+        <div class="breadcrumb"><b>Settings &amp; Companies</b> → <b>System &amp; Backup</b> → <i>Database Backup &amp; Sync</i></div>
+        <div class="screen">
+          <div class="chrome"><i></i><i></i><i></i><span>System &amp; Backup → Database Backup &amp; Sync</span></div>
+          <div class="body">
+            <div style="font-size:0.68rem;font-weight:700;margin-bottom:0.5rem;">Export Database</div>
+            <div style="display:flex;gap:0.4rem;flex-wrap:wrap;">
+              <span class="mock-btn" style="margin:0;">⬇ Download PostgreSQL Backup (.sql)</span>
+              <span class="mock-btn" style="margin:0;background:var(--warn);">⬇ Download Source Code ZIP</span>
+              <span class="mock-btn ghost" style="margin:0;">📋 Copy Database JSON String</span>
+            </div>
+            <div style="font-size:0.68rem;font-weight:700;margin:0.9rem 0 0.5rem;">Import Database Setup</div>
+            <div class="mock-banner warn"><b>⚠</b>Importing a backup <b>replaces</b> the active setup in this browser — every current company, transaction, and user list.</div>
+          </div>
+        </div>
+        <p class="fig-caption">Figure 47 — a full point-in-time export of every company, user, and transaction on the platform</p>
+        <div class="callout crit">
+          <div class="label">Read this before clicking Import</div>
+          <p style="margin:0;">This is a platform-wide operation, not scoped to one company — importing a backup replaces everything currently in the database. Treat it with the same caution as any irreversible, whole-database action; confirm you actually intend to discard current data before proceeding.</p>
+        </div>
+      </section>
+
+
+      <section id="appendix" style="max-width:74ch;">
+        <p class="section-eyebrow">Reference</p>
+        <h2>Glossary &amp; quick reference</h2>
+        <dl class="faq">
+          <dt>Company vs. Branch</dt>
+          <dd>A Company is a fully isolated tenant on the platform (its own users, customers, products, ZATCA identity). A Branch is one physical location <i>within</i> a company, used for reporting and document attribution — never a separate tenant.</dd>
+          <dt>Employee vs. User vs. Job Title vs. Role</dt>
+          <dd>An <b>Employee</b> is a real person on staff (HR record, may never log in). A <b>User</b> is a login account (may or may not link to an employee). A <b>Job Title</b> is an employee's HR position (Sales Associate, Cashier…) — has zero effect on app access. A <b>Role</b> is a bundle of screen permissions assigned to a User — has zero effect on HR records.</dd>
+          <dt>Quotation vs. Invoice</dt>
+          <dd>A Quotation is a non-binding estimate — no stock impact, no accounting postings, freely editable. An Invoice is the real, binding sale — deducts stock, posts to accounting, and (if ZATCA is enabled) is submitted to ZATCA automatically.</dd>
+          <dt>Credit Note / Debit Note</dt>
+          <dd>Not separate document types under the hood — both are rows in the same table as Invoices, distinguished by a type code. A Credit Note is the only compliant way to reverse a ZATCA-cleared invoice.</dd>
+          <dt>PR → PO → GRN → Bill</dt>
+          <dd>Purchase Requisition (internal request, no vendor/price) → Purchase Order (priced, sent to vendor) → Goods Receipt Note (physical arrival, updates stock) → Purchase Bill (vendor's invoice, totals computed from the GRN).</dd>
+          <dt>Accrual vs. Cash basis</dt>
+          <dd>Accrual counts revenue/expense the moment it's invoiced/billed. Cash counts it only when money actually moves. The Profit &amp; Loss report can show either.</dd>
+          <dt>ICV / PIH</dt>
+          <dd>ZATCA's internal invoice-chaining bookkeeping — an Invoice Counter Value and the Previous Invoice Hash, chaining every invoice cryptographically to the one before it, per company per environment. Shown for reference; never something you act on directly.</dd>
+        </dl>
+
+        <h3>Where each master-data type is used later</h3>
+        <div class="table-wrap"><table class="plan">
+          <thead><tr><th>Master data</th><th>Set up under</th><th>Used on</th></tr></thead>
+          <tbody>
+            <tr><td>Customer</td><td>Trading Partners</td><td>Quotations, Invoices, POS</td></tr>
+            <tr><td>Vendor</td><td>Trading Partners</td><td>Requisitions, POs, GRNs, Bills, Expenses</td></tr>
+            <tr><td>Product / Service</td><td>Product Catalog</td><td>Every sales &amp; purchase document line item</td></tr>
+            <tr><td>Warehouse</td><td>Warehouses</td><td>Invoices, GRNs, Stock Registry, Stock Takes</td></tr>
+            <tr><td>Employee + Job Title</td><td>Employees</td><td>Sales Invoice's Sales Associate field, User accounts</td></tr>
+            <tr><td>Branch</td><td>Branches (Locations)</td><td>Every transactional document, branch-scoped users</td></tr>
+            <tr><td>Bank Account</td><td>Bank Accounts</td><td>Invoice/Expense payment postings</td></tr>
+            <tr><td>Tax Slab</td><td>Tax Slabs</td><td>Every taxable document line</td></tr>
+            <tr><td>Role</td><td>Roles</td><td>Assigned to Users under Staff Permissions</td></tr>
+          </tbody>
+        </table></div>
+
+        <div class="signoff">
+          <h2>A note on how this manual stays accurate</h2>
+          <ul class="checklist">
+            <li>Every screen mockup in this document reproduces the live Warraq application as it exists at the time of writing — same field names, same defaults, same layout.</li>
+            <li>If the running application ever visibly differs from what's described here, trust the running application, and flag the difference so this manual can be corrected.</li>
+            <li>For ZATCA onboarding specifically, always defer to the dedicated <b>ZATCA Onboarding — Company Setup Guide</b>, which is verified against ZATCA's own sandbox gateway and SDK validator.</li>
+          </ul>
+        </div>
+      </section>
+
+
+    </main>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll('.rail nav a'));
+    var sections = links.map(function (a) { return document.querySelector(a.getAttribute('href')); }).filter(Boolean);
+    if (!('IntersectionObserver' in window) || !sections.length) return;
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        var id = '#' + entry.target.id;
+        links.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === id); });
+      });
+    }, { rootMargin: '-15% 0px -70% 0px', threshold: 0 });
+    sections.forEach(function (s) { io.observe(s); });
+  })();
+</script>

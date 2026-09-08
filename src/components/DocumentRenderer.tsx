@@ -1452,9 +1452,17 @@ export default function DocumentRenderer({
        if (currentTemplate?.printHeader === false || !companySetup.customHeader) return null;
        const compact = block.props?.compact === true;
        const textAlignClass = block.props?.align === 'right' ? 'text-right' : block.props?.align === 'center' ? 'text-center' : 'text-left';
+       // Same opt-out pattern as customer_info/notes/qr_code/totals_summary below —
+       // default (unset) keeps the existing bordered/shaded card every current
+       // template already relies on; borderStyle:"none" is for a template that wants
+       // plain running text with no box at all (e.g. a minimal "clean text" layout).
+       const borderStyle = block.props?.borderStyle;
+       const wrapperClass = borderStyle === 'none'
+        ? `text-xs text-slate-600 whitespace-pre-line ${compact ? 'line-clamp-2' : ''}`
+        : `bg-slate-50/50 rounded-xl text-xs text-slate-600 border border-slate-100 whitespace-pre-line ${compact ? 'p-1.5 line-clamp-2' : 'p-3.5'}`;
        return (
         <div key={block.id} className={`${blockColClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <div className={`bg-slate-50/50 rounded-xl text-xs text-slate-600 border border-slate-100 whitespace-pre-line ${compact ? 'p-1.5 line-clamp-2' : 'p-3.5'} ${textAlignClass}`}>
+         <div className={`${wrapperClass} ${textAlignClass}`}>
           {companySetup.customHeader}
          </div>
         </div>
@@ -1624,9 +1632,12 @@ export default function DocumentRenderer({
        const isBilingual = block.props?.isBilingual === true;
        const compact = block.props?.compact === true;
        const textAlignClass = block.props?.align === 'right' ? 'text-right' : block.props?.align === 'center' ? 'text-center' : 'text-left';
+       // Same borderStyle:"none" opt-out as custom_header/qr_code/totals_summary.
+       const borderStyle = block.props?.borderStyle;
+       const cardClass = borderStyle === 'none' ? '' : `border border-slate-150 rounded-xl bg-slate-50/40 ${compact ? 'p-2' : 'p-3.5'}`;
        return (
         <div key={block.id} className={`${blockColClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <div className={`border border-slate-150 rounded-xl bg-slate-50/40 ${compact ? 'p-2' : 'p-3.5'} ${textAlignClass}`}>
+         <div className={`${cardClass} ${textAlignClass}`}>
           <h4 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
            {t('Notes')}
            {isBilingual && <span className="ms-1.5 text-[9px] text-slate-400">الشروط والأحكام</span>}
@@ -1657,10 +1668,15 @@ export default function DocumentRenderer({
        const compact = block.props?.compact === true;
        const size = compact ? 'small' : (block.props?.size || 'medium');
        const sizeClass = size === 'small' ? 'w-12 h-12' : size === 'large' ? 'w-24 h-24' : 'w-20 h-20';
+       // Same borderStyle:"none" opt-out as custom_header/notes/totals_summary.
+       const borderStyle = block.props?.borderStyle;
+       const qrCardClass = borderStyle === 'none'
+        ? 'flex flex-col items-center justify-center shrink-0'
+        : `flex flex-col items-center justify-center bg-white rounded-xl border border-slate-150 shadow-sm shrink-0 ${compact ? 'p-1.5' : 'p-2.5'}`;
 
        return (
         <div key={block.id} className={`${blockColClass} flex ${alignClass} items-center ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <div className={`flex flex-col items-center justify-center bg-white rounded-xl border border-slate-150 shadow-sm shrink-0 ${compact ? 'p-1.5' : 'p-2.5'}`}>
+         <div className={qrCardClass}>
           {localQrDataUri ? (
            <img src={localQrDataUri} alt="ZATCA QR Verification" className={sizeClass} />
           ) : (
@@ -1723,9 +1739,14 @@ export default function DocumentRenderer({
        // that, together with a dense items table, was still pushing a 20-line invoice
        // onto a second page even with an already-compact header.
        const compact = block.props?.compact === true;
+       // Same borderStyle:"none" opt-out as custom_header/notes/qr_code — spacing is
+       // kept (a totals block reads poorly with zero breathing room) but the visible
+       // card (border/bg/rounded corners) is dropped for a plain-text layout.
+       const borderStyle = block.props?.borderStyle;
+       const totalsCardClass = borderStyle === 'none' ? '' : 'border border-slate-100 rounded-xl bg-slate-50';
        return (
         <div key={block.id} className={`${blockColClass} ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <div className={`border border-slate-100 rounded-xl bg-slate-50 ${compact ? 'space-y-0.5 p-2' : 'space-y-1.5 p-4'} ${totalsWidthClass} ${totalsPosClass}`}>
+         <div className={`${totalsCardClass} ${compact ? 'space-y-0.5 p-2' : 'space-y-1.5 p-4'} ${totalsWidthClass} ${totalsPosClass}`}>
          <div className="flex justify-between text-xs text-slate-600">
           <span className="whitespace-nowrap">
            {t('Subtotal')}{isBilingual && !compact && ':'}

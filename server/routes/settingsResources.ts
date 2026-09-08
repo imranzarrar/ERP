@@ -95,6 +95,54 @@ router.patch('/templates/:id', async (req: any, res) => {
   }
 });
 
+// Cross-company by design (a super-admin platform-management action, not a normal
+// tenant operation) — lets a super-admin reuse a template built for one company as the
+// starting point for another, instead of rebuilding an identical layout by hand in the
+// Canvas Designer. Deliberately super-admin-only (not the templates.create/update
+// permission a company's own admin can hold): assertOwnsRow's isSuperAdminUser bypass is
+// what every other cross-company read/write in this file already relies on, but this
+// route explicitly re-checks it up front since its whole point is reading ONE company's
+// row and writing into a DIFFERENT one — the one place in this file where "super-admin
+// bypasses company scoping" is the actual intent, not an incidental side effect.
+router.post('/templates/:id/copy', async (req: any, res) => {
+  try {
+    if (!isSuperAdminUser(req.user)) return res.status(403).json({ error: 'Forbidden: only a super-admin can copy a template to another company.' });
+    const { id } = req.params;
+    const { targetCompanyId, name } = req.body || {};
+    if (!targetCompanyId) return res.status(400).json({ error: 'A target company is required.' });
+    if (!name || !String(name).trim()) return res.status(400).json({ error: 'A name for the copied template is required.' });
+
+    const [source] = await db.select().from(schema.documentTemplates).where(eq(schema.documentTemplates.id, id));
+    if (!source) return res.status(404).json({ error: 'Source template not found.' });
+
+    const [targetCompany] = await db.select().from(schema.companies).where(eq(schema.companies.id, targetCompanyId));
+    if (!targetCompany) return res.status(404).json({ error: 'Target company not found.' });
+
+    const newId = generateId();
+    // isActive: false — copying into a company must never silently displace whatever
+    // template that company already has active; the super-admin (or that company's own
+    // admin afterward) explicitly activates it via the existing "Set Active" action.
+    await db.insert(schema.documentTemplates).values({
+      id: newId,
+      name: String(name).trim(),
+      language: source.language,
+      pageSize: source.pageSize,
+      isActive: false,
+      printHeader: source.printHeader,
+      printFooter: source.printFooter,
+      printLogo: source.printLogo,
+      printQrCode: source.printQrCode,
+      companyId: targetCompanyId,
+      layoutJson: source.layoutJson,
+      gridGapY: source.gridGapY,
+      globalFontFamily: source.globalFontFamily,
+    });
+    res.json({ success: true, id: newId });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.delete('/templates/:id', async (req: any, res) => {
   try {
     if (!isAdminUser(req.user) && !hasPermission(req.user, 'templates.delete')) return res.status(403).json({ error: 'Forbidden' });

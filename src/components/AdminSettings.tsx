@@ -41,7 +41,7 @@ import {
  ShieldCheck,
  Shield, MapPin, Hash, FileCheck, Monitor, LogOut, Inbox, Layers} from 'lucide-react';
 import { ensureCompatibleImage } from '../imageUtils';
-import { DEFAULT_DOCUMENT_LAYOUT, DETAILED_TAX_INVOICE_LAYOUT, COL_SPAN_MD, COL_SPAN_PRINT } from '../documentTemplateDefaults';
+import { DEFAULT_DOCUMENT_LAYOUT, DETAILED_TAX_INVOICE_LAYOUT, buildCompactA4Layout, COL_SPAN_MD, COL_SPAN_PRINT } from '../documentTemplateDefaults';
 import { XMLParser } from 'fast-xml-parser';
 import DocumentRenderer from './DocumentRenderer';
 import ZatcaOnboardingWizard from './ZatcaOnboardingWizard';
@@ -462,6 +462,9 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  const [useSleekLayout, setUseSleekLayout] = React.useState<boolean>(true);
  const activeCatGroup = CATEGORY_GROUPS.find(cat => cat.subTabs.some(st => st.id === activeTab)) || CATEGORY_GROUPS[0];
  const [previewTemplate, setPreviewTemplate] = React.useState<DocumentTemplate | null>(null);
+ const [copyingTemplate, setCopyingTemplate] = React.useState<DocumentTemplate | null>(null);
+ const [copyTargetCompanyId, setCopyTargetCompanyId] = React.useState('');
+ const [copyTargetName, setCopyTargetName] = React.useState('');
 
   const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
   const fetchMonths = async () => {
@@ -991,9 +994,14 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  isCompanyDefault: true,
  };
 
+ // Three starter templates, kept in parity with companyProvisioning.ts's server-side
+ // onboarding-approval flow (see that file's comment). "Compact A4" is the only one
+ // marked isActive — the pre-selected default in the Print dialog's template dropdown —
+ // the other two are saved and immediately selectable from that same dropdown without
+ // an admin needing to build them from scratch.
  const newTemplate: DocumentTemplate = {
  id: generateId(),
- name: 'Standard English (A4)',
+ name: 'Compact A4',
  language: 'English',
  pageSize: '8.27in x 11.69in (A4)',
  isActive: true,
@@ -1001,8 +1009,40 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  printFooter: true,
  printLogo: true,
  printQrCode: true,
- companyId: finalizedCompany.id
- };
+ companyId: finalizedCompany.id,
+ layoutJson: JSON.stringify(buildCompactA4Layout(true)),
+ gridGapY: 'tight',
+ } as any;
+
+ const newTemplateArabic: DocumentTemplate = {
+ id: generateId(),
+ name: 'Compact A4 Arabic',
+ language: 'Arabic',
+ pageSize: '8.27in x 11.69in (A4)',
+ isActive: false,
+ printHeader: true,
+ printFooter: true,
+ printLogo: true,
+ printQrCode: true,
+ companyId: finalizedCompany.id,
+ layoutJson: JSON.stringify(buildCompactA4Layout(false)),
+ gridGapY: 'tight',
+ } as any;
+
+ const newTemplateDetailed: DocumentTemplate = {
+ id: generateId(),
+ name: 'Detailed Compact (A4)',
+ language: 'English',
+ pageSize: '8.27in x 11.69in (A4)',
+ isActive: false,
+ printHeader: true,
+ printFooter: true,
+ printLogo: true,
+ printQrCode: true,
+ companyId: finalizedCompany.id,
+ layoutJson: JSON.stringify(DETAILED_TAX_INVOICE_LAYOUT),
+ gridGapY: 'tight',
+ } as any;
 
  // Kept in parity with companyProvisioning.ts's server-side onboarding-approval flow —
  // the two starter-resource lists had drifted (this path was missing both of these),
@@ -1094,6 +1134,8 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  if (!(await createResource('/api/warehouses', newWarehouse, 'warehouse'))) return;
  if (!(await createResource('/api/units-of-measure', newUnitOfMeasure, 'unit of measure'))) return;
  if (!(await createResource('/api/templates', newTemplate, 'document template'))) return;
+ if (!(await createResource('/api/templates', newTemplateArabic, 'Arabic document template'))) return;
+ if (!(await createResource('/api/templates', newTemplateDetailed, 'detailed document template'))) return;
  for (const month of newMonths) {
  if (!(await createResource('/api/transactions/months', month, 'fiscal month'))) return;
  }
@@ -1110,7 +1152,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  taxSlabs: [...(prev.taxSlabs || []), newTaxSlab],
  warehouses: [...(prev.warehouses || []), newWarehouse],
  unitsOfMeasure: [...(prev.unitsOfMeasure || []), newUnitOfMeasure],
- templates: [...prev.templates, newTemplate],
+ templates: [...prev.templates, newTemplate, newTemplateArabic, newTemplateDetailed],
  months: [...prev.months, ...newMonths]
  }));
  triggerSuccess(`Organization "${finalizedCompany.name}" registered successfully with standard operational defaults!`);
@@ -1869,6 +1911,40 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
      triggerSuccess(t('Template deleted.'));
    } catch (err: any) {
      triggerError(t('Failed to delete template:') + ' ' + err.message);
+   }
+ };
+
+ // Super-admin-only (server re-checks this — see POST /templates/:id/copy's comment):
+ // lets a template built for one company be reused as the starting point for another
+ // instead of rebuilding an identical layout by hand. Always lands inactive in the
+ // target company, matching handleAddTemplate's own "register, then activate below"
+ // two-step flow.
+ const handleOpenCopyTemplate = (tmpl: DocumentTemplate) => {
+   setCopyingTemplate(tmpl);
+   setCopyTargetCompanyId('');
+   setCopyTargetName(`${tmpl.name} (Copy)`);
+ };
+
+ const handleConfirmCopyTemplate = async () => {
+   if (!copyingTemplate) return;
+   if (!copyTargetCompanyId) return triggerError(t('Select a target company.'));
+   if (!copyTargetName.trim()) return triggerError(t('A name for the copied template is required.'));
+   try {
+     const resp = await fetch(`/api/templates/${copyingTemplate.id}/copy`, {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ targetCompanyId: copyTargetCompanyId, name: copyTargetName.trim() }),
+     });
+     const result = await resp.json().catch(() => ({}));
+     if (!resp.ok) {
+       return triggerError(result.error || t('Failed to copy template.'));
+     }
+     if (onRefreshDb) await onRefreshDb();
+     const targetCompanyName = db.companies.find(c => c.id === copyTargetCompanyId)?.name || copyTargetCompanyId;
+     triggerSuccess(`${t('Template copied to')} "${targetCompanyName}". ${t('Activate it there when ready.')}`);
+     setCopyingTemplate(null);
+   } catch (err: any) {
+     triggerError(t('Failed to copy template:') + ' ' + err.message);
    }
  };
 
@@ -3191,7 +3267,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <div className="p-3 bg-amber-50/50 border border-amber-100/60 rounded-2xl">
  <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wide">⭐ {t('Automatic Seed Provisioning')}</p>
  <p className="text-[9px] text-amber-700 mt-1 leading-normal">
- {t('To save you setup effort, registering this profile will auto-provision standard business resources: a Main Operating Bank, a Walk-in Customer, a Cash Vendor, a Standard VAT tax slab, a Main Warehouse, a default Piece (PCE) unit of measure, a Standard English PDF Template, and an open Operational Month period')} ({new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}).
+ {t('To save you setup effort, registering this profile will auto-provision standard business resources: a Main Operating Bank, a Walk-in Customer, a Cash Vendor, a Standard VAT tax slab, a Main Warehouse, a default Piece (PCE) unit of measure, three starter print templates (Compact A4, Compact A4 Arabic, and Detailed Compact), and an open Operational Month period')} ({new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}).
  </p>
  </div>
 
@@ -6069,6 +6145,16 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
             ⭐ {t('Active Default')}
            </span>
           )}
+          {db.currentUser?.isSuperAdmin && (
+           <button
+            type="button"
+            onClick={() => handleOpenCopyTemplate(tmpl)}
+            title={t('Copy to another company')}
+            className="text-[10px] font-bold text-slate-500 hover:text-indigo-600 transition px-1.5 py-1 rounded-lg hover:bg-indigo-50"
+           >
+            📋
+           </button>
+          )}
           {canDeleteTemplates && (
            <button
             type="button"
@@ -8021,6 +8107,60 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  >
  {t('Permanently Lock Month')}
  </button>
+ </div>
+ </div>
+ </div>
+ )}
+
+ {/* COPY TEMPLATE TO ANOTHER COMPANY MODAL (super-admin only) */}
+ {copyingTemplate && (
+ <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex justify-center items-center p-4 overflow-y-auto">
+ <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl p-6 w-full max-w-md my-auto">
+ <h3 className="font-bold text-base text-slate-800 mb-1">{t('Copy Template to Another Company')}</h3>
+ <p className="text-xs text-slate-500 mb-4">
+  {t('Copying')} "{copyingTemplate.name}" ({copyingTemplate.language}). {t('The copy is saved inactive in the target company — activate it there when ready.')}
+ </p>
+
+ <div className="space-y-3 mb-5">
+  <div>
+   <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block mb-1">{t('Target Company')}</label>
+   <select
+    value={copyTargetCompanyId}
+    onChange={(e) => setCopyTargetCompanyId(e.target.value)}
+    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+   >
+    <option value="">{t('Select a company…')}</option>
+    {db.companies
+     .filter(c => c.id !== copyingTemplate.companyId)
+     .map(c => (
+      <option key={c.id} value={c.id}>{c.name}</option>
+     ))}
+   </select>
+  </div>
+  <div>
+   <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block mb-1">{t('Template Name in Target Company')}</label>
+   <input
+    type="text"
+    value={copyTargetName}
+    onChange={(e) => setCopyTargetName(e.target.value)}
+    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+   />
+  </div>
+ </div>
+
+ <div className="flex justify-end gap-2.5">
+  <button
+   onClick={() => setCopyingTemplate(null)}
+   className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg text-xs font-semibold transition"
+  >
+   {t('Cancel')}
+  </button>
+  <button
+   onClick={handleConfirmCopyTemplate}
+   className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
+  >
+   {t('Copy Template')}
+  </button>
  </div>
  </div>
  </div>

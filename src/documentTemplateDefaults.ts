@@ -124,6 +124,41 @@ export function buildFixedDownloadTemplate(companyId: string | undefined) {
   };
 }
 
+// Minimal, box-free layout — no bordered/shaded cards anywhere (unlike
+// DEFAULT_DOCUMENT_LAYOUT/DETAILED_TAX_INVOICE_LAYOUT's bordered customer_info card),
+// achieved via each block's own borderStyle:"none" opt-out (see DocumentRenderer.tsx's
+// custom_header/notes/qr_code/totals_summary blocks — customer_info already supported
+// this). Built for CNC Woodcraft & Design from a user-provided reference image, then
+// adopted as one of the three starter templates every new company gets (alongside
+// DEFAULT_DOCUMENT_LAYOUT-derived "Standard" and DETAILED_TAX_INVOICE_LAYOUT). The
+// notes/qr_code/totals_summary row is anchored to the page bottom (anchorBottom) so the
+// items table gets all the vertical room above it, matching this preset's "compact"
+// name — dense where it matters (the table), spare everywhere else.
+//
+// isBilingual is the one prop deliberately parameterized rather than hardcoded: this
+// same array backs BOTH the English ("Compact A4") and Arabic ("Compact A4 Arabic")
+// starter templates. DocumentRenderer's t() for Invoice/Quotation is driven by the
+// TEMPLATE's own `language` field (fixed local dictionaries, independent of the viewing
+// user's UI language — see DocumentRenderer.tsx's isArabic/isUrdu/t()), so language:
+// 'Arabic' alone already translates every label and flips to RTL; isBilingual is turned
+// off for the Arabic copy specifically because those flags print a small SECOND-language
+// caption next to the primary text, and that hardcoded caption is itself an Arabic
+// literal — left on, it would print a redundant Arabic caption under already-Arabic text.
+export function buildCompactA4Layout(isBilingual: boolean) {
+  return [
+    { id: 'logo', title: 'Company Logo', w: 4, visible: true, props: { align: 'left' } },
+    { id: 'doc_details', title: 'Document Metadata', w: 8, visible: true, props: { isBilingual, compact: true, showDocNumber: true, showDate: true, showDueDate: false, showPaymentStatus: true, showOriginQ: false, showTRN: false, showCreatedBy: false } },
+    { id: 'company_details', title: 'Company Details', w: 6, visible: true, props: { isBilingual, compact: true, showVat: true, showAddress: true, showContact: true, showBank: false } },
+    { id: 'customer_info', title: 'Customer Info', w: 6, visible: true, props: { isBilingual, compact: true, showName: true, showContact: true, showAddress: true, showVatNumber: true, addressStyle: 'itemized', borderStyle: 'none' } },
+    { id: 'custom_header', title: 'Custom Header text', w: 12, visible: true, props: { isBilingual: false, compact: true, borderStyle: 'none' } },
+    { id: 'items_table', title: 'Items Table', w: 12, visible: true, props: { isBilingual: false, showSNo: true, showItemCode: false, showDescription: true, showQty: true, showUnitCost: true, showDiscount: true, showTotal: true, borderStyle: 'plain' } },
+    { id: 'notes', title: 'Notes block', w: 5, visible: true, props: { isBilingual: false, anchorBottom: true, borderStyle: 'none' } },
+    { id: 'qr_code', title: 'ZATCA QR Code', w: 3, visible: true, props: { align: 'center', size: 'medium', isBilingual, anchorBottom: true, borderStyle: 'none' } },
+    { id: 'totals_summary', title: 'Total Summary', w: 4, visible: true, props: { isBilingual: false, showSubtotal: true, showDiscount: true, showNetSubtotal: false, showVat: true, showGrandTotal: true, showGrandTotalWords: true, accentColor: 'slate', anchorBottom: true, borderStyle: 'none' } },
+    { id: 'custom_footer', title: 'Custom Footer text', w: 12, visible: true, props: { isBilingual: false, anchorBottom: true } },
+  ];
+}
+
 export const DETAILED_TAX_INVOICE_LAYOUT = [
   { id: 'logo', title: 'Company Logo', w: 4, visible: true, props: { align: 'left' } },
   { id: 'doc_details', title: 'Document Metadata', w: 8, visible: true, props: { isBilingual: true, compact: true, showDocNumber: true, showDate: true, showDueDate: true, showPaymentStatus: true, showOriginQ: true, showTRN: true, showCreatedBy: true } },

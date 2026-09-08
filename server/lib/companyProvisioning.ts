@@ -1,5 +1,6 @@
 import * as schema from '../../src/db/schema.js';
 import { generateId } from '../../src/id.js';
+import { buildCompactA4Layout, DETAILED_TAX_INVOICE_LAYOUT } from '../../src/documentTemplateDefaults.js';
 
 // Server-side, atomic equivalent of AdminSettings.tsx's handleAddCompany starter-resource
 // bundle (bank account, walk-in customer, cash vendor, MAIN warehouse, standard document
@@ -85,9 +86,18 @@ export async function provisionStarterResources(tx: any, params: { companyId: st
     companyId,
   });
 
+  // Three starter templates, matching handleAddCompany's own list exactly (kept in sync
+  // by hand — see that function's comment on why these two provisioning paths stay
+  // separate code rather than merging). "Compact A4" is the only one marked isActive
+  // (the pre-selected default in the Print dialog's template dropdown); the other two
+  // stay saved and immediately selectable from that same dropdown without an admin
+  // needing to build them from scratch. schema.documentTemplates' unique_active_template
+  // index only forbids two ACTIVE templates for the same (companyId, language) pair, so
+  // this is safe even though "Compact A4 Arabic" and "Detailed Compact (A4)" both share
+  // the English-language uniqueness scope's sibling rules — only "Compact A4" is active.
   await tx.insert(schema.documentTemplates).values({
     id: generateId(),
-    name: 'Standard English (A4)',
+    name: 'Compact A4',
     language: 'English',
     pageSize: '8.27in x 11.69in (A4)',
     isActive: true,
@@ -96,6 +106,38 @@ export async function provisionStarterResources(tx: any, params: { companyId: st
     printLogo: true,
     printQrCode: true,
     companyId,
+    layoutJson: JSON.stringify(buildCompactA4Layout(true)),
+    gridGapY: 'tight',
+  });
+
+  await tx.insert(schema.documentTemplates).values({
+    id: generateId(),
+    name: 'Compact A4 Arabic',
+    language: 'Arabic',
+    pageSize: '8.27in x 11.69in (A4)',
+    isActive: false,
+    printHeader: true,
+    printFooter: true,
+    printLogo: true,
+    printQrCode: true,
+    companyId,
+    layoutJson: JSON.stringify(buildCompactA4Layout(false)),
+    gridGapY: 'tight',
+  });
+
+  await tx.insert(schema.documentTemplates).values({
+    id: generateId(),
+    name: 'Detailed Compact (A4)',
+    language: 'English',
+    pageSize: '8.27in x 11.69in (A4)',
+    isActive: false,
+    printHeader: true,
+    printFooter: true,
+    printLogo: true,
+    printQrCode: true,
+    companyId,
+    layoutJson: JSON.stringify(DETAILED_TAX_INVOICE_LAYOUT),
+    gridGapY: 'tight',
   });
 
   // The company's starting open month is the real current month at creation time, not a
