@@ -1,0 +1,15 @@
+{
+  "id": "01a04cb1-af7c-7699-b8cd-f56801583357",
+  "name": "Detailed Tax Invoice (A4)",
+  "language": "English",
+  "page_size": "8.27in x 11.69in (A4)",
+  "is_active": false,
+  "print_header": true,
+  "print_footer": true,
+  "print_logo": true,
+  "print_qr_code": true,
+  "company_id": "019fa55c-622a-7cd5-b949-e61689455b41",
+  "layout_json": "[{\"id\":\"logo\",\"title\":\"Company Logo\",\"w\":4,\"visible\":true,\"props\":{\"align\":\"left\"}},{\"id\":\"doc_details\",\"title\":\"Document Metadata\",\"w\":8,\"visible\":true,\"props\":{\"isBilingual\":true,\"showDocNumber\":true,\"showDate\":true,\"showDueDate\":true,\"showPaymentStatus\":true,\"showOriginQ\":true,\"showTRN\":true,\"showCreatedBy\":true,\"compact\":true}},{\"id\":\"company_details\",\"title\":\"Company Details\",\"w\":6,\"visible\":true,\"props\":{\"isBilingual\":true,\"showVat\":true,\"showAddress\":true,\"showContact\":true,\"showBank\":true,\"compact\":true}},{\"id\":\"customer_info\",\"title\":\"Customer Info\",\"w\":6,\"visible\":true,\"props\":{\"isBilingual\":true,\"showName\":true,\"showContact\":true,\"showAddress\":true,\"showVatNumber\":true,\"addressStyle\":\"itemized\",\"borderStyle\":\"solid\",\"compact\":true}},{\"id\":\"custom_header\",\"title\":\"Custom Header text\",\"w\":12,\"visible\":true,\"props\":{\"isBilingual\":true,\"compact\":true}},{\"id\":\"items_table\",\"title\":\"Items Table\",\"w\":12,\"visible\":true,\"props\":{\"isBilingual\":true,\"showSNo\":true,\"showItemCode\":true,\"showDescription\":true,\"showQty\":true,\"showUnitCost\":true,\"showDiscount\":true,\"showTotal\":true,\"showTaxAmount\":true,\"showLineSubtotal\":true,\"borderStyle\":\"stripe\",\"compact\":true}},{\"id\":\"notes\",\"title\":\"Notes block\",\"w\":5,\"visible\":true,\"props\":{\"isBilingual\":true,\"compact\":true}},{\"id\":\"qr_code\",\"title\":\"ZATCA QR Code\",\"w\":3,\"visible\":true,\"props\":{\"align\":\"center\",\"size\":\"medium\",\"isBilingual\":true,\"compact\":true}},{\"id\":\"totals_summary\",\"title\":\"Total Summary\",\"w\":4,\"visible\":true,\"props\":{\"isBilingual\":true,\"showSubtotal\":true,\"showDiscount\":true,\"showNetSubtotal\":true,\"showVat\":true,\"showGrandTotal\":true,\"showGrandTotalWords\":true,\"accentColor\":\"indigo\",\"compact\":true}},{\"id\":\"custom_footer\",\"title\":\"Custom Footer text\",\"w\":12,\"visible\":true,\"props\":{\"isBilingual\":true}}]",
+  "grid_gap_y": "tight",
+  "global_font_family": null
+}
