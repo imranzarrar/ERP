@@ -238,6 +238,41 @@ describe('Sale warehouse resolution (branch default -> company default)', () => 
     expect(await stockQty(stockProductId, warehouseCompanyDefaultId)).toBe(before - 1);
   });
 
+  it('resolves to the product\'s own default warehouse, taking priority over the branch/company default', async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const productWithDefaultWhId = generateId();
+    await db.insert(schema.productsServices).values({
+      id: productWithDefaultWhId, name: 'Widget With Own Default WH', description: 'x', unitPrice: '10.00',
+      itemKind: 'item', companyId, defaultWarehouseId: warehouseBranchDefaultId,
+    });
+    await db.insert(schema.inventoryStocks).values({
+      id: generateId(), productId: productWithDefaultWhId, warehouseId: warehouseBranchDefaultId, batchNumber: null, quantity: '50.000', companyId,
+    });
+    const before = await stockQty(productWithDefaultWhId, warehouseBranchDefaultId);
+
+    // No branchId given — the branch/company tier would resolve to warehouseCompanyDefaultId,
+    // but the product's own defaultWarehouseId (warehouseBranchDefaultId) must win instead.
+    const res = await api(adminSessionId, '/api/transactions/invoices', {
+      method: 'POST',
+      body: JSON.stringify({
+        invoiceData: {
+          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          items: [{ id: generateId(), description: 'Product-default-warehouse sale', unitCost: 10, quantity: 4, unit: 'PCE', productId: productWithDefaultWhId }],
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const [invoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, res.body.invoiceId));
+    expect(invoice.warehouseId).toBe(warehouseBranchDefaultId);
+    expect(await stockQty(productWithDefaultWhId, warehouseBranchDefaultId)).toBe(before - 4);
+
+    await db.delete(schema.inventoryStocks).where(eq(schema.inventoryStocks.productId, productWithDefaultWhId));
+    await db.delete(schema.stockLedgerTransactions).where(eq(schema.stockLedgerTransactions.productId, productWithDefaultWhId));
+    await db.delete(schema.invoiceItems).where(eq(schema.invoiceItems.productId, productWithDefaultWhId));
+    await db.delete(schema.invoices).where(eq(schema.invoices.id, res.body.invoiceId));
+    await db.delete(schema.productsServices).where(eq(schema.productsServices.id, productWithDefaultWhId));
+  });
+
   it('rejects an explicit warehouseId pointing at a backend-type warehouse', async () => {
     const today = new Date().toISOString().split('T')[0];
     const res = await api(adminSessionId, '/api/transactions/invoices', {

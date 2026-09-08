@@ -244,6 +244,14 @@ router.post('/products', async (req: any, res) => {
     if (data.salesPurchaseFlow !== undefined && ![0, 1, 2].includes(Number(data.salesPurchaseFlow))) {
       return res.status(400).json({ error: 'salesPurchaseFlow must be 0 (Both), 1 (Sales), or 2 (Purchase).' });
     }
+    // Mandatory going forward — the client form previously had no description field at
+    // all and silently saved an empty string on every create (schema.ts's description
+    // column is NOT NULL but had no application-layer requirement enforcing a real value).
+    if (!existing || data.description !== undefined) {
+      if (typeof data.description !== 'string' || !data.description.trim()) {
+        return res.status(400).json({ error: 'Description is required.' });
+      }
+    }
 
     // The client (MasterEntities.tsx) already enforces size/dimension limits before
     // upload, but that's a UI convenience only — a direct API call bypasses it entirely,
@@ -343,6 +351,11 @@ router.post('/companies', async (req: any, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const data = req.body;
+    // VAT is optional pre-ZATCA-onboarding, but if provided must be a real 15-digit
+    // registration number — was previously unvalidated on this route entirely.
+    if (data.vatNumber && !/^\d{15}$/.test(data.vatNumber)) {
+      return res.status(400).json({ error: 'VAT number must be exactly 15 digits.' });
+    }
     await db.insert(schema.companies).values(data).onConflictDoUpdate({
       target: schema.companies.id,
       set: data
@@ -405,7 +418,12 @@ router.patch('/companies/:id/settings', async (req: any, res) => {
     if (body.logoUrl !== undefined) update.logoUrl = body.logoUrl;
     if (body.customHeader !== undefined) update.customHeader = body.customHeader;
     if (body.customFooter !== undefined) update.customFooter = body.customFooter;
-    if (body.vatNumber !== undefined) update.vatNumber = body.vatNumber;
+    if (body.vatNumber !== undefined) {
+      if (body.vatNumber && !/^\d{15}$/.test(body.vatNumber)) {
+        return res.status(400).json({ error: 'VAT number must be exactly 15 digits.' });
+      }
+      update.vatNumber = body.vatNumber;
+    }
     if (body.crNumber !== undefined) update.crNumber = body.crNumber;
     if (body.themeId !== undefined) update.themeId = body.themeId;
     if (body.currency !== undefined) update.currency = body.currency;

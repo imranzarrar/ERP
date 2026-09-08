@@ -899,7 +899,10 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  const handleAddCompany = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!newCompany.name.trim()) return triggerError('Company name is required.');
- 
+ if (newCompany.vatNumber && !/^\d{15}$/.test(newCompany.vatNumber)) {
+ return triggerError('VAT number must be exactly 15 digits.');
+ }
+
  const companyIdClean = generateId();
 
  const brandTitle = newCompany.portalTitle?.trim() || (newCompany.name.substring(0, 10).toUpperCase() + ' PORTAL');
@@ -969,14 +972,15 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  // own auto-provisioned warehouse (server/routes/branches.ts): without one, a company
  // that never bothers creating a branch at all (a genuine single-location business)
  // would have zero warehouses until someone remembers to create one manually, and any
- // stock-item sale hard-fails until then. Named after the company itself (not a
- // hardcoded English label like "Main Warehouse") since the company name could be
- // Arabic/Urdu — mirrors the same naming reasoning used for a branch's own warehouse.
+ // stock-item sale hard-fails until then. Fixed English label by explicit product
+ // decision (previously named after the company itself to support Arabic/Urdu company
+ // names — that reasoning is intentionally overridden here; kept in sync with
+ // companyProvisioning.ts's server-side equivalent).
  // POST /api/warehouses already auto-promotes a company's very first warehouse to
  // isCompanyDefault, so nothing extra is needed here for that.
  const newWarehouse: Warehouse = {
  id: generateId(),
- name: finalizedCompany.name,
+ name: 'Main Warehouse',
  code: 'MAIN',
  isActive: true,
  companyId: finalizedCompany.id,
@@ -997,6 +1001,26 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  printFooter: true,
  printLogo: true,
  printQrCode: true,
+ companyId: finalizedCompany.id
+ };
+
+ // Kept in parity with companyProvisioning.ts's server-side onboarding-approval flow —
+ // the two starter-resource lists had drifted (this path was missing both of these),
+ // so a company created manually here had zero tax slabs (empty VAT dropdown on every
+ // Invoice/Quotation/Expense/POS form) and no default unit of measure.
+ const newTaxSlab = {
+ id: generateId(),
+ name: 'Standard VAT',
+ percentage: 15,
+ isDefault: true,
+ companyId: finalizedCompany.id
+ };
+
+ const newUnitOfMeasure = {
+ id: generateId(),
+ name: 'Piece',
+ code: 'PCE',
+ isActive: true,
  companyId: finalizedCompany.id
  };
 
@@ -1066,7 +1090,9 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  if (!(await createResource('/api/banks', newBank, 'bank account'))) return;
  if (!(await createResource('/api/customers', newCustomer, 'customer'))) return;
  if (!(await createResource('/api/vendors', newVendor, 'vendor'))) return;
+ if (!(await createResource('/api/tax-slabs', newTaxSlab, 'tax slab'))) return;
  if (!(await createResource('/api/warehouses', newWarehouse, 'warehouse'))) return;
+ if (!(await createResource('/api/units-of-measure', newUnitOfMeasure, 'unit of measure'))) return;
  if (!(await createResource('/api/templates', newTemplate, 'document template'))) return;
  for (const month of newMonths) {
  if (!(await createResource('/api/transactions/months', month, 'fiscal month'))) return;
@@ -1081,7 +1107,9 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  banks: [...prev.banks, newBank],
  customers: [...prev.customers, newCustomer],
  vendors: [...prev.vendors, newVendor],
+ taxSlabs: [...(prev.taxSlabs || []), newTaxSlab],
  warehouses: [...(prev.warehouses || []), newWarehouse],
+ unitsOfMeasure: [...(prev.unitsOfMeasure || []), newUnitOfMeasure],
  templates: [...prev.templates, newTemplate],
  months: [...prev.months, ...newMonths]
  }));
@@ -1243,6 +1271,12 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  const handleCompanySave = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!companyForm.name.trim()) return triggerError('Company name is required.');
+ // VAT is optional pre-ZATCA-onboarding, but if provided must be a real 15-digit
+ // registration number — the input itself already strips non-digits and caps length,
+ // this is the final guard against a shorter/pasted value slipping through.
+ if (companyForm.vatNumber && !/^\d{15}$/.test(companyForm.vatNumber)) {
+ return triggerError('VAT number must be exactly 15 digits.');
+ }
 
  // Process the logo to ensure if it is BMP base64 or raw base64, it is converted to highly compatible PNG base64
  const finalLogoUrl = ensureCompatibleImage(companyForm.logoUrl);
@@ -2157,6 +2191,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  username: '',
  email: '',
  password: '',
+ confirmPassword: '',
  role: 'user' as UserRole,
  companyId: db.selectedCompanyId,
  roleIds: [] as string[],
@@ -2372,7 +2407,23 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  return triggerError('Staff accounts must be assigned at least one Role. Create or select a Role first.');
  }
 
- const assignedPassword = userForm.password.trim() || (editingUser ? (editingUser.password || '123456') : '123456');
+ // Blank means "leave unchanged" on edit (server preserves the existing hash when no
+ // password is sent at all) and "use the documented 123456 default" on create — never a
+ // literal '123456' fallback for an edit, which would silently reset a real password.
+ const trimmedPassword = userForm.password.trim();
+ if (trimmedPassword) {
+ if (trimmedPassword !== userForm.confirmPassword.trim()) {
+ return triggerError('Password and Confirm Password do not match.');
+ }
+ if (trimmedPassword.length < 6 || !/[a-zA-Z]/.test(trimmedPassword) || !/[0-9]/.test(trimmedPassword)) {
+ return triggerError('Password must be at least 6 characters and contain at least one letter and one digit.');
+ }
+ }
+ // Omitted (not the literal '123456') either way — POST /api/users applies the
+ // documented 123456 default itself when no password is sent at all for a brand-new
+ // account, and preserves the existing hash on an edit. Sending '123456' explicitly here
+ // would also incorrectly trip the letter+digit policy check below on the server.
+ const assignedPassword = trimmedPassword || undefined;
  let savedUser = null;
 
  if (editingUser) {
@@ -2459,6 +2510,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  username: '',
  email: '',
  password: '',
+ confirmPassword: '',
  role: 'user',
  companyId: db.selectedCompanyId,
  roleIds: [],
@@ -3012,9 +3064,11 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">VAT Number (Optional)</label>
  <input
  type="text"
+ inputMode="numeric"
+ maxLength={15}
  placeholder="15 digits"
  value={newCompany.vatNumber}
- onChange={(e) => setNewCompany({ ...newCompany, vatNumber: e.target.value })}
+ onChange={(e) => setNewCompany({ ...newCompany, vatNumber: e.target.value.replace(/\D/g, '').slice(0, 15) })}
  className="w-full bg-white border border-slate-200 rounded-2xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
  />
  </div>
@@ -3662,9 +3716,11 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Saudi VAT Registration Number (15 digits)</label>
  <input
  type="text"
+ inputMode="numeric"
+ maxLength={15}
  placeholder="e.g. 300123456700003"
  value={companyForm.vatNumber || ''}
- onChange={(e) => setCompanyForm({ ...companyForm, vatNumber: e.target.value })}
+ onChange={(e) => setCompanyForm({ ...companyForm, vatNumber: e.target.value.replace(/\D/g, '').slice(0, 15) })}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-2xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"
  />
  </div>
@@ -6305,6 +6361,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  username: '',
  email: '',
  password: '',
+ confirmPassword: '',
  role: 'user',
  companyId: db.selectedCompanyId,
  roleIds: [],
@@ -6351,16 +6408,29 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <div className="space-y-1">
  <div className="flex items-center justify-between">
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Account Password')}</label>
- {!editingUser && <span className="text-[8px] text-slate-400 font-mono">{t('Defaults to 123456')}</span>}
+ <span className="text-[8px] text-slate-400 font-mono">{editingUser ? t('Leave blank to keep current password') : t('Leave blank to default to 123456, or set one (min 6 chars, letter + digit)')}</span>
  </div>
  <input
- type="text"
- placeholder={t('e.g. 123456, Tariq@ERP')}
+ type="password"
+ placeholder={editingUser ? t('Leave blank to keep current password') : t('e.g. Tariq@ERP1')}
  value={userForm.password}
  onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-semibold"
  />
  </div>
+
+ {userForm.password.trim() && (
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Confirm Password')}</label>
+ <input
+ type="password"
+ placeholder={t('Re-enter the password above')}
+ value={userForm.confirmPassword}
+ onChange={(e) => setUserForm({ ...userForm, confirmPassword: e.target.value })}
+ className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-semibold"
+ />
+ </div>
+ )}
 
  <div className="grid grid-cols-2 gap-3">
  <div className="space-y-1">
@@ -6591,7 +6661,8 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  setUserForm({
  username: u.username,
  email: u.email || '',
- password: u.password || '123456',
+ password: '',
+ confirmPassword: '',
  role: u.role,
  companyId: u.companyId || db.selectedCompanyId,
   roleIds: (db.userRoles || []).filter(ur => ur.userId === u.id).map(ur => ur.roleId),
@@ -6653,7 +6724,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <span className="font-bold text-slate-400 uppercase text-[9px]">{t('Sign-in Credentials:')}</span>
  <span className="font-extrabold text-slate-900 flex items-center gap-1 font-mono text-[9px] bg-slate-50 px-1 py-0.5 rounded border border-slate-100">
  <Key className="w-3 h-3 text-slate-400" />
- {t('Password:')} {u.password || '123456'}
+ {t('Password is set — use Edit to change it')}
  </span>
  </div>
 

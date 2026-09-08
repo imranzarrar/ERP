@@ -67,6 +67,8 @@ afterAll(async () => {
     await db.delete(schema.fiscalMonths).where(eq(schema.fiscalMonths.companyId, newCompanyId));
     await db.delete(schema.documentTemplates).where(eq(schema.documentTemplates.companyId, newCompanyId));
     await db.delete(schema.warehouses).where(eq(schema.warehouses.companyId, newCompanyId));
+    await db.delete(schema.unitsOfMeasure).where(eq(schema.unitsOfMeasure.companyId, newCompanyId));
+    await db.delete(schema.taxSlabs).where(eq(schema.taxSlabs.companyId, newCompanyId));
     await db.delete(schema.vendors).where(eq(schema.vendors.companyId, newCompanyId));
     await db.delete(schema.customers).where(eq(schema.customers.companyId, newCompanyId));
     await db.delete(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, newCompanyId));
@@ -120,11 +122,26 @@ describe('New-company starter resources (AdminSettings.handleAddCompany)', () =>
     });
     expect(vendorRes.status).toBe(200);
 
-    const newWarehouse = { id: generateId(), name: finalizedCompany.name, code: 'MAIN', isActive: true, type: 'sales' };
+    // Fixed English label by explicit product decision (kept in parity with
+    // companyProvisioning.ts's server-side onboarding-approval flow) — not the company's
+    // own name (which the older behavior used, to support Arabic/Urdu company names).
+    const newWarehouse = { id: generateId(), name: 'Main Warehouse', code: 'MAIN', isActive: true, type: 'sales' };
     const warehouseRes = await api(superAdminSessionId, '/api/warehouses', {
       method: 'POST', body: JSON.stringify({ ...newWarehouse, companyId: newCompanyId }),
     });
     expect(warehouseRes.status).toBe(200);
+
+    const newTaxSlab = { id: generateId(), name: 'Standard VAT', percentage: 15, isDefault: true };
+    const taxSlabRes = await api(superAdminSessionId, '/api/tax-slabs', {
+      method: 'POST', body: JSON.stringify({ ...newTaxSlab, companyId: newCompanyId }),
+    });
+    expect(taxSlabRes.status).toBe(200);
+
+    const newUnitOfMeasure = { id: generateId(), name: 'Piece', code: 'PCE', isActive: true };
+    const uomRes = await api(superAdminSessionId, '/api/units-of-measure', {
+      method: 'POST', body: JSON.stringify({ ...newUnitOfMeasure, companyId: newCompanyId }),
+    });
+    expect(uomRes.status).toBe(200);
 
     const newTemplate = {
       id: generateId(), name: 'Standard English (A4)', language: 'English',
@@ -159,9 +176,18 @@ describe('New-company starter resources (AdminSettings.handleAddCompany)', () =>
 
     const [warehouseRow] = await db.select().from(schema.warehouses).where(eq(schema.warehouses.id, newWarehouse.id));
     expect(warehouseRow?.companyId).toBe(newCompanyId);
-    expect(warehouseRow?.name).toBe(finalizedCompany.name);
+    expect(warehouseRow?.name).toBe('Main Warehouse');
     // The company's very first warehouse ever — POST /api/warehouses auto-promotes it.
     expect(warehouseRow?.isCompanyDefault).toBe(true);
+
+    const [taxSlabRow] = await db.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, newTaxSlab.id));
+    expect(taxSlabRow?.companyId).toBe(newCompanyId);
+    expect(Number(taxSlabRow?.percentage)).toBe(15);
+    expect(taxSlabRow?.isDefault).toBe(true);
+
+    const [uomRow] = await db.select().from(schema.unitsOfMeasure).where(eq(schema.unitsOfMeasure.id, newUnitOfMeasure.id));
+    expect(uomRow?.companyId).toBe(newCompanyId);
+    expect(uomRow?.code).toBe('PCE');
 
     const [templateRow] = await db.select().from(schema.documentTemplates).where(eq(schema.documentTemplates.id, newTemplate.id));
     expect(templateRow?.companyId).toBe(newCompanyId);

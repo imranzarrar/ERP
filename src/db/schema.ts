@@ -145,6 +145,11 @@ export const users = pgTable('users', {
   // adopted X" pattern already used for warehouses requiring a branch once one exists.
   // See employees table's own comment for why this FK only ever points one direction.
   employeeId: uuid('employee_id').references(() => employees.id),
+  // Forces the change-password screen on next login instead of normal app entry — set
+  // whenever an admin chooses/resets someone else's password (including the 123456
+  // default on a brand-new account), cleared once that user sets their own password via
+  // POST /api/auth/change-password. See server/routes/users.ts and server.ts's login route.
+  mustChangePassword: boolean('must_change_password').notNull().default(false),
 }, (table) => ({
   companyIdIdx: index('users_company_id_idx').on(table.companyId),
   emailIdx: index('users_email_idx').on(table.email),

@@ -116,6 +116,7 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
 
  // Product fields
  const [prodName, setProdName] = React.useState('');
+ const [prodDescription, setProdDescription] = React.useState('');
  // 0 = Sales & Purchase (Both, the default), 1 = Sales only, 2 = Purchase only —
  // productsServices.salesPurchaseFlow, replaces the old overloaded `type` column.
  const [prodSalesPurchaseFlow, setProdSalesPurchaseFlow] = React.useState<0 | 1 | 2>(0);
@@ -196,7 +197,7 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
  const { isDirty: isEntityFormDirty, markClean: markFormClean } = useDirtyGuard({
    name, email, phone, address, taxRegNumber, buyerType, zatcaVatNumber, zatcaStreetName,
    zatcaBuildingNumber, zatcaDistrict, zatcaCity, zatcaPostalCode, entityCrNumber,
-   prodName, prodSalesPurchaseFlow, prodPrice, prodCostPrice, prodUnit, prodIsPos, prodCategory, prodImage,
+   prodName, prodDescription, prodSalesPurchaseFlow, prodPrice, prodCostPrice, prodUnit, prodIsPos, prodCategory, prodImage,
    prodBarcode, prodSku, prodCatalogType, prodCategoryId, prodDefaultWarehouseId, prodBinLocation,
    prodMinLevel, prodMaxLevel, prodReorderLeadTime, prodGridPosition, prodModifierGroupIds,
    catName, catParentId, catSalesGl, catPurchaseGl, catCogsGl,
@@ -223,7 +224,7 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
      name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
      zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
      zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
-     prodName: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
+     prodName: '', prodDescription: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
      prodIsPos: false, prodCategory: '', prodImage: '', prodBarcode: '', prodSku: '',
      prodCatalogType: 'item', prodCategoryId: '', prodDefaultWarehouseId: '', prodBinLocation: '',
      prodMinLevel: '', prodMaxLevel: '', prodReorderLeadTime: '', prodGridPosition: '',
@@ -333,7 +334,6 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
   const companyCustomers = db.customers;
   const companyVendors = db.vendors;
   const companyProducts = db.products;
-  const uniqueCategories = Array.from(new Set(companyProducts.map(p => p.category).filter(Boolean))) as string[];
 
  // Handlers - Customers
 const handleSaveCustomer = async (e: React.FormEvent) => {
@@ -484,7 +484,8 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!(editingId ? canUpdateProducts : canCreateProducts)) return triggerError('Only Administrator accounts can edit catalog products.');
  if (!prodName.trim()) return triggerError('Product name is required.');
-    if (prodIsPos && !prodCategory.trim()) return triggerError('Category is required when Enable for POS is checked.');
+ if (!prodDescription.trim()) return triggerError('Description is required.');
+    if (prodIsPos && !prodCategoryId) return triggerError('Category is required when Enable for POS is checked.');
 
  const priceNum = parseFloat(prodPrice);
  if (isNaN(priceNum) || priceNum < 0) return triggerError('Price must be a valid positive number.');
@@ -501,6 +502,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  savedProd = {
  ...newDb.products[idx],
  name: prodName,
+ description: prodDescription.trim(),
  salesPurchaseFlow: prodSalesPurchaseFlow,
  itemKind: prodCatalogType,
  unitPrice: priceNum,
@@ -526,7 +528,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  savedProd = {
  id: generateId(),
  name: prodName,
- description: '',
+ description: prodDescription.trim(),
  unitPrice: priceNum,
  costPrice: costPriceNum,
  salesPurchaseFlow: prodSalesPurchaseFlow,
@@ -966,6 +968,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
    setEditingId(entity.id);
    if (type === 'products') {
      setProdName(entity.name);
+     setProdDescription(entity.description || '');
      setProdSalesPurchaseFlow(entity.salesPurchaseFlow ?? 0);
      setProdPrice(entity.unitPrice.toString());
      setProdCostPrice(entity.costPrice != null ? entity.costPrice.toString() : '');
@@ -1058,7 +1061,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
        name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
        zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
        zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
-       prodName: entity.name, prodSalesPurchaseFlow: entity.salesPurchaseFlow ?? 0, prodPrice: entity.unitPrice.toString(),
+       prodName: entity.name, prodDescription: entity.description || '', prodSalesPurchaseFlow: entity.salesPurchaseFlow ?? 0, prodPrice: entity.unitPrice.toString(),
        prodCostPrice: entity.costPrice != null ? entity.costPrice.toString() : '',
        prodUnit: entity.unit || 'No', prodIsPos: entity.isPosItem || false,
        prodCategory: entity.category || '', prodImage: entity.base64Image || '',
@@ -1081,7 +1084,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
        name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
        zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
        zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
-       prodName: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
+       prodName: '', prodDescription: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
        prodIsPos: false, prodCategory: '', prodImage: '', prodBarcode: '', prodSku: '',
        prodCatalogType: 'item', prodCategoryId: '', prodDefaultWarehouseId: '', prodBinLocation: '',
        prodMinLevel: '', prodMaxLevel: '', prodReorderLeadTime: '', prodGridPosition: '',
@@ -1099,7 +1102,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
        name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
        zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
        zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
-       prodName: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
+       prodName: '', prodDescription: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
        prodIsPos: false, prodCategory: '', prodImage: '', prodBarcode: '', prodSku: '',
        prodCatalogType: 'item', prodCategoryId: '', prodDefaultWarehouseId: '', prodBinLocation: '',
        prodMinLevel: '', prodMaxLevel: '', prodReorderLeadTime: '', prodGridPosition: '',
@@ -1115,7 +1118,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
        name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
        zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
        zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
-       prodName: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
+       prodName: '', prodDescription: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
        prodIsPos: false, prodCategory: '', prodImage: '', prodBarcode: '', prodSku: '',
        prodCatalogType: 'item', prodCategoryId: '', prodDefaultWarehouseId: '', prodBinLocation: '',
        prodMinLevel: '', prodMaxLevel: '', prodReorderLeadTime: '', prodGridPosition: '',
@@ -1138,7 +1141,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
        zatcaBuildingNumber: entity.buildingNumber || '', zatcaDistrict: entity.district || '',
        zatcaCity: entity.city || '', zatcaPostalCode: entity.postalCode || '',
        entityCrNumber: entity.crNumber || '',
-       prodName: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
+       prodName: '', prodDescription: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
        prodIsPos: false, prodCategory: '', prodImage: '', prodBarcode: '', prodSku: '',
        prodCatalogType: 'item', prodCategoryId: '', prodDefaultWarehouseId: '', prodBinLocation: '',
        prodMinLevel: '', prodMaxLevel: '', prodReorderLeadTime: '', prodGridPosition: '',
@@ -1445,6 +1448,18 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  value={prodName}
  onChange={(e) => setProdName(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"
+ />
+ </div>
+
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Description')}<span className="text-rose-500"> *</span></label>
+ <textarea
+ required
+ rows={2}
+ placeholder="e.g. 4x8ft plywood sheet, 18mm thickness, cut to size on the CNC router"
+ value={prodDescription}
+ onChange={(e) => setProdDescription(e.target.value)}
+ className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150 resize-y"
  />
  </div>
 
@@ -1787,13 +1802,11 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
                   </div>
 
                     <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200/60">
-                      <div className="col-span-2 md:col-span-1 space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Category')}</label>
-                        <input list="category-options" type="text" placeholder="e.g. Beverages" value={prodCategory} onChange={(e) => setProdCategory(e.target.value)} required={prodIsPos} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
-                        <datalist id="category-options">
-                          {uniqueCategories.map((cat, idx) => <option key={idx} value={cat} />)}
-                        </datalist>
-                      </div>
+                      {prodIsPos && !prodCategoryId && (
+                        <div className="col-span-2 p-2.5 bg-amber-50 text-amber-700 rounded-lg border border-amber-100 text-[10px] font-semibold">
+                          {t('Set the "System Category Link" field above — POS grouping now reuses that same category (no separate free-text POS category anymore).')}
+                        </div>
+                      )}
                       <div className="col-span-2 md:col-span-1 space-y-1">
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Barcode')}</label>
                         <input type="text" placeholder="Scan or type" value={prodBarcode} onChange={(e) => setProdBarcode(e.target.value)} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />

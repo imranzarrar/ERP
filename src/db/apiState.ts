@@ -11,7 +11,24 @@ export async function getFullState() {
     const roleTemplates = await db.select().from(schema.roleTemplates);
     const companyOnboardingRequests = await db.select().from(schema.companyOnboardingRequests).orderBy(desc(schema.companyOnboardingRequests.createdAt));
     const deletedCompanyLog = await db.select().from(schema.deletedCompanyLog).orderBy(desc(schema.deletedCompanyLog.deletedAt));
-    const users = await db.select().from(schema.users);
+    // Explicit column list — password (bcrypt hash) must never reach the client. It's
+    // never displayed for real (see AdminSettings.tsx's Staff Accounts directory, which
+    // used to show a misleading `u.password || '123456'` fallback because this value was
+    // always undefined on the client anyway) and shipping a hash to every browser tab is
+    // needless exposure regardless.
+    const users = await db.select({
+      id: schema.users.id,
+      uid: schema.users.uid,
+      username: schema.users.username,
+      email: schema.users.email,
+      role: schema.users.role,
+      companyId: schema.users.companyId,
+      isSuperAdmin: schema.users.isSuperAdmin,
+      isActive: schema.users.isActive,
+      uiLanguage: schema.users.uiLanguage,
+      isDeleted: schema.users.isDeleted,
+      employeeId: schema.users.employeeId,
+    }).from(schema.users);
     const roles = await db.select().from(schema.roles);
     const userRoles = await db.select().from(schema.userRoles);
     const branches = await db.select().from(schema.branches);

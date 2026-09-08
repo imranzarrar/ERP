@@ -248,7 +248,7 @@ describe('POST /users — employeeId mandatory once the company has adopted HR o
   it('allows a new account with no employeeId when the company has zero employees', async () => {
     const { status, body } = await api(emptyAdminSessionId, '/api/users', {
       method: 'POST',
-      body: JSON.stringify({ id: generateId(), username: `nohr_${generateId()}`, email: 'nohr@example.com', password: 'x', role: 'admin', companyId: emptyCompanyId }),
+      body: JSON.stringify({ id: generateId(), username: `nohr_${generateId()}`, email: 'nohr@example.com', password: 'Test1234', role: 'admin', companyId: emptyCompanyId }),
     });
     expect(status).toBe(200);
     expect(body.error).toBeUndefined();
@@ -257,7 +257,7 @@ describe('POST /users — employeeId mandatory once the company has adopted HR o
   it('rejects a new account with no employeeId once the company has an active employee', async () => {
     const { status, body } = await api(adminSessionId, '/api/users', {
       method: 'POST',
-      body: JSON.stringify({ id: generateId(), username: `needshr_${generateId()}`, email: 'needshr@example.com', password: 'x', role: 'admin', companyId }),
+      body: JSON.stringify({ id: generateId(), username: `needshr_${generateId()}`, email: 'needshr@example.com', password: 'Test1234', role: 'admin', companyId }),
     });
     expect(status).toBe(400);
     expect(body.error).toMatch(/HR employee onboarding/i);
@@ -270,7 +270,7 @@ describe('POST /users — employeeId mandatory once the company has adopted HR o
 
     const { status, body } = await api(adminSessionId, '/api/users', {
       method: 'POST',
-      body: JSON.stringify({ id: generateId(), username: `deactemp_${generateId()}`, email: 'deactemp@example.com', password: 'x', role: 'admin', companyId, employeeId: deactivatedRes.body.id }),
+      body: JSON.stringify({ id: generateId(), username: `deactemp_${generateId()}`, email: 'deactemp@example.com', password: 'Test1234', role: 'admin', companyId, employeeId: deactivatedRes.body.id }),
     });
     expect(status).toBe(400);
     expect(body.error).toMatch(/deactivated/i);
@@ -281,7 +281,7 @@ describe('POST /users — employeeId mandatory once the company has adopted HR o
     const newUserId = generateId();
     const { status, body } = await api(adminSessionId, '/api/users', {
       method: 'POST',
-      body: JSON.stringify({ id: newUserId, username: `withhr_${generateId()}`, email: 'withhr@example.com', password: 'x', role: 'admin', companyId, employeeId: employeeAId }),
+      body: JSON.stringify({ id: newUserId, username: `withhr_${generateId()}`, email: 'withhr@example.com', password: 'Test1234', role: 'admin', companyId, employeeId: employeeAId }),
     });
     expect(status).toBe(200);
     const [linked] = await db.select().from(schema.users).where(eq(schema.users.id, newUserId));

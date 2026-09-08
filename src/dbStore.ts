@@ -297,7 +297,6 @@ export const SEED_TRANSLATIONS: TranslationItem[] = [
   { id: '019fa55c-622a-7c2e-854a-e71b9d059bb3', key: 'Settings & Companies', en: 'Settings & Companies', ar: 'الإعدادات والشركات', ur: 'ترتیبات اور کمپنیاں' },
   { id: '019fa55c-622a-7c90-b431-6bf175cc663e', key: 'Draft & Issue Sales Invoice', en: 'Draft & Issue Sales Invoice', ar: 'إصدار فاتورة مبيعات', ur: 'فروخت کی انوائس جاری کریں' },
   { id: '019fa55c-622a-7946-ba6d-b2c9ac5519f8', key: 'Draft & Issue Quotation', en: 'Draft & Issue Quotation', ar: 'إصدار عرض سعر', ur: 'اقتباس جاری کریں' },
-  { id: '019fa55c-622a-71ca-88c2-3941c78a408d', key: 'Log Procurement / Tooling Expense', en: 'Log Procurement / Tooling Expense', ar: 'تسجيل المصاريف / الأدوات', ur: 'اخراجات / ٹولنگ درج کریں' },
   { id: '019fa55c-622a-7722-b93b-1fff0908d55c', key: 'UX Translations Dictionary', en: 'UX Translations Dictionary', ar: 'قاموس الترجمات', ur: 'ترجمہ ڈکشنری' },
   { id: '019fa55c-622a-7dbc-9bd6-491b01f169ee', key: 'Draft New Fabrication Quotation', en: 'Draft New Fabrication Quotation', ar: 'مسودة عرض أسعار جديد', ur: 'نئے اقتباس کا مسودہ تیار کریں' },
   { id: '019fa55c-622a-7184-a4ee-a097c68cb610', key: 'Modify Existing Quotation', en: 'Modify Existing Quotation', ar: 'تعديل عرض سعر حالي', ur: 'موجودہ اقتباس میں ترمیم کریں' },

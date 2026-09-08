@@ -148,12 +148,29 @@ export async function resolveSaleWarehouse(
   const productIds = Array.from(new Set(items.map(i => i.productId).filter(Boolean))) as string[];
   if (productIds.length === 0) return explicitWarehouseId || null;
 
-  const products = await tx.select({ id: schema.productsServices.id, itemKind: schema.productsServices.itemKind })
-    .from(schema.productsServices).where(inArray(schema.productsServices.id, productIds));
-  const hasStockItem = products.some((p: any) => p.itemKind === 'item');
-  if (!hasStockItem) return explicitWarehouseId || null;
+  const products = await tx.select({
+    id: schema.productsServices.id,
+    itemKind: schema.productsServices.itemKind,
+    defaultWarehouseId: schema.productsServices.defaultWarehouseId,
+  }).from(schema.productsServices).where(inArray(schema.productsServices.id, productIds));
+  const stockItems = products.filter((p: any) => p.itemKind === 'item');
+  if (stockItems.length === 0) return explicitWarehouseId || null;
 
-  const warehouseId = explicitWarehouseId || await resolveDefaultSaleWarehouseId(tx, companyId, branchId);
+  // Priority: an explicit warehouse on the sale itself, then — when every stock-item line
+  // on this sale agrees on the same product-level default warehouse — that shared default,
+  // then the branch/company fallback. A product's own default is only used when it can
+  // resolve to a single, unambiguous warehouse for the whole document; if two stock-item
+  // lines disagree, this falls through to the branch/company default rather than guessing.
+  let warehouseId = explicitWarehouseId || null;
+  if (!warehouseId) {
+    const productDefaults = new Set(stockItems.map((p: any) => p.defaultWarehouseId).filter(Boolean));
+    if (productDefaults.size === 1) {
+      warehouseId = [...productDefaults][0] as string;
+    }
+  }
+  if (!warehouseId) {
+    warehouseId = await resolveDefaultSaleWarehouseId(tx, companyId, branchId);
+  }
   if (!warehouseId) {
     const err: any = new Error('This sale includes a stock item — configure a default sales warehouse for this branch or company (Master Entities > Warehouses), or select one on the sale itself.');
     err.status = 400;

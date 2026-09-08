@@ -23,6 +23,7 @@ import InventoryReportsModule from './components/InventoryReportsModule';
 import LoginScreen from './components/LoginScreen';
 import warraqMark from './assets/warraq-mark.svg';
 import ResetPasswordScreen from './components/ResetPasswordScreen';
+import ChangePasswordScreen from './components/ChangePasswordScreen';
 import CompanyOnboardingScreen from './components/CompanyOnboardingScreen';
 import InventoryModule from './components/InventoryModule';
 import EmployeesModule from './components/EmployeesModule';
@@ -50,6 +51,7 @@ import {
  Layers,
  Shield,
  LogOut,
+ KeyRound,
  DatabaseZap,
  ShoppingCart, 
  Boxes,
@@ -447,6 +449,7 @@ export default function App() {
 
   const [settingsTab, setSettingsTab] = React.useState<string>('company');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState<boolean>(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = React.useState<boolean>(false);
   const [navSearchQuery, setNavSearchQuery] = React.useState<string>('');
   const { t, isRTL, lang } = useTranslation(db);
   // Every nav group starts collapsed at login — a group only opens once explicitly
@@ -570,6 +573,23 @@ export default function App() {
           setOnboard('1');
         }}
         />
+    );
+  }
+
+  // An admin-set password (including the 123456 default on a new account) forces this
+  // screen before anything else — no nav, no data fetch, until the user sets their own.
+  if ((currentUser as any).mustChangePassword) {
+    return (
+      <ChangePasswordScreen
+        variant="forced"
+        db={db}
+        onSuccess={() => {
+          setDb(prev => ({
+            ...prev,
+            currentUser: prev.currentUser ? { ...prev.currentUser, mustChangePassword: false } as any : prev.currentUser,
+          }));
+        }}
+      />
     );
   }
 
@@ -1039,6 +1059,13 @@ type NavSection = {
  </div>
  </div>
  <button
+ onClick={() => setShowChangePasswordModal(true)}
+ className="p-2.5 bg-indigo-900/30 hover:bg-indigo-900/50 border border-indigo-800/40 text-indigo-300 rounded-xl transition-all cursor-pointer shrink-0"
+ title={t('Change Password')}
+ >
+ <KeyRound className="w-3.5 h-3.5" />
+ </button>
+ <button
  onClick={handleLogout}
  className="p-2.5 bg-rose-950/30 hover:bg-rose-900/50 border border-rose-900/40 text-rose-300 rounded-xl transition-all cursor-pointer shrink-0"
  title={t('Sign Out')}
@@ -1051,6 +1078,13 @@ type NavSection = {
  <div className="p-2 bg-indigo-900/40 border border-indigo-700/40 rounded-xl text-indigo-300" title={`${currentUser?.username} (${currentUser?.role})`}>
  <UserIcon className="w-4 h-4" />
  </div>
+ <button
+ onClick={() => setShowChangePasswordModal(true)}
+ className="mx-auto p-2 bg-indigo-900/40 hover:bg-indigo-900/60 border border-indigo-800/40 text-indigo-300 rounded-xl transition-all cursor-pointer shrink-0"
+ title={t('Change Password')}
+ >
+ <KeyRound className="w-4 h-4" />
+ </button>
  <button
  onClick={handleLogout}
  className="mx-auto p-2 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/50 text-rose-300 rounded-xl transition-all cursor-pointer shrink-0"
@@ -1727,6 +1761,15 @@ type NavSection = {
  db={activeDb}
  onViewAnotherDoc={handleViewAnotherDoc}
  onClose={() => setPrintDoc(null)}
+ />
+ )}
+
+ {showChangePasswordModal && (
+ <ChangePasswordScreen
+ variant="modal"
+ db={activeDb}
+ onClose={() => setShowChangePasswordModal(false)}
+ onSuccess={() => setShowChangePasswordModal(false)}
  />
  )}
 

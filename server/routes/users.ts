@@ -17,6 +17,11 @@ router.post('/', async (req: any, res) => {
 
     const data = { ...req.body };
     if (data.password && !data.password.startsWith('$2b$') && !data.password.startsWith('$2a$')) {
+      // Mirrors the client-side check in AdminSettings.tsx's handleAddUser — enforced here
+      // too since the client check alone is bypassable by a direct API call.
+      if (data.password.length < 6 || !/[a-zA-Z]/.test(data.password) || !/[0-9]/.test(data.password)) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters and contain at least one letter and one digit.' });
+      }
       data.password = await bcrypt.hash(data.password, 10);
     }
 
@@ -114,12 +119,20 @@ router.post('/', async (req: any, res) => {
       employeeId: data.employeeId !== undefined ? (data.employeeId || null) : (existingUser?.employeeId ?? null),
     };
     if (data.uid) userRecord.uid = data.uid;
+    // An admin choosing/resetting someone else's password (or a brand-new account
+    // defaulting to 123456) forces a change on that account's next login — see
+    // POST /api/auth/change-password and the login response's mustChangePassword flag.
+    // Not forced when the actor is setting their own password through this same route.
+    const isSelfEdit = existingUser?.id === req.user?.id;
     if (data.password) {
       userRecord.password = data.password;
+      userRecord.mustChangePassword = !isSelfEdit;
     } else if (existingUser && existingUser.password) {
       userRecord.password = existingUser.password;
+      userRecord.mustChangePassword = existingUser.mustChangePassword ?? false;
     } else {
       userRecord.password = await bcrypt.hash('123456', 10);
+      userRecord.mustChangePassword = true;
     }
 
     await db.insert(schema.users).values(userRecord).onConflictDoUpdate({

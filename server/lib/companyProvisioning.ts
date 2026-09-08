@@ -63,17 +63,26 @@ export async function provisionStarterResources(tx: any, params: { companyId: st
     companyId,
   });
 
-  // Named after the company itself (not a hardcoded English label) since the company name
-  // could be Arabic/Urdu. isCompanyDefault is always true here — this is unconditionally
-  // the company's very first warehouse in this flow (a brand-new company).
+  // Fixed English label by explicit product decision (previously named after the company
+  // itself to support Arabic/Urdu company names — that reasoning is intentionally
+  // overridden here). isCompanyDefault is always true here — this is unconditionally the
+  // company's very first warehouse in this flow (a brand-new company).
   await tx.insert(schema.warehouses).values({
     id: generateId(),
-    name: companyName,
+    name: 'Main Warehouse',
     code: 'MAIN',
     isActive: true,
     companyId,
     type: 'sales',
     isCompanyDefault: true,
+  });
+
+  await tx.insert(schema.unitsOfMeasure).values({
+    id: generateId(),
+    name: 'Piece',
+    code: 'PCE',
+    isActive: true,
+    companyId,
   });
 
   await tx.insert(schema.documentTemplates).values({

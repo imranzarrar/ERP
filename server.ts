@@ -686,6 +686,46 @@ async function startServer() {
     });
   });
 
+  // Self-service password change — the only way a logged-in user can change their own
+  // password without going through the forgot-password email flow. Also what a
+  // mustChangePassword-flagged account (see server/routes/users.ts) is routed to on next
+  // login. Always verifies the CURRENT password first, even in the forced-change case —
+  // the user just proved it at login, but re-checking here prevents an already-open
+  // session left unattended from being used to silently take over the account.
+  app.post('/api/auth/change-password', async (req: any, res: any) => {
+    const currentPassword = String(req.body?.currentPassword || '');
+    const newPassword = String(req.body?.newPassword || '');
+
+    if (newPassword.length < 6 || !/[a-zA-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters and contain at least one letter and one digit.' });
+    }
+
+    const [user] = await db.select().from(schema.users).where(eq(schema.users.id, req.user.id));
+    if (!user || !user.password) {
+      return res.status(404).json({ error: 'Account not found.' });
+    }
+
+    const isCurrentCorrect = await bcrypt.compare(currentPassword, user.password).catch(() => false);
+    if (!isCurrentCorrect) {
+      return res.status(401).json({ error: 'Current password is incorrect.' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await db.update(schema.users)
+      .set({ password: hashedPassword, mustChangePassword: false })
+      .where(eq(schema.users.id, user.id));
+
+    recordAuditLog(
+      { user, targetCompanyId: user.companyId, ip: req.ip, headers: req.headers, socket: req.socket },
+      'PASSWORD_CHANGED_SELF',
+      'user',
+      user.id,
+      { username: user.username }
+    );
+
+    res.json({ success: true });
+  });
+
   // --- Auto-Audit Interceptor Middleware ---
   app.use(async (req: any, res: any, next: any) => {
     const method = req.method;

@@ -741,7 +741,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  <form onSubmit={handleSaveExpense} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-6">
  <div className="flex justify-between items-center border-b border-slate-100 pb-3">
  <div>
- <h3 className="font-bold text-sm text-slate-800 uppercase tracking-wider">{t('Log Procurement / Tooling Expense')}</h3>
+ <h3 className="font-bold text-sm text-slate-800 uppercase tracking-wider">{t('Business Expenses')}</h3>
  <div className="flex items-center gap-1.5 mt-0.5">
  <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded uppercase">
  🏢 {t('Submitting for:')} {db.companySetup?.name}

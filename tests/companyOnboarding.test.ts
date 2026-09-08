@@ -167,6 +167,7 @@ afterAll(async () => {
     await db.delete(schema.fiscalMonths).where(eq(schema.fiscalMonths.companyId, companyId));
     await db.delete(schema.documentTemplates).where(eq(schema.documentTemplates.companyId, companyId));
     await db.delete(schema.warehouses).where(eq(schema.warehouses.companyId, companyId));
+    await db.delete(schema.unitsOfMeasure).where(eq(schema.unitsOfMeasure.companyId, companyId));
     await db.delete(schema.taxSlabs).where(eq(schema.taxSlabs.companyId, companyId));
     await db.delete(schema.vendors).where(eq(schema.vendors.companyId, companyId));
     await db.delete(schema.customers).where(eq(schema.customers.companyId, companyId));
