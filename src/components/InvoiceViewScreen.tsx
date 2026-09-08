@@ -4,7 +4,6 @@ import { DatabaseState, calculateInvoiceTotals } from '../dbStore';
 import { normalizePermissions } from '../types';
 import StatusPill, { StatusPillTone } from './StatusPill';
 import DocumentRenderer from './DocumentRenderer';
-import { exportNodeToPdf } from '../pdfExport';
 import { ArrowLeft, Printer, Download, FileText, Ban, ShieldCheck, Code, Wallet, QrCode, RefreshCw, AlertTriangle } from 'lucide-react';
 import QRCodeLib from 'qrcode';
 
@@ -35,7 +34,6 @@ export default function InvoiceViewScreen({ db, invoiceId, onBack, onPrintDoc, o
   const [payBankId, setPayBankId] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [zatcaSubmitting, setZatcaSubmitting] = React.useState(false);
-  const pdfNodeRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     if (!triggerError && !triggerSuccessMsg) return;
@@ -204,11 +202,26 @@ export default function InvoiceViewScreen({ db, invoiceId, onBack, onPrintDoc, o
     URL.revokeObjectURL(url);
   };
 
+  // Real server-side rendering (server/lib/pdfGenerator.ts drives a headless Chromium
+  // against this same app's /print/invoice/:id) — replaces the previous client-side
+  // html2canvas rasterization, which produced a picture of the invoice rather than real
+  // text (no selectable/searchable text, wrong Arabic letter shaping, huge file size).
   const handleDownloadPdf = async () => {
-    if (!pdfNodeRef.current || busy) return;
+    if (busy) return;
     setBusy(true);
     try {
-      await exportNodeToPdf(pdfNodeRef.current, inv.invoiceNumber);
+      const res = await fetch(`/api/transactions/invoices/${inv.id}/pdf`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${inv.invoiceNumber}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (err: any) {
       console.error('PDF export failed:', err);
       setTriggerError(t('Failed to generate PDF.'));
@@ -487,23 +500,6 @@ export default function InvoiceViewScreen({ db, invoiceId, onBack, onPrintDoc, o
           </div>
         </div>
       )}
-
-      {/* Off-screen, always-mounted real renderer — exactly what Print produces — used only
-          as the source node for Download PDF's html2canvas rasterization. Never visible. */}
-      <div style={{ position: 'absolute', left: '-9999px', top: 0, width: '800px' }} aria-hidden="true">
-        <div ref={pdfNodeRef}>
-          <DocumentRenderer
-            embedded
-            documentType="Invoice"
-            data={{ ...inv, customerData: customer, bankData: bank }}
-            companySetup={db.companySetup as any}
-            templates={db.templates}
-            taxSlabs={db.taxSlabs}
-            db={db}
-            onClose={() => {}}
-          />
-        </div>
-      </div>
     </div>
   );
 }

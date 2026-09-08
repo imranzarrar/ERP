@@ -1,13 +1,10 @@
 /* Self-hosted (via @fontsource, bundled by Vite) instead of a Google Fonts @import —
-   two independent reasons, not one: (1) the app's fonts no longer depend on an
-   external host being reachable, so print/Download PDF and the UI itself keep working
-   offline or behind a proxy that blocks fonts.googleapis.com; (2) a cross-origin
-   @import specifically breaks html2canvas (used by Download PDF, src/pdfExport.ts) —
-   it walks every stylesheet's cssRules to clone styles, and a stylesheet reached via
-   a same-origin file's @import of a cross-origin URL is opaque to script (a browser
-   security rule, regardless of the target's own CORS headers), throwing a
-   SecurityError the moment html2canvas tries to read it. Bundled files are same-origin,
-   so this class of failure can't happen at all. */
+   the app's fonts don't depend on an external host being reachable, so print, PDF
+   generation, and the UI itself keep working offline or behind a proxy that blocks
+   fonts.googleapis.com. (Download PDF used to also depend on this for a second,
+   html2canvas-specific reason — that client-side rasterization path was retired in
+   favor of real server-side rendering, see server/lib/pdfGenerator.ts — but self-hosting
+   remains correct on its own merits.) */
 @import "@fontsource/inter/400.css";
 @import "@fontsource/inter/500.css";
 @import "@fontsource/inter/600.css";

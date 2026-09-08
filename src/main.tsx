@@ -1,6 +1,7 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
+import PrintInvoiceView from './PrintInvoiceView.tsx';
 import './index.css';
 import { debugAuth } from './debug.ts';
 
@@ -115,8 +116,15 @@ try {
 
 (window as any).debugAuth = debugAuth;
 
+// /print/invoice/:id is a dedicated, chrome-less render target used only by
+// server/lib/pdfGenerator.ts's headless Chromium (see PrintInvoiceView.tsx) — never a
+// route a real user navigates to. Checked here, before <App/> ever mounts, so none of
+// the normal login-gate/localStorage-session-restoration bootstrapping in App.tsx runs
+// for it at all.
+const printInvoiceMatch = window.location.pathname.match(/^\/print\/invoice\/([^/]+)$/);
+
 createRoot(document.getElementById('root')!).render(
  <StrictMode>
- <App />
+ {printInvoiceMatch ? <PrintInvoiceView invoiceId={printInvoiceMatch[1]} /> : <App />}
  </StrictMode>,
 );

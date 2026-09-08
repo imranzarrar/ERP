@@ -102,6 +102,28 @@ export const DEFAULT_DOCUMENT_LAYOUT = [
 // preset seeds a new template, see AdminSettings.tsx's handleAddTemplate) so the header
 // row-to-row spacing is minimal too — a real 20-line-item invoice on this preset was
 // spilling onto a near-empty second page before these changes, purely from header height.
+// The ONE fixed template every company's "Download PDF" button renders with —
+// deliberately independent of whatever Print template a company has customized/
+// activated (a real product decision: Print stays per-company customizable, Download
+// PDF is always the same consistent, correct layout for every company). Built from
+// DEFAULT_DOCUMENT_LAYOUT above, the same proven 12-column grid every template in this
+// app is based on — not a new one-off design.
+export function buildFixedDownloadTemplate(companyId: string | undefined) {
+  return {
+    id: 'download-pdf-fixed-template',
+    name: 'Download PDF (fixed)',
+    language: 'English',
+    pageSize: '8.27in x 11.69in (A4)',
+    isActive: true,
+    printHeader: true,
+    printFooter: true,
+    printLogo: true,
+    printQrCode: true,
+    companyId,
+    layoutJson: JSON.stringify(DEFAULT_DOCUMENT_LAYOUT),
+  };
+}
+
 export const DETAILED_TAX_INVOICE_LAYOUT = [
   { id: 'logo', title: 'Company Logo', w: 4, visible: true, props: { align: 'left' } },
   { id: 'doc_details', title: 'Document Metadata', w: 8, visible: true, props: { isBilingual: true, compact: true, showDocNumber: true, showDate: true, showDueDate: true, showPaymentStatus: true, showOriginQ: true, showTRN: true, showCreatedBy: true } },

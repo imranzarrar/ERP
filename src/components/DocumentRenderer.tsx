@@ -656,10 +656,10 @@ export default function DocumentRenderer({
     'NOT YET CLEARED BY ZATCA';
   const qrDataStr = zatcaQr || `--- SAUDI ARABIA ELECTRONIC INVOICE (ZATCA) ---\nSeller: ${seller}\nVAT ID: ${currentVat}\nDoc ID: ${docNum}\nDate: ${timestamp}\nGross: ${totals.subtotal.toFixed(2)} SAR\nDiscount: ${totals.discountAmount.toFixed(2)} SAR\nVAT (15%): ${totals.taxAmount.toFixed(2)} SAR\nGrand Total: ${totals.grandTotal.toFixed(2)} SAR\nStatus: ${zatcaPlaceholderStatusLabel}`;
   // Generated locally (not fetched from a third-party image API) so Print, the browser's
-  // own print-to-PDF, and the Download PDF path (html2canvas rasterizing this component's
-  // DOM) never depend on an external host being reachable — a real, repeated cause of
-  // "Failed to generate PDF" when html2canvas's CORS-mode image fetch for a remote QR
-  // couldn't complete (network blips, ad/tracker blockers, corporate proxies).
+  // own print-to-PDF, and Download PDF (server/lib/pdfGenerator.ts's headless render of
+  // this same component) never depend on an external host being reachable — network
+  // blips, ad/tracker blockers, and corporate proxies can't break a locally-generated
+  // image the way they could a remote fetch.
   const [localQrDataUri, setLocalQrDataUri] = React.useState<string | null>(null);
   React.useEffect(() => {
     let cancelled = false;

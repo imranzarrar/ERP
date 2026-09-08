@@ -456,6 +456,33 @@ router.get('/invoices', async (req: any, res) => {
   }
 });
 
+// Real server-side PDF (see server/lib/pdfGenerator.ts for the "why") — replaces the
+// previous client-side html2canvas rasterization. Same read permission/company-scoping
+// as GET /invoices above; the actual rendering happens via a headless browser hitting
+// this same server's own /print/invoice/:id route, authenticated by reusing this
+// request's own already-valid session id (req.sessionID), not a new token mechanism.
+router.get('/invoices/:id/pdf', async (req: any, res) => {
+  try {
+    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+    if (!permissions.invoice.read.enabled) return res.status(403).json({ error: 'Forbidden' });
+
+    const { id } = req.params;
+    const [invoice] = await db.select({ id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber })
+      .from(schema.invoices).where(and(eq(schema.invoices.id, id), eq(schema.invoices.companyId, req.targetCompanyId)));
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+
+    const { renderInvoicePdf } = await import('../lib/pdfGenerator.js');
+    const pdfBuffer = await renderInvoicePdf(id, req.activeSessionId);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${invoice.invoiceNumber}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (error: any) {
+    console.error('[PDF Export] Failed:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate PDF.' });
+  }
+});
+
 router.post('/invoices', async (req: any, res) => {
   try {
     const user = req.user;
