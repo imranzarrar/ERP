@@ -1541,11 +1541,11 @@ export default function InventoryModule({
 
           {activeSubTab === 'stock' && (
             <div className="flex items-center gap-2 w-full sm:w-auto">
-              <span className="text-xs font-medium text-gray-500">{t('Warehouse:')}</span>
+              <span className="text-xs font-medium text-gray-500 shrink-0">{t('Warehouse:')}</span>
               <select
                 value={warehouseFilter}
                 onChange={(e) => setWarehouseFilter(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="min-w-0 flex-1 sm:flex-none px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
                 <option value="all">{t('All Locations')}</option>
                 {warehouses.map(wh => (
