@@ -1493,6 +1493,10 @@ Do NOT wrap the response in any introductory, markdown formatting (no \`\`\`json
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    // Launches Chromium now instead of on the first real Download PDF request — see
+    // pdfGenerator.ts's own comment for why (a cold-start launch is slow enough to trip
+    // a client-side timeout on the very first request after every deploy/restart).
+    import('./server/lib/pdfGenerator.js').then(({ warmUpBrowser }) => warmUpBrowser());
   });
 }
 

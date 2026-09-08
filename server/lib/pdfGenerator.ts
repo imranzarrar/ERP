@@ -29,6 +29,18 @@ function getBrowser(): Promise<Browser> {
   return browserPromise;
 }
 
+// Called once from server.ts right after the server starts listening — launching
+// Chromium takes a few real seconds, and without this the very first real Download PDF
+// request after every deploy/restart pays that cold-start cost itself (confirmed live:
+// slow enough to trip a client-side request timeout on production). Fire-and-forget: a
+// warm-up failure here just means the first real request pays the cost as before and
+// logs the same way renderInvoicePdf's own errors already do — never crashes startup.
+export function warmUpBrowser(): void {
+  getBrowser().catch((err) => {
+    console.error('[PDF Export] Browser warm-up failed (will retry on first real request):', err.message);
+  });
+}
+
 // Same-origin, same-process call to this server's own Express app — never a real network
 // hop to an external host. Port matches server.ts's own hardcoded PORT constant.
 const SELF_ORIGIN = `http://127.0.0.1:${process.env.PORT || 3000}`;
