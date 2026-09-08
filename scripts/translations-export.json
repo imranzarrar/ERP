@@ -978,6 +978,12 @@
     "ur": "تمام اخراجات"
   },
   {
+    "key": "All expenses and accruals",
+    "en": "All expenses and accruals",
+    "ar": "جميع المصاريف والمستحقات",
+    "ur": "تمام اخراجات اور واجبات"
+  },
+  {
     "key": "All Invoices",
     "en": "All Invoices",
     "ar": "جميع الفواتير",
@@ -2044,6 +2050,12 @@
     "en": "Business Industry Category",
     "ar": "فئة النشاط التجاري",
     "ur": "کاروباری صنعت کیٹیگری"
+  },
+  {
+    "key": "Business Management Portal",
+    "en": "Business Management Portal",
+    "ar": "بوابة إدارة الأعمال",
+    "ur": "کاروباری انتظامی پورٹل"
   },
   {
     "key": "Business Overview",
@@ -3996,6 +4008,12 @@
     "ur": "کمی: واجب الادا"
   },
   {
+    "key": "Define a template for monthly ledger items (e.g. Office rent, utility bills)",
+    "en": "Define a template for monthly ledger items (e.g. Office rent, utility bills)",
+    "ar": "حدد قالبًا لبنود دفتر الأستاذ الشهرية (مثل إيجار المكتب، فواتير الخدمات)",
+    "ur": "ماہانہ لیجر آئٹمز کے لیے ٹیمپلیٹ متعین کریں (مثلاً دفتر کا کرایہ، یوٹیلیٹی بلز)"
+  },
+  {
     "key": "Define a template for monthly ledger items (e.g. Workshop rent, system power bills)",
     "en": "Define a template for monthly ledger items (e.g. Workshop rent, system power bills)",
     "ar": "تحديد قالب لعناصر دفتر الأستاذ الشهرية (مثل إيجار الورشة، فواتير الكهرباء)",
@@ -4698,6 +4716,12 @@
     "ur": "مثال کے طور پر: اکاؤنٹنٹ سارہ، سیلز طارق"
   },
   {
+    "key": "e.g. Acme Trading LLC",
+    "en": "e.g. Acme Trading LLC",
+    "ar": "مثال: شركة أكمي للتجارة ذ.م.م",
+    "ur": "مثال کے طور پر: ایکمی ٹریڈنگ ایل ایل سی"
+  },
+  {
     "key": "e.g. Additional charges agreed after original invoice",
     "en": "e.g. Additional charges agreed after original invoice",
     "ar": "مثال: رسوم إضافية متفق عليها بعد الفاتورة الأصلية",
@@ -4714,6 +4738,12 @@
     "en": "e.g. CNC Woodworks Ltd",
     "ar": "مثال: شركة سي إن سي للأخشاب المحدودة",
     "ur": "مثلاً CNC ووڈ ورکس لمیٹڈ"
+  },
+  {
+    "key": "e.g. Downtown Sub-Store",
+    "en": "e.g. Downtown Sub-Store",
+    "ar": "مثال: فرع وسط المدينة",
+    "ur": "مثال کے طور پر: ڈاؤن ٹاؤن سب اسٹور"
   },
   {
     "key": "e.g. Funding operations, balancing reserves",
@@ -4750,6 +4780,12 @@
     "en": "e.g. Laser Cut Sub-Store",
     "ar": "مثال: متجر فرعي للقطع بالليزر",
     "ur": "مثلاً لیزر کٹ ذیلی اسٹور"
+  },
+  {
+    "key": "e.g. Monthly staff salary pool",
+    "en": "e.g. Monthly staff salary pool",
+    "ar": "مثال: مجمع رواتب الموظفين الشهري",
+    "ur": "مثال کے طور پر: ماہانہ اسٹاف تنخواہ پول"
   },
   {
     "key": "e.g. Monthly workshop supervisor salary pool",
@@ -6524,14 +6560,14 @@
   {
     "key": "Grand Total",
     "en": "Grand Total",
-    "ar": "المجموع الكلي",
-    "ur": "کل مجموعہ"
+    "ar": "الإجمالي الكلي",
+    "ur": "کل رقم"
   },
   {
     "key": "Grand Total",
     "en": "Grand Total",
-    "ar": "الإجمالي الكلي",
-    "ur": "کل رقم"
+    "ar": "المجموع الكلي",
+    "ur": "کل مجموعہ"
   },
   {
     "key": "Grand Total:",
@@ -7312,6 +7348,12 @@
     "en": "Itemised Fabrication Line Items",
     "ar": "بنود التصنيع المفصلة",
     "ur": "تفصیلی فیبریکیشن اشیاء"
+  },
+  {
+    "key": "Itemised Line Items",
+    "en": "Itemised Line Items",
+    "ar": "بنود مفصلة",
+    "ur": "تفصیلی اشیاء"
   },
   {
     "key": "items",
@@ -10572,6 +10614,12 @@
     "ur": "پروڈکٹ تصویر (Base64)"
   },
   {
+    "key": "Product or Service Description",
+    "en": "Product or Service Description",
+    "ar": "وصف المنتج أو الخدمة",
+    "ur": "پروڈکٹ یا سروس کی تفصیل"
+  },
+  {
     "key": "Production CSID",
     "en": "Production CSID",
     "ar": "شهادة الإنتاج",
@@ -10678,6 +10726,12 @@
     "en": "Purchase",
     "ar": "شراء",
     "ur": "خریداری"
+  },
+  {
+    "key": "Purchase & Business Expenses",
+    "en": "Purchase & Business Expenses",
+    "ar": "مشتريات ومصاريف الأعمال",
+    "ur": "خریداری اور کاروباری اخراجات"
   },
   {
     "key": "Purchase Bill",
@@ -13149,13 +13203,13 @@
     "key": "Status",
     "en": "Status",
     "ar": "الحالة",
-    "ur": "حالت"
+    "ur": "حیثیت"
   },
   {
     "key": "Status",
     "en": "Status",
     "ar": "الحالة",
-    "ur": "حیثیت"
+    "ur": "حالت"
   },
   {
     "key": "Status Report: Active Invoices & Expenses as of",
@@ -15472,6 +15526,12 @@
     "en": "Your staff profile does not have permission to access any of the Master Directories (Customers, Vendors, Products, Categories, Units, or Warehouses). Please request your administrator to update your access profile.",
     "ar": "لا يملك ملفك الوظيفي صلاحية الوصول إلى أي من السجلات الرئيسية (العملاء، الموردون، المنتجات، الفئات، الوحدات، أو المستودعات). يرجى الطلب من المسؤول تحديث ملف صلاحياتك.",
     "ur": "آپ کے اسٹاف پروفائل کے پاس ماسٹر ڈائرکٹریز (کسٹمرز، وینڈرز، پروڈکٹس، کیٹیگریز، یونٹس، یا گودام) میں سے کسی تک رسائی کی اجازت نہیں ہے۔ براہ کرم اپنے ایڈمنسٹریٹر سے اپنا رسائی پروفائل اپ ڈیٹ کروائیں۔"
+  },
+  {
+    "key": "Your submitted expenses",
+    "en": "Your submitted expenses",
+    "ar": "مصاريفك المقدمة",
+    "ur": "آپ کے جمع کردہ اخراجات"
   },
   {
     "key": "Your username",

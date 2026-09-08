@@ -1414,7 +1414,7 @@ type NavSection = {
  )}
  <div>
  <h1 className="font-extrabold text-sm text-slate-900 tracking-wide uppercase leading-tight">{activeCompanySetup.name}</h1>
- <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider">{activeCompanySetup.portalSubtitle || 'Industrial Fabrication Portal'}</span>
+ <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider">{activeCompanySetup.portalSubtitle || t('Business Management Portal')}</span>
  </div>
  {isSuperAdmin && (
  <div className="ms-4 ps-4 border-s border-slate-200/80 flex items-center gap-2">

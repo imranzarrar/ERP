@@ -1233,7 +1233,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  {/* Line Items Table */}
  <div className="space-y-2">
  <h4 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center justify-between">
- <span>{t('Itemised Fabrication Line Items')}</span>
+ <span>{t('Itemised Line Items')}</span>
  <span className="text-[10px] text-slate-400 font-normal">{t('Compact Table View')}</span>
  </h4>
  

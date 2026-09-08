@@ -3751,7 +3751,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Portal Sidebar Branding Title</label>
  <input
  type="text"
- placeholder="e.g. CNC FAB PORTAL"
+ placeholder="e.g. YOUR COMPANY PORTAL"
  value={companyForm.portalTitle || ''}
  onChange={(e) => setCompanyForm({ ...companyForm, portalTitle: e.target.value })}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-2xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150 font-semibold"
@@ -3872,7 +3872,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <div className="col-span-2 border-t border-slate-100 pt-4 space-y-3">
  <div>
  <h4 className="text-xs font-extrabold text-slate-800 tracking-tight uppercase">Portal Theme Profile</h4>
- <p className="text-[10px] text-slate-400 mt-0.5">Select the active visual layout theme for the workshop ERP. Selecting a profile instantly overrides accents, buttons, and active indicators.</p>
+ <p className="text-[10px] text-slate-400 mt-0.5">Select the active visual layout theme for your ERP. Selecting a profile instantly overrides accents, buttons, and active indicators.</p>
  </div>
  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
  {THEME_PROFILES.map((p) => {
@@ -4054,7 +4054,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <input
  type="text"
  required
- placeholder={t('e.g. CNC Woodcraft LLC')}
+ placeholder={t('e.g. Acme Trading LLC')}
  value={bankForm.accountTitle}
  onChange={(e) => setBankForm({ ...bankForm, accountTitle: e.target.value })}
  className="w-full bg-white border border-slate-200 rounded-2xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"

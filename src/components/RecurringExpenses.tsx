@@ -751,7 +751,7 @@ export default function RecurringExpenses({ db, onRefreshDb }: RecurringExpenses
  <XCircle className="w-5 h-5" />
  </button>
  </div>
- <p className="text-xs text-slate-400 mb-4">{t('Define a template for monthly ledger items (e.g. Workshop rent, system power bills)')}</p>
+ <p className="text-xs text-slate-400 mb-4">{t('Define a template for monthly ledger items (e.g. Office rent, utility bills)')}</p>
 
  <form onSubmit={handleSaveTemplate} className="space-y-4 text-xs">
  <div className="space-y-1">
@@ -759,7 +759,7 @@ export default function RecurringExpenses({ db, onRefreshDb }: RecurringExpenses
  <input
  type="text"
  required
- placeholder={t('e.g. Monthly workshop supervisor salary pool')}
+ placeholder={t('e.g. Monthly staff salary pool')}
  value={templateForm.description}
  onChange={(e) => setTemplateForm({ ...templateForm, description: e.target.value })}
  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"

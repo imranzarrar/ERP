@@ -1292,7 +1292,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <input
  type="text"
  required
- placeholder={t('e.g. CNC Woodworks Ltd')}
+ placeholder={t('e.g. Acme Trading LLC')}
  value={name}
  onChange={(e) => setName(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"
@@ -1444,7 +1444,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <input
  type="text"
  required
- placeholder="e.g. 2D Plywood Cutting"
+ placeholder="e.g. Wireless Mouse"
  value={prodName}
  onChange={(e) => setProdName(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"
@@ -1456,7 +1456,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <textarea
  required
  rows={2}
- placeholder="e.g. 4x8ft plywood sheet, 18mm thickness, cut to size on the CNC router"
+ placeholder="e.g. Ergonomic wireless mouse, 2.4GHz, includes USB receiver"
  value={prodDescription}
  onChange={(e) => setProdDescription(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150 resize-y"
@@ -1916,7 +1916,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <input
  type="text"
  required
- placeholder="e.g. Raw Timber"
+ placeholder="e.g. Raw Materials"
  value={catName}
  onChange={(e) => setCatName(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"

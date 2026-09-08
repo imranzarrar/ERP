@@ -978,7 +978,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  <div className="flex justify-between items-center bg-slate-50/80 rounded-xl px-3.5 py-2 border border-slate-200/60">
  <div className="flex items-center gap-2.5 flex-wrap">
  <h3 className="font-extrabold text-xs text-slate-800 uppercase tracking-wider">
- {view === 'create' ? t('Draft New Fabrication Quotation') : t('Modify Existing Quotation')}
+ {view === 'create' ? t('Draft New Quotation') : t('Modify Existing Quotation')}
  </h3>
  <span className="text-[9px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md uppercase flex items-center gap-1">
  <span>🏢</span> {t('Submitting for:')} <strong className="text-indigo-900">{db.companySetup?.name}</strong>
@@ -1077,7 +1077,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  {/* Line Items Table */}
  <div className="space-y-2">
  <h4 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider flex items-center justify-between">
- <span>{t('Itemised Fabrication Line Items')}</span>
+ <span>{t('Itemised Line Items')}</span>
  <span className="text-[10px] text-slate-400 font-normal">{t('Compact Table View')}</span>
  </h4>
  
@@ -1413,7 +1413,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  <input
  type="text"
  required
- placeholder={t('CNC Services / Materials')}
+ placeholder={t('Product or Service Description')}
  value={item.description}
  onChange={(e) => handleConvUpdateLine(idx, 'description', e.target.value)}
  className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-800 focus:outline-none font-medium"

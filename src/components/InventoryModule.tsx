@@ -3970,7 +3970,7 @@ export default function InventoryModule({
                   <input
                     type="text"
                     required
-                    placeholder={t('e.g. Laser Cut Sub-Store')}
+                    placeholder={t('e.g. Downtown Sub-Store')}
                     value={warehouseForm.name}
                     onChange={(e) => setWarehouseForm({ ...warehouseForm, name: e.target.value })}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-indigo-500"

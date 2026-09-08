@@ -209,7 +209,7 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
  { name: 'Accounts Payable', debit: 0, credit: accountsPayable },
  { name: 'Sales Revenue', debit: 0, credit: totalSalesRev },
  { name: 'Capitalized Fixed Assets', debit: totalFixedAssets, credit: 0 },
- { name: 'Direct Workshop Expenses', debit: totalPurchaseExp, credit: 0 },
+ { name: 'Direct Operating Expenses', debit: totalPurchaseExp, credit: 0 },
  { name: 'VAT Collected (Output Tax)', debit: 0, credit: totalVATCollected },
  { name: "Shareholders' Paid-in Capital", debit: 0, credit: totalCapital }
  ];

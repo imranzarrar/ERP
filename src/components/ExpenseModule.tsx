@@ -506,9 +506,9 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
  <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
  <div>
- <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Purchase & Workshop Expenses ({filteredExpenses.length})</h4>
+ <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">{t('Purchase & Business Expenses')} ({filteredExpenses.length})</h4>
  <div className="flex items-center gap-2 mt-0.5">
- <p className="text-[10px] text-slate-400">{isAdmin ? 'All shop expenses and accruals' : 'Your submitted workshop expenses'}</p>
+ <p className="text-[10px] text-slate-400">{isAdmin ? t('All expenses and accruals') : t('Your submitted expenses')}</p>
  <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded uppercase">
  🏢 Scoped: {db.companySetup?.name}
  </span>

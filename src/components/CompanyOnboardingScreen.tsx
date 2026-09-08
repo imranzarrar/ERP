@@ -122,7 +122,7 @@ export default function CompanyOnboardingScreen({ lang, onLangChange, db, onBack
               <label className={labelClass}>{t('Company Name')}<span className="text-rose-500"> *</span></label>
               <div className="relative group">
                 <div className={iconWrapClass}><Building2 className="w-4 h-4" /></div>
-                <input type="text" required value={form.companyName} onChange={update('companyName')} className={inputClass} placeholder={t('e.g. CNC Woodworks Ltd')} />
+                <input type="text" required value={form.companyName} onChange={update('companyName')} className={inputClass} placeholder={t('e.g. Acme Trading LLC')} />
               </div>
             </div>
 
