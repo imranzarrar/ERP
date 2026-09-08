@@ -2,12 +2,13 @@ import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, and, desc, inArray, sql } from 'drizzle-orm';
-import { validateTransactionDate, syncVoucherForExpense, round2, computePaymentStatus, assertQuarterNotFiled } from '../lib/businessLogic.js';
+import { validateTransactionDate, syncVoucherForExpense, round2, computePaymentStatus, assertQuarterNotFiled, cancelExpense } from '../lib/businessLogic.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { normalizePermissions } from '../../src/types.js';
 import { parseLimitOffset } from '../lib/pagination.js';
 import { generateId } from '../../src/id.js';
 import { assertOwnsRow, resolveDocumentBranchId, branchAccessOk } from '../lib/authz.js';
+import { recordAuditLog } from '../lib/audit.js';
 
 const router = express.Router();
 
@@ -135,6 +136,13 @@ router.post('/', async (req: any, res) => {
       });
 
       await syncVoucherForExpense(tx, expenseId, data.companyId, data, req.user.id);
+
+      recordAuditLog(req, isNew ? 'CREATE_EXPENSE' : 'UPDATE_EXPENSE', 'expense', expenseId, {
+        expenseNumber: data.expenseNumber,
+        billNumber: data.billNumber,
+        vendorId: data.vendorId,
+        amount: data.amount,
+      });
     });
     res.json({ success: true });
   } catch (error: any) {
@@ -156,6 +164,7 @@ router.post('/:id/pay', async (req: any, res) => {
     const companyId = req.targetCompanyId;
 
     let createdVoucher: any;
+    let paidExpenseNumber = '';
     await db.transaction(async (tx) => {
       // FOR UPDATE — without this, two payments landing close together both read the same
       // currentPaid/remaining and the second write silently clobbers the first's
@@ -242,8 +251,14 @@ router.post('/:id/pay', async (req: any, res) => {
         }).returning();
         createdVoucher = voucher;
       }
+      paidExpenseNumber = expense.expenseNumber;
     });
 
+    recordAuditLog(req, 'RECORD_EXPENSE_PAYMENT', 'expense', id, {
+      expenseNumber: paidExpenseNumber,
+      voucherNumber: createdVoucher?.voucherNumber,
+      amount: createdVoucher?.amount,
+    });
     // Returned so the client can immediately open a printable payment receipt — see
     // DocumentRenderer.tsx's renderVoucher. Undefined for an Accrual settlement (no
     // voucher is created on this path), which the client treats as "nothing to print."
@@ -266,58 +281,12 @@ router.post('/:id/cancel', async (req: any, res) => {
     const { id } = req.params;
     const companyId = req.targetCompanyId;
 
+    let cancelled: { expenseNumber: string } | undefined;
     await db.transaction(async (tx) => {
-      const [expense] = await tx.select().from(schema.expenses)
-        .where(and(eq(schema.expenses.id, id), eq(schema.expenses.companyId, companyId)));
-      if (!expense) throw new Error('Expense not found.');
-      if (!branchAccessOk(req, expense.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
-      if (expense.status === 'Cancelled') throw new Error('Expense is already cancelled.');
-
-      const openMonths = await tx.select().from(schema.fiscalMonths)
-        .where(and(eq(schema.fiscalMonths.companyId, companyId), eq(schema.fiscalMonths.status, 'Open')));
-      const openMonth = openMonths.sort((a, b) => a.id.localeCompare(b.id))[0];
-      if (!openMonth) {
-        const err: any = new Error('There is no open fiscal month.');
-        err.status = 400;
-        throw err;
-      }
-
-      const todayStr = new Date().toISOString().split('T')[0];
-      const finalReversalDate = todayStr.startsWith(openMonth.id)
-        ? todayStr
-        : (expense.date.startsWith(openMonth.id) ? expense.date : openMonth.id + '-01');
-
-      await tx.update(schema.expenses).set({ status: 'Cancelled' }).where(eq(schema.expenses.id, id));
-
-      if (expense.type === 'Accrual' && expense.settledExpenseId) {
-        await tx.update(schema.expenses).set({ originAccrualId: null }).where(eq(schema.expenses.id, expense.settledExpenseId));
-      }
-      if (expense.type === 'Actual' && expense.originAccrualId) {
-        await tx.update(schema.expenses).set({ accrualSettled: false, settledExpenseId: null }).where(eq(schema.expenses.id, expense.originAccrualId));
-      }
-
-      const [activePayment] = await tx.select().from(schema.vouchers)
-        .where(and(eq(schema.vouchers.referenceId, id), eq(schema.vouchers.referenceType, 'Expense'), eq(schema.vouchers.type, 'Payment')));
-      if (activePayment) {
-        const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', finalReversalDate, activePayment.branchId || expense.branchId);
-        await tx.insert(schema.vouchers).values({
-          id: generateId(),
-          voucherNumber,
-          type: 'Reversal',
-          date: finalReversalDate,
-          bankId: activePayment.bankId,
-          amount: activePayment.amount,
-          description: `Reversal voucher for cancelled expense ${expense.expenseNumber} (Original: ${activePayment.voucherNumber})`,
-          referenceType: 'Expense',
-          referenceId: id,
-          createdById: req.user.id,
-          createdAt: new Date(),
-          companyId,
-          branchId: activePayment.branchId || expense.branchId || null,
-        });
-      }
+      cancelled = await cancelExpense(tx, req, id, companyId);
     });
 
+    recordAuditLog(req, 'CANCEL_EXPENSE', 'expense', id, { expenseNumber: cancelled?.expenseNumber });
     res.json({ success: true });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });

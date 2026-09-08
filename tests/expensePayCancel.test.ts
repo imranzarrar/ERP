@@ -262,7 +262,7 @@ describe('POST /api/expenses/:id/cancel', () => {
     const expId = await insertExpense({ status: 'Cancelled' });
 
     const { status, body } = await api(adminSessionId, `/api/expenses/${expId}/cancel`, { method: 'POST' });
-    expect(status).toBe(500);
+    expect(status).toBe(400);
     expect(body.error).toMatch(/already cancelled/);
   });
 

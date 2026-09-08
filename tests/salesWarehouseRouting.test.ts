@@ -310,6 +310,43 @@ describe('Sale warehouse resolution (branch default -> company default)', () => 
     const [note] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, cn.body.noteId));
     expect(note.warehouseId).toBe(original.warehouseId);
   });
+
+  it('rejects a Credit Note against an already-cancelled invoice, and does not double-restock', async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const before = await stockQty(stockProductId, warehouseCompanyDefaultId);
+    const inv = await api(adminSessionId, '/api/transactions/invoices', {
+      method: 'POST',
+      body: JSON.stringify({
+        invoiceData: {
+          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          items: [{ id: generateId(), description: 'To be cancelled then credited', unitCost: 10, quantity: 2, unit: 'PCE', productId: stockProductId }],
+        },
+      }),
+    });
+    expect(inv.status).toBe(200);
+    expect(await stockQty(stockProductId, warehouseCompanyDefaultId)).toBe(before - 2);
+
+    const cancelRes = await api(adminSessionId, `/api/transactions/invoices/${inv.body.invoiceId}/cancel`, { method: 'POST' });
+    expect(cancelRes.status).toBe(200);
+    // Cancelling restocks the 2 units back — confirms the baseline this test's real
+    // assertion (no double-restock) depends on.
+    expect(await stockQty(stockProductId, warehouseCompanyDefaultId)).toBe(before);
+
+    const cn = await api(adminSessionId, `/api/transactions/invoices/${inv.body.invoiceId}/note`, {
+      method: 'POST',
+      body: JSON.stringify({ type: 'CreditNote', reason: 'Should be rejected — invoice is cancelled' }),
+    });
+    expect(cn.status).toBe(400);
+    expect(cn.body.error).toMatch(/cancelled invoice/i);
+
+    // The rejected Credit Note must never have restocked a second time.
+    expect(await stockQty(stockProductId, warehouseCompanyDefaultId)).toBe(before);
+    const [noCreditNote] = await db.select().from(schema.invoices).where(and(
+      eq(schema.invoices.originalInvoiceId, inv.body.invoiceId),
+      eq(schema.invoices.documentType, 'CreditNote')
+    ));
+    expect(noCreditNote).toBeUndefined();
+  });
 });
 
 describe('No warehouses configured yet (services vs. stock items)', () => {

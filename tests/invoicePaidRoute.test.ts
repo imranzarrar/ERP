@@ -440,6 +440,37 @@ describe('POST /api/transactions/invoices/:id/paid — partial payments', () => 
     expect(body.error).toMatch(/cancelled/i);
   });
 
+  // Regression test: cancelling a paid invoice used to hard-delete its Receipt voucher
+  // outright whenever the voucher's own month was still open (treating the correction as
+  // "never happened"), only posting a Reversal voucher once that month was closed. This
+  // silently erased the ledger trail for the single most common real-world case (cancel
+  // something the same day/month it was paid). Fixed to always post a Reversal, never
+  // delete — see businessLogic.ts's syncVoucherForInvoice.
+  it('posts a Reversal voucher (never deletes the Receipt) when cancelling a paid invoice in the still-open current month', async () => {
+    const invId = await createInvoice(115);
+    const [receiptBefore] = await db.select().from(schema.vouchers).where(and(
+      eq(schema.vouchers.referenceId, invId),
+      eq(schema.vouchers.type, 'Receipt')
+    ));
+    expect(receiptBefore).toBeTruthy();
+    expect(receiptBefore.date.slice(0, 7)).toBe(monthId);
+
+    const { status } = await api(adminSessionId, `/api/transactions/invoices/${invId}/cancel`, { method: 'POST' });
+    expect(status).toBe(200);
+
+    // The original Receipt must still exist — never hard-deleted.
+    const [receiptAfter] = await db.select().from(schema.vouchers).where(eq(schema.vouchers.id, receiptBefore.id));
+    expect(receiptAfter).toBeTruthy();
+
+    // A genuine, equal-and-opposite Reversal voucher must have been posted alongside it.
+    const [reversal] = await db.select().from(schema.vouchers).where(and(
+      eq(schema.vouchers.referenceId, invId),
+      eq(schema.vouchers.type, 'Reversal')
+    ));
+    expect(reversal).toBeTruthy();
+    expect(Number(reversal.amount)).toBe(Number(receiptBefore.amount));
+  });
+
   // Regression test: a Credit Note (created via POST /invoices/:id/note, same `invoices`
   // table, documentType: 'CreditNote') was reachable through this exact route with no
   // documentType check at all — it reduces the original invoice's balance, it is not a

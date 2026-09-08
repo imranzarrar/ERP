@@ -12,6 +12,12 @@ export async function recordAuditLog(
   entityId: string | null = null,
   details: any = null
 ) {
+  // Marks this request as already having a real audit entry, so server.ts's generic
+  // fallback interceptor skips it instead of adding a second, weaker duplicate. Set
+  // unconditionally (even if the insert below fails) — a call site that explicitly asked
+  // for logging has expressed intent either way, and a failed insert already logs its own
+  // console.error below.
+  if (req && typeof req === 'object') req._auditLogged = true;
   try {
     const userId = req?.user?.id || null;
     const username = req?.user?.username || 'anonymous';

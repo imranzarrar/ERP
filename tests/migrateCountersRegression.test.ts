@@ -60,6 +60,12 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await db.delete(schema.auditLogs).where(eq(schema.auditLogs.companyId, companyId));
+  // Also by userId directly, matching the pattern other test files already use — the
+  // audit interceptor's own write is fire-and-forget (never awaited by the request that
+  // triggers it), so it can still be in flight when this afterAll's companyId-scoped
+  // delete above runs, landing a row that references adminId afterward and would
+  // otherwise trip the users.id FK on the delete right below.
+  await db.delete(schema.auditLogs).where(eq(schema.auditLogs.userId, adminId));
   await db.delete(schema.users).where(eq(schema.users.id, adminId));
   await db.delete(schema.companies).where(eq(schema.companies.id, companyId));
 });

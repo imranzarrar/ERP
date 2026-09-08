@@ -2,7 +2,7 @@ import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, inArray, and, desc, or, isNull } from 'drizzle-orm';
-import { validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, postCreditNoteReversalVoucher, round2, round4, computePaymentStatus, computeInvoiceServerTotals, deductStockForSale, restockForSaleReversal, assertQuarterNotFiled, resolveSaleWarehouse, assertStockAvailable, assertProductsOwnedByCompany } from '../lib/businessLogic.js';
+import { validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, postCreditNoteReversalVoucher, round2, round4, computePaymentStatus, computeInvoiceServerTotals, deductStockForSale, restockForSaleReversal, assertQuarterNotFiled, resolveSaleWarehouse, assertStockAvailable, assertProductsOwnedByCompany, cancelExpense } from '../lib/businessLogic.js';
 import { toBaseQuantity, toBaseUnitCost, loadZatcaCodesByUnitId } from '../lib/uomConversion.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { isStillChainTip, setHashChainState, ZatcaEnvironment } from '../lib/zatca/hashChain.js';
@@ -12,6 +12,7 @@ import { hasPermission, assertOwnsRow, resolveDocumentBranchId, branchAccessOk }
 import { parseLimitOffset } from '../lib/pagination.js';
 import { generateId } from '../../src/id.js';
 import { normalizeZatcaUnitCode } from '../../src/zatcaUnitCodes.js';
+import { recordAuditLog } from '../lib/audit.js';
 
 const router = express.Router();
 
@@ -135,6 +136,8 @@ router.post('/quotations', async (req: any, res) => {
     });
     if (refError) return res.status(400).json({ error: refError });
 
+    let savedQuotationId = '';
+    let savedQuotationNumber = '';
     await db.transaction(async (tx) => {
       // 1. Business logic
       const companyId = req.targetCompanyId;
@@ -146,7 +149,7 @@ router.post('/quotations', async (req: any, res) => {
       if (!qData.quotationNumber) {
         qNumber = await getAndIncrementDocumentNumber(tx, companyId, 'quotation', qData.date, resolvedBranchId);
       }
-      
+
       // 3. Insert/Update Quotation
       const [newQuotation] = await tx.insert(schema.quotations).values({
         ...qData,
@@ -161,7 +164,9 @@ router.post('/quotations', async (req: any, res) => {
           createdAt: qData.createdAt ? new Date(qData.createdAt) : new Date(),
         }
       }).returning();
-      
+      savedQuotationId = newQuotation.id;
+      savedQuotationNumber = newQuotation.quotationNumber;
+
       // 4. Insert/Update Items
       if (items && items.length > 0) {
         await tx.delete(schema.quotationItems).where(eq(schema.quotationItems.quotationId, newQuotation.id));
@@ -176,6 +181,10 @@ router.post('/quotations', async (req: any, res) => {
       }
     });
 
+    recordAuditLog(req, existing ? 'UPDATE_QUOTATION' : 'CREATE_QUOTATION', 'quotation', savedQuotationId, {
+      quotationNumber: savedQuotationNumber,
+      customerId: qData.customerId,
+    });
     res.json({ success: true });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
@@ -266,6 +275,7 @@ router.post('/quotations/:id/cancel', async (req: any, res) => {
     }
 
     await db.update(schema.quotations).set({ isCancelled: true }).where(eq(schema.quotations.id, id));
+    recordAuditLog(req, 'CANCEL_QUOTATION', 'quotation', id, { quotationNumber: existing.quotationNumber });
     res.json({ success: true });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
@@ -287,6 +297,9 @@ router.post('/quotations/:id/convert', async (req: any, res) => {
     const { invoiceDate, bankId, paymentStatus, customItems, customDiscountPercentage, customTaxSlabId, customCustomerId, customNotes } = req.body;
     const createdById = req.user.id;
 
+    let convertedInvoiceId = '';
+    let convertedInvoiceNumber = '';
+    let convertedQuotationNumber = '';
     await db.transaction(async (tx) => {
       // 1. Fetch quotation
       const [quotation] = await tx.select().from(schema.quotations).where(and(eq(schema.quotations.id, id), eq(schema.quotations.companyId, req.targetCompanyId)));
@@ -413,6 +426,9 @@ router.post('/quotations/:id/convert', async (req: any, res) => {
 
       // 7. Update Quotation Status
       await tx.update(schema.quotations).set({ status: 'Converted' }).where(eq(schema.quotations.id, id));
+      convertedInvoiceId = invoiceId;
+      convertedInvoiceNumber = invNumber;
+      convertedQuotationNumber = quotation.quotationNumber;
 
       // 8. Generate Receipt Voucher if status is Paid
       if (computedPaymentStatus === 'Paid') {
@@ -430,6 +446,11 @@ router.post('/quotations/:id/convert', async (req: any, res) => {
       }
     });
 
+    recordAuditLog(req, 'CONVERT_QUOTATION', 'quotation', id, {
+      quotationNumber: convertedQuotationNumber,
+      convertedToInvoiceId: convertedInvoiceId,
+      convertedToInvoiceNumber: convertedInvoiceNumber,
+    });
     res.json({ success: true });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
@@ -705,6 +726,11 @@ router.post('/invoices', async (req: any, res) => {
       });
     }
 
+    recordAuditLog(req, isNewInvoice ? 'CREATE_INVOICE' : 'UPDATE_INVOICE', 'invoice', savedInvoiceId, {
+      invoiceNumber: invData.invoiceNumber,
+      documentType: invData.documentType,
+      customerId: invData.customerId,
+    });
     res.json({ success: true, invoiceId: savedInvoiceId });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
@@ -737,6 +763,16 @@ router.post('/invoices/:id/note', async (req: any, res) => {
     if (!original) return res.status(404).json({ error: 'Original invoice not found' });
     if (!branchAccessOk(req, original.branchId)) return res.status(403).json({ error: 'Forbidden: you are not assigned to this branch.' });
 
+    // A cancelled invoice never charged the customer (or, if it had already reached
+    // ZATCA, cancellation itself would have been refused above the /cancel route's own
+    // zatcaStatus guard) — there is nothing left to reverse. Without this check, a
+    // Credit Note against an already-cancelled invoice double-restocks inventory: the
+    // /cancel route's own restockForSaleReversal call already returned these units to
+    // stock, and this route's identical call below would return them a second time.
+    if (original.status === 'Cancelled') {
+      return res.status(400).json({ error: 'Cannot issue a Credit Note against a cancelled invoice.' });
+    }
+
     // A Credit Note here is a full-document reversal (MVP scope, see the file comment
     // above) — a second one against the same original would credit the customer twice for
     // one sale. Debit Notes are deliberately not blocked here: they represent genuine new
@@ -760,12 +796,14 @@ router.post('/invoices/:id/note', async (req: any, res) => {
     }
 
     let savedNoteId = '';
+    let savedNoteNumber = '';
     await db.transaction(async (tx) => {
       await validateTransactionDate(original.date, companyId);
       await assertQuarterNotFiled(original.date, companyId);
 
       const counterType = type === 'CreditNote' ? 'creditNote' : 'debitNote';
       const noteNumber = await getAndIncrementDocumentNumber(tx, companyId, counterType, original.date, original.branchId);
+      savedNoteNumber = noteNumber;
       const noteId = generateId();
 
       const [newNote] = await tx.insert(schema.invoices).values({
@@ -851,6 +889,12 @@ router.post('/invoices/:id/note', async (req: any, res) => {
       });
     }
 
+    recordAuditLog(req, type === 'CreditNote' ? 'CREATE_CREDIT_NOTE' : 'CREATE_DEBIT_NOTE', 'invoice', savedNoteId, {
+      invoiceNumber: savedNoteNumber,
+      originalInvoiceId,
+      originalInvoiceNumber: original.invoiceNumber,
+      reason: reason || '',
+    });
     res.json({ success: true, noteId: savedNoteId });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
@@ -883,6 +927,7 @@ router.post('/invoices/:id/paid', async (req: any, res) => {
     }
 
     let createdVoucher: any;
+    let paidInvoiceNumber = '';
     await db.transaction(async (tx) => {
       // FOR UPDATE — without this, two payments landing close together (e.g. cash recorded
       // by a cashier immediately followed by a bank transfer entered by an accountant) both
@@ -995,6 +1040,13 @@ router.post('/invoices/:id/paid', async (req: any, res) => {
         createdAt: new Date(),
       }).returning();
       createdVoucher = voucher;
+      paidInvoiceNumber = invoice.invoiceNumber;
+    });
+
+    recordAuditLog(req, 'RECORD_INVOICE_PAYMENT', 'invoice', id, {
+      invoiceNumber: paidInvoiceNumber,
+      voucherNumber: createdVoucher?.voucherNumber,
+      amount: createdVoucher?.amount,
     });
     // Returned so the client can immediately open a printable payment receipt — see
     // DocumentRenderer.tsx's renderVoucher, the same one ReportViewer.tsx's voucher
@@ -1011,6 +1063,8 @@ router.post('/invoices/:id/cancel', async (req: any, res) => {
     if (!permissions.invoice.delete.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     const { id } = req.params;
+    let cancelledInvoiceNumber = '';
+    let cancelledDocType = '';
     await db.transaction(async (tx) => {
       // FOR UPDATE — processInvoiceZatca's fire-and-forget SUBMITTING transition (see
       // processInvoice.ts) runs as a plain UPDATE, which itself takes an implicit
@@ -1079,6 +1133,14 @@ router.post('/invoices/:id/cancel', async (req: any, res) => {
         ...invoice,
         status: 'Cancelled',
       }, req.user.id);
+
+      cancelledInvoiceNumber = invoice.invoiceNumber;
+      cancelledDocType = invoice.documentType;
+    });
+
+    recordAuditLog(req, 'CANCEL_INVOICE', 'invoice', id, {
+      invoiceNumber: cancelledInvoiceNumber,
+      documentType: cancelledDocType,
     });
     res.json({ success: true });
   } catch (error: any) {
@@ -1324,6 +1386,14 @@ router.post('/months', async (req: any, res) => {
       set: mData
     });
 
+    // entityId stays null deliberately — fiscalMonths.id is a text value like "2026-09",
+    // not a UUID, and auditLogs.entity_id is a uuid column; passing it through silently
+    // failed every insert here for as long as this route has existed. The real month id
+    // goes in details instead, where it's still fully searchable.
+    recordAuditLog(req, mData.status === 'Closed' ? 'CLOSE_FISCAL_MONTH' : 'OPEN_FISCAL_MONTH', 'fiscal_month', null, {
+      monthId: mData.id,
+      monthName: mData.name,
+    });
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1530,6 +1600,7 @@ router.post('/recurring-templates', async (req: any, res) => {
       companyId,
     });
 
+    recordAuditLog(req, 'CREATE_RECURRING_TEMPLATE', 'recurring_expense_template', id, { description, defaultAmount: String(round2(amountNum)) });
     res.json({ success: true, id });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
@@ -1565,6 +1636,7 @@ router.put('/recurring-templates/:id', async (req: any, res) => {
       isActive: isActive !== false,
     }).where(eq(schema.recurringExpenseTemplates.id, id));
 
+    recordAuditLog(req, 'UPDATE_RECURRING_TEMPLATE', 'recurring_expense_template', id, { description, defaultAmount: String(round2(amountNum)) });
     res.json({ success: true });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
@@ -1586,6 +1658,7 @@ router.patch('/recurring-templates/:id/toggle', async (req: any, res) => {
     const newActive = !existing.isActive;
     await db.update(schema.recurringExpenseTemplates).set({ isActive: newActive }).where(eq(schema.recurringExpenseTemplates.id, id));
 
+    recordAuditLog(req, newActive ? 'ACTIVATE_RECURRING_TEMPLATE' : 'DEACTIVATE_RECURRING_TEMPLATE', 'recurring_expense_template', id, { description: existing.description });
     res.json({ success: true, isActive: newActive });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
@@ -1604,12 +1677,15 @@ router.delete('/recurring-templates/:id', async (req: any, res) => {
       .where(and(eq(schema.recurringExpenseTemplates.id, id), eq(schema.recurringExpenseTemplates.companyId, companyId)));
     if (!existing) return res.status(404).json({ error: 'Recurring template not found.' });
 
-    // No cascading delete of recurringPostings, matching dbStore.ts's in-memory behavior
-    // ("This will not affect prior postings but prevents future occurrences.") — a template
-    // with existing postings will hit the recurringPostings.templateId FK and 500; that's an
-    // existing schema constraint, not new behavior introduced here.
-    await db.delete(schema.recurringExpenseTemplates).where(eq(schema.recurringExpenseTemplates.id, id));
+    // Soft-delete only — same mechanism as the sibling /toggle route just above, forced to
+    // false rather than flipped (a delete-intent should deactivate, never reactivate).
+    // Previously this hard-deleted the row, which both destroyed the template's own
+    // history and hit recurringPostings.templateId's FK constraint the moment any posting
+    // had ever been generated from it; deactivating instead has neither problem and keeps
+    // every past posting's reference intact.
+    await db.update(schema.recurringExpenseTemplates).set({ isActive: false }).where(eq(schema.recurringExpenseTemplates.id, id));
 
+    recordAuditLog(req, 'DEACTIVATE_RECURRING_TEMPLATE', 'recurring_expense_template', id, { description: existing.description });
     res.json({ success: true });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
@@ -1645,6 +1721,7 @@ router.put('/accruals/:id', async (req: any, res) => {
       taxSlabId,
     }).where(eq(schema.expenses.id, id));
 
+    recordAuditLog(req, 'UPDATE_ACCRUAL', 'expense', id, { expenseNumber: existing.expenseNumber, amount: String(round2(amountNum)) });
     res.json({ success: true });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
@@ -1659,20 +1736,22 @@ router.delete('/accruals/:id', async (req: any, res) => {
     const { id } = req.params;
     const companyId = req.targetCompanyId;
 
+    let cancelledAccrualNumber = '';
     await db.transaction(async (tx) => {
-      const [existing] = await tx.select().from(schema.expenses)
-        .where(and(eq(schema.expenses.id, id), eq(schema.expenses.companyId, companyId)));
-      if (!existing) throw new Error('Accrual entry not found.');
-
-      // Delete linked recurring postings and any line items before the expense row itself,
-      // matching dbStore.ts's handleDeleteAccrual (which drops both the accrual liability
-      // and its associated postings) while satisfying real FK constraints the in-memory
-      // version never had to worry about.
+      // Soft-cancel, not a real delete — reuses the exact same logic POST
+      // /expenses/:id/cancel already applies to every other expense (status:'Cancelled',
+      // requires an open fiscal month, unlinks the accrual<->settlement pointers, posts a
+      // Reversal voucher if one was ever paid). The expense row and its line items are
+      // left in place, same as every other cancelled document in this app keeps its own
+      // content. Only the linked recurringPostings join row is still removed — it's a
+      // workflow marker, not a financial document, and removing it frees that template's
+      // month slot to be posted again (recurringPostings has a unique
+      // (templateId, monthId, companyId) constraint).
       await tx.delete(schema.recurringPostings).where(eq(schema.recurringPostings.expenseId, id));
-      await tx.delete(schema.expenseItems).where(eq(schema.expenseItems.expenseId, id));
-      await tx.delete(schema.expenses).where(eq(schema.expenses.id, id));
+      cancelledAccrualNumber = (await cancelExpense(tx, req, id, companyId)).expenseNumber;
     });
 
+    recordAuditLog(req, 'CANCEL_ACCRUAL', 'expense', id, { expenseNumber: cancelledAccrualNumber });
     res.json({ success: true });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });

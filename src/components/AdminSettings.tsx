@@ -549,55 +549,87 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  // --- Audit Logs State & Actions ---
  const [auditLogs, setAuditLogs] = React.useState<any[]>([]);
  const [isLoadingAudit, setIsLoadingAudit] = React.useState(false);
+ const [isLoadingMoreAudit, setIsLoadingMoreAudit] = React.useState(false);
+ const [auditHasMore, setAuditHasMore] = React.useState(false);
  const [auditSearch, setAuditSearch] = React.useState('');
  const [auditActionFilter, setAuditActionFilter] = React.useState('');
  const [auditTypeFilter, setAuditTypeFilter] = React.useState('');
+ // Super-admin only — an explicit selector independent of whichever company is
+ // currently active app-wide, defaulting to it. '' means "all companies" (super-admin
+ // only; a company admin is always implicitly locked server-side to their own company
+ // regardless of this value — see GET /api/audit-logs).
+ const [auditCompanyFilter, setAuditCompanyFilter] = React.useState('');
+ // Resolves to a real userId once a name is picked from the datalist below — matched by
+ // username against db.users, not free text sent straight to the server (filterUserId
+ // must be a real UUID or the server silently ignores it).
+ const [auditUserFilterText, setAuditUserFilterText] = React.useState('');
  const [isConfirmingPurge, setIsConfirmingPurge] = React.useState(false);
 
+ const AUDIT_PAGE_SIZE = 100;
+
+ const buildAuditLogsUrl = (beforeCursor?: string) => {
+   const params = new URLSearchParams();
+   params.set('companyId', db.currentUser?.isSuperAdmin ? (auditCompanyFilter || 'all') : (db.selectedCompanyId || ''));
+   params.set('limit', String(AUDIT_PAGE_SIZE));
+   if (auditSearch) params.set('search', auditSearch);
+   if (auditActionFilter) params.set('action', auditActionFilter);
+   if (auditTypeFilter) params.set('entityType', auditTypeFilter);
+   const matchedUser = db.users?.find((u: any) => u.username === auditUserFilterText.trim());
+   if (matchedUser) params.set('filterUserId', matchedUser.id);
+   if (beforeCursor) params.set('before', beforeCursor);
+   return `/api/audit-logs?${params.toString()}`;
+ };
+
+ // No special auth headers — this is a normal browser fetch from the already-logged-in
+ // SPA, so the session cookie already sent with every other request in this file (none
+ // of which set any auth header either) is what authenticates it. Previously this sent
+ // X-User-ID/X-Session-ID/Authorization headers the server-side isAuthenticated
+ // middleware never actually reads, and a userId/sessionId query pair that collided with
+ // (and was completely superseded by) the real filterUserId control added here.
  const fetchAuditLogs = async () => {
    setIsLoadingAudit(true);
    try {
-     const activeUserId = db.currentUser?.id || localStorage.getItem('erp_session_user_id') || localStorage.getItem('erp_active_user_id') || 'admin';
-     const activeSessionId = localStorage.getItem('erp_session_id') || localStorage.getItem('erp_active_session_id') || '';
-     let url = `/api/audit-logs?companyId=${db.selectedCompanyId || 'all'}&userId=${encodeURIComponent(activeUserId)}&sessionId=${encodeURIComponent(activeSessionId)}`;
-     if (auditSearch) url += `&search=${encodeURIComponent(auditSearch)}`;
-     if (auditActionFilter) url += `&action=${encodeURIComponent(auditActionFilter)}`;
-     if (auditTypeFilter) url += `&entityType=${encodeURIComponent(auditTypeFilter)}`;
-     
-     const response = await fetch(url, {
-       headers: {
-         'X-User-ID': activeUserId,
-         'X-Session-ID': activeSessionId,
-         'Authorization': `Bearer ${activeUserId}`
-       }
-     });
+     const response = await fetch(buildAuditLogsUrl());
      const data = await response.json();
      if (response.ok && Array.isArray(data)) {
        setAuditLogs(data);
+       setAuditHasMore(data.length === AUDIT_PAGE_SIZE);
      } else {
        setAuditLogs([]);
+       setAuditHasMore(false);
      }
    } catch (error) {
      console.error('Failed to fetch audit logs:', error);
      setAuditLogs([]);
+     setAuditHasMore(false);
    } finally {
      setIsLoadingAudit(false);
    }
  };
 
+ // Keyset "load older" pagination — appends the next page (rows strictly before the
+ // oldest one currently shown) rather than replacing the list.
+ const loadMoreAuditLogs = async () => {
+   if (auditLogs.length === 0) return;
+   setIsLoadingMoreAudit(true);
+   try {
+     const oldest = auditLogs[auditLogs.length - 1];
+     const response = await fetch(buildAuditLogsUrl(oldest.createdAt));
+     const data = await response.json();
+     if (response.ok && Array.isArray(data)) {
+       setAuditLogs(prev => [...prev, ...data]);
+       setAuditHasMore(data.length === AUDIT_PAGE_SIZE);
+     }
+   } catch (error) {
+     console.error('Failed to load more audit logs:', error);
+   } finally {
+     setIsLoadingMoreAudit(false);
+   }
+ };
+
  const handlePurgeAuditLogs = async () => {
    try {
-     const activeUserId = db.currentUser?.id || localStorage.getItem('erp_session_user_id') || localStorage.getItem('erp_active_user_id') || 'admin';
-     const activeSessionId = localStorage.getItem('erp_session_id') || localStorage.getItem('erp_active_session_id') || '';
-     const response = await fetch(`/api/audit-logs/purge?userId=${encodeURIComponent(activeUserId)}&sessionId=${encodeURIComponent(activeSessionId)}`, {
-       method: 'POST',
-       headers: {
-         'Content-Type': 'application/json',
-         'X-User-ID': activeUserId,
-         'X-Session-ID': activeSessionId,
-         'Authorization': `Bearer ${activeUserId}`
-       }
-     });
+     const response = await fetch('/api/audit-logs/purge', { method: 'POST' });
      const result = await response.json();
      if (response.ok && result.success) {
        triggerSuccess('Audit logs older than 1 year purged successfully.');
@@ -615,7 +647,8 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
    if (activeTab === 'database') {
      fetchAuditLogs();
    }
- }, [activeTab, db.selectedCompanyId, auditSearch, auditActionFilter, auditTypeFilter]);
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [activeTab, db.selectedCompanyId, auditSearch, auditActionFilter, auditTypeFilter, auditCompanyFilter, auditUserFilterText]);
 
  const [activeSessions, setActiveSessions] = React.useState<any[]>([]);
  const [sessionsLoading, setSessionsLoading] = React.useState(false);
@@ -7739,7 +7772,31 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
    </div>
 
    {/* Filter & Search Bar */}
-   <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-white p-3 rounded-2xl border border-slate-100">
+   <div className={`grid grid-cols-1 sm:grid-cols-2 ${db.currentUser?.isSuperAdmin ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} gap-2.5 bg-white p-3 rounded-2xl border border-slate-100`}>
+     {db.currentUser?.isSuperAdmin && (
+       <select
+         value={auditCompanyFilter}
+         onChange={(e) => setAuditCompanyFilter(e.target.value)}
+         className="px-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500 bg-white"
+         title={t('Company')}
+       >
+         <option value="">{t('All Companies')}</option>
+         {(db.companies || []).map((c: any) => (
+           <option key={c.id} value={c.id}>{c.name}</option>
+         ))}
+       </select>
+     )}
+     <input
+       type="text"
+       list="audit-log-usernames"
+       placeholder={t('Filter by User (exact username)')}
+       value={auditUserFilterText}
+       onChange={(e) => setAuditUserFilterText(e.target.value)}
+       className="px-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
+     />
+     <datalist id="audit-log-usernames">
+       {(db.users || []).map((u: any) => <option key={u.id} value={u.username} />)}
+     </datalist>
      <input
        type="text"
        placeholder={t('Search by user or details...')}
@@ -7770,6 +7827,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
        {isLoadingAudit ? t('Loading...') : t('Fetch Logs')}
      </button>
    </div>
+   <p className="text-[10px] text-slate-400 -mt-1.5">{t('Showing the most recent')} {auditLogs.length} {t('records matching your filters.')} {auditHasMore ? t('More are available — use Load Older below.') : ''}</p>
 
    {/* Audit Table */}
    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden max-h-[350px] overflow-y-auto shadow-sm">
@@ -7825,6 +7883,17 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
        </tbody>
      </table>
    </div>
+   {auditHasMore && (
+     <div className="flex justify-center">
+       <button
+         onClick={loadMoreAuditLogs}
+         disabled={isLoadingMoreAudit}
+         className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 disabled:bg-slate-50 text-slate-600 rounded-xl text-[11px] font-bold transition cursor-pointer"
+       >
+         {isLoadingMoreAudit ? t('Loading...') : t('Load Older Records')}
+       </button>
+     </div>
+   )}
  </div>
  </div>
  </div>

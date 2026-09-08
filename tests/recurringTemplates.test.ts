@@ -155,19 +155,21 @@ describe('Recurring expense template CRUD', () => {
     expect(second.body.isActive).toBe(true);
   });
 
-  it('deletes a template with no linked postings', async () => {
+  it('"deletes" a template by deactivating it, not removing the row (soft-delete)', async () => {
     const created = await api('/api/transactions/recurring-templates', {
       method: 'POST',
       body: JSON.stringify({ description: 'Disposable Template', defaultAmount: 100, bankId, vendorId, taxSlabId, isActive: true }),
     });
     const tplId = created.body.id;
+    createdTemplateIds.push(tplId);
 
     const { status, body } = await api(`/api/transactions/recurring-templates/${tplId}`, { method: 'DELETE' });
     expect(status).toBe(200);
     expect(body.success).toBe(true);
 
-    const rows = await db.select().from(schema.recurringExpenseTemplates).where(eq(schema.recurringExpenseTemplates.id, tplId));
-    expect(rows.length).toBe(0);
+    const [row] = await db.select().from(schema.recurringExpenseTemplates).where(eq(schema.recurringExpenseTemplates.id, tplId));
+    expect(row).toBeTruthy();
+    expect(row.isActive).toBe(false);
   });
 
   it('404s updating a template that does not exist', async () => {
@@ -234,7 +236,7 @@ describe('Accrual entry edit/delete', () => {
     expect(body.error).toMatch(/valid amount/);
   });
 
-  it('deletes an accrual entry along with its linked recurring posting', async () => {
+  it('"deletes" an accrual entry by cancelling it (soft-delete), while still removing its linked recurring posting', async () => {
     const accId = await insertAccrual();
 
     // Wire up a template + posting referencing this accrual, matching how
@@ -254,16 +256,21 @@ describe('Accrual entry edit/delete', () => {
     expect(status).toBe(200);
     expect(body.success).toBe(true);
 
-    const expenseRows = await db.select().from(schema.expenses).where(eq(schema.expenses.id, accId));
-    expect(expenseRows.length).toBe(0);
+    // The expense row itself stays — cancelled, not gone — same as every other
+    // cancelled document in this app keeps its own content.
+    const [expenseRow] = await db.select().from(schema.expenses).where(eq(schema.expenses.id, accId));
+    expect(expenseRow).toBeTruthy();
+    expect(expenseRow.status).toBe('Cancelled');
 
+    // The join row to the recurring template is still removed — it's a workflow marker,
+    // not a financial document, and removing it frees the template/month slot to post again.
     const postingRows = await db.select().from(schema.recurringPostings).where(eq(schema.recurringPostings.id, postingId));
     expect(postingRows.length).toBe(0);
   });
 
   it('404s deleting an accrual that does not exist', async () => {
     const { status, body } = await api(`/api/transactions/accruals/${generateId()}`, { method: 'DELETE' });
-    expect(status).toBe(500);
+    expect(status).toBe(404);
     expect(body.error).toMatch(/not found/);
   });
 });

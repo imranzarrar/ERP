@@ -75,10 +75,12 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
       .filter(e => e.date >= startDate && e.date <= endDate && (selectedVendorId === 'ALL' || e.vendorId === selectedVendorId))
       .map(e => {
         const vend = db.vendors.find(v => v.id === e.vendorId);
-        return { expenseNumber: e.expenseNumber, date: e.date, vendorName: vend?.name || t('Cash Vendor'), classification: e.classification || e.type, paymentStatus: e.paymentStatus, amount: e.amount };
+        return { expenseNumber: e.expenseNumber, date: e.date, vendorName: vend?.name || t('Cash Vendor'), classification: e.classification || e.type, paymentStatus: e.paymentStatus, status: e.status, amount: e.amount };
       })
       .sort((a, b) => a.date.localeCompare(b.date));
-    return { rows, totalAmount: rows.reduce((s, r) => s + r.amount, 0) };
+    // Cancelled expenses stay visible in the row list (still findable there) but must
+    // never inflate the printed total — same convention as vatReturn.ts/ReportViewer.tsx.
+    return { rows, totalAmount: rows.filter(r => r.status === 'Active').reduce((s, r) => s + r.amount, 0) };
   };
 
   // 2. Vendor Statement — combines both purchasing paths this app has: simple Expenses
@@ -115,7 +117,9 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
         return { poNumber: po.poNumber, date: po.date, vendorName: vend?.name || '', status: po.status, totalAmount: Number(po.totalAmount), ageDays: isOpen ? daysBetween(TODAY, po.date) : null };
       })
       .sort((a: any, b: any) => a.date.localeCompare(b.date));
-    return { rows, totalAmount: rows.reduce((s: number, r: any) => s + r.totalAmount, 0) };
+    // Cancelled POs stay visible (status column already shows them) but never count
+    // toward the printed total.
+    return { rows, totalAmount: rows.filter((r: any) => r.status !== 'Cancelled').reduce((s: number, r: any) => s + r.totalAmount, 0) };
   };
 
   // 4. GRN vs. PO Variance — ordered vs. actually received quantity per PO line, summed

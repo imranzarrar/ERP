@@ -5,6 +5,7 @@ import { eq, and, isNull, inArray } from 'drizzle-orm';
 import { generateId } from '../../src/id.js';
 import { getAndIncrementDocumentNumber } from './documentNumbering.js';
 import { toBaseQuantity, toBaseUnitCost } from './uomConversion.js';
+import { branchAccessOk } from './authz.js';
 
 // Round-half-up to 2 decimals. Applied after every intermediate step in a money
 // calculation chain (not just once at the end via .toFixed(2)) so the value written to
@@ -507,72 +508,124 @@ export async function syncVoucherForExpense(tx: any, expenseId: string, companyI
       });
     }
   } else {
+    // Always post a genuine Reversal voucher — never hard-delete the original Payment
+    // voucher, even for a same-open-month correction. A hard delete leaves no trace
+    // that money was ever paid out and later undone; a Reversal keeps that full history
+    // in the ledger regardless of when the correction happened.
     if (existingVoucher) {
-      // Check if voucher's month is closed
-      const voucherMonthId = existingVoucher.date.substring(0, 7);
-      const [voucherMonth] = await tx.select()
-        .from(schema.fiscalMonths)
+      const [existingReversal] = await tx.select()
+        .from(schema.vouchers)
         .where(
           and(
-            eq(schema.fiscalMonths.id, voucherMonthId),
-            eq(schema.fiscalMonths.companyId, companyId)
+            eq(schema.vouchers.referenceType, 'Expense'),
+            eq(schema.vouchers.referenceId, expenseId),
+            eq(schema.vouchers.type, 'Reversal')
           )
         );
-      const isVoucherMonthClosed = !voucherMonth || voucherMonth.status?.toLowerCase() !== 'open';
 
-      if (isVoucherMonthClosed) {
-        // Find existing reversal
-        const [existingReversal] = await tx.select()
-          .from(schema.vouchers)
+      if (!existingReversal) {
+        const [openMonth] = await tx.select()
+          .from(schema.fiscalMonths)
           .where(
             and(
-              eq(schema.vouchers.referenceType, 'Expense'),
-              eq(schema.vouchers.referenceId, expenseId),
-              eq(schema.vouchers.type, 'Reversal')
+              eq(schema.fiscalMonths.status, 'Open'),
+              eq(schema.fiscalMonths.companyId, companyId)
             )
-          );
+          )
+          .limit(1);
 
-        if (!existingReversal) {
-          const [openMonth] = await tx.select()
-            .from(schema.fiscalMonths)
-            .where(
-              and(
-                eq(schema.fiscalMonths.status, 'Open'),
-                eq(schema.fiscalMonths.companyId, companyId)
-              )
-            )
-            .limit(1);
-
-          const todayStr = new Date().toISOString().split('T')[0];
-          let finalReversalDate = todayStr;
-          if (openMonth) {
-            finalReversalDate = todayStr.startsWith(openMonth.id) 
-              ? todayStr 
-              : (data.date && data.date.startsWith(openMonth.id) ? data.date : openMonth.id + "-01");
-          }
-
-          const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', finalReversalDate, existingVoucher.branchId || null);
-          await tx.insert(schema.vouchers).values({
-            id: generateId(),
-            voucherNumber,
-            type: 'Reversal',
-            date: finalReversalDate,
-            bankId: existingVoucher.bankId,
-            amount: existingVoucher.amount,
-            description: `Reversal voucher for cancelled expense ${data.expenseNumber || ''} (Original: ${existingVoucher.voucherNumber})`,
-            referenceType: 'Expense',
-            referenceId: expenseId,
-            companyId: companyId,
-            branchId: existingVoucher.branchId || null,
-            createdById: userId,
-            createdAt: new Date(),
-          });
+        const todayStr = new Date().toISOString().split('T')[0];
+        let finalReversalDate = todayStr;
+        if (openMonth) {
+          finalReversalDate = todayStr.startsWith(openMonth.id)
+            ? todayStr
+            : (data.date && data.date.startsWith(openMonth.id) ? data.date : openMonth.id + "-01");
         }
-      } else {
-        await tx.delete(schema.vouchers).where(eq(schema.vouchers.id, existingVoucher.id));
+
+        const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', finalReversalDate, existingVoucher.branchId || null);
+        await tx.insert(schema.vouchers).values({
+          id: generateId(),
+          voucherNumber,
+          type: 'Reversal',
+          date: finalReversalDate,
+          bankId: existingVoucher.bankId,
+          amount: existingVoucher.amount,
+          description: `Reversal voucher for cancelled expense ${data.expenseNumber || ''} (Original: ${existingVoucher.voucherNumber})`,
+          referenceType: 'Expense',
+          referenceId: expenseId,
+          companyId: companyId,
+          branchId: existingVoucher.branchId || null,
+          createdById: userId,
+          createdAt: new Date(),
+        });
       }
     }
   }
+}
+
+// Shared cancel logic for a real expense (POST /expenses/:id/cancel) AND the accrual
+// "delete" route (DELETE /accruals/:id) — both used to be separate implementations (the
+// accrual route hard-deleted the row entirely instead of cancelling it), which is exactly
+// how the two paths drifted apart. Requires an open fiscal month, breaks the accrual<->
+// actual settlement link in either direction, and posts a Reversal voucher (dated per the
+// open-month-aware fallback) if a Payment voucher was active — ports src/dbStore.ts's
+// original cancelExpense exactly. Throws {status, message} on failure for the caller to
+// respond with directly; the line items and any linked recurringPostings row are left to
+// the caller, since the accrual route deliberately still removes the recurringPostings
+// join row (a workflow marker, not the financial document itself) while a plain expense
+// cancel has no such row to consider.
+export async function cancelExpense(tx: any, req: any, id: string, companyId: string): Promise<{ expenseNumber: string }> {
+  const [expense] = await tx.select().from(schema.expenses)
+    .where(and(eq(schema.expenses.id, id), eq(schema.expenses.companyId, companyId)));
+  if (!expense) { const err: any = new Error('Expense not found.'); err.status = 404; throw err; }
+  if (!branchAccessOk(req, expense.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
+  if (expense.status === 'Cancelled') { const err: any = new Error('Expense is already cancelled.'); err.status = 400; throw err; }
+
+  const openMonths = await tx.select().from(schema.fiscalMonths)
+    .where(and(eq(schema.fiscalMonths.companyId, companyId), eq(schema.fiscalMonths.status, 'Open')));
+  const openMonth = openMonths.sort((a: any, b: any) => a.id.localeCompare(b.id))[0];
+  if (!openMonth) {
+    const err: any = new Error('There is no open fiscal month.');
+    err.status = 400;
+    throw err;
+  }
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const finalReversalDate = todayStr.startsWith(openMonth.id)
+    ? todayStr
+    : (expense.date.startsWith(openMonth.id) ? expense.date : openMonth.id + '-01');
+
+  await tx.update(schema.expenses).set({ status: 'Cancelled' }).where(eq(schema.expenses.id, id));
+
+  if (expense.type === 'Accrual' && expense.settledExpenseId) {
+    await tx.update(schema.expenses).set({ originAccrualId: null }).where(eq(schema.expenses.id, expense.settledExpenseId));
+  }
+  if (expense.type === 'Actual' && expense.originAccrualId) {
+    await tx.update(schema.expenses).set({ accrualSettled: false, settledExpenseId: null }).where(eq(schema.expenses.id, expense.originAccrualId));
+  }
+
+  const [activePayment] = await tx.select().from(schema.vouchers)
+    .where(and(eq(schema.vouchers.referenceId, id), eq(schema.vouchers.referenceType, 'Expense'), eq(schema.vouchers.type, 'Payment')));
+  if (activePayment) {
+    const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', finalReversalDate, activePayment.branchId || expense.branchId);
+    await tx.insert(schema.vouchers).values({
+      id: generateId(),
+      voucherNumber,
+      type: 'Reversal',
+      date: finalReversalDate,
+      bankId: activePayment.bankId,
+      amount: activePayment.amount,
+      description: `Reversal voucher for cancelled expense ${expense.expenseNumber} (Original: ${activePayment.voucherNumber})`,
+      referenceType: 'Expense',
+      referenceId: id,
+      createdById: req.user.id,
+      createdAt: new Date(),
+      companyId,
+      branchId: activePayment.branchId || expense.branchId || null,
+    });
+  }
+
+  return { expenseNumber: expense.expenseNumber };
 }
 
 export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyId: string, data: any, userId: string) {
@@ -643,69 +696,56 @@ export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyI
       });
     }
   } else {
+    // Always post a genuine Reversal voucher — never hard-delete the original Receipt
+    // voucher, even for a same-open-month correction. A hard delete leaves no trace
+    // that money was ever received and later undone; a Reversal keeps that full history
+    // in the ledger regardless of when the correction happened.
     if (existingVoucher) {
-      // Check if voucher's month is closed
-      const voucherMonthId = existingVoucher.date.substring(0, 7);
-      const [voucherMonth] = await tx.select()
-        .from(schema.fiscalMonths)
+      const [existingReversal] = await tx.select()
+        .from(schema.vouchers)
         .where(
           and(
-            eq(schema.fiscalMonths.id, voucherMonthId),
-            eq(schema.fiscalMonths.companyId, companyId)
+            eq(schema.vouchers.referenceType, 'Invoice'),
+            eq(schema.vouchers.referenceId, invoiceId),
+            eq(schema.vouchers.type, 'Reversal')
           )
         );
-      const isVoucherMonthClosed = !voucherMonth || voucherMonth.status?.toLowerCase() !== 'open';
 
-      if (isVoucherMonthClosed) {
-        // Find existing reversal
-        const [existingReversal] = await tx.select()
-          .from(schema.vouchers)
+      if (!existingReversal) {
+        const [openMonth] = await tx.select()
+          .from(schema.fiscalMonths)
           .where(
             and(
-              eq(schema.vouchers.referenceType, 'Invoice'),
-              eq(schema.vouchers.referenceId, invoiceId),
-              eq(schema.vouchers.type, 'Reversal')
+              eq(schema.fiscalMonths.status, 'Open'),
+              eq(schema.fiscalMonths.companyId, companyId)
             )
-          );
+          )
+          .limit(1);
 
-        if (!existingReversal) {
-          const [openMonth] = await tx.select()
-            .from(schema.fiscalMonths)
-            .where(
-              and(
-                eq(schema.fiscalMonths.status, 'Open'),
-                eq(schema.fiscalMonths.companyId, companyId)
-              )
-            )
-            .limit(1);
-
-          const todayStr = new Date().toISOString().split('T')[0];
-          let finalReversalDate = todayStr;
-          if (openMonth) {
-            finalReversalDate = todayStr.startsWith(openMonth.id) 
-              ? todayStr 
-              : (data.date && data.date.startsWith(openMonth.id) ? data.date : openMonth.id + "-01");
-          }
-
-          const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', finalReversalDate, existingVoucher.branchId || null);
-          await tx.insert(schema.vouchers).values({
-            id: generateId(),
-            voucherNumber,
-            type: 'Reversal',
-            date: finalReversalDate,
-            bankId: existingVoucher.bankId,
-            amount: existingVoucher.amount,
-            description: `Reversal voucher for cancelled invoice ${data.invoiceNumber || ''} (Original: ${existingVoucher.voucherNumber})`,
-            referenceType: 'Invoice',
-            referenceId: invoiceId,
-            companyId: companyId,
-            branchId: existingVoucher.branchId || null,
-            createdById: userId,
-            createdAt: new Date(),
-          });
+        const todayStr = new Date().toISOString().split('T')[0];
+        let finalReversalDate = todayStr;
+        if (openMonth) {
+          finalReversalDate = todayStr.startsWith(openMonth.id)
+            ? todayStr
+            : (data.date && data.date.startsWith(openMonth.id) ? data.date : openMonth.id + "-01");
         }
-      } else {
-        await tx.delete(schema.vouchers).where(eq(schema.vouchers.id, existingVoucher.id));
+
+        const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', finalReversalDate, existingVoucher.branchId || null);
+        await tx.insert(schema.vouchers).values({
+          id: generateId(),
+          voucherNumber,
+          type: 'Reversal',
+          date: finalReversalDate,
+          bankId: existingVoucher.bankId,
+          amount: existingVoucher.amount,
+          description: `Reversal voucher for cancelled invoice ${data.invoiceNumber || ''} (Original: ${existingVoucher.voucherNumber})`,
+          referenceType: 'Invoice',
+          referenceId: invoiceId,
+          companyId: companyId,
+          branchId: existingVoucher.branchId || null,
+          createdById: userId,
+          createdAt: new Date(),
+        });
       }
     }
   }

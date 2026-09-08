@@ -726,7 +726,27 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  // --- Auto-Audit Interceptor Middleware ---
+  // --- Auto-Audit Fallback Middleware ---
+  // Previously this held ~15 explicit per-entity branches trying to read the right
+  // request-body fields for each route (e.g. "transactions/invoices" reading
+  // req.body.id/invoiceNumber/customerId at the TOP level). Real proof this had gone
+  // wrong: every invoice/quotation write — create, cancel, pay, credit-note, ALL of
+  // them — collapsed into an identical `CREATE_INVOICE` row with `entity_id: null,
+  // details: {}`, because the real payload nests everything under req.body.invoiceData/
+  // quotationData, and action-routes like /cancel, /paid, /note send no `id` at all. A
+  // second bug in the same code: entityId was blindly set from req.body.id even when
+  // that value wasn't a UUID (fiscalMonths' own id is a string like "2026-09"),
+  // silently failing every OPEN_FISCAL_MONTH/CLOSE_FISCAL_MONTH insert inside
+  // recordAuditLog's own try/catch since day one.
+  //
+  // The real fix is precise, per-route `recordAuditLog(...)` calls placed directly in
+  // each route handler (see server/routes/transactions.ts, expenses.ts, etc.) — each one
+  // reuses the row the route already fetched before mutating it, so the real database id
+  // and human document number (invoiceNumber, expenseNumber, ...) are correct by
+  // construction instead of guessed from the request body after the fact. This
+  // middleware now does only ONE job: for any route that has NOT yet been given an
+  // explicit call (req._auditLogged stays unset), log a generic-but-real fallback
+  // instead of staying silent — never silent, never doubled up against an explicit call.
   app.use(async (req: any, res: any, next: any) => {
     const method = req.method;
     const path = req.path;
@@ -744,161 +764,21 @@ async function startServer() {
     res.json = function (body: any) {
       res.json = originalJson;
 
-      if (res.statusCode >= 200 && res.statusCode < 300) {
+      if (res.statusCode >= 200 && res.statusCode < 300 && !req._auditLogged) {
         try {
-          let action = '';
-          let entityType = '';
-          let entityId = req.body?.id || null;
-          let details: any = {};
-
           const segments = path.split('/').filter(Boolean);
           const cleanSegments = segments[0] === 'api' ? segments.slice(1) : segments;
           const baseEntity = cleanSegments[0];
-          const subEntity = cleanSegments[1];
 
-          if (baseEntity === 'customers') {
-            entityType = 'customer';
-            if (method === 'POST') {
-              action = req.body?.id ? 'UPDATE_CUSTOMER' : 'CREATE_CUSTOMER';
-              details = { name: req.body?.name, email: req.body?.email };
-            } else if (method === 'DELETE') {
-              entityId = cleanSegments[1] || null;
-              action = 'DELETE_CUSTOMER';
-              details = { id: entityId };
-            }
-          } else if (baseEntity === 'vendors') {
-            entityType = 'vendor';
-            if (method === 'POST') {
-              action = req.body?.id ? 'UPDATE_VENDOR' : 'CREATE_VENDOR';
-              details = { name: req.body?.name, email: req.body?.email };
-            } else if (method === 'DELETE') {
-              entityId = cleanSegments[1] || null;
-              action = 'DELETE_VENDOR';
-              details = { id: entityId };
-            }
-          } else if (baseEntity === 'products') {
-            entityType = 'product';
-            if (method === 'POST') {
-              action = req.body?.id ? 'UPDATE_PRODUCT' : 'CREATE_PRODUCT';
-              details = { name: req.body?.name, price: req.body?.sellingPrice };
-            } else if (method === 'DELETE') {
-              entityId = cleanSegments[1] || null;
-              action = 'DELETE_PRODUCT';
-              details = { id: entityId };
-            }
-          } else if (baseEntity === 'users') {
-            entityType = 'user';
-            if (method === 'POST') {
-              action = req.body?.id ? 'UPDATE_USER' : 'CREATE_USER';
-              details = { username: req.body?.username, role: req.body?.role };
-            } else if (method === 'DELETE') {
-              entityId = cleanSegments[1] || null;
-              action = 'DELETE_USER';
-              details = { id: entityId };
-            }
-          } else if (baseEntity === 'banks') {
-            entityType = 'bank';
-            if (method === 'POST') {
-              action = 'SAVE_BANK_ACCOUNT';
-              details = { bankName: req.body?.bankName, accountNumber: req.body?.accountNumber };
-            }
-          } else if (baseEntity === 'tax-slabs') {
-            entityType = 'tax_slab';
-            if (method === 'POST') {
-              action = 'SAVE_TAX_SLAB';
-              details = { name: req.body?.name, rate: req.body?.rate };
-            }
-          } else if (baseEntity === 'companies') {
-            entityType = 'company';
-            if (method === 'POST') {
-              action = 'SAVE_COMPANY_SETTINGS';
-              details = { name: req.body?.name };
-            }
-          } else if (baseEntity === 'transactions') {
-            if (subEntity === 'quotations') {
-              entityType = 'quotation';
-              if (method === 'POST') {
-                action = req.body?.id ? 'UPDATE_QUOTATION' : 'CREATE_QUOTATION';
-                details = { quotationNumber: req.body?.quotationNumber, date: req.body?.date, customerId: req.body?.customerId, total: req.body?.totalAmount };
-              } else if (method === 'DELETE') {
-                entityId = cleanSegments[2] || null;
-                action = 'DELETE_QUOTATION';
-                details = { id: entityId };
-              }
-            } else if (subEntity === 'invoices') {
-              entityType = 'invoice';
-              if (method === 'POST') {
-                action = req.body?.id ? 'UPDATE_INVOICE' : 'CREATE_INVOICE';
-                details = { invoiceNumber: req.body?.invoiceNumber, date: req.body?.date, customerId: req.body?.customerId, total: req.body?.totalAmount, paymentStatus: req.body?.paymentStatus };
-              } else if (method === 'DELETE') {
-                entityId = cleanSegments[2] || null;
-                action = 'DELETE_INVOICE';
-                details = { id: entityId };
-              }
-            } else if (subEntity === 'vouchers') {
-              entityType = 'voucher';
-              if (method === 'POST') {
-                action = 'SAVE_VOUCHER';
-                details = { voucherNumber: req.body?.voucherNumber, type: req.body?.type, amount: req.body?.amount };
-              }
-            } else if (subEntity === 'investors') {
-              entityType = 'investor';
-              if (method === 'POST') {
-                action = 'SAVE_INVESTOR';
-                details = { name: req.body?.name, type: req.body?.type };
-              }
-            } else if (subEntity === 'months') {
-              entityType = 'fiscal_month';
-              if (method === 'POST') {
-                action = req.body?.action === 'open' ? 'OPEN_FISCAL_MONTH' : 'CLOSE_FISCAL_MONTH';
-                entityId = req.body?.monthId || null;
-                details = { monthId: req.body?.monthId };
-              }
-            }
-          } else if (baseEntity === 'expenses') {
-            entityType = 'expense';
-            if (method === 'POST') {
-              action = req.body?.id ? 'UPDATE_EXPENSE' : 'CREATE_EXPENSE';
-              details = { expenseNumber: req.body?.expenseNumber, amount: req.body?.amount, vendorId: req.body?.vendorId };
-            } else if (method === 'DELETE') {
-              entityId = cleanSegments[1] || null;
-              action = 'DELETE_EXPENSE';
-              details = { id: entityId };
-            }
-          } else if (baseEntity === 'pos') {
-            if (subEntity === 'shifts') {
-              entityType = 'pos_shift';
-              if (method === 'POST') {
-                if (path.endsWith('/open')) {
-                  action = 'OPEN_POS_SHIFT';
-                  details = { openingCash: req.body?.openingCash };
-                } else if (path.endsWith('/close')) {
-                  action = 'CLOSE_POS_SHIFT';
-                  details = { closingCash: req.body?.closingCash };
-                }
-              }
-            } else if (subEntity === 'held') {
-              entityType = 'pos_held_invoice';
-              if (method === 'POST') {
-                action = 'HOLD_POS_INVOICE';
-                details = { reference: req.body?.reference };
-              }
-            } else if (subEntity === 'sale') {
-              entityType = 'pos_sale';
-              if (method === 'POST') {
-                action = 'SUBMIT_POS_SALE';
-                details = { invoiceNumber: req.body?.invoiceNumber, total: req.body?.total };
-              }
-            }
-          }
-
-          if (!action) {
-            action = `${method}_${baseEntity?.toUpperCase() || 'UNKNOWN'}`;
-            entityType = baseEntity || 'system';
-            details = { url: req.originalUrl };
-          }
-
-          recordAuditLog(req, action, entityType, entityId, details);
+          // A generic, honest fallback — not a guess at the specific action, just an
+          // accurate record that SOMETHING happened on this route, with the real URL for
+          // whoever needs to trace it further. Any route worth a precise action name gets
+          // one via an explicit recordAuditLog(...) call instead, which sets
+          // req._auditLogged and skips this block entirely.
+          const action = `${method}_${baseEntity?.toUpperCase() || 'UNKNOWN'}`;
+          const entityType = baseEntity || 'system';
+          const details = { url: req.originalUrl };
+          recordAuditLog(req, action, entityType, null, details);
         } catch (err) {
           console.error('[Audit Interceptor Error]', err);
         }
@@ -966,6 +846,16 @@ async function startServer() {
       if (req.query.entityType) {
         whereClause.push(eq(schema.auditLogs.entityType, String(req.query.entityType)));
       }
+      // Real target-user filter — deliberately a different query param name than the
+      // client's own `userId` (that one identifies the CALLER for a now-removed pseudo-
+      // auth scheme and must keep being ignored here, or every existing viewer request
+      // would suddenly start silently filtering down to "only my own actions"). A plain
+      // eq() on a malformed non-UUID string throws a raw Postgres error, so validate the
+      // shape first and just ignore an invalid value rather than 500ing the whole request.
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (req.query.filterUserId && UUID_RE.test(String(req.query.filterUserId))) {
+        whereClause.push(eq(schema.auditLogs.userId, String(req.query.filterUserId)));
+      }
       if (req.query.search) {
         const searchPattern = `%${String(req.query.search).toLowerCase()}%`;
         whereClause.push(or(
@@ -975,13 +865,29 @@ async function startServer() {
           ilike(schema.auditLogs.details, searchPattern)
         ));
       }
+      // Keyset ("load older") pagination — a page passes back the oldest row's
+      // createdAt as `before`, and the next request excludes anything at or after it.
+      // Deliberately not OFFSET-based: this table is shared across every company on the
+      // platform and only grows, so an OFFSET would mean re-scanning and discarding an
+      // ever-larger prefix on every subsequent page.
+      if (req.query.before) {
+        const beforeDate = new Date(String(req.query.before));
+        if (!isNaN(beforeDate.getTime())) {
+          whereClause.push(lt(schema.auditLogs.createdAt, beforeDate));
+        }
+      }
+
+      // Defaults to the last 100 records (multi-tenant table, grows across every
+      // company) — a caller may request fewer/more up to a hard cap of 500 per page.
+      const requestedLimit = Number(req.query.limit) || 100;
+      const pageLimit = Math.min(Math.max(requestedLimit, 1), 500);
 
       let baseQuery = db.select().from(schema.auditLogs);
       let finalQuery = whereClause.length > 0 ? baseQuery.where(and(...whereClause)) : baseQuery;
 
       const logs = await finalQuery
         .orderBy(desc(schema.auditLogs.createdAt))
-        .limit(200);
+        .limit(pageLimit);
 
       res.json(logs);
     } catch (error: any) {

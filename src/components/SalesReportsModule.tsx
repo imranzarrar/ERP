@@ -96,7 +96,11 @@ export default function SalesReportsModule({ db, defaultReportType, onPrintDoc }
         };
       })
       .sort((a, b) => a.date.localeCompare(b.date));
-    const totalSales = rows.reduce((s, r) => s + r.grandTotal, 0);
+    // Cancelled documents stay visible in the row list above (so one can still be found
+    // there, clearly marked) but must never inflate the printed total — matches the
+    // convention already used correctly elsewhere (e.g. server/lib/vatReturn.ts,
+    // ReportViewer.tsx, dbStore.ts's calculateMonthPnL).
+    const totalSales = rows.filter(r => r.status === 'Active').reduce((s, r) => s + r.grandTotal, 0);
     return { rows, totalSales };
   };
 
