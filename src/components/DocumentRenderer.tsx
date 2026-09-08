@@ -1565,14 +1565,19 @@ export default function DocumentRenderer({
                 </div>
                )}
               </td>
-              <td className={`${cellPad} px-3 text-center text-slate-600 w-24 whitespace-nowrap`}>
+              <td className={`${cellPad} px-3 text-center text-slate-600 w-24`}>
                {item.discountAmount > 0 ? (
-                <span>
-                 <span className="line-through text-slate-400 me-1">{fmt(item.unitCost)}</span>
-                 <span className="font-bold text-slate-700">{fmt(itemNetCost)}</span>
-                </span>
+                // Two explicit stacked lines, not one nowrap-forced line — "77.00 SAR" +
+                // "76.00 SAR" together don't fit this column's width at normal invoice
+                // font size, and whitespace-nowrap on one line just forces an overflow/
+                // overlap instead of wrapping. block+text-xs keeps both numbers fully
+                // legible on their own line regardless of column width.
+                <div className="whitespace-nowrap">
+                 <div className="line-through text-slate-400 text-[10px]">{fmt(item.unitCost)}</div>
+                 <div className="font-bold text-slate-700">{fmt(itemNetCost)}</div>
+                </div>
                ) : (
-                fmt(item.unitCost)
+                <span className="whitespace-nowrap">{fmt(item.unitCost)}</span>
                )}
               </td>
               <td className={`${cellPad} px-3 text-center text-slate-600 w-20 whitespace-nowrap`}>
