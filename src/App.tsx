@@ -1473,7 +1473,7 @@ type NavSection = {
  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shrink-0">
  <div>
  <h2 className="text-xl font-extrabold text-slate-900 tracking-tight font-sans capitalize">
- {activeTab === 'dashboard' ? t('Workshop Overview') :
+ {activeTab === 'dashboard' ? t('Business Overview') :
  activeTab.startsWith('reports-') ? (REPORT_NAV_TITLES[activeTab] || t('Financial Reports')) :
  activeTab === 'customers' ? t('Customer Registry (CRM)') :
  activeTab === 'customers-add' ? (editTarget?.module === 'customers' ? t('Edit Customer') : t('New Customer')) :
@@ -1516,18 +1516,18 @@ type NavSection = {
  </h2>
  <p className="text-xs text-slate-400 mt-1">
  {activeTab === 'dashboard' && t('Aggregated operational data, P&L graphs, and user quotas.')}
- {activeTab === 'quotations' && t('Draft fabrication estimates and plywood cutting blueprints.')}
- {activeTab === 'quotations-add' && t('Draft fabrication estimates and plywood cutting blueprints.')}
+ {activeTab === 'quotations' && t('Draft cost estimates and proposals for your customers.')}
+ {activeTab === 'quotations-add' && t('Draft cost estimates and proposals for your customers.')}
  {activeTab === 'invoices' && t('Finalise billing, issue commercial sales receipts, and trace cash receipts.')}
  {activeTab === 'invoices-add' && t('Finalise billing, issue commercial sales receipts, and trace cash receipts.')}
- {activeTab === 'expenses' && t('Procure tool bits, sheets, and audit workshop costs.')}
- {activeTab === 'expenses-add' && t('Procure tool bits, sheets, and audit workshop costs.')}
+ {activeTab === 'expenses' && t('Track purchases, supplies, and operating costs.')}
+ {activeTab === 'expenses-add' && t('Track purchases, supplies, and operating costs.')}
  {activeTab === 'recurring' && t('Manage salaries, rent ledger templates, and outstanding accruals.')}
  {activeTab.startsWith('reports-') && (REPORT_NAV_DESCRIPTIONS[activeTab] || '')}
  {activeTab === 'customers' && t('Manage commercial accounts, client contacts, and outstanding customer VAT balances.')}
  {activeTab === 'vendors' && t('Manage suppliers list, procurement contacts, and supplier details.')}
  {activeTab === 'pos' && t('Fast and responsive POS interface for retail counter sales.')}
-  {activeTab === 'products' && t('Define standard plywood/acrylic specifications, custom cuts, and pricing tiers.')}
+  {activeTab === 'products' && t('Define product specifications, variants, and pricing tiers.')}
  {activeTab === 'categories' && t('Define product hierarchy and Map material types to specific GL accounting groups.')}
  {activeTab === 'units' && t('Configure standardized weights, dimensions, volumes, and UoM conversion units.')}
  {(activeTab === 'modifier-groups' || activeTab === 'modifier-groups-add') && t('Reusable POS customization options — Size, Milk, Extra Shot — attached optionally to whichever products need them.')}

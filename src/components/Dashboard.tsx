@@ -417,7 +417,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
  <div>
  <span className="px-2.5 py-0.5 bg-indigo-500/20 border border-indigo-400/30 text-indigo-400 rounded-full text-[10px] font-bold uppercase tracking-wider">
- {currentUser.role === 'admin' ? t('Administrative Portal') : t('Staff Fabrication Workshop')}
+ {currentUser.role === 'admin' ? t('Administrative Portal') : t('Staff Workspace')}
  </span>
  <h2 className="text-xl md:text-2xl font-bold mt-2 font-sans tracking-tight">
  {t('Welcome back, ')}{currentUser.username}!
@@ -773,7 +773,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  <div className="col-span-1 md:col-span-8 bg-white border border-slate-200/60 rounded-[28px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl">
  <div className="flex justify-between items-center mb-6">
  <div>
- <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">{t("Workshop Activity Trends")}</h4>
+ <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">{t("Business Activity Trends")}</h4>
  <p className="text-[10px] text-slate-400">{t("Comparing issued sales vs expenses throughout the period")}</p>
  </div>
  <div className="flex items-center gap-3 text-[10px] font-bold">
@@ -1096,7 +1096,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
 
  <div className="bg-white border border-slate-200/60 rounded-[28px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl hover:shadow-xl transition-shadow duration-300 flex items-center justify-between">
  <div className="space-y-1">
- <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t("Logged Workshop Costs")}</span>
+ <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t("Logged Operating Costs")}</span>
  <h3 className="text-2xl font-extrabold text-slate-900">{currencySymbol} {totalExpenseActual.toFixed(2)}</h3>
  <p className="text-[10px] text-rose-600 font-bold">{t("Procurement sheets registered")}</p>
  </div>
@@ -1187,13 +1187,13 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
 
  {/* Quick Actions Panel */}
  <div className="md:col-span-4 bg-white border border-slate-200/60 rounded-[28px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl">
- <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4">{t("Quick Workshop Actions")}</h4>
+ <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-4">{t("Quick Actions")}</h4>
  <div className="space-y-2">
  <button
  onClick={() => onNavigate('quotations')}
  className="w-full p-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 text-indigo-900 rounded-xl text-xs font-bold transition text-start flex justify-between items-center"
  >
- <span>{t("Create Custom Cutting Estimate")}</span>
+ <span>{t("Create New Quotation")}</span>
  <Plus className="w-4 h-4 text-indigo-600" />
  </button>
  <button
@@ -1207,7 +1207,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  onClick={() => onNavigate('expenses')}
  className="w-full p-3 bg-rose-50 hover:bg-rose-100 border border-rose-100 text-rose-900 rounded-xl text-xs font-bold transition text-start flex justify-between items-center"
  >
- <span>{t("Document Workshop Bit procurement")}</span>
+ <span>{t("Record a New Expense")}</span>
  <Plus className="w-4 h-4 text-rose-600" />
  </button>
  </div>

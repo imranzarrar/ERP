@@ -2028,6 +2028,12 @@
     "ur": "عمارت نمبر*"
   },
   {
+    "key": "Business Activity Trends",
+    "en": "Business Activity Trends",
+    "ar": "اتجاهات النشاط التجاري",
+    "ur": "کاروباری سرگرمی کے رجحانات"
+  },
+  {
     "key": "Business Expenses",
     "en": "Business Expenses",
     "ar": "مصاريف الأعمال",
@@ -2038,6 +2044,12 @@
     "en": "Business Industry Category",
     "ar": "فئة النشاط التجاري",
     "ur": "کاروباری صنعت کیٹیگری"
+  },
+  {
+    "key": "Business Overview",
+    "en": "Business Overview",
+    "ar": "نظرة عامة على الأعمال",
+    "ur": "کاروبار کا جائزہ"
   },
   {
     "key": "but target was",
@@ -3228,6 +3240,12 @@
     "ur": "نئی پروڈکٹ بنائیں"
   },
   {
+    "key": "Create New Quotation",
+    "en": "Create New Quotation",
+    "ar": "إنشاء عرض سعر جديد",
+    "ur": "نیا کوٹیشن بنائیں"
+  },
+  {
     "key": "Create New Role",
     "en": "Create New Role",
     "ar": "إنشاء دور جديد",
@@ -4002,6 +4020,12 @@
     "ur": "مصنوعات کے درجہ بندی کی وضاحت کریں اور مادی اقسام کو مخصوص GL اکاؤنٹنگ گروپس کے ساتھ منسلک کریں۔"
   },
   {
+    "key": "Define product specifications, variants, and pricing tiers.",
+    "en": "Define product specifications, variants, and pricing tiers.",
+    "ar": "حدد مواصفات المنتج والمتغيرات ومستويات التسعير.",
+    "ur": "پروڈکٹ کی تفصیلات، ورائٹیز اور قیمتوں کی سطحیں متعین کریں۔"
+  },
+  {
     "key": "Define reusable, company-scoped permission sets. Assign one or more roles to a staff account instead of configuring permissions per user — a user's effective access is the union of every role they hold.",
     "en": "Define reusable, company-scoped permission sets. Assign one or more roles to a staff account instead of configuring permissions per user — a user's effective access is the union of every role they hold.",
     "ar": "تحديد مجموعات صلاحيات قابلة لإعادة الاستخدام خاصة بالشركة. أسند دورًا واحدًا أو أكثر لحساب الموظف بدلًا من تهيئة الصلاحيات لكل مستخدم على حدة — تكون الصلاحية الفعلية للمستخدم هي مجموع جميع الأدوار التي يحملها.",
@@ -4468,6 +4492,12 @@
     "en": "Draft & Issue Sales Invoice",
     "ar": "إصدار فاتورة مبيعات",
     "ur": "فروخت کی انوائس جاری کریں"
+  },
+  {
+    "key": "Draft cost estimates and proposals for your customers.",
+    "en": "Draft cost estimates and proposals for your customers.",
+    "ar": "إعداد تقديرات التكلفة والعروض لعملائك.",
+    "ur": "اپنے صارفین کے لیے لاگت کے تخمینے اور تجاویز تیار کریں۔"
   },
   {
     "key": "Draft fabrication estimates and plywood cutting blueprints.",
@@ -7678,6 +7708,12 @@
     "en": "Log New Expense",
     "ar": "تسجيل مصروف جديد",
     "ur": "نیا خرچ درج کریں"
+  },
+  {
+    "key": "Logged Operating Costs",
+    "en": "Logged Operating Costs",
+    "ar": "تكاليف التشغيل المسجلة",
+    "ur": "درج شدہ آپریٹنگ اخراجات"
   },
   {
     "key": "Logged Workshop Costs",
@@ -10950,6 +10986,12 @@
     "ur": "سہ ماہی"
   },
   {
+    "key": "Quick Actions",
+    "en": "Quick Actions",
+    "ar": "إجراءات سريعة",
+    "ur": "فوری اقدامات"
+  },
+  {
     "key": "Quick Print Toggles",
     "en": "Quick Print Toggles",
     "ar": "مفاتيح الطباعة السريعة",
@@ -11326,6 +11368,12 @@
     "en": "Recommended for stock tracking",
     "ar": "موصى به لتتبع المخزون",
     "ur": "اسٹاک ٹریکنگ کے لیے تجویز کردہ"
+  },
+  {
+    "key": "Record a New Expense",
+    "en": "Record a New Expense",
+    "ar": "تسجيل مصروف جديد",
+    "ur": "نیا خرچہ درج کریں"
   },
   {
     "key": "Record Bill Payment",
@@ -13002,6 +13050,12 @@
     "ur": "عملے کی تنخواہیں"
   },
   {
+    "key": "Staff Workspace",
+    "en": "Staff Workspace",
+    "ar": "مساحة عمل الموظف",
+    "ur": "اسٹاف ورک اسپیس"
+  },
+  {
     "key": "Staging",
     "en": "Staging",
     "ar": "بيئة تجريبية",
@@ -14080,6 +14134,12 @@
     "en": "Totals Summary:",
     "ar": "ملخص الإجماليات:",
     "ur": "کل خلاصہ:"
+  },
+  {
+    "key": "Track purchases, supplies, and operating costs.",
+    "en": "Track purchases, supplies, and operating costs.",
+    "ar": "تتبع المشتريات واللوازم وتكاليف التشغيل.",
+    "ur": "خریداریوں، سامان اور آپریٹنگ اخراجات کو ٹریک کریں۔"
   },
   {
     "key": "Trading Partners",
