@@ -103,14 +103,15 @@ describe('Company VAT number validation', () => {
   });
 });
 
-describe('Product description is mandatory', () => {
-  it('rejects a new product with no description', async () => {
+describe('Product description is optional', () => {
+  it('accepts a new product with no description at all', async () => {
     const res = await api(adminSessionId, '/api/products', {
       method: 'POST',
       body: JSON.stringify({ name: 'No Description Widget', unitPrice: 10, itemKind: 'item' }),
     });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/description/i);
+    expect(res.status).toBe(200);
+    const [row] = await db.select().from(schema.productsServices).where(eq(schema.productsServices.id, res.body.id));
+    expect(row.description).toBe('');
   });
 
   it('accepts a new product with a real description', async () => {
@@ -119,6 +120,8 @@ describe('Product description is mandatory', () => {
       body: JSON.stringify({ name: 'Described Widget', description: 'A real description', unitPrice: 10, itemKind: 'item' }),
     });
     expect(res.status).toBe(200);
+    const [row] = await db.select().from(schema.productsServices).where(eq(schema.productsServices.id, res.body.id));
+    expect(row.description).toBe('A real description');
   });
 });
 

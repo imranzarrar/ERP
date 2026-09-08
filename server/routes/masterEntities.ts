@@ -244,13 +244,14 @@ router.post('/products', async (req: any, res) => {
     if (data.salesPurchaseFlow !== undefined && ![0, 1, 2].includes(Number(data.salesPurchaseFlow))) {
       return res.status(400).json({ error: 'salesPurchaseFlow must be 0 (Both), 1 (Sales), or 2 (Purchase).' });
     }
-    // Mandatory going forward — the client form previously had no description field at
-    // all and silently saved an empty string on every create (schema.ts's description
-    // column is NOT NULL but had no application-layer requirement enforcing a real value).
-    if (!existing || data.description !== undefined) {
-      if (typeof data.description !== 'string' || !data.description.trim()) {
-        return res.status(400).json({ error: 'Description is required.' });
-      }
+    // Optional by product decision — the description field itself is real (added this
+    // session, MasterEntities.tsx), but filling it in is a choice, not a requirement.
+    // schema.ts's description column is still NOT NULL at the DB level, so a create that
+    // doesn't send one (or sends blank) still needs a real string, not undefined/null.
+    if (!existing && data.description === undefined) {
+      data.description = '';
+    } else if (data.description !== undefined) {
+      data.description = String(data.description).trim();
     }
 
     // The client (MasterEntities.tsx) already enforces size/dimension limits before

@@ -484,7 +484,6 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  e.preventDefault();
  if (!(editingId ? canUpdateProducts : canCreateProducts)) return triggerError('Only Administrator accounts can edit catalog products.');
  if (!prodName.trim()) return triggerError('Product name is required.');
- if (!prodDescription.trim()) return triggerError('Description is required.');
     if (prodIsPos && !prodCategoryId) return triggerError('Category is required when Enable for POS is checked.');
 
  const priceNum = parseFloat(prodPrice);
@@ -1452,9 +1451,8 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Description')}<span className="text-rose-500"> *</span></label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Description')}</label>
  <textarea
- required
  rows={2}
  placeholder="e.g. Ergonomic wireless mouse, 2.4GHz, includes USB receiver"
  value={prodDescription}
