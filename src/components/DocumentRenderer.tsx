@@ -690,7 +690,13 @@ export default function DocumentRenderer({
     <div className="text-[10px] leading-snug text-slate-900">
      <div className="text-center mb-1.5">
       {companySetup.logoUrl && (
-       <img src={companySetup.logoUrl} alt="" className="company-logo mx-auto mb-1 max-h-8 object-contain" />
+       // Inline style, not just the Tailwind class — a guaranteed size cap that still
+       // applies even if the print popup's cloned stylesheet fails to load for any
+       // reason (see the main A4 logo block's matching comment below for why this
+       // matters: a real production PDF was found with this exact class present but
+       // an unconstrained, page-dominating logo, consistent with the cloned
+       // stylesheet not having applied at all for that print job).
+       <img src={companySetup.logoUrl} alt="" className="company-logo mx-auto mb-1 max-h-8 object-contain" style={{ maxHeight: '32px', width: 'auto', height: 'auto', objectFit: 'contain' }} />
       )}
       <p className="font-bold text-[12px]">{companySetup.name}</p>
       {(branchAddressLine || companySetup.address) && (
@@ -934,7 +940,15 @@ export default function DocumentRenderer({
       else if (fWeight === 'bold') classes.push('font-bold');
       else if (fWeight === 'extrabold') classes.push('font-extrabold');
     }
-    if (block.props?.fontFamily) {
+    // Same RTL guard as getGlobalFontClass() above, for the same reason: none of
+    // sans/serif/display/mono/helvetica/calibri have real Arabic glyph coverage, so
+    // applying one of these per-block on an Arabic/Urdu document overrides the correct
+    // inherited Cairo font-family with an OS/browser fallback for every Arabic
+    // character on that block — confirmed live on a real production invoice (garbled,
+    // disconnected Arabic letters) via a template block with an explicit fontFamily
+    // override. getGlobalFontClass() already skips this for the whole document; this
+    // per-block override was added later without the same guard.
+    if (!isRTL && block.props?.fontFamily) {
       const fFamily = block.props.fontFamily;
       if (fFamily === 'sans') classes.push('font-sans');
       else if (fFamily === 'serif') classes.push('font-serif');
@@ -1005,7 +1019,19 @@ export default function DocumentRenderer({
            // square/vertical logo tower over the rest of the header. Capping both
            // means a square logo and a wide wordmark logo both settle at a sensible,
            // consistent size regardless of which shape a given company uploads.
+           //
+           // The inline `style` duplicates the Tailwind class values on purpose — a
+           // real production PDF was found with a large (AI-generated banner-style)
+           // logo rendered at its raw, unconstrained pixel size, blowing a single A4
+           // page out to roughly double its normal height. The print popup's classes
+           // all come from the cloned stylesheet (handlePrint()'s styleTags) — if that
+           // clone fails or hasn't finished for any reason, every Tailwind class on
+           // this element silently does nothing, but an inline style always applies
+           // regardless. Same belt-and-braces reasoning as the Cairo Arabic font's
+           // redundant inline @import in handlePrint() — keep both in sync if either
+           // numeric value ever changes.
            className="company-logo mb-2 max-h-16 max-w-[180px] w-auto h-auto object-contain"
+           style={{ maxHeight: '64px', maxWidth: '180px', width: 'auto', height: 'auto', objectFit: 'contain' }}
            referrerPolicy="no-referrer"
           />
          ) : (
