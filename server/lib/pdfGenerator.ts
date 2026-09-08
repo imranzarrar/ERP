@@ -46,6 +46,14 @@ export async function renderInvoicePdf(invoiceId: string, sessionId: string): Pr
     }, sessionId);
 
     const page = await context.newPage();
+    // Force print media BEFORE the page ever loads/mounts — otherwise the page renders
+    // once in normal screen context (any JS that measures its own width, e.g. a
+    // ResizeObserver-driven table column, bakes in a screen-context value) and only
+    // switches to print CSS at the moment page.pdf() is called, by which point some
+    // sizing may already be stale. Confirmed live: content overflowed the right edge of
+    // the page and got clipped on the left without this — a real horizontal-offset bug,
+    // not just a missing margin.
+    await page.emulateMedia({ media: 'print' });
     await page.goto(`${SELF_ORIGIN}/print/invoice/${invoiceId}`, { waitUntil: 'networkidle' });
 
     const errorEl = await page.$('[data-print-error="true"]');
@@ -67,17 +75,19 @@ export async function renderInvoicePdf(invoiceId: string, sessionId: string): Pr
     // but don't fail the whole PDF if this specific document has no QR block at all.
     await page.waitForSelector('[data-qr-ready="true"]', { timeout: 2000 }).catch(() => {});
 
-    // Explicit A4 + margin, not preferCSSPageSize — index.css's general @media print
-    // block only sets @page { margin: 0.5cm }, never a `size`; A4 sizing has only ever
-    // lived in DocumentRenderer.tsx's handlePrint() popup-specific injected <style>
-    // block, which this route doesn't go through at all (this is a real page navigation,
-    // not the popup). Without an explicit size here, Playwright silently defaults to US
-    // Letter. Matches handlePrint()'s own A4 geometry (0.4in margins) exactly.
-    const pdfBuffer = await page.pdf({
-      printBackground: true,
-      format: 'A4',
-      margin: { top: '0.4in', bottom: '0.4in', left: '0.4in', right: '0.4in' },
-    });
+    // A real bug found live: passing page.pdf()'s own `margin` option (0.4in) while this
+    // page's actual CSS still declares index.css's general @page { margin: 0.5cm } means
+    // Chromium LAYS OUT the content assuming one margin (0.5cm — the CSS the page
+    // actually has) but then PLACES that already-laid-out content into a page reserving a
+    // different, larger margin (the API's 0.4in) — content sized for the wider area
+    // doesn't fit the narrower one, so it overflowed the right edge and was clipped on
+    // the left. handlePrint()'s popup avoids this entirely by injecting its own matching
+    // @page rule so layout-time and placement-time margins are always the same value;
+    // this route never did that. Fixed the same way: inject the exact A4 @page rule
+    // BEFORE asking for the PDF, then let preferCSSPageSize read that same value back —
+    // one single source of truth for the geometry, never two numbers that can disagree.
+    await page.addStyleTag({ content: '@page { size: A4 portrait; margin: 0.4in; }' });
+    const pdfBuffer = await page.pdf({ printBackground: true, preferCSSPageSize: true });
     return pdfBuffer;
   } finally {
     await context.close();
