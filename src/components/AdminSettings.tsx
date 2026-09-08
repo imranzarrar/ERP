@@ -3189,9 +3189,9 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  </div>
 
  <div className="p-3 bg-amber-50/50 border border-amber-100/60 rounded-2xl">
- <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wide">⭐ Automatic Seed Provisioning</p>
+ <p className="text-[10px] font-bold text-amber-800 uppercase tracking-wide">⭐ {t('Automatic Seed Provisioning')}</p>
  <p className="text-[9px] text-amber-700 mt-1 leading-normal">
- To save you setup effort, registering this profile will auto-provision standard business resources: A Main Operating Bank, a Walk-in Customer, a Cash Vendor, a Main Warehouse, a Standard English PDF Template, and an open Operational Month period ({new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}).
+ {t('To save you setup effort, registering this profile will auto-provision standard business resources: a Main Operating Bank, a Walk-in Customer, a Cash Vendor, a Standard VAT tax slab, a Main Warehouse, a default Piece (PCE) unit of measure, a Standard English PDF Template, and an open Operational Month period')} ({new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}).
  </p>
  </div>
 
