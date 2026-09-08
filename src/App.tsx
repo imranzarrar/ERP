@@ -1014,12 +1014,30 @@ type NavSection = {
  </button>
  </header>
 
+ {/* MOBILE BACKDROP — dims the page behind the open drawer and closes it on tap.
+     md:hidden since the desktop sidebar is always visible in its own document-flow
+     column, never an overlay, so it never needs a dismissible backdrop. */}
+ {mobileMenuOpen && (
+ <div
+ className="md:hidden fixed inset-0 z-30 bg-slate-950/50"
+ onClick={() => setMobileMenuOpen(false)}
+ aria-hidden="true"
+ />
+ )}
+
  {/* SIDEBAR NAVIGATION */}
+ {/* Mobile show/hide uses a plain hidden/flex display toggle (same proven pattern as
+     the desktop collapse button's own `hidden md:flex` a few lines below) rather than a
+     translate-based slide — a transform/translate toggle on this fixed-position element
+     was found to leave the drawer visually stuck open on top of every screen after
+     navigating, blocking the whole work area, with no reliable fix found for the
+     underlying transform behavior. A display toggle has no such ambiguity: closed means
+     genuinely not rendered (no paint, no hit-testing), open means genuinely present. */}
  <aside className={`
- fixed md:sticky top-0 bottom-0 start-0 z-40 
- ${isSidebarCollapsed ? 'md:w-[76px]' : 'md:w-[270px]'} w-[270px] bg-gradient-to-b from-indigo-950 via-slate-900 to-indigo-950 text-slate-300 border-e border-indigo-900/80 shadow-2xl 
- flex flex-col justify-between shrink-0 transition-all duration-300 ease-in-out
- ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+ fixed md:sticky top-0 bottom-0 start-0 z-40
+ ${isSidebarCollapsed ? 'md:w-[76px]' : 'md:w-[270px]'} w-[270px] bg-gradient-to-b from-indigo-950 via-slate-900 to-indigo-950 text-slate-300 border-e border-indigo-900/80 shadow-2xl
+ flex-col justify-between shrink-0
+ ${mobileMenuOpen ? 'flex' : 'hidden'} md:flex
  `}>
  <div className="flex flex-col overflow-y-auto scrollbar-none">
  {/* Logo Brand Header & Collapse Toggle */}
@@ -1402,9 +1420,14 @@ type NavSection = {
  
  
 
- {/* GLOBAL APPLICATION BRAND HEADER */}
- <div className="flex items-center justify-between border-b border-slate-200/80 pb-3 shrink-0">
- <div className="flex items-center gap-3">
+ {/* GLOBAL APPLICATION BRAND HEADER — flex-wrap (plus a matching gap so the wrapped
+     row still has breathing room) since this renders on every screen in the app,
+     including on a phone-width viewport: without it, the Super Admin company-switcher
+     and the Portal Theme swatches on the right forced the ENTIRE app into permanent
+     horizontal scroll on mobile (confirmed live: scrollWidth 921px against a 375px
+     viewport), not just this one row. */}
+ <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-slate-200/80 pb-3 shrink-0">
+ <div className="flex flex-wrap items-center gap-3">
  {activeCompanySetup.logoUrl ? (
  <img src={ensureCompatibleImage(activeCompanySetup.logoUrl)} alt="Company Logo" className="h-9 object-contain max-w-[140px]" referrerPolicy="no-referrer" />
  ) : (
@@ -1417,7 +1440,7 @@ type NavSection = {
  <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider">{activeCompanySetup.portalSubtitle || t('Business Management Portal')}</span>
  </div>
  {isSuperAdmin && (
- <div className="ms-4 ps-4 border-s border-slate-200/80 flex items-center gap-2">
+ <div className="ms-4 ps-4 border-s border-slate-200/80 flex flex-wrap items-center gap-2">
  <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded uppercase tracking-wider shrink-0">Super Admin Workspace</span>
  <select
  value={activeDb.selectedCompanyId}
@@ -1437,7 +1460,7 @@ type NavSection = {
  }
  await triggerDbRefresh();
  }}
- className="bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow-sm transition-all"
+ className="bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-lg px-2.5 py-1 text-xs text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer shadow-sm transition-all max-w-[45vw] sm:max-w-[220px] truncate"
  >
  {db.companies?.map(c => (
  <option key={c.id} value={c.id}>🏢 {c.name}</option>
@@ -1446,7 +1469,7 @@ type NavSection = {
  </div>
  )}
  </div>
- <div className="flex items-center gap-3 bg-white border border-slate-200/80 px-3 py-1.5 rounded-xl text-[10px] text-slate-500 font-medium shadow-sm">
+ <div className="flex flex-wrap items-center gap-3 bg-white border border-slate-200/80 px-3 py-1.5 rounded-xl text-[10px] text-slate-500 font-medium shadow-sm">
  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Portal Theme:</span>
  <div className="flex items-center gap-2">
  {THEME_PROFILES.map(p => {
