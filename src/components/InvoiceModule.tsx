@@ -390,8 +390,25 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  unitOfMeasureId: item.unitOfMeasureId || undefined,
  }));
 
+ // Sales price (unitCost) is what makes a line item a real sale — zero or missing
+ // means nothing was actually charged for it, and a discount that wipes out (or
+ // exceeds) the sales price makes the line a giveaway rather than a discounted sale.
+ // Both checked per line, before totals are computed, so the error points at the
+ // actual offending line rather than a confusing invoice-level total mismatch.
+ for (const item of cleanItems) {
+ if (!item.unitCost || item.unitCost <= 0) {
+ return triggerError(`"${item.description}": Sales price must be greater than 0.`);
+ }
+ if (item.unitCost - (item.discountAmount || 0) <= 0) {
+ return triggerError(`"${item.description}": Discount cannot reduce the sales price to zero or below.`);
+ }
+ }
+
  const resolvedCustomerId = formCustomerId || db.customers.find(c => c.isSystem && (c.companyId === db.selectedCompanyId || !c.companyId))?.id || db.customers.find(c => c.companyId === db.selectedCompanyId || !c.companyId)?.id || db.customers[0]?.id || '';
  const totals = calculateInvoiceTotals(db, cleanItems, formTaxSlabId, formDiscountPercentage);
+ if (totals.grandTotal <= 0) {
+ return triggerError('The invoice net total must be greater than 0.');
+ }
 
  // Same three-way model as Expense's own payment status — the server derives
  // paymentStatus itself from whatever amountPaid is actually sent (computePaymentStatus
@@ -1303,6 +1320,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  <input
  type="number"
  min="0"
+ step="0.01"
  placeholder="0.00"
  value={item.discountAmount || ''}
  onChange={(e) => handleUpdateLineItem(idx, 'discountAmount', parseFloat(e.target.value) || 0)}

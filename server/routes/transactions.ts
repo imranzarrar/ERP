@@ -513,6 +513,30 @@ router.post('/invoices', async (req: any, res) => {
 
     invData.companyId = req.targetCompanyId;
 
+    // Mirrors the client-side checks in InvoiceModule.tsx's handleSaveInvoice — enforced
+    // here too since the client check alone is bypassable by a direct API call. An
+    // invoice needs at least one real line item, and a line's sales price (unitCost)
+    // must be a real, positive charge that survives its own discount — a discount that
+    // wipes out (or exceeds) the sales price makes the line a giveaway, not a sale.
+    // Deliberately placed AFTER the ownership/branch/ZATCA-immutability checks above —
+    // a forbidden cross-company request must always 403 regardless of what nonsense
+    // payload accompanies it, never 400 first (confirmed live: this exact ordering bug
+    // broke tests/crossCompanyIsolation.test.ts's hijack-attempt test, which intentionally
+    // sends an empty items array).
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'An invoice must have at least one line item.' });
+    }
+    for (const item of items) {
+      const unitCost = Number(item.unitCost) || 0;
+      const discountAmount = Number(item.discountAmount) || 0;
+      if (unitCost <= 0) {
+        return res.status(400).json({ error: `"${item.description}": Sales price must be greater than 0.` });
+      }
+      if (unitCost - discountAmount <= 0) {
+        return res.status(400).json({ error: `"${item.description}": Discount cannot reduce the sales price to zero or below.` });
+      }
+    }
+
     // Branch is immutable after creation, same reasoning/pattern as the Quotation route
     // just above — resolved/validated before the transaction so an invalid branch 400/
     // 403s before the ICV/counter reservation.
@@ -577,6 +601,11 @@ router.post('/invoices', async (req: any, res) => {
       const lineSlabPercentageById = new Map(lineSlabRows.map((s: any) => [s.id, Number(s.percentage)]));
 
       const { grandTotal } = computeInvoiceServerTotals(items || [], headerPercentage, Number(invData.discountPercentage || 0), lineSlabPercentageById);
+      if (grandTotal <= 0) {
+        const err: any = new Error('The invoice net total must be greater than 0.');
+        err.status = 400;
+        throw err;
+      }
 
       invData.paymentStatus = computePaymentStatus(Number(invData.amountPaid || 0), grandTotal);
       invData.amountPaid = String(round2(Number(invData.amountPaid || 0)));

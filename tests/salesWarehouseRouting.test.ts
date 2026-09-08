@@ -540,3 +540,81 @@ describe('POST /api/branches/backfill-unassigned', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('Invoice line-item and net-total validation', () => {
+  it('rejects an invoice with no line items', async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const res = await api(adminSessionId, '/api/transactions/invoices', {
+      method: 'POST',
+      body: JSON.stringify({
+        invoiceData: { date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0, items: [] },
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/at least one line item/i);
+  });
+
+  it('rejects a line item with a zero sales price', async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const res = await api(adminSessionId, '/api/transactions/invoices', {
+      method: 'POST',
+      body: JSON.stringify({
+        invoiceData: {
+          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          items: [{ id: generateId(), description: 'Free item', unitCost: 0, quantity: 1, unit: 'PCE' }],
+        },
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/sales price must be greater than 0/i);
+  });
+
+  it('rejects a line item whose discount wipes out the sales price', async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const res = await api(adminSessionId, '/api/transactions/invoices', {
+      method: 'POST',
+      body: JSON.stringify({
+        invoiceData: {
+          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          items: [{ id: generateId(), description: 'Over-discounted item', unitCost: 10, discountAmount: 10, quantity: 1, unit: 'PCE' }],
+        },
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/discount cannot reduce the sales price/i);
+  });
+
+  it('accepts a decimal discount amount that leaves a positive net price', async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const res = await api(adminSessionId, '/api/transactions/invoices', {
+      method: 'POST',
+      body: JSON.stringify({
+        invoiceData: {
+          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          items: [{ id: generateId(), description: 'Decimal discount item', unitCost: 10, discountAmount: 2.55, quantity: 1, unit: 'PCE' }],
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const [item] = await db.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, res.body.invoiceId));
+    expect(Number(item.discountAmount)).toBe(2.55);
+  });
+
+  it('rejects an invoice whose net total is zero even when every line item is individually valid', async () => {
+    const today = new Date().toISOString().split('T')[0];
+    // Each line passes the per-line checks (a real positive sales price, no line-level
+    // discount) but a 100% header-level discount still drives the invoice's actual net
+    // total to zero — this must be caught too, not just the per-line cases.
+    const res = await api(adminSessionId, '/api/transactions/invoices', {
+      method: 'POST',
+      body: JSON.stringify({
+        invoiceData: {
+          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0, discountPercentage: 100,
+          items: [{ id: generateId(), description: 'Fully header-discounted item', unitCost: 10, quantity: 1, unit: 'PCE' }],
+        },
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/net total must be greater than 0/i);
+  });
+});
