@@ -607,6 +607,28 @@ describe('Invoice cancel requires invoice.delete, independent of create/read/upd
     const [row] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, cancelTargetId));
     expect(row.status).toBe('Cancelled');
   });
+
+  // Regression: cancelling/paying a nonexistent invoice threw a plain Error with no
+  // .status attached, so the route's own `res.status(error.status || 500)` fell through
+  // to 500 — found live while checking cross-company isolation (a foreign-company id
+  // correctly resolves to "not found" from this company's perspective, but surfaced as a
+  // server error instead of a proper 404).
+  it('cancelling a nonexistent invoice returns 404, not 500', async () => {
+    await setRolePermissions({
+      invoice: { create: { enabled: true }, read: { enabled: true }, update: { enabled: true }, delete: { enabled: true } },
+    });
+    const res = await api(scopedSessionId, `/api/transactions/invoices/${generateId()}/cancel`, { method: 'POST' });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/not found/i);
+  });
+
+  it('recording a payment on a nonexistent invoice returns 404, not 500', async () => {
+    const res = await api(scopedSessionId, `/api/transactions/invoices/${generateId()}/paid`, {
+      method: 'POST', body: JSON.stringify({ amount: 10 }),
+    });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/not found/i);
+  });
 });
 
 // Regression coverage for a real bug found live: PATCH /companies/:id/settings was

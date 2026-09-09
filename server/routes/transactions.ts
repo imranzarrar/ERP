@@ -949,7 +949,7 @@ router.post('/invoices/:id/paid', async (req: any, res) => {
       // the invoice's own denormalized amountPaid/paymentStatus would then understate what
       // was actually collected. Purchase Bills' own /pay route already locks this way.
       const [invoice] = await tx.select().from(schema.invoices).where(and(eq(schema.invoices.id, id), eq(schema.invoices.companyId, req.targetCompanyId))).for('update');
-      if (!invoice) throw new Error('Invoice not found');
+      if (!invoice) { const err: any = new Error('Invoice not found'); err.status = 404; throw err; }
       if (!branchAccessOk(req, invoice.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
       if (invoice.status === 'Cancelled') {
         const err: any = new Error('Cancelled invoices cannot be paid.');
@@ -1085,7 +1085,7 @@ router.post('/invoices/:id/cancel', async (req: any, res) => {
       // genuinely waits out any in-flight submission instead of racing a stale copy of
       // zatcaStatus, whichever of the two happens to reach the row first.
       const [invoice] = await tx.select().from(schema.invoices).where(and(eq(schema.invoices.id, id), eq(schema.invoices.companyId, req.targetCompanyId))).for('update');
-      if (!invoice) throw new Error('Invoice not found');
+      if (!invoice) { const err: any = new Error('Invoice not found'); err.status = 404; throw err; }
       if (!branchAccessOk(req, invoice.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
 
       // A cancel is an edit to this invoice's status — it must be blocked exactly like a
