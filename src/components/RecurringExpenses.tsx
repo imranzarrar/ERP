@@ -156,21 +156,21 @@ export default function RecurringExpenses({ db, onRefreshDb }: RecurringExpenses
  }
  };
 
- // Delete a template
+ // Deactivate a template (soft — the row and its posting history are kept, not deleted)
  const handleDeleteTemplate = async (id: string) => {
- if (!window.confirm(t('Are you sure you want to delete this recurring template? This will not affect prior postings but prevents future occurrences.'))) return;
+ if (!window.confirm(t('Are you sure you want to deactivate this recurring template? This will not affect prior postings but prevents future occurrences.'))) return;
 
  try {
  const res = await fetch(`/api/transactions/recurring-templates/${id}`, { method: 'DELETE' });
  const data = await res.json();
  if (!res.ok || data.error) {
- triggerError(data.error || t('Failed to delete recurring template.'));
+ triggerError(data.error || t('Failed to deactivate recurring template.'));
  return;
  }
- triggerSuccess(t('Recurring template deleted successfully.'));
+ triggerSuccess(t('Recurring template deactivated successfully.'));
  if (onRefreshDb) await onRefreshDb();
  } catch (err: any) {
- triggerError(err?.message || t('An error occurred while deleting the template.'));
+ triggerError(err?.message || t('An error occurred while deactivating the template.'));
  }
  };
 
@@ -262,21 +262,21 @@ export default function RecurringExpenses({ db, onRefreshDb }: RecurringExpenses
  }
  };
 
- // Delete accrual
+ // Cancel accrual (soft — the expense is marked Cancelled and kept on record, not deleted)
  const handleDeleteAccrual = async (id: string) => {
- if (!window.confirm(t('Are you sure you want to delete this accrual entry? This will delete the accrual liability and associated postings.'))) return;
+ if (!window.confirm(t('Are you sure you want to cancel this accrual entry? The expense will be marked Cancelled and kept on record (excluded from reports), and its posting slot freed so this template/month can be posted again. A Reversal voucher will be posted if it was already paid.'))) return;
 
  try {
  const res = await fetch(`/api/transactions/accruals/${id}`, { method: 'DELETE' });
  const data = await res.json();
  if (!res.ok || data.error) {
- triggerError(data.error || t('Failed to delete accrual entry.'));
+ triggerError(data.error || t('Failed to cancel accrual entry.'));
  return;
  }
- triggerSuccess(t('Accrual entry deleted successfully.'));
+ triggerSuccess(t('Accrual entry cancelled successfully.'));
  if (onRefreshDb) await onRefreshDb();
  } catch (err: any) {
- triggerError(err?.message || t('An error occurred while deleting the accrual.'));
+ triggerError(err?.message || t('An error occurred while cancelling the accrual.'));
  }
  };
 
