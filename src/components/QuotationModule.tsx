@@ -456,7 +456,17 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  description: item.description,
  unitCost: item.unitCost,
  quantity: item.quantity,
- discountAmount: item.discountAmount || 0
+ discountAmount: item.discountAmount || 0,
+ // Carried through from the quotation line, not re-derived — dropping these silently
+ // turned every converted invoice into an untracked "manual" line with no warehouse
+ // resolution and no stock deduction, even though the quotation itself was created by
+ // searching a real stock item (found live: quantity never left inventory_stocks after
+ // converting a 3-unit quotation, while an identical direct invoice correctly deducted).
+ productId: item.productId,
+ unit: item.unit,
+ unitOfMeasureId: item.unitOfMeasureId,
+ taxSlabId: item.taxSlabId,
+ taxRate: item.taxRate
  }))
  });
  };

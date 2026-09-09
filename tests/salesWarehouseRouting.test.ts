@@ -150,11 +150,18 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const cid of [companyId, noWarehouseCompanyId]) {
+    // Invoices (and their items) first — a converted invoice's originQuotationId FK
+    // blocks deleting its source quotation while the invoice still exists.
     const invoices = await db.select().from(schema.invoices).where(eq(schema.invoices.companyId, cid));
     for (const inv of invoices) {
       await db.delete(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, inv.id));
     }
     await db.delete(schema.invoices).where(eq(schema.invoices.companyId, cid));
+    const quotations = await db.select().from(schema.quotations).where(eq(schema.quotations.companyId, cid));
+    for (const q of quotations) {
+      await db.delete(schema.quotationItems).where(eq(schema.quotationItems.quotationId, q.id));
+    }
+    await db.delete(schema.quotations).where(eq(schema.quotations.companyId, cid));
     await db.delete(schema.vouchers).where(eq(schema.vouchers.companyId, cid));
     await db.delete(schema.stockLedgerTransactions).where(eq(schema.stockLedgerTransactions.companyId, cid));
     await db.delete(schema.inventoryStocks).where(eq(schema.inventoryStocks.companyId, cid));
@@ -346,6 +353,124 @@ describe('Sale warehouse resolution (branch default -> company default)', () => 
       eq(schema.invoices.documentType, 'CreditNote')
     ));
     expect(noCreditNote).toBeUndefined();
+  });
+
+  it('quotation-to-invoice conversion resolves a warehouse and deducts stock when customItems carries productId through', async () => {
+    // Regression test for a real bug found live during manual QA: QuotationModule.tsx's
+    // handleInitiateConversion mapped only description/unitCost/quantity/discountAmount
+    // into the customItems payload it sends to this route, silently dropping productId
+    // (and unit/unitOfMeasureId/taxSlabId). The server correctly resolves a warehouse and
+    // deducts stock from customItems.productId when present — but with it missing, every
+    // quotation-converted invoice for a real stock item quietly became an "untracked
+    // manual line": warehouseId stayed null and inventory_stocks was never touched, with
+    // no error anywhere. This test pins the payload shape the client must send (productId
+    // included) and proves the server-side half of the fix already works correctly.
+    const today = new Date().toISOString().split('T')[0];
+    const before = await stockQty(stockProductId, warehouseCompanyDefaultId);
+    const marker = `conv-test-marker-${generateId()}`;
+    const quote = await api(adminSessionId, '/api/transactions/quotations', {
+      method: 'POST',
+      body: JSON.stringify({
+        quotationData: {
+          date: today, customerId, taxSlabId, bankId, notes: marker, status: 'Accepted', createdById: adminUserId,
+          items: [{ id: generateId(), description: 'QA Stock Widget', unitCost: 10, quantity: 2, unit: 'PCE', productId: stockProductId, discountAmount: 0 }],
+        },
+      }),
+    });
+    expect(quote.status).toBe(200);
+    // Neither this route nor /convert below echoes back the id it created — both just
+    // reply { success: true } — so the row is found the same way the rest of this suite
+    // already resolves ids it wasn't handed directly.
+    const [createdQuotation] = await db.select().from(schema.quotations).where(and(
+      eq(schema.quotations.companyId, companyId), eq(schema.quotations.notes, marker)
+    ));
+    expect(createdQuotation).toBeTruthy();
+
+    const conv = await api(adminSessionId, `/api/transactions/quotations/${createdQuotation.id}/convert`, {
+      method: 'POST',
+      body: JSON.stringify({
+        invoiceDate: today, bankId, paymentStatus: 'Unpaid', customCustomerId: customerId, customTaxSlabId: taxSlabId,
+        customItems: [{ id: generateId(), description: 'QA Stock Widget', unitCost: 10, quantity: 2, unit: 'PCE', productId: stockProductId, discountAmount: 0 }],
+      }),
+    });
+    expect(conv.status).toBe(200);
+
+    const [invoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.originQuotationId, createdQuotation.id));
+    expect(invoice).toBeTruthy();
+    expect(invoice.warehouseId).toBe(warehouseCompanyDefaultId);
+    expect(await stockQty(stockProductId, warehouseCompanyDefaultId)).toBe(before - 2);
+  });
+
+  it('quotation-to-invoice conversion posts a Receipt voucher for Fully Paid, and none for Partially Paid until an actual partial payment is recorded', async () => {
+    // The user explicitly asked to verify voucher creation for both full and partial
+    // payment specifically through the conversion path (not just direct invoice
+    // creation, already covered elsewhere) — conversion has its own separate paymentStatus
+    // handling (computePaymentStatus + amountPaidNum in the /convert route) that a
+    // regression in the direct-invoice path wouldn't catch.
+    async function makeAcceptedQuotation(qty: number) {
+      const marker = `conv-voucher-marker-${generateId()}`;
+      const created = await api(adminSessionId, '/api/transactions/quotations', {
+        method: 'POST',
+        body: JSON.stringify({
+          quotationData: {
+            date: new Date().toISOString().split('T')[0], customerId, taxSlabId, bankId, notes: marker, status: 'Accepted', createdById: adminUserId,
+            items: [{ id: generateId(), description: 'QA Stock Widget', unitCost: 10, quantity: qty, unit: 'PCE', productId: stockProductId, discountAmount: 0 }],
+          },
+        }),
+      });
+      expect(created.status).toBe(200);
+      const [q] = await db.select().from(schema.quotations).where(and(eq(schema.quotations.companyId, companyId), eq(schema.quotations.notes, marker)));
+      return q;
+    }
+
+    // Fully Paid → a Receipt voucher for the full grand total.
+    const fullQ = await makeAcceptedQuotation(1);
+    const fullConv = await api(adminSessionId, `/api/transactions/quotations/${fullQ.id}/convert`, {
+      method: 'POST',
+      body: JSON.stringify({
+        invoiceDate: new Date().toISOString().split('T')[0], bankId, paymentStatus: 'Paid', customCustomerId: customerId, customTaxSlabId: taxSlabId,
+        customItems: [{ id: generateId(), description: 'QA Stock Widget', unitCost: 10, quantity: 1, unit: 'PCE', productId: stockProductId, discountAmount: 0 }],
+      }),
+    });
+    expect(fullConv.status).toBe(200);
+    const [fullInvoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.originQuotationId, fullQ.id));
+    expect(fullInvoice.paymentStatus).toBe('Paid');
+    const fullVouchers = await db.select().from(schema.vouchers).where(and(eq(schema.vouchers.referenceType, 'Invoice'), eq(schema.vouchers.referenceId, fullInvoice.id)));
+    expect(fullVouchers.length).toBe(1);
+    expect(fullVouchers[0].type).toBe('Receipt');
+    expect(Number(fullVouchers[0].amount)).toBeCloseTo(11.5, 2); // 1 unit @ 10 + 15% VAT
+
+    // Partially Paid at conversion time (paymentStatus:'Unpaid' with amountPaid computed
+    // as 0, per this route's own amountPaidNum logic — conversion has no separate partial-
+    // amount input field) — no voucher yet, since nothing has actually been paid.
+    const partQ = await makeAcceptedQuotation(2);
+    const partConv = await api(adminSessionId, `/api/transactions/quotations/${partQ.id}/convert`, {
+      method: 'POST',
+      body: JSON.stringify({
+        invoiceDate: new Date().toISOString().split('T')[0], bankId, paymentStatus: 'Unpaid', customCustomerId: customerId, customTaxSlabId: taxSlabId,
+        customItems: [{ id: generateId(), description: 'QA Stock Widget', unitCost: 10, quantity: 2, unit: 'PCE', productId: stockProductId, discountAmount: 0 }],
+      }),
+    });
+    expect(partConv.status).toBe(200);
+    const [unpaidInvoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.originQuotationId, partQ.id));
+    expect(unpaidInvoice.paymentStatus).toBe('Unpaid');
+    const noVouchersYet = await db.select().from(schema.vouchers).where(and(eq(schema.vouchers.referenceType, 'Invoice'), eq(schema.vouchers.referenceId, unpaidInvoice.id)));
+    expect(noVouchersYet.length).toBe(0);
+
+    // Now record an actual partial payment against it via the same route direct invoices
+    // use — this is where a real Receipt voucher for a Partially Paid document gets posted.
+    const partialAmount = 10; // less than the 23 SAR grand total (2 @ 10 + 15% VAT)
+    const payRes = await api(adminSessionId, `/api/transactions/invoices/${unpaidInvoice.id}/paid`, {
+      method: 'POST',
+      body: JSON.stringify({ amount: partialAmount, bankId }),
+    });
+    expect(payRes.status).toBe(200);
+    const [partiallyPaidInvoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, unpaidInvoice.id));
+    expect(partiallyPaidInvoice.paymentStatus).toBe('Partially Paid');
+    const partialVouchers = await db.select().from(schema.vouchers).where(and(eq(schema.vouchers.referenceType, 'Invoice'), eq(schema.vouchers.referenceId, unpaidInvoice.id)));
+    expect(partialVouchers.length).toBe(1);
+    expect(partialVouchers[0].type).toBe('Receipt');
+    expect(Number(partialVouchers[0].amount)).toBeCloseTo(partialAmount, 2);
   });
 });
 
