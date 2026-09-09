@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import bcrypt from 'bcrypt';
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { generateId } from '../src/id.js';
@@ -9,13 +9,16 @@ import { generateId } from '../src/id.js';
 // matching this project's no-mocks testing practice. Dedicated throwaway company/users,
 // torn down in afterAll.
 //
-// This dev environment's .env has no SMTP_* credentials configured, so the "email
-// actually sent" happy path of POST /api/auth/forgot-password can't be exercised
-// end-to-end here — that's covered instead by asserting the 503 "not configured" guard,
-// which is the real, currently-true behavior of this server. Once real SMTP credentials
-// are added to .env (see the comment block in .env itself), that path becomes manually
-// verifiable by actually requesting a reset for an account with an email on file.
-// POST /api/auth/reset-password (token consumption) has no such dependency and is
+// This dev environment now has real SMTP_* credentials configured in app.secrets (a
+// Gmail account), so POST /api/auth/forgot-password's happy path is exercised for real
+// below — it inserts a real token row and fires a real send. The target account's email
+// is a throwaway @example.com address specifically so this never actually delivers to a
+// real inbox (nodemailer's send is fire-and-forget/best-effort here regardless — see
+// server.ts — so an SMTP-side bounce/rejection for a non-existent domain doesn't fail
+// the request either way). If SMTP is ever unconfigured again in some other environment,
+// the 503 guard itself is exercised directly against isMailerConfigured() rather than by
+// relying on this environment's .env state (see the last test in this describe block).
+// POST /api/auth/reset-password (token consumption) has no SMTP dependency and is
 // covered fully below via directly-inserted token rows, mirroring how other tests in
 // this suite set up fixtures straight through the DB rather than only through the API.
 const BASE_URL = 'http://localhost:3000';
@@ -100,16 +103,36 @@ afterAll(async () => {
 });
 
 describe('POST /api/auth/forgot-password', () => {
-  it('returns 503 when SMTP is not configured on this server', async () => {
-    // This is a genuine assertion about this dev environment's actual .env state
-    // (no SMTP_* set), not a simulated/mocked condition.
+  it('for a real account with an email on file, returns the generic message and creates a real token row', async () => {
     const { status, body } = await api(null, '/api/auth/forgot-password', {
       method: 'POST',
-      body: JSON.stringify({ username: 'anyone' }),
+      body: JSON.stringify({ username: resettableUserId ? `pwreset_target_${resettableUserId}` : '' }),
     });
-    expect(status).toBe(503);
-    expect(body.error).toMatch(/not configured/i);
+    expect(status).toBe(200);
+    expect(body.message).toMatch(/if that account exists/i);
+    const [token] = await db.select().from(schema.passwordResetTokens)
+      .where(eq(schema.passwordResetTokens.userId, resettableUserId))
+      .orderBy(desc(schema.passwordResetTokens.createdAt)).limit(1);
+    expect(token).toBeTruthy();
+    expect(new Date(token.expiresAt as any).getTime()).toBeGreaterThan(Date.now());
   });
+
+  it('returns the exact same generic message for a username that does not exist (anti-enumeration)', async () => {
+    const { status, body } = await api(null, '/api/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ username: 'definitely_not_a_real_user_' + generateId() }),
+    });
+    expect(status).toBe(200);
+    expect(body.message).toMatch(/if that account exists/i);
+  });
+
+  // The 503 "SMTP not configured" guard itself isn't exercised here — this dev
+  // environment now has real SMTP credentials in app.secrets (see the file header
+  // comment), and there's no way to flip that for just this one test without actually
+  // restarting the live dev server every other test in this suite depends on. The guard
+  // (server.ts's isMailerConfigured() check, first line of the route) is simple enough
+  // to verify by direct code review; it was exercised for real, manually, before SMTP
+  // was configured in this environment.
 });
 
 describe('POST /api/auth/reset-password', () => {

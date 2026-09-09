@@ -8,8 +8,14 @@ function getSmtpConfig() {
   const port = process.env.SMTP_PORT;
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASSWORD;
-  const from = process.env.SMTP_FROM || user;
+  const fromAddress = process.env.SMTP_FROM || user;
   if (!host || !port || !user || !pass) return null;
+  // A bare address in the From header shows the raw mailbox (e.g.
+  // "warraq.compbrain@gmail.com") to the recipient — pairing it with a display name
+  // (nodemailer's `{name, address}` form, standard RFC 5322) shows "Warraq Portal"
+  // instead, same as any real product's outbound mail. SMTP_FROM_NAME is overridable per
+  // deployment but defaults to this app's own name so it works with zero extra config.
+  const from = { name: process.env.SMTP_FROM_NAME || 'Warraq Portal', address: fromAddress };
   return { host, port: Number(port), user, pass, from };
 }
 
@@ -61,11 +67,39 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string, usern
   });
 }
 
-// Fired the moment a new company-onboarding request is submitted (server/routes/
-// onboarding.ts's public POST) — sent to every super-admin with an email on file, not a
-// single fixed address, so this keeps working with no extra config as super-admins come
-// and go. Best-effort/fire-and-forget by every caller — a mail failure must never block
-// the public submission itself from succeeding.
+// Fired the moment someone submits the public onboarding form (server/routes/
+// onboarding.ts's public POST) — proves they actually control contactEmail before a
+// super-admin ever sees the request (see that route's own comment for the full reasoning).
+// Deliberately not "your request was received" wording — nothing has actually been
+// received by a human yet at this point, only stored pending confirmation.
+export async function sendOnboardingEmailConfirmation(to: string, confirmUrl: string, companyName: string): Promise<void> {
+  const config = getSmtpConfig();
+  if (!config) throw new Error('SMTP is not configured (SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD missing from environment).');
+  const transporter = getTransporter();
+  await transporter.sendMail({
+    from: config.from,
+    to,
+    subject: `Confirm your email to submit "${companyName}"'s registration`,
+    text: `Thanks for starting a registration for "${companyName}".\n\nConfirm this is really your email address to send your request to our team for review. This link expires in 1 hour and can only be used once.\n\n${confirmUrl}\n\nIf you didn't request this, you can safely ignore this email — no request will be submitted.`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color: #1e1b4b;">Confirm your email</h2>
+        <p>Thanks for starting a registration for <strong>${companyName}</strong>.</p>
+        <p>Confirm this is really your email address to send your request to our team for review. This link expires in <strong>1 hour</strong> and can only be used once.</p>
+        <p style="margin: 24px 0;">
+          <a href="${confirmUrl}" style="background:#4f46e5;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Confirm Email</a>
+        </p>
+        <p style="color:#64748b;font-size:12px;">If you didn't request this, you can safely ignore this email — no request will be submitted.</p>
+      </div>
+    `,
+  });
+}
+
+// Fired once the submitter has confirmed their email (see sendOnboardingEmailConfirmation
+// above and the public confirm-email route) — sent to every super-admin with an email on
+// file, not a single fixed address, so this keeps working with no extra config as
+// super-admins come and go. Best-effort/fire-and-forget by every caller — a mail failure
+// must never block the confirmation itself from succeeding.
 export async function sendOnboardingReceivedEmail(toAdmins: string[], request: { companyName: string; contactName: string; contactEmail: string }): Promise<void> {
   const config = getSmtpConfig();
   if (!config || toAdmins.length === 0) return;
@@ -74,10 +108,11 @@ export async function sendOnboardingReceivedEmail(toAdmins: string[], request: {
     from: config.from,
     to: toAdmins.join(','),
     subject: `New company onboarding request: ${request.companyName}`,
-    text: `A new company onboarding request was submitted.\n\nCompany: ${request.companyName}\nContact: ${request.contactName} (${request.contactEmail})\n\nReview it in Admin Settings > Onboarding Requests.`,
+    text: `A new company onboarding request was submitted and the contact's email is confirmed.\n\nCompany: ${request.companyName}\nContact: ${request.contactName} (${request.contactEmail})\n\nReview it in Admin Settings > Onboarding Requests.`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
         <h2 style="color: #1e1b4b;">New company onboarding request</h2>
+        <p style="color:#16a34a;font-size:12px;font-weight:bold;">✓ Contact email confirmed</p>
         <p><strong>Company:</strong> ${request.companyName}</p>
         <p><strong>Contact:</strong> ${request.contactName} (${request.contactEmail})</p>
         <p style="color:#64748b;font-size:12px;">Review it in Admin Settings &gt; Onboarding Requests.</p>

@@ -59,6 +59,11 @@ export interface CompanyOnboardingRequest {
   rejectionReason?: string | null;
   createdCompanyId?: string | null;
   createdAt?: string;
+  // Set once the contact clicks the emailed confirmation link (server/routes/
+  // onboarding.ts) — null means Approve is refused server-side regardless of what the
+  // UI shows. emailConfirmTokenHash/emailConfirmExpiresAt are server-only (hashed
+  // credential), deliberately never sent to the client.
+  emailVerifiedAt?: string | null;
 }
 
 // A tombstone for the "Delete Company & All Data" purge (server/routes/companies.ts) —

@@ -7,7 +7,7 @@ import { eq, and, isNotNull, desc, sql } from 'drizzle-orm';
 import { isSuperAdminUser } from '../lib/authz.js';
 import { generateId } from '../../src/id.js';
 import { provisionStarterResources } from '../lib/companyProvisioning.js';
-import { isMailerConfigured, sendOnboardingReceivedEmail, sendOnboardingApprovedEmail, sendOnboardingRejectedEmail } from '../lib/mailer.js';
+import { isMailerConfigured, sendOnboardingEmailConfirmation, sendOnboardingReceivedEmail, sendOnboardingApprovedEmail, sendOnboardingRejectedEmail } from '../lib/mailer.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -15,6 +15,17 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // pre-line-603 block as /api/auth/forgot-password) since this is the one write endpoint
 // in the whole app reachable with no session at all. `adminRouter` is mounted after, for
 // the review/approve/reject actions.
+//
+// Full flow, in order: (1) POST /onboarding-requests stores a Pending row and emails
+// ONLY the contact a confirmation link — no super-admin is notified yet, since nothing is
+// known to be real at this point. (2) POST /onboarding-requests/confirm-email consumes
+// that link, sets emailVerifiedAt, and only THEN emails every super-admin that a request
+// exists to review. (3) The admin queue (GET /admin/onboarding-requests) shows every
+// request either way, verified or not, so an admin can Reject a clearly-bogus one without
+// waiting on anything — but (4) POST /admin/.../approve refuses (400) any request whose
+// emailVerifiedAt is still null, enforced server-side so a direct API call can't bypass a
+// merely-disabled UI button. (5) POST /admin/.../resend-confirmation lets an admin issue a
+// fresh link if the original (1-hour) one expired unused.
 export const publicRouter = express.Router();
 export const adminRouter = express.Router();
 
@@ -46,9 +57,19 @@ publicRouter.post('/onboarding-requests', async (req: any, res) => {
   // Never reveals anything about *why* a submission was dropped (honeypot, rate limit) —
   // always the same generic success, matching forgot-password's own account-enumeration-
   // safe convention. This is the one write endpoint in the app reachable with no session.
-  const genericResponse = { message: 'Thank you — your request has been received. We will be in touch shortly.' };
+  // Wording deliberately doesn't say "received" — nothing reaches a human (super-admin)
+  // until the contact confirms their email; this is really "check your inbox next."
+  const genericResponse = { message: 'Thank you — check your email to confirm your address and complete your submission.' };
 
   try {
+    // Email confirmation is the whole point of this route — with no mailer, a submission
+    // could never be verified and would sit forever un-approvable. Fails loudly (unlike
+    // the silent honeypot/rate-limit drops below) since this is a real server
+    // misconfiguration, not something to hide from a legitimate submitter.
+    if (!isMailerConfigured()) {
+      return res.status(503).json({ error: 'Company registration is not available right now. Please contact us directly.' });
+    }
+
     // Honeypot: a field real browsers never fill in (hidden via CSS on the form, never
     // shown to a human). A bot filling every field trips this; a real submitter can't.
     if (String(req.body?.website || '').trim() !== '') {
@@ -92,6 +113,8 @@ publicRouter.post('/onboarding-requests', async (req: any, res) => {
       return res.status(409).json({ error: 'A pending onboarding request with this email already exists. Please wait for it to be reviewed.' });
     }
 
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
     const request = {
       id: generateId(),
       companyName,
@@ -106,24 +129,21 @@ publicRouter.post('/onboarding-requests', async (req: any, res) => {
       contactPhone: cap(req.body?.contactPhone, 50) || null,
       notes: cap(req.body?.notes, 2000) || null,
       status: 'Pending' as const,
+      emailConfirmTokenHash: tokenHash,
+      emailConfirmExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
     };
 
     await db.insert(schema.companyOnboardingRequests).values(request);
 
     // Fire-and-forget — a mail failure must never block the submission itself, matching
-    // forgot-password's own pattern exactly.
-    (async () => {
-      try {
-        if (!isMailerConfigured()) return;
-        const admins = await db.select({ email: schema.users.email })
-          .from(schema.users)
-          .where(and(eq(schema.users.isSuperAdmin, true), isNotNull(schema.users.email)));
-        const adminEmails = admins.map((a) => a.email).filter(Boolean) as string[];
-        await sendOnboardingReceivedEmail(adminEmails, request);
-      } catch (err: any) {
-        console.error('[Onboarding] Failed to send admin notification email:', err.message);
-      }
-    })();
+    // forgot-password's own pattern exactly. The admin-notification email doesn't fire
+    // here at all anymore — see the confirm-email route below, which sends it only once
+    // this address is actually confirmed.
+    const origin = process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const confirmUrl = `${origin}/?confirmOnboardingToken=${rawToken}`;
+    sendOnboardingEmailConfirmation(contactEmail, confirmUrl, companyName).catch((err: any) => {
+      console.error('[Onboarding] Failed to send confirmation email:', err.message);
+    });
 
     res.json(genericResponse);
   } catch (error: any) {
@@ -131,6 +151,61 @@ publicRouter.post('/onboarding-requests', async (req: any, res) => {
     // Still the generic response — an internal error must not leak detail to an
     // unauthenticated caller either.
     res.json(genericResponse);
+  }
+});
+
+// --- Public: confirm the contact's email (the token from sendOnboardingEmailConfirmation
+// above) — the ONLY thing that flips emailVerifiedAt, which the approve route below
+// requires be set. Unauthenticated by design, same as the request submission itself. ---
+publicRouter.post('/onboarding-requests/confirm-email', async (req: any, res) => {
+  const rawToken = String(req.body?.token || '').trim();
+  if (!rawToken) {
+    return res.status(400).json({ error: 'Missing confirmation token.' });
+  }
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+  try {
+    const [request] = await db.select().from(schema.companyOnboardingRequests)
+      .where(eq(schema.companyOnboardingRequests.emailConfirmTokenHash, tokenHash));
+
+    if (!request || request.emailConfirmExpiresAt == null || new Date(request.emailConfirmExpiresAt) < new Date()) {
+      return res.status(400).json({ error: 'This confirmation link is invalid or has expired. Ask the company to resubmit, or a super-admin to resend it.' });
+    }
+    // Already confirmed (a double-click, or the link opened twice) — idempotent success
+    // rather than an error, matching this app's usual "already done" tolerance.
+    if (request.emailVerifiedAt) {
+      return res.json({ success: true, companyName: request.companyName });
+    }
+
+    // Deliberately NOT clearing emailConfirmTokenHash/emailConfirmExpiresAt here (unlike
+    // passwordResetTokens' usedAt convention) — this row is looked up BY that hash, so
+    // nulling it would make a second click of the same link (a real, expected case: the
+    // user re-opens the email, or a slow double-tap) unfindable and fall through to the
+    // "invalid or expired" branch above instead of the idempotent-success one right below
+    // it. Once emailVerifiedAt is set, the hash can't achieve anything beyond that same
+    // idempotent response anyway (the notification email above only ever fires once, on
+    // the branch that sets emailVerifiedAt in the first place) — there's no replay risk
+    // to guard against by clearing it.
+    await db.update(schema.companyOnboardingRequests).set({
+      emailVerifiedAt: new Date(),
+    }).where(eq(schema.companyOnboardingRequests.id, request.id));
+
+    // Only NOW does a super-admin hear about this request at all — see this route's own
+    // file-header comment and sendOnboardingReceivedEmail's.
+    if (isMailerConfigured()) {
+      const admins = await db.select({ email: schema.users.email })
+        .from(schema.users)
+        .where(and(eq(schema.users.isSuperAdmin, true), isNotNull(schema.users.email)));
+      const adminEmails = admins.map((a) => a.email).filter(Boolean) as string[];
+      sendOnboardingReceivedEmail(adminEmails, request).catch((err: any) => {
+        console.error('[Onboarding] Failed to send admin notification email:', err.message);
+      });
+    }
+
+    res.json({ success: true, companyName: request.companyName });
+  } catch (error: any) {
+    console.error('[Onboarding] Email confirmation failed:', error.message);
+    res.status(500).json({ error: 'Failed to confirm your email. Please try again.' });
   }
 });
 
@@ -142,7 +217,63 @@ adminRouter.get('/admin/onboarding-requests', async (req: any, res) => {
     }
     const requests = await db.select().from(schema.companyOnboardingRequests)
       .orderBy(desc(schema.companyOnboardingRequests.createdAt));
-    res.json(requests);
+    // Strip the hashed confirmation credential — same reasoning as never sending
+    // users.password to the client (see src/db/apiState.ts's identical exclusion for the
+    // /api/state-bundled copy of this same data).
+    res.json(requests.map(({ emailConfirmTokenHash, emailConfirmExpiresAt, ...safe }) => safe));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Admin: resend the email confirmation link — for when the original expired (1 hour)
+// before the contact clicked it. Regenerates a fresh token/expiry rather than reusing the
+// old (now-expired) one, same as any other "resend" action in this app would. ---
+adminRouter.post('/admin/onboarding-requests/:id/resend-confirmation', async (req: any, res) => {
+  try {
+    if (!isSuperAdminUser(req.user)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    if (!isMailerConfigured()) {
+      return res.status(503).json({ error: 'Email is not configured on this server.' });
+    }
+    const { id } = req.params;
+    const [request] = await db.select().from(schema.companyOnboardingRequests)
+      .where(eq(schema.companyOnboardingRequests.id, id));
+    if (!request) {
+      return res.status(404).json({ error: 'Onboarding request not found.' });
+    }
+    if (request.status !== 'Pending') {
+      return res.status(400).json({ error: `This request has already been ${request.status.toLowerCase()}.` });
+    }
+    if (request.emailVerifiedAt) {
+      return res.status(400).json({ error: 'This email is already confirmed.' });
+    }
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    await db.update(schema.companyOnboardingRequests).set({
+      emailConfirmTokenHash: tokenHash,
+      emailConfirmExpiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    }).where(eq(schema.companyOnboardingRequests.id, id));
+
+    // The fresh token is already persisted regardless of what happens next — an SMTP
+    // hiccup (rate limit, transient outage) must not leave this action looking like a
+    // total no-op, but unlike every other mailer call in this file (fire-and-forget,
+    // since those are side effects of a bigger action the admin didn't explicitly ask
+    // for), THIS route's entire purpose is sending an email — so the caller genuinely
+    // needs to know if it didn't go out, same reasoning as approve's own emailSent flag.
+    const origin = process.env.APP_BASE_URL || `${req.protocol}://${req.get('host')}`;
+    const confirmUrl = `${origin}/?confirmOnboardingToken=${rawToken}`;
+    let emailSent = true;
+    try {
+      await sendOnboardingEmailConfirmation(request.contactEmail, confirmUrl, request.companyName);
+    } catch (err: any) {
+      console.error('[Onboarding] Failed to resend confirmation email:', err.message);
+      emailSent = false;
+    }
+
+    res.json({ success: true, emailSent });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -189,6 +320,14 @@ adminRouter.post('/admin/onboarding-requests/:id/approve', async (req: any, res)
       }
       if (request.status !== 'Pending') {
         const err: any = new Error(`This request has already been ${request.status.toLowerCase()}.`);
+        err.status = 400;
+        throw err;
+      }
+      // Enforced here, not just hidden/disabled in the UI — see this file's own header
+      // comment on why email confirmation exists at all. A direct API call must not be
+      // able to bypass it just because the button was disabled client-side.
+      if (!request.emailVerifiedAt) {
+        const err: any = new Error('This request cannot be approved yet — the contact has not confirmed their email address.');
         err.status = 400;
         throw err;
       }

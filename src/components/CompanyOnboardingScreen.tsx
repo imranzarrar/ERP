@@ -86,13 +86,13 @@ export default function CompanyOnboardingScreen({ lang, onLangChange, db, onBack
           )}
           <div>
             <h2 className="font-brand text-2xl font-semibold text-white tracking-tight">
-              {submitted ? t('Request Received') : t('Set Up Your Company')}
+              {submitted ? t('Check Your Email') : t('Set Up Your Company')}
             </h2>
             <p className="text-sm font-bold text-[#D9B268] tracking-wide mt-1">{t('Warraq ERP System')}</p>
           </div>
           <p className="text-xs text-slate-400 font-medium max-w-sm mx-auto">
             {submitted
-              ? t('Thank you — your request has been received. We will be in touch shortly.')
+              ? t('We\'ve sent a confirmation link to the email you provided. Click it to confirm your address — your request only reaches our team once it\'s confirmed.')
               : t('Tell us about your company and we will set up your account. An administrator will review your request shortly.')}
           </p>
         </div>

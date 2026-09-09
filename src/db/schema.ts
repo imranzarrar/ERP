@@ -989,6 +989,19 @@ export const companyOnboardingRequests = pgTable('company_onboarding_requests', 
   rejectionReason: text('rejection_reason'),
   createdCompanyId: uuid('created_company_id').references(() => companies.id),
   createdAt: timestamp('created_at').defaultNow(),
+  // Proof the submitter actually controls contactEmail before a super-admin can approve
+  // — set once, the moment the emailed confirmation link is clicked (see the public
+  // POST /onboarding-requests/confirm-email route); null until then. Approve rejects
+  // outright while this is null (server/routes/onboarding.ts), and the admin-notification
+  // email itself doesn't fire until this is set — an unverified submission never even
+  // reaches a super-admin's inbox. The token fields below are the SHA-256-hashed,
+  // 1-hour-expiring, single-use credential for that link, mirroring passwordResetTokens'
+  // own hash-not-plaintext convention exactly; cleared (nulled) once consumed. A super-
+  // admin can regenerate a fresh pair via the "Resend Confirmation" action if the
+  // original link expired unused — see the admin resend-confirmation route.
+  emailVerifiedAt: timestamp('email_verified_at'),
+  emailConfirmTokenHash: text('email_confirm_token_hash'),
+  emailConfirmExpiresAt: timestamp('email_confirm_expires_at'),
 });
 
 // Cross-tenant by design — a tombstone for the "Delete Company & All Data" purge

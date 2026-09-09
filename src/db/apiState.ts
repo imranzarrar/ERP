@@ -264,10 +264,15 @@ export async function getFullState() {
     return {
       companies,
       roleTemplates,
-      companyOnboardingRequests: companyOnboardingRequests.map(r => ({
+      // emailConfirmTokenHash/emailConfirmExpiresAt excluded — the hashed confirmation
+      // credential has no legitimate client-side use (same reasoning as never sending
+      // users.password), and their presence isn't needed for anything the UI shows
+      // (only emailVerifiedAt is — see AdminSettings.tsx's onboarding tab).
+      companyOnboardingRequests: companyOnboardingRequests.map(({ emailConfirmTokenHash, emailConfirmExpiresAt, ...r }) => ({
         ...r,
         createdAt: r.createdAt ? r.createdAt.toISOString() : null,
         reviewedAt: r.reviewedAt ? r.reviewedAt.toISOString() : null,
+        emailVerifiedAt: r.emailVerifiedAt ? r.emailVerifiedAt.toISOString() : null,
       })),
       deletedCompanyLog: deletedCompanyLog.map(r => ({
         ...r,

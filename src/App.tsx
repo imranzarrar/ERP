@@ -25,6 +25,7 @@ import warraqMark from './assets/warraq-mark.svg';
 import ResetPasswordScreen from './components/ResetPasswordScreen';
 import ChangePasswordScreen from './components/ChangePasswordScreen';
 import CompanyOnboardingScreen from './components/CompanyOnboardingScreen';
+import ConfirmOnboardingEmailScreen from './components/ConfirmOnboardingEmailScreen';
 import InventoryModule from './components/InventoryModule';
 import EmployeesModule from './components/EmployeesModule';
 import ModifierGroupsModule from './components/ModifierGroupsModule';
@@ -86,6 +87,9 @@ export default function App() {
  // resetToken is: a query param checked before the login gate, no real router needed,
  // since this SPA has none. See server/routes/onboarding.ts for the route this posts to.
  const [onboard, setOnboard] = React.useState<string | null>(() => new URLSearchParams(window.location.search).get('onboard'));
+ // The emailed "confirm your email" link from onboarding signup (?confirmOnboardingToken=)
+ // — same query-param-before-login-gate pattern as resetToken/onboard above.
+ const [confirmOnboardingToken, setConfirmOnboardingToken] = React.useState<string | null>(() => new URLSearchParams(window.location.search).get('confirmOnboardingToken'));
 
  React.useEffect(() => {
   if (!sessionUserId) {
@@ -526,6 +530,23 @@ export default function App() {
           window.history.replaceState({}, '', url.toString());
           setOnboard(null);
         }}
+      />
+    );
+  }
+
+  if (confirmOnboardingToken) {
+    return (
+      <ConfirmOnboardingEmailScreen
+        token={confirmOnboardingToken}
+        onDone={() => {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('confirmOnboardingToken');
+          window.history.replaceState({}, '', url.toString());
+          setConfirmOnboardingToken(null);
+        }}
+        lang={preLoginLang}
+        onLangChange={handlePreLoginLangChange}
+        db={db}
       />
     );
   }

@@ -97,6 +97,10 @@ describe('Company registration status + Delete Company & All Data', () => {
       contactName: `Deletion Test Contact ${uniq}`,
       contactEmail: `deltest_contact_${uniq}@example.com`,
       status: 'Pending',
+      // This test exercises the delete/purge lifecycle downstream of approval, not the
+      // email-confirmation gate itself (see tests/companyOnboarding.test.ts for that) —
+      // pre-verified so approve isn't refused for an unrelated reason.
+      emailVerifiedAt: new Date(),
     });
     const approve = await api(superAdminSessionId, `/api/admin/onboarding-requests/${onboardId}/approve`, {
       method: 'POST',

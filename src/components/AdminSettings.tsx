@@ -2571,6 +2571,24 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
     }
   };
 
+  const handleResendConfirmation = async (id: string) => {
+    setOnboardingActionLoading(true);
+    try {
+      const resp = await fetch(`/api/admin/onboarding-requests/${id}/resend-confirmation`, { method: 'POST' });
+      const result = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        return triggerError(result.error || 'Failed to resend the confirmation email.');
+      }
+      triggerSuccess(result.emailSent
+        ? 'Confirmation email resent.'
+        : "A fresh confirmation link was generated, but the email failed to send — check the server's mail configuration and try again.");
+    } catch (err: any) {
+      triggerError('Failed to resend the confirmation email: ' + err.message);
+    } finally {
+      setOnboardingActionLoading(false);
+    }
+  };
+
   const handleRejectOnboarding = async (id: string) => {
     setOnboardingActionLoading(true);
     try {
@@ -3475,16 +3493,34 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  </td>
  <td className="p-3 text-slate-500 font-mono text-[10px]">{r.createdAt ? new Date(r.createdAt).toLocaleString() : '-'}</td>
  <td className="p-3 text-center">
+ <div className="flex flex-col items-center gap-1">
  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${
  r.status === 'Pending' ? 'bg-amber-50 text-amber-700 border-amber-200' :
  r.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
  'bg-slate-100 text-slate-500 border-slate-200'
  }`}>{r.status}</span>
+ {r.status === 'Pending' && (
+ r.emailVerifiedAt ? (
+ <span className="px-2 py-0.5 rounded-full text-[8px] font-bold uppercase bg-emerald-50 text-emerald-600 border border-emerald-100">{t('Email Verified')}</span>
+ ) : (
+ <span className="px-2 py-0.5 rounded-full text-[8px] font-bold uppercase bg-slate-100 text-slate-500 border border-slate-200" title={t('The contact has not yet clicked the confirmation link we emailed them.')}>{t('Awaiting Email Confirmation')}</span>
+ )
+ )}
+ </div>
  </td>
  <td className="p-3 text-end">
  {r.status === 'Pending' && (
- <div className="flex justify-end gap-3">
- <button type="button" onClick={() => { setReviewingRequestId(reviewingRequestId === r.id ? null : r.id); setRejectingRequestId(null); }} className="text-[10px] font-bold text-indigo-600 hover:underline">{t('Approve')}</button>
+ <div className="flex justify-end items-center gap-3">
+ {!r.emailVerifiedAt && (
+ <button type="button" disabled={onboardingActionLoading} onClick={() => handleResendConfirmation(r.id)} className="text-[10px] font-bold text-slate-500 hover:underline disabled:opacity-50">{t('Resend Confirmation')}</button>
+ )}
+ <button
+ type="button"
+ disabled={!r.emailVerifiedAt}
+ title={!r.emailVerifiedAt ? t('This request cannot be approved until the contact confirms their email.') : undefined}
+ onClick={() => { setReviewingRequestId(reviewingRequestId === r.id ? null : r.id); setRejectingRequestId(null); }}
+ className="text-[10px] font-bold text-indigo-600 hover:underline disabled:text-slate-300 disabled:no-underline disabled:cursor-not-allowed"
+ >{t('Approve')}</button>
  <button type="button" onClick={() => { setRejectingRequestId(rejectingRequestId === r.id ? null : r.id); setReviewingRequestId(null); }} className="text-[10px] font-bold text-rose-600 hover:underline">{t('Reject')}</button>
  </div>
  )}

@@ -24,6 +24,26 @@ export const createPool = () => {
     connectionTimeoutMillis: 15000,
     max: POOL_MAX,
     statement_timeout: STATEMENT_TIMEOUT_MS,
+    // Force every physical connection's session timezone to UTC, regardless of whatever
+    // the underlying Postgres server itself is configured to (this app must never depend
+    // on that being UTC — confirmed on this dev machine it's actually Asia/Riyadh, set in
+    // Postgres's own postgresql.conf, nothing this app controls). Passed as a libpq
+    // startup option so it's part of the connection's own handshake — applied before any
+    // query can possibly run on it. (A `pool.on('connect', client => client.query(...))`
+    // follow-up query was tried first and rejected: it races the pool handing that same
+    // connection to whatever query is already waiting, so the very first query on a
+    // freshly-opened connection could still run under the server's default timezone —
+    // confirmed happening in practice right after a restart, when every connection is new.)
+    // Without this, any column relying on the schema's `.defaultNow()` (Postgres's own
+    // now(), evaluated in the session's timezone) gets its local wall-clock digits stored
+    // into a timezone-less `timestamp` column, then misread back as if they were already
+    // UTC — silently skewed by the session's UTC offset. Columns whose value is computed
+    // in JS (`new Date()`) and passed in explicitly were never affected (confirmed by
+    // inventory: every financial/transactional table sets createdAt this way on every
+    // insert path) — this only ever hit a handful of secondary tables
+    // (password_reset_tokens, zatca_environment_configs, roles, role_templates,
+    // company_onboarding_requests, deleted_company_log) that lean on the DB-level default.
+    options: '-c timezone=UTC',
   });
 };
 
