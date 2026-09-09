@@ -173,8 +173,13 @@ export const users = pgTable('users', {
   // dev before adding this — a production db:push must re-run that same check first (see
   // hostinger-deploy skill's schema-change checklist) and resolve any it finds, or the
   // index creation itself will fail outright.
-  usernameUniqueCi: uniqueIndex('users_username_unique_ci').on(sql`lower(${table.username})`),
-  emailUniqueCi: uniqueIndex('users_email_unique_ci').on(sql`lower(${table.email})`),
+  // Partial on isDeleted=0 — a soft-deleted account (users.delete only ever sets
+  // isDeleted, never actually removes the row) must not permanently block re-registering
+  // its old username/email for a new account. Narrowing an existing unique index like
+  // this can only ever reduce what it rejects, never violate current data, so no
+  // conflict check is needed before this specific change (unlike widening one).
+  usernameUniqueCi: uniqueIndex('users_username_unique_ci').on(sql`lower(${table.username})`).where(sql`is_deleted = 0`),
+  emailUniqueCi: uniqueIndex('users_email_unique_ci').on(sql`lower(${table.email})`).where(sql`is_deleted = 0`),
 }));
 
 // Many-to-many: a user can hold multiple roles at once. Effective permissions are the

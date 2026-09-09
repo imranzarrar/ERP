@@ -289,7 +289,7 @@ async function startServer() {
         companyCancelled = userCompany?.registrationStatus === 'Cancelled';
       }
 
-      if (user && user.isDeleted !== 1 && !companyCancelled) {
+      if (user && user.isDeleted !== 1 && user.isActive !== false && !companyCancelled) {
         req.user = user;
         try {
           req.user.permissions = await resolveUserPermissions(user.id);
@@ -417,6 +417,14 @@ async function startServer() {
     
     if (user && user.isDeleted === 1) {
       return res.status(401).json({ error: 'User account has been deleted' });
+    }
+
+    // "Toggle Status" on the Staff Accounts screen (PATCH /api/users/:id/active) sets
+    // this — was previously cosmetic only: nothing here or in isAuthenticated ever
+    // actually checked it, so a deactivated account could still log in (and an already-
+    // logged-in session kept working indefinitely) as if nothing had changed.
+    if (user && user.isActive === false) {
+      return res.status(401).json({ error: 'This account has been deactivated. Contact your administrator.' });
     }
 
     // A company whose registration was Cancelled (see companies.registrationStatus,

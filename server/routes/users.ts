@@ -163,17 +163,22 @@ router.post('/', async (req: any, res) => {
       return res.status(400).json({ error: 'Username is required.' });
     }
 
-    // Uniqueness, case-insensitive — there is no DB-level unique constraint on either
-    // column (see their own schema comments: existing rows/test fixtures predate this),
-    // so this route is the only place either is actually enforced. Excludes this row's
-    // own id so an edit that doesn't change the value isn't rejected against itself.
+    // Uniqueness, case-insensitive — this app-layer check is what produces the friendly
+    // error message; the partial unique indexes on users.username/email (see their own
+    // schema comments) are the real backstop against a race between two concurrent
+    // creates. Both exclude a soft-deleted row (isDeleted=1) from the conflict — a
+    // deleted account's username/email must not permanently block reusing it for a new
+    // one (re-hiring the same person, fixing a typo'd account by deleting and
+    // recreating, etc.), which is exactly what the DB indexes below are partial on.
+    // Excludes this row's own id so an edit that doesn't change the value isn't rejected
+    // against itself.
     const [usernameConflict] = await db.select({ id: schema.users.id }).from(schema.users)
-      .where(sql`lower(${schema.users.username}) = lower(${cleanUsername})`);
+      .where(and(sql`lower(${schema.users.username}) = lower(${cleanUsername})`, eq(schema.users.isDeleted, 0)));
     if (usernameConflict && usernameConflict.id !== data.id) {
       return res.status(400).json({ error: `An account with the username "${cleanUsername}" already exists.` });
     }
     const [emailConflict] = await db.select({ id: schema.users.id }).from(schema.users)
-      .where(sql`lower(${schema.users.email}) = lower(${cleanEmail})`);
+      .where(and(sql`lower(${schema.users.email}) = lower(${cleanEmail})`, eq(schema.users.isDeleted, 0)));
     if (emailConflict && emailConflict.id !== data.id) {
       return res.status(400).json({ error: `An account with the email "${cleanEmail}" already exists.` });
     }

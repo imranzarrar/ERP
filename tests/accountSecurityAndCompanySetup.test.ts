@@ -219,3 +219,106 @@ describe('Forced password change + self-service change-password', () => {
     expect(someUser.password).toBeUndefined();
   });
 });
+
+describe('Deactivating an account actually locks it out (regression)', () => {
+  // Previously "Toggle Status" (PATCH /api/users/:id/active) only ever flipped
+  // users.isActive in the DB — nothing in POST /api/login or the isAuthenticated
+  // middleware ever checked it, so a deactivated account could still log in fresh, and
+  // an already-logged-in session kept working indefinitely with zero enforcement.
+  it('rejects login for a deactivated account', async () => {
+    const userId = generateId();
+    const username = `accsec_deactivated_${userId}`;
+    await db.insert(schema.users).values({
+      id: userId, username, password: await bcrypt.hash(TEST_PASSWORD, 10),
+      role: 'user', companyId, isSuperAdmin: false, uiLanguage: 'en', isActive: false,
+    });
+    const res = await login(username, TEST_PASSWORD);
+    expect(res.status).toBe(401);
+    expect(res.body.error).toMatch(/deactivated/i);
+    await db.delete(schema.users).where(eq(schema.users.id, userId));
+  });
+
+  it('cuts off an already-logged-in session the moment the account is deactivated', async () => {
+    const userId = generateId();
+    const username = `accsec_livecutoff_${userId}`;
+    await db.insert(schema.users).values({
+      id: userId, username, password: await bcrypt.hash(TEST_PASSWORD, 10),
+      role: 'user', companyId, isSuperAdmin: false, uiLanguage: 'en', isActive: true,
+    });
+    const loginRes = await login(username, TEST_PASSWORD);
+    expect(loginRes.status).toBe(200);
+    const sessionId = loginRes.body.sessionId;
+
+    // Session works fine while active.
+    const beforeRes = await api(sessionId, '/api/state');
+    expect(beforeRes.status).toBe(200);
+
+    // Admin deactivates the account via the real route (not a raw DB write) — this is
+    // the exact "Toggle Status" action a real admin takes in the UI.
+    const toggleRes = await api(adminSessionId, `/api/users/${userId}/active`, {
+      method: 'PATCH', body: JSON.stringify({ isActive: false }),
+    });
+    expect(toggleRes.status).toBe(200);
+
+    // The SAME still-open session must now be rejected on its very next request — no
+    // separate session-invalidation step, matching the existing companyCancelled pattern.
+    const afterRes = await api(sessionId, '/api/state');
+    expect(afterRes.status).toBe(401);
+
+    await db.delete(schema.auditLogs).where(eq(schema.auditLogs.userId, userId));
+    await db.delete(schema.users).where(eq(schema.users.id, userId));
+  });
+});
+
+describe('A soft-deleted account\'s username/email can be reused (regression)', () => {
+  // DELETE /api/users/:id only ever sets isDeleted:1 — the row (and its username/email)
+  // still physically exists. The uniqueness check in POST /api/users (and the DB-level
+  // partial unique indexes backing it) previously didn't exclude isDeleted=1 rows, so a
+  // deleted account's email permanently blocked ever creating a new one with that same
+  // email again (re-hiring the same person, fixing a typo'd account, etc.).
+  it('lets POST /api/users create a new account reusing a deleted account\'s email', async () => {
+    const deletedId = generateId();
+    const reusedEmail = `accsec_reuse_${deletedId}@example.com`;
+    await db.insert(schema.users).values({
+      id: deletedId, username: reusedEmail, email: reusedEmail,
+      password: await bcrypt.hash(TEST_PASSWORD, 10),
+      role: 'user', companyId, isSuperAdmin: false, uiLanguage: 'en', isDeleted: 1,
+    });
+
+    const newId = generateId();
+    const res = await api(adminSessionId, '/api/users', {
+      method: 'POST',
+      body: JSON.stringify({ id: newId, email: reusedEmail, password: 'ReusedPw1', role: 'user', companyId }),
+    });
+    expect(res.status).toBe(200);
+    const [row] = await db.select().from(schema.users).where(eq(schema.users.id, newId));
+    expect(row.email).toBe(reusedEmail);
+    expect(row.isDeleted).toBe(0);
+
+    await db.delete(schema.users).where(eq(schema.users.id, deletedId));
+    await db.delete(schema.users).where(eq(schema.users.id, newId));
+  });
+
+  it('the DB-level partial unique index itself allows a live row once the old row is soft-deleted', async () => {
+    const deletedId = generateId();
+    const newId = generateId();
+    const reusedEmail = `accsec_dbindex_reuse_${deletedId}@example.com`;
+    await db.insert(schema.users).values({
+      id: deletedId, username: reusedEmail, email: reusedEmail,
+      password: await bcrypt.hash(TEST_PASSWORD, 10),
+      role: 'user', companyId, isSuperAdmin: false, uiLanguage: 'en', isDeleted: 1,
+    });
+    // A direct insert (bypassing the app-layer check entirely) proves the constraint
+    // itself — not just the route's own pre-check — is what was narrowed.
+    await db.insert(schema.users).values({
+      id: newId, username: reusedEmail, email: reusedEmail,
+      password: await bcrypt.hash(TEST_PASSWORD, 10),
+      role: 'user', companyId, isSuperAdmin: false, uiLanguage: 'en', isDeleted: 0,
+    });
+    const rows = await db.select().from(schema.users).where(eq(schema.users.email, reusedEmail));
+    expect(rows.length).toBe(2);
+
+    await db.delete(schema.users).where(eq(schema.users.id, deletedId));
+    await db.delete(schema.users).where(eq(schema.users.id, newId));
+  });
+});
