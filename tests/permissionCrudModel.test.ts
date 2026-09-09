@@ -298,13 +298,15 @@ describe('Staff enrollment: delegated users.create cannot mint an admin account'
   it('a delegated (non-admin-tier) actor creating a user is forced to role=user regardless of what was requested', async () => {
     await setRolePermissions({ users: { create: { enabled: true }, read: { enabled: true }, update: { enabled: true }, delete: { enabled: true } } });
 
+    // Username is derived server-side from email for every brand-new account (see
+    // users.ts) — a client-supplied username is ignored on create.
+    const hireEmail = `permcrud_delegated_hire_${generateId()}@example.com`;
     const res = await api(scopedSessionId, '/api/users', {
       method: 'POST',
       body: JSON.stringify({
         id: generateId(),
-        username: `permcrud_delegated_hire_${generateId()}`,
         password: TEST_PASSWORD,
-        email: 'hire@example.com',
+        email: hireEmail,
         role: 'admin',        // attempted escalation
         isSuperAdmin: true,   // attempted escalation
       }),
@@ -312,8 +314,9 @@ describe('Staff enrollment: delegated users.create cannot mint an admin account'
     expect(res.status).toBe(200);
 
     const hire = (await db.select().from(schema.users).where(eq(schema.users.companyId, companyId)))
-      .find(u => u.username.startsWith('permcrud_delegated_hire_'));
+      .find(u => u.email === hireEmail);
     expect(hire).toBeTruthy();
+    expect(hire!.username).toBe(hireEmail);
     expect(hire!.role).toBe('user');
     expect(hire!.isSuperAdmin).toBe(false);
 
@@ -329,6 +332,72 @@ describe('Staff enrollment: delegated users.create cannot mint an admin account'
       body: JSON.stringify({ username: `permcrud_blocked_${generateId()}`, password: TEST_PASSWORD, email: 'blocked@example.com' }),
     });
     expect(res.status).toBe(403);
+  });
+});
+
+// User-reported live bug: creating a second account with an email that already exists
+// was silently accepted (found via the real "Provision New Account" form, reproduced by
+// entering the same email twice). Neither username nor email had any uniqueness check at
+// all — client or server — before this. Case-insensitive on both counts, matching the new
+// DB-level unique indexes (users_username_unique_ci / users_email_unique_ci).
+describe('Username and email must be unique (case-insensitive), regression', () => {
+  let firstUserId: string;
+  const uniqueEmail = `permcrud_unique_${generateId()}@example.com`;
+
+  beforeAll(async () => {
+    await setRolePermissions({ users: { create: { enabled: true }, read: { enabled: true }, update: { enabled: true }, delete: { enabled: true } } });
+    const res = await api(scopedSessionId, '/api/users', {
+      method: 'POST',
+      body: JSON.stringify({ id: generateId(), password: TEST_PASSWORD, email: uniqueEmail }),
+    });
+    expect(res.status).toBe(200);
+    const [row] = await db.select().from(schema.users).where(eq(schema.users.email, uniqueEmail));
+    firstUserId = row.id;
+    expect(row.username).toBe(uniqueEmail); // username = email for a brand-new account
+  });
+
+  afterAll(async () => {
+    await db.delete(schema.auditLogs).where(eq(schema.auditLogs.userId, firstUserId));
+    await db.delete(schema.users).where(eq(schema.users.id, firstUserId));
+  });
+
+  it('rejects creating a second account with the exact same email', async () => {
+    const res = await api(scopedSessionId, '/api/users', {
+      method: 'POST',
+      body: JSON.stringify({ id: generateId(), password: TEST_PASSWORD, email: uniqueEmail }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/already exists/i);
+  });
+
+  it('rejects creating a second account with the same email in different case', async () => {
+    const res = await api(scopedSessionId, '/api/users', {
+      method: 'POST',
+      body: JSON.stringify({ id: generateId(), password: TEST_PASSWORD, email: uniqueEmail.toUpperCase() }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/already exists/i);
+  });
+
+  it('rejects an explicit username collision against an existing row inserted directly (e.g. a legacy pre-username=email account)', async () => {
+    const legacyId = generateId();
+    const legacyUsername = `permcrud_legacy_${generateId()}`;
+    await db.insert(schema.users).values({
+      id: legacyId, username: legacyUsername, email: `permcrud_legacy_${generateId()}@example.com`,
+      password: 'x', role: 'user', companyId, isSuperAdmin: false, uiLanguage: 'en',
+    });
+
+    // An edit (existing id) that explicitly renames itself to collide with the legacy
+    // account's username must still be rejected, even though editing doesn't re-derive
+    // username from email.
+    const res = await api(scopedSessionId, '/api/users', {
+      method: 'POST',
+      body: JSON.stringify({ id: firstUserId, username: legacyUsername, email: uniqueEmail }),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/already exists/i);
+
+    await db.delete(schema.users).where(eq(schema.users.id, legacyId));
   });
 });
 

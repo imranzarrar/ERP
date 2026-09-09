@@ -163,14 +163,18 @@ describe('Account password policy on POST /api/users', () => {
 describe('Forced password change + self-service change-password', () => {
   it('flags mustChangePassword when an admin sets a password for a brand-new account', async () => {
     const newUserId = generateId();
-    const newUsername = `forcedchange_${newUserId}`;
+    // Username is derived server-side from email for every brand-new account (see
+    // users.ts) — a client-supplied username is ignored on create, so login uses the
+    // email, not a separate handle.
+    const newUsername = `forcedchange_${newUserId}@example.com`;
     const res = await api(adminSessionId, '/api/users', {
       method: 'POST',
-      body: JSON.stringify({ id: newUserId, username: newUsername, email: 'forcedchange@example.com', password: 'AdminSet1', role: 'admin', companyId }),
+      body: JSON.stringify({ id: newUserId, email: newUsername, password: 'AdminSet1', role: 'admin', companyId }),
     });
     expect(res.status).toBe(200);
     const [row] = await db.select().from(schema.users).where(eq(schema.users.id, newUserId));
     expect(row.mustChangePassword).toBe(true);
+    expect(row.username).toBe(newUsername);
 
     const loginRes = await login(newUsername, 'AdminSet1');
     expect(loginRes.status).toBe(200);

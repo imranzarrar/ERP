@@ -153,6 +153,17 @@ export const users = pgTable('users', {
 }, (table) => ({
   companyIdIdx: index('users_company_id_idx').on(table.companyId),
   emailIdx: index('users_email_idx').on(table.email),
+  // Case-insensitive uniqueness, DB-level backstop behind the app-layer check in
+  // POST /api/users (server/routes/users.ts) — that route is the only place either was
+  // ever actually enforced before this; a race between two concurrent creates, or any
+  // future direct-insert path, still needs a real constraint to catch it. Nullable email
+  // is fine here: Postgres treats each NULL as distinct under a unique index, so any
+  // number of legacy no-email rows can coexist. Confirmed zero existing duplicates in
+  // dev before adding this — a production db:push must re-run that same check first (see
+  // hostinger-deploy skill's schema-change checklist) and resolve any it finds, or the
+  // index creation itself will fail outright.
+  usernameUniqueCi: uniqueIndex('users_username_unique_ci').on(sql`lower(${table.username})`),
+  emailUniqueCi: uniqueIndex('users_email_unique_ci').on(sql`lower(${table.email})`),
 }));
 
 // Many-to-many: a user can hold multiple roles at once. Effective permissions are the

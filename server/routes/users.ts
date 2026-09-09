@@ -1,7 +1,7 @@
 import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, sql } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import { recordAuditLog } from '../lib/audit.js';
 import { isSuperAdminUser, assertOwnsRow, hasPermission } from '../lib/authz.js';
@@ -101,6 +101,34 @@ router.post('/', async (req: any, res) => {
       }
     }
 
+    // Username = email for every brand-new account — same convention the self-signup
+    // onboarding-approval flow already uses (onboarding.ts's baseUsername), applied here
+    // too so there's only ever one identifier to keep unique, not two that can drift out
+    // of sync. An edit never renames an existing account's own (possibly pre-existing,
+    // non-email-shaped) username just because its email changed.
+    if (!isUpdate) {
+      data.username = cleanEmail;
+    }
+    const cleanUsername = String(data.username || '').trim();
+    if (!cleanUsername) {
+      return res.status(400).json({ error: 'Username is required.' });
+    }
+
+    // Uniqueness, case-insensitive — there is no DB-level unique constraint on either
+    // column (see their own schema comments: existing rows/test fixtures predate this),
+    // so this route is the only place either is actually enforced. Excludes this row's
+    // own id so an edit that doesn't change the value isn't rejected against itself.
+    const [usernameConflict] = await db.select({ id: schema.users.id }).from(schema.users)
+      .where(sql`lower(${schema.users.username}) = lower(${cleanUsername})`);
+    if (usernameConflict && usernameConflict.id !== data.id) {
+      return res.status(400).json({ error: `An account with the username "${cleanUsername}" already exists.` });
+    }
+    const [emailConflict] = await db.select({ id: schema.users.id }).from(schema.users)
+      .where(sql`lower(${schema.users.email}) = lower(${cleanEmail})`);
+    if (emailConflict && emailConflict.id !== data.id) {
+      return res.status(400).json({ error: `An account with the email "${cleanEmail}" already exists.` });
+    }
+
     // Sanitize user payload for schema.users table
     const userRecord: any = {
       id: data.id,
@@ -120,19 +148,24 @@ router.post('/', async (req: any, res) => {
     };
     if (data.uid) userRecord.uid = data.uid;
     // An admin choosing/resetting someone else's password (or a brand-new account
-    // defaulting to 123456) forces a change on that account's next login — see
+    // defaulting to 123456) forces a change on that account's next login by default — see
     // POST /api/auth/change-password and the login response's mustChangePassword flag.
-    // Not forced when the actor is setting their own password through this same route.
+    // Never forced when the actor is setting their own password through this same route
+    // (they just set it themselves, they already know it), regardless of what's sent.
+    // The admin's own "Require password change on next login" checkbox (AdminSettings.tsx)
+    // can override the default in either direction when explicitly supplied; an older/
+    // direct API caller that omits it keeps today's exact default behavior.
     const isSelfEdit = existingUser?.id === req.user?.id;
+    const requestedMustChange = data.mustChangePassword !== undefined ? Boolean(data.mustChangePassword) : undefined;
     if (data.password) {
       userRecord.password = data.password;
-      userRecord.mustChangePassword = !isSelfEdit;
+      userRecord.mustChangePassword = isSelfEdit ? false : (requestedMustChange !== undefined ? requestedMustChange : true);
     } else if (existingUser && existingUser.password) {
       userRecord.password = existingUser.password;
-      userRecord.mustChangePassword = existingUser.mustChangePassword ?? false;
+      userRecord.mustChangePassword = isSelfEdit ? false : (requestedMustChange !== undefined ? requestedMustChange : (existingUser.mustChangePassword ?? false));
     } else {
       userRecord.password = await bcrypt.hash('123456', 10);
-      userRecord.mustChangePassword = true;
+      userRecord.mustChangePassword = requestedMustChange !== undefined ? requestedMustChange : true;
     }
 
     await db.insert(schema.users).values(userRecord).onConflictDoUpdate({
