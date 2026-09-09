@@ -512,7 +512,6 @@ router.post('/invoices', async (req: any, res) => {
   try {
     const user = req.user;
     const permissions = normalizePermissions(user.permissions, user.role, user.isSuperAdmin);
-    if (!permissions.invoice.create.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     const { invoiceData } = req.body;
     const { items, ...invData } = invoiceData;
@@ -534,6 +533,16 @@ router.post('/invoices', async (req: any, res) => {
       if (existingInvoice && ['SUBMITTING', 'CLEARED', 'REPORTED'].includes(existingInvoice.zatcaStatus as string)) {
         return res.status(400).json({ error: 'This invoice has already been submitted to ZATCA and can no longer be edited. Issue a Credit Note instead.' });
       }
+    }
+    // Upsert route: an existing row is an edit, gated by invoice.update (not
+    // invoice.create) — same split every other upsert route in this app already applies
+    // (quotations just above, expenses). This route previously gated the whole thing on
+    // invoice.create alone, so a create-only role (create:true, update:false) could edit
+    // any existing invoice through this same endpoint.
+    if (existingInvoice) {
+      if (!permissions.invoice.update.enabled) return res.status(403).json({ error: 'Forbidden' });
+    } else if (!permissions.invoice.create.enabled) {
+      return res.status(403).json({ error: 'Forbidden' });
     }
 
     invData.companyId = req.targetCompanyId;

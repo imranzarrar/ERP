@@ -120,6 +120,10 @@ afterAll(async () => {
   if (quotIds.length > 0) {
     await db.delete(schema.quotationItems).where(inArray(schema.quotationItems.quotationId, quotIds));
   }
+  const invIds = (await db.select().from(schema.invoices).where(eq(schema.invoices.companyId, companyId))).map(i => i.id);
+  if (invIds.length > 0) {
+    await db.delete(schema.invoiceItems).where(inArray(schema.invoiceItems.invoiceId, invIds));
+  }
   await db.delete(schema.invoices).where(eq(schema.invoices.companyId, companyId));
   await db.delete(schema.quotations).where(eq(schema.quotations.companyId, companyId));
   await db.delete(schema.customers).where(eq(schema.customers.companyId, companyId));
@@ -474,6 +478,94 @@ describe('Tax slabs: POST /tax-slabs branches create-vs-update (regression - use
       body: JSON.stringify({ id: taxSlabId, name: 'PermCrud 15% Renamed', percentage: '15', isDefault: false }),
     });
     expect(allowed.status).toBe(200);
+  });
+});
+
+// Regression coverage for a real bug found live: POST /transactions/invoices gated the
+// entire upsert on invoice.create alone — a create-only role (create:true, update:false)
+// could silently edit ANY existing invoice through this same endpoint, since the route
+// never branched on whether an id was supplied. Every sibling upsert route in this app
+// (quotations, expenses, tax slabs above) already branches create-vs-update correctly.
+describe('Invoices: POST /transactions/invoices branches create-vs-update (regression)', () => {
+  let editableInvoiceId: string;
+
+  beforeAll(async () => {
+    editableInvoiceId = generateId();
+    await db.insert(schema.invoices).values({
+      id: editableInvoiceId, invoiceNumber: 'INV-PERMCRUD-EDIT', date: '2026-08-01',
+      customerId, taxSlabId, bankId, notes: '', status: 'Active', paymentStatus: 'Unpaid',
+      createdById: adminUserId, createdAt: new Date(), amountPaid: '0', companyId,
+      documentType: 'Invoice', zatcaStatus: 'NOT_SUBMITTED',
+    });
+  });
+
+  afterAll(async () => {
+    await db.delete(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, editableInvoiceId));
+    await db.delete(schema.invoices).where(eq(schema.invoices.id, editableInvoiceId));
+  });
+
+  it('invoice.create=true, update=false allows creating a brand-new invoice', async () => {
+    await setRolePermissions({
+      invoice: { create: { enabled: true }, read: { enabled: true }, update: { enabled: false }, delete: { enabled: false } },
+    });
+    const res = await api(scopedSessionId, '/api/transactions/invoices', {
+      method: 'POST',
+      body: JSON.stringify({
+        invoiceData: {
+          date: '2026-08-01', customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          items: [{ id: generateId(), description: 'PermCrud new invoice', unitCost: 10, quantity: 1, unit: 'PCE' }],
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('invoice.create=true, update=false blocks editing the existing fixture invoice', async () => {
+    await setRolePermissions({
+      invoice: { create: { enabled: true }, read: { enabled: true }, update: { enabled: false }, delete: { enabled: false } },
+    });
+    const res = await api(scopedSessionId, '/api/transactions/invoices', {
+      method: 'POST',
+      body: JSON.stringify({
+        invoiceData: {
+          id: editableInvoiceId, invoiceNumber: 'INV-PERMCRUD-EDIT', date: '2026-08-01', customerId, taxSlabId, bankId, notes: 'edited by create-only role', status: 'Active', amountPaid: 0,
+          items: [{ id: generateId(), description: 'PermCrud edited line', unitCost: 20, quantity: 1, unit: 'PCE' }],
+        },
+      }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it('invoice.create=false, update=true allows editing the existing fixture invoice', async () => {
+    await setRolePermissions({
+      invoice: { create: { enabled: false }, read: { enabled: true }, update: { enabled: true }, delete: { enabled: false } },
+    });
+    const res = await api(scopedSessionId, '/api/transactions/invoices', {
+      method: 'POST',
+      body: JSON.stringify({
+        invoiceData: {
+          id: editableInvoiceId, invoiceNumber: 'INV-PERMCRUD-EDIT', date: '2026-08-01', customerId, taxSlabId, bankId, notes: 'edited by update-only role', status: 'Active', amountPaid: 0,
+          items: [{ id: generateId(), description: 'PermCrud edited line', unitCost: 20, quantity: 1, unit: 'PCE' }],
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('invoice.create=false, update=true still blocks creating a brand-new invoice', async () => {
+    await setRolePermissions({
+      invoice: { create: { enabled: false }, read: { enabled: true }, update: { enabled: true }, delete: { enabled: false } },
+    });
+    const res = await api(scopedSessionId, '/api/transactions/invoices', {
+      method: 'POST',
+      body: JSON.stringify({
+        invoiceData: {
+          date: '2026-08-01', customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          items: [{ id: generateId(), description: 'PermCrud blocked new invoice', unitCost: 10, quantity: 1, unit: 'PCE' }],
+        },
+      }),
+    });
+    expect(res.status).toBe(403);
   });
 });
 
