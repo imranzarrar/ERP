@@ -493,6 +493,103 @@ describe('Filing, permanent lock, and the filed-quarter document lock', () => {
     });
     expect(st.status).toBe(200);
   });
+
+  // Regression coverage for a real gap found live during manual QA: cancelling or
+  // converting a document is an edit to it, same as creating one — but the lock had only
+  // ever been wired into the create/edit routes, never the cancel/convert ones. Each
+  // fixture here is inserted directly (bypassing the route) since the quarter is already
+  // filed by this point in the suite and a real create call would itself be rejected.
+  it('blocks cancelling an Invoice dated in the filed quarter', async () => {
+    const today = now.toISOString().split('T')[0];
+    const invId = generateId();
+    await db.insert(schema.invoices).values({
+      id: invId, invoiceNumber: `FILEDLOCK-CANCEL-${invId}`,
+      date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active',
+      paymentStatus: 'Unpaid', createdById: adminUserId, createdAt: new Date(), amountPaid: '0',
+      companyId, documentType: 'Invoice', zatcaStatus: 'NOT_SUBMITTED',
+    });
+
+    const { status, body } = await api(adminSessionId, `/api/transactions/invoices/${invId}/cancel`, { method: 'POST' });
+    expect(status).toBe(400);
+    expect(body.error).toMatch(/filed with ZATCA/i);
+
+    await db.delete(schema.invoices).where(eq(schema.invoices.id, invId));
+  });
+
+  it('blocks converting an Accepted Quotation into an Invoice dated in the filed quarter', async () => {
+    const today = now.toISOString().split('T')[0];
+    const quoteId = generateId();
+    await db.insert(schema.quotations).values({
+      id: quoteId, quotationNumber: `FILEDLOCK-CONV-${quoteId}`,
+      date: today, customerId, taxSlabId, notes: '', status: 'Accepted', createdById: adminUserId, createdAt: new Date(),
+      companyId,
+    });
+
+    const { status, body } = await api(adminSessionId, `/api/transactions/quotations/${quoteId}/convert`, {
+      method: 'POST',
+      body: JSON.stringify({ invoiceDate: today, bankId, paymentStatus: 'Unpaid', customCustomerId: customerId, customTaxSlabId: taxSlabId }),
+    });
+    expect(status).toBe(400);
+    expect(body.error).toMatch(/filed with ZATCA/i);
+
+    await db.delete(schema.quotations).where(eq(schema.quotations.id, quoteId));
+  });
+
+  it('blocks cancelling an Expense dated in the filed quarter', async () => {
+    const today = now.toISOString().split('T')[0];
+    const expId = generateId();
+    await db.insert(schema.expenses).values({
+      id: expId, expenseNumber: `FILEDLOCK-EXP-${expId}`,
+      date: today, vendorId, taxSlabId, bankId, description: 'filed-lock cancel test', billNumber: `FL-${expId}`,
+      amount: '10', status: 'Active', type: 'Actual', paymentStatus: 'Unpaid', createdById: adminUserId, createdAt: new Date(),
+      companyId,
+    });
+
+    const { status, body } = await api(adminSessionId, `/api/expenses/${expId}/cancel`, { method: 'POST' });
+    expect(status).toBe(400);
+    expect(body.error).toMatch(/filed with ZATCA/i);
+
+    await db.delete(schema.expenses).where(eq(schema.expenses.id, expId));
+  });
+
+  it('blocks cancelling a Purchase Bill dated in the filed quarter', async () => {
+    const grn = await api(adminSessionId, '/api/inventory/goods-receipt-notes', {
+      method: 'POST',
+      body: JSON.stringify({ grnData: { isDsd: true, vendorId, warehouseId, receivedBy: 'Automated Test', items: [{ productId, quantityReceived: 1, unitCost: 10, taxRate: 15 }] } }),
+    });
+    expect(grn.status).toBe(200); // GRN creation itself is not VAT-relevant, not blocked
+
+    const billId = generateId();
+    const today = now.toISOString().split('T')[0];
+    await db.insert(schema.purchaseBills).values({
+      id: billId, billNumber: `FILEDLOCK-BILL-${billId}`, grnIds: grn.body.goodsReceiptNote.id,
+      vendorId, bankId, date: new Date(today), subTotal: '10', taxTotal: '1.5', grandTotal: '11.5',
+      status: 'Unpaid', companyId,
+    });
+
+    const { status, body } = await api(adminSessionId, `/api/inventory/purchase-bills/${billId}/cancel`, { method: 'PATCH' });
+    expect(status).toBe(400);
+    expect(body.error).toMatch(/filed with ZATCA/i);
+
+    await db.delete(schema.purchaseBills).where(eq(schema.purchaseBills.id, billId));
+  });
+
+  it('blocks creating a Purchase Return while the current quarter is filed', async () => {
+    const grn = await api(adminSessionId, '/api/inventory/goods-receipt-notes', {
+      method: 'POST',
+      body: JSON.stringify({ grnData: { isDsd: true, vendorId, warehouseId, receivedBy: 'Automated Test', items: [{ productId, quantityReceived: 5, unitCost: 10, taxRate: 15 }] } }),
+    });
+    expect(grn.status).toBe(200);
+
+    // Purchase Returns always post as of today (no client-supplied backdating) — today
+    // falls in the same quarter that's already filed, so creation itself must be blocked.
+    const { status, body } = await api(adminSessionId, '/api/inventory/purchase-returns', {
+      method: 'POST',
+      body: JSON.stringify({ returnData: { grnId: grn.body.goodsReceiptNote.id, items: [{ productId, quantityReturned: 1 }] } }),
+    });
+    expect(status).toBe(400);
+    expect(body.error).toMatch(/filed with ZATCA/i);
+  });
 });
 
 describe('Sequential filing order (isolated company, zero underlying data)', () => {

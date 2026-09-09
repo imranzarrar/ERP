@@ -310,6 +310,10 @@ router.post('/quotations/:id/convert', async (req: any, res) => {
 
       const companyId = req.targetCompanyId;
       await validateTransactionDate(invoiceDate, companyId);
+      // This creates a brand-new invoice, same as POST /invoices — must be blocked the
+      // same way if invoiceDate falls in an already-filed quarter. This route reimplements
+      // invoice creation as its own parallel path and had never picked up this check.
+      await assertQuarterNotFiled(invoiceDate, companyId);
 
       const refError = await assertDocumentRefsOwnedByCompany(tx, companyId, {
         customerId: customCustomerId,
@@ -1074,6 +1078,13 @@ router.post('/invoices/:id/cancel', async (req: any, res) => {
       const [invoice] = await tx.select().from(schema.invoices).where(and(eq(schema.invoices.id, id), eq(schema.invoices.companyId, req.targetCompanyId))).for('update');
       if (!invoice) throw new Error('Invoice not found');
       if (!branchAccessOk(req, invoice.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
+
+      // A cancel is an edit to this invoice's status — it must be blocked exactly like a
+      // real edit once the invoice's own quarter has been filed with ZATCA, or a filed
+      // return's reported sales/VAT figures could silently go stale (cancelling drops it
+      // out of every report's totals — see SalesReportsModule.tsx). POST /invoices and
+      // /invoices/:id/note already enforce this; this route never did.
+      await assertQuarterNotFiled(invoice.date, req.targetCompanyId);
 
       if (['SUBMITTING', 'CLEARED', 'REPORTED'].includes(invoice.zatcaStatus as string)) {
         const err: any = new Error('This invoice has already been submitted to ZATCA and cannot be cancelled. Issue a Credit Note instead.');

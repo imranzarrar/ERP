@@ -87,6 +87,11 @@ beforeAll(async () => {
 
   warehouseId = generateId();
   await db.insert(schema.warehouses).values({ id: warehouseId, name: 'Main Store', code: 'MAIN', address: 'x', isActive: true, companyId });
+
+  // Required since Purchase Returns now enforce the same open-fiscal-month/
+  // filed-quarter-not-locked checks every other financial-document route already has.
+  const monthId = new Date().toISOString().slice(0, 7);
+  await db.insert(schema.fiscalMonths).values({ id: monthId, name: monthId, status: 'Open', companyId }).onConflictDoNothing();
 });
 
 afterAll(async () => {
@@ -114,6 +119,7 @@ afterAll(async () => {
   await db.delete(schema.users).where(eq(schema.users.id, adminUserId));
   await db.delete(schema.users).where(eq(schema.users.id, staffUserId));
   await db.delete(schema.documentCounters).where(eq(schema.documentCounters.companyId, companyId));
+  await db.delete(schema.fiscalMonths).where(eq(schema.fiscalMonths.companyId, companyId));
   await db.delete(schema.companies).where(eq(schema.companies.id, companyId));
 });
 

@@ -581,6 +581,12 @@ export async function cancelExpense(tx: any, req: any, id: string, companyId: st
   if (!branchAccessOk(req, expense.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
   if (expense.status === 'Cancelled') { const err: any = new Error('Expense is already cancelled.'); err.status = 400; throw err; }
 
+  // Cancelling is an edit to this expense's status, same as the create/update route
+  // already blocks once its quarter has been filed with ZATCA (a filed return's reported
+  // input VAT would otherwise silently go stale). Shared by both POST /expenses/:id/cancel
+  // and DELETE /accruals/:id, so fixing it here covers both call sites at once.
+  await assertQuarterNotFiled(expense.date, companyId);
+
   const openMonths = await tx.select().from(schema.fiscalMonths)
     .where(and(eq(schema.fiscalMonths.companyId, companyId), eq(schema.fiscalMonths.status, 'Open')));
   const openMonth = openMonths.sort((a: any, b: any) => a.id.localeCompare(b.id))[0];

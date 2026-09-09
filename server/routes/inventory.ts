@@ -2,7 +2,7 @@ import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, and, isNull, inArray } from 'drizzle-orm';
-import { round2, round4, writeStockLedgerEntry, assertQuarterNotFiled, assertProductsOwnedByCompany } from '../lib/businessLogic.js';
+import { round2, round4, writeStockLedgerEntry, assertQuarterNotFiled, assertProductsOwnedByCompany, validateTransactionDate } from '../lib/businessLogic.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { hasPermission, resolveDocumentBranchId, branchAccessOk, branchAccessOkViaWarehouse } from '../lib/authz.js';
 import { toBaseQuantity, toBaseUnitCost } from '../lib/uomConversion.js';
@@ -1598,6 +1598,10 @@ router.patch('/purchase-bills/:id/cancel', async (req: any, res) => {
         err.status = 400;
         throw err;
       }
+      // Cancelling is an edit to this bill, same as its creation already blocks once its
+      // quarter has been filed with ZATCA (a filed return's reported input VAT would
+      // otherwise silently go stale).
+      await assertQuarterNotFiled(bill.date.toISOString().slice(0, 10), companyId);
       const [newBill] = await tx.update(schema.purchaseBills)
         .set({ status: 'Cancelled' })
         .where(eq(schema.purchaseBills.id, id))
@@ -1656,6 +1660,12 @@ router.post('/purchase-returns', async (req: any, res) => {
         err.status = 400;
         throw err;
       }
+      // Purchase Returns always post as of today (date: new Date() below), same as
+      // Purchase Bills — no client-supplied backdating, so this is a same-day check only.
+      // This route previously had neither the open-month nor the filed-quarter check at
+      // all, unlike every sibling financial-document route.
+      await validateTransactionDate(new Date().toISOString().slice(0, 10), companyId);
+      await assertQuarterNotFiled(new Date().toISOString().slice(0, 10), companyId);
       // Belt-and-suspenders alongside the received-quantity check below (lines ~1244-1256
       // already reject returning more than was actually received against this GRN, which
       // in practice also rejects any productId that was never received at all — but that's
@@ -1797,6 +1807,9 @@ router.patch('/purchase-returns/:id/cancel', async (req: any, res) => {
         err.status = 400;
         throw err;
       }
+      // Cancelling is an edit to this return, same as its creation now blocks once its
+      // quarter has been filed with ZATCA.
+      await assertQuarterNotFiled(ret.date.toISOString().slice(0, 10), companyId);
 
       const items = await tx.select().from(schema.purchaseReturnItems).where(eq(schema.purchaseReturnItems.returnId, id));
       for (const item of items) {
