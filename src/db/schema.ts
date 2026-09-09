@@ -150,6 +150,17 @@ export const users = pgTable('users', {
   // default on a brand-new account), cleared once that user sets their own password via
   // POST /api/auth/change-password. See server/routes/users.ts and server.ts's login route.
   mustChangePassword: boolean('must_change_password').notNull().default(false),
+  // Direct identity fields for a login account that has NO linked employee (a company
+  // not using HR onboarding, or an admin/system account that was never meant to be one).
+  // Deliberately NOT used at all once employeeId is set — server/routes/users.ts forces
+  // both to null on save whenever an employee link exists, so the employees row (which
+  // already has its own name/phone) stays the single source of truth instead of two
+  // copies that can drift apart, same reasoning username=email replaced two separate
+  // identifiers with one. phone is unstructured free text (international formats vary
+  // too much for a single validation rule) — currently informational only; a future SMS-
+  // based password-reset flow would read it from here (or from the linked employee).
+  fullName: text('full_name'),
+  phone: text('phone'),
 }, (table) => ({
   companyIdIdx: index('users_company_id_idx').on(table.companyId),
   emailIdx: index('users_email_idx').on(table.email),

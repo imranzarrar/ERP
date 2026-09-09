@@ -2296,11 +2296,44 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  const [deletingCompany, setDeletingCompany] = React.useState<{ id: string; name: string } | null>(null);
  const [deleteCompanyConfirmText, setDeleteCompanyConfirmText] = React.useState('');
 
+ // db.users (from GET /api/state) only ever holds ONE company's rows at a time — the
+ // server scopes the whole bundled state to req.targetCompanyId regardless of what this
+ // screen's own "Filter Directory" dropdown says. So a super-admin picking a different
+ // company (or "All Organizations") here needs its own on-demand fetch against the new
+ // GET /api/users route, not a client-side filter over db.users. A non-super-admin never
+ // sees this dropdown at all, so they always just use db.users, unchanged.
+ const [directoryUsers, setDirectoryUsers] = React.useState<any[] | null>(null);
+ React.useEffect(() => {
+   if (!db.currentUser?.isSuperAdmin) { setDirectoryUsers(null); return; }
+   let cancelled = false;
+   fetch(`/api/users?companyId=${encodeURIComponent(userCompanyFilter)}`)
+     .then(r => r.json())
+     .then(rows => { if (!cancelled) setDirectoryUsers(Array.isArray(rows) ? rows : []); })
+     .catch(() => { if (!cancelled) setDirectoryUsers([]); });
+   return () => { cancelled = true; };
+ }, [db.currentUser?.isSuperAdmin, userCompanyFilter]);
+ // onRefreshDb() (the normal post-mutation refresh) only reloads db.users' own
+ // single-company scope — it never revisits this screen's separate on-demand fetch, so
+ // every mutation below that calls onRefreshDb must also call this or the directory
+ // shows stale data until the filter is changed and changed back.
+ const refreshDirectoryUsers = React.useCallback(() => {
+   if (!db.currentUser?.isSuperAdmin) return;
+   fetch(`/api/users?companyId=${encodeURIComponent(userCompanyFilter)}`)
+     .then(r => r.json())
+     .then(rows => setDirectoryUsers(Array.isArray(rows) ? rows : []))
+     .catch(() => {});
+ }, [db.currentUser?.isSuperAdmin, userCompanyFilter]);
+
  const [userForm, setUserForm] = React.useState({
  username: '',
  email: '',
  password: '',
  confirmPassword: '',
+ // Visible, admin-controlled version of the server's own default: a brand-new account
+ // (or one whose password an admin is setting) is forced to change it on next login
+ // unless this is explicitly unchecked. See server/routes/users.ts's mustChangePassword
+ // logic — this is the client-side control for that same flag, not a separate mechanism.
+ mustChangePassword: true,
  role: 'user' as UserRole,
  companyId: db.selectedCompanyId,
  roleIds: [] as string[],
@@ -2314,6 +2347,12 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  // company has onboarded at least one active employee (server/routes/users.ts);
  // empty string here means "not linked," same convention as primaryBranchId.
  employeeId: '',
+ // Only ever this account's own data when employeeId is blank — once an employee is
+ // linked, these are auto-filled from (and read-only against) that employee's own
+ // name/phone, and the server forces both to null on save regardless of what's sent,
+ // so the employees row stays the single source of truth. See users.ts schema comment.
+ fullName: '',
+ phone: '',
   });
 
   // The "Assigned Company" field above was a one-time useState initializer that never
@@ -2328,6 +2367,64 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
   React.useEffect(() => {
     setUserForm(prev => ({ ...prev, companyId: db.selectedCompanyId }));
   }, [db.selectedCompanyId]);
+
+ // Same shape of bug, for the Provision/Edit form's own "Assigned Roles" list: db.roles
+ // is scoped to whatever company is active in the top-nav selector, not to this form's
+ // own "Assigned Company" dropdown — a super-admin creating a user in a DIFFERENT company
+ // than the one currently active got roles from the wrong company (and the account then
+ // failed to save, since a role can't be assigned across companies). GET /api/roles
+ // already honors ?companyId=<id> for a super-admin (server/routes/roles.ts), so this
+ // just needs the client to actually call it for the form's own selected company.
+ const [modalRoles, setModalRoles] = React.useState<Role[] | null>(null);
+ const effectiveModalCompanyId = userForm.companyId || db.selectedCompanyId;
+ React.useEffect(() => {
+   if (!db.currentUser?.isSuperAdmin || effectiveModalCompanyId === db.selectedCompanyId) {
+     setModalRoles(null);
+     return;
+   }
+   let cancelled = false;
+   fetch(`/api/roles?companyId=${encodeURIComponent(effectiveModalCompanyId)}`)
+     .then(r => r.json())
+     .then(rows => { if (!cancelled) setModalRoles(Array.isArray(rows) ? rows : []); })
+     .catch(() => { if (!cancelled) setModalRoles([]); });
+   return () => { cancelled = true; };
+ }, [db.currentUser?.isSuperAdmin, effectiveModalCompanyId, db.selectedCompanyId]);
+ const rolesForModal = modalRoles ?? db.roles;
+
+ // Same bug again, for the "Linked Employee" picker just below: db.employees is scoped
+ // to the active top-nav company (server/routes/employees.ts's GET /employees), so a
+ // super-admin provisioning a user for a DIFFERENT, HR-onboarding company saw an empty
+ // employee list — the picker never rendered at all, yet the server-side "this company
+ // requires a linked employee" check still fired on submit with nothing to satisfy it.
+ const [modalEmployees, setModalEmployees] = React.useState<any[] | null>(null);
+ React.useEffect(() => {
+   if (!db.currentUser?.isSuperAdmin || effectiveModalCompanyId === db.selectedCompanyId) {
+     setModalEmployees(null);
+     return;
+   }
+   let cancelled = false;
+   fetch(`/api/employees?companyId=${encodeURIComponent(effectiveModalCompanyId)}`)
+     .then(r => r.json())
+     .then(rows => { if (!cancelled) setModalEmployees(Array.isArray(rows) ? rows : []); })
+     .catch(() => { if (!cancelled) setModalEmployees([]); });
+   return () => { cancelled = true; };
+ }, [db.currentUser?.isSuperAdmin, effectiveModalCompanyId, db.selectedCompanyId]);
+ const employeesForModal = modalEmployees ?? db.employees;
+
+ // A role/employee picked before switching the "Assigned Company" dropdown belongs to
+ // the OLD company and can never validly save against the new one — clear both rather
+ // than let the user submit a selection the server will silently drop (see
+ // server/routes/users.ts's droppedRoles handling). Skipped while editing an existing
+ // account: that flow pre-fills companyId once from the row being edited, and this
+ // effect firing on that initial set would immediately wipe the very selections just
+ // loaded before the user has touched anything.
+ const prevModalCompanyIdRef = React.useRef(effectiveModalCompanyId);
+ React.useEffect(() => {
+   if (!editingUser && prevModalCompanyIdRef.current !== effectiveModalCompanyId) {
+     setUserForm(prev => ({ ...prev, roleIds: [], employeeId: '', branchIds: [], primaryBranchId: '' }));
+   }
+   prevModalCompanyIdRef.current = effectiveModalCompanyId;
+ }, [effectiveModalCompanyId, editingUser]);
 
   // Roles render straight from the shared `db.roles` (populated by `/api/state`,
   // refreshed via `onRefreshDb`) — this used to be a separately-fetched local copy that
@@ -2499,7 +2596,10 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
 
  const handleAddUser = async (e: React.FormEvent) => {
  e.preventDefault();
- if (!userForm.username.trim()) return triggerError('Username is required.');
+ // A brand-new account has no username field at all — the server derives it from
+ // email (server/routes/users.ts). Only an edit of an existing (possibly legacy,
+ // non-email-shaped) username needs this check.
+ if (editingUser && !userForm.username.trim()) return triggerError('Username is required.');
  // Mandatory — this is what the "Forgot password?" flow keys off (see server.ts's
  // POST /api/auth/forgot-password): an account with no email on file can never receive
  // a reset link, so every account created/edited here must have one.
@@ -2542,12 +2642,15 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  username: userForm.username.trim(),
  email: cleanEmail,
  password: assignedPassword,
+ mustChangePassword: userForm.mustChangePassword,
  role: userForm.role,
  companyId: userForm.companyId || db.selectedCompanyId,
   roleIds: userForm.roleIds,
   branchIds: userForm.branchIds,
   primaryBranchId: userForm.primaryBranchId || undefined,
   employeeId: userForm.employeeId || null,
+  fullName: userForm.employeeId ? null : (userForm.fullName.trim() || null),
+  phone: userForm.employeeId ? null : (userForm.phone.trim() || null),
  } as any;
 
  try {
@@ -2560,6 +2663,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  // POST /api/users already persisted the record — refetch from the server instead
  // of hand-merging a client-side copy through the full-blob /api/migrate sync.
  await onRefreshDb?.();
+ refreshDirectoryUsers();
  if (body.droppedRoles?.length || body.droppedBranches?.length) {
  // A requested role/branch belongs to a different company than this user and was
  // NOT assigned — the save itself still succeeded, but this must be loud, not a
@@ -2576,12 +2680,13 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  return;
  }
  } else {
- // Create new user
+ // Create new user — no username field: the server derives it from email for every
+ // brand-new account (server/routes/users.ts), so there's nothing to send here.
  const newUser = {
  id: generateId(),
- username: userForm.username.trim(),
  email: cleanEmail,
  password: assignedPassword,
+ mustChangePassword: userForm.mustChangePassword,
  role: userForm.role,
  companyId: userForm.companyId || db.selectedCompanyId,
  isActive: true, // Active by default
@@ -2590,6 +2695,8 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
   branchIds: userForm.branchIds,
   primaryBranchId: userForm.primaryBranchId || undefined,
   employeeId: userForm.employeeId || null,
+  fullName: userForm.employeeId ? null : (userForm.fullName.trim() || null),
+  phone: userForm.employeeId ? null : (userForm.phone.trim() || null),
  };
 
  try {
@@ -2600,6 +2707,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  return;
  }
  await onRefreshDb?.();
+ refreshDirectoryUsers();
  if (body.droppedRoles?.length || body.droppedBranches?.length) {
  // See the matching comment in the edit-user branch above — a dropped role/branch
  // means this account has fewer permissions than what was actually requested.
@@ -2620,19 +2728,26 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  email: '',
  password: '',
  confirmPassword: '',
+ mustChangePassword: true,
  role: 'user',
  companyId: db.selectedCompanyId,
  roleIds: [],
  branchIds: [],
  primaryBranchId: '',
  employeeId: '',
+ fullName: '',
+ phone: '',
   });
  };
  const handleToggleUserActive = async (userId: string) => {
  if (db.currentUser && userId === db.currentUser.id) {
  return triggerError(t('You cannot deactivate your own active session!'));
  }
- const targetUser = db.users.find(u => u.id === userId);
+ // db.users only ever holds the currently-active company's rows — a row being toggled
+ // from a different company's view (via the Filter Directory dropdown's on-demand fetch)
+ // must be looked up in that fetched list too, or this silently falls back to `undefined`
+ // and both the super-admin guard and the current-status read below get it wrong.
+ const targetUser = (directoryUsers ?? db.users).find(u => u.id === userId);
  if (targetUser?.isSuperAdmin) {
  return triggerError(t('Super Admin accounts cannot be deactivated!'));
  }
@@ -2650,6 +2765,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  return;
  }
  await onRefreshDb?.();
+ refreshDirectoryUsers();
  triggerSuccess(`${t('User')} "${targetUser?.username}" ${newStatus ? t('is now active.') : t('is now deactivated.')}`);
  } catch (err) {
  triggerError(t('Failed to update user status — check your connection and try again.'));
@@ -2661,7 +2777,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
   if (db.currentUser && userId === db.currentUser.id) {
  return triggerError(t('You cannot delete your own active session!'));
  }
- const userToDelete = db.users.find(u => u.id === userId);
+ const userToDelete = (directoryUsers ?? db.users).find(u => u.id === userId);
  if (!userToDelete) return;
  if (userToDelete.isSuperAdmin) {
  return triggerError(t('Super Admin accounts cannot be deleted!'));
@@ -2672,7 +2788,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
 
  const executeDeleteUser = async () => {
  if (!confirmDeleteUserId) return;
- const userToDelete = db.users.find(u => u.id === confirmDeleteUserId);
+ const userToDelete = (directoryUsers ?? db.users).find(u => u.id === confirmDeleteUserId);
  if (!userToDelete) {
  setConfirmDeleteUserId(null);
  return;
@@ -2699,6 +2815,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  // DELETE /api/users/:id already persisted isDeleted:1 server-side — refetch instead
  // of hand-setting the flag locally and pushing the whole db blob through /api/migrate.
  await onRefreshDb?.();
+ refreshDirectoryUsers();
  triggerSuccess(`${t('User')} "${userToDelete.username}" ${t('has been deleted.')}`);
  setConfirmDeleteUserId(null);
  };
@@ -6428,18 +6545,18 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <div className="grid grid-cols-3 gap-4">
  <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t('Total Users')}</span>
- <p className="text-base font-black text-slate-800 mt-1">{db.users.filter(u => u.isDeleted !== 1).length}</p>
+ <p className="text-base font-black text-slate-800 mt-1">{(directoryUsers ?? db.users).filter(u => u.isDeleted !== 1).length}</p>
  </div>
  <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t('Active Accounts')}</span>
  <p className="text-base font-black text-emerald-600 mt-1">
- {db.users.filter(u => u.isDeleted !== 1 && u.isActive !== false).length}
+ {(directoryUsers ?? db.users).filter(u => u.isDeleted !== 1 && u.isActive !== false).length}
  </p>
  </div>
  <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t('Deactivated')}</span>
  <p className="text-base font-black text-slate-400 mt-1">
- {db.users.filter(u => u.isDeleted !== 1 && u.isActive === false).length}
+ {(directoryUsers ?? db.users).filter(u => u.isDeleted !== 1 && u.isActive === false).length}
  </p>
  </div>
  </div>
@@ -6481,12 +6598,15 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  email: '',
  password: '',
  confirmPassword: '',
+ mustChangePassword: true,
  role: 'user',
  companyId: db.selectedCompanyId,
  roleIds: [],
  branchIds: [],
  primaryBranchId: '',
  employeeId: '',
+ fullName: '',
+ phone: '',
   });
  }}
  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[9px] font-bold uppercase transition"
@@ -6497,17 +6617,25 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  </div>
 
  <form onSubmit={handleAddUser} className="space-y-4">
+ {editingUser ? (
  <div className="space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Account Username')}</label>
  <input
  type="text"
  required
+ autoComplete="off"
+ name="erp-account-username"
  placeholder={t('e.g. Accountant Sarah, Sales Tariq')}
  value={userForm.username}
  onChange={(e) => setUserForm({ ...userForm, username: e.target.value })}
  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-semibold"
  />
  </div>
+ ) : (
+ <div className="p-2.5 bg-indigo-50 border border-indigo-100 rounded-2xl text-[10px] text-indigo-800">
+ {t('This account will log in with the email address below — there is no separate username to set.')}
+ </div>
+ )}
 
  <div className="space-y-1">
  <div className="flex items-center justify-between">
@@ -6517,6 +6645,8 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <input
  type="email"
  required
+ autoComplete="off"
+ name="erp-account-email"
  placeholder={t('e.g. sarah@company.com')}
  value={userForm.email}
  onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
@@ -6524,13 +6654,49 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  />
  </div>
 
+ <div className="grid grid-cols-2 gap-3">
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Full Name')}</label>
+ <input
+ type="text"
+ autoComplete="off"
+ name="erp-account-fullname"
+ disabled={Boolean(userForm.employeeId)}
+ placeholder={t('e.g. Sarah Al-Amin')}
+ value={userForm.fullName}
+ onChange={(e) => setUserForm({ ...userForm, fullName: e.target.value })}
+ className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+ />
+ </div>
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Phone')}</label>
+ <input
+ type="tel"
+ autoComplete="off"
+ name="erp-account-phone"
+ disabled={Boolean(userForm.employeeId)}
+ placeholder={t('e.g. +966 5x xxx xxxx')}
+ value={userForm.phone}
+ onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
+ className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+ />
+ </div>
+ </div>
+ {userForm.employeeId && (
+ <p className="text-[9px] text-slate-400 leading-relaxed -mt-2">
+ {t('Name and phone are pulled from the linked employee record — edit them on that employee\'s profile instead.')}
+ </p>
+ )}
+
  <div className="space-y-1">
  <div className="flex items-center justify-between">
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Account Password')}</label>
- <span className="text-[8px] text-slate-400 font-mono">{editingUser ? t('Leave blank to keep current password') : t('Leave blank to default to 123456, or set one (min 6 chars, letter + digit)')}</span>
+ <span className="text-[8px] text-slate-400 font-mono">{editingUser ? t('Leave blank to keep current password') : t('Leave blank to default to 123456 — either way, forced to change it on first login unless unchecked below')}</span>
  </div>
  <input
  type="password"
+ autoComplete="new-password"
+ name="erp-account-password"
  placeholder={editingUser ? t('Leave blank to keep current password') : t('e.g. Tariq@ERP1')}
  value={userForm.password}
  onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
@@ -6538,11 +6704,28 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  />
  </div>
 
+ {(!editingUser || userForm.password.trim()) && (
+ <label className="flex items-start gap-2 p-2.5 bg-amber-50 border border-amber-100 rounded-2xl text-[10px] text-amber-800 cursor-pointer">
+ <input
+ type="checkbox"
+ checked={userForm.mustChangePassword}
+ onChange={(e) => setUserForm({ ...userForm, mustChangePassword: e.target.checked })}
+ className="mt-0.5 cursor-pointer"
+ />
+ <span>
+ <span className="font-extrabold block">{t('Require password change on next login')}</span>
+ <span className="text-amber-700">{t('Recommended — the account can\'t do anything else until they set their own password.')}</span>
+ </span>
+ </label>
+ )}
+
  {userForm.password.trim() && (
  <div className="space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Confirm Password')}</label>
  <input
  type="password"
+ autoComplete="new-password"
+ name="erp-account-confirm-password"
  placeholder={t('Re-enter the password above')}
  value={userForm.confirmPassword}
  onChange={(e) => setUserForm({ ...userForm, confirmPassword: e.target.value })}
@@ -6590,7 +6773,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
 
  {(() => {
    const employeeCompanyId = userForm.companyId || db.selectedCompanyId;
-   const companyEmployees = (db.employees || []).filter(e => e.companyId === employeeCompanyId && e.isActive !== false);
+   const companyEmployees = (employeesForModal || []).filter(e => e.companyId === employeeCompanyId && e.isActive !== false);
    if (companyEmployees.length === 0) return null;
    return (
      <div className="space-y-1">
@@ -6598,7 +6781,18 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
        <select
          required
          value={userForm.employeeId}
-         onChange={(e) => setUserForm({ ...userForm, employeeId: e.target.value })}
+         onChange={(e) => {
+           // Auto-fill (and, per the disabled inputs above, defer to) the selected
+           // employee's own name/phone — see users.ts schema comment on why these
+           // are never stored on the account itself once an employee is linked.
+           const selected = companyEmployees.find(emp => emp.id === e.target.value);
+           setUserForm(prev => ({
+             ...prev,
+             employeeId: e.target.value,
+             fullName: selected ? (selected.name || '') : prev.fullName,
+             phone: selected ? (selected.phone || '') : prev.phone,
+           }));
+         }}
          className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-2xl px-2.5 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold cursor-pointer"
        >
          <option value="">{t('-- Choose Employee --')}</option>
@@ -6623,13 +6817,13 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  ) : (
  <div className="space-y-1">
    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Assigned Roles')}</label>
-   {db.roles.length === 0 ? (
+   {rolesForModal.length === 0 ? (
      <div className="p-3 bg-amber-50 border border-amber-100 rounded-2xl text-[10px] text-amber-800 leading-relaxed">
        {t('No Roles exist yet for this company. Create one in the')} <strong>{t('Roles')}</strong> {t('tab before provisioning staff accounts.')}
      </div>
    ) : (
      <div className="bg-slate-50 border border-slate-200/60 rounded-2xl p-3 space-y-1.5 max-h-48 overflow-y-auto">
-       {db.roles.map(r => (
+       {rolesForModal.map(r => (
          <label key={r.id} className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer hover:text-indigo-600 transition">
            <input
              type="checkbox"
@@ -6717,9 +6911,8 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  </h4>
 
  <div className="space-y-3.5">
- {db.users
+ {(directoryUsers ?? db.users)
  .filter(u => u.isDeleted !== 1)
- .filter(u => userCompanyFilter === 'all' || u.companyId === userCompanyFilter)
  .map(u => {
  const userCompanyObj = db.companies?.find(c => c.id === u.companyId);
  const organizationName = u.isSuperAdmin
@@ -6782,12 +6975,19 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  email: u.email || '',
  password: '',
  confirmPassword: '',
+ mustChangePassword: (u as any).mustChangePassword ?? true,
  role: u.role,
  companyId: u.companyId || db.selectedCompanyId,
-  roleIds: (db.userRoles || []).filter(ur => ur.userId === u.id).map(ur => ur.roleId),
-  branchIds: (db.userBranches || []).filter(ub => ub.userId === u.id).map(ub => ub.branchId),
-  primaryBranchId: (db.userBranches || []).find(ub => ub.userId === u.id && ub.isPrimary)?.branchId || '',
+  // GET /api/users (used for directoryUsers, i.e. any row not in the currently active
+  // company) attaches roleIds/branchIds/primaryBranchId directly on the row — prefer
+  // that when present, since db.userRoles/db.userBranches (from /api/state) only ever
+  // cover the active company and would silently show "no assignments" for anyone else.
+  roleIds: (u as any).roleIds ?? (db.userRoles || []).filter(ur => ur.userId === u.id).map(ur => ur.roleId),
+  branchIds: (u as any).branchIds ?? (db.userBranches || []).filter(ub => ub.userId === u.id).map(ub => ub.branchId),
+  primaryBranchId: (u as any).primaryBranchId ?? ((db.userBranches || []).find(ub => ub.userId === u.id && ub.isPrimary)?.branchId || ''),
   employeeId: (u as any).employeeId || '',
+  fullName: (u as any).fullName || '',
+  phone: (u as any).phone || '',
                         });
  }}
  className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded transition-all cursor-pointer"
@@ -8003,7 +8203,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <h3 className="text-lg font-bold">{t('Delete User Account')}</h3>
  </div>
  <p className="text-sm text-slate-600 mb-6 font-medium leading-relaxed">
- {t('Are you sure you want to permanently delete user')} "{db.users.find(u => u.id === confirmDeleteUserId)?.username}"?
+ {t('Are you sure you want to permanently delete user')} "{(directoryUsers ?? db.users).find(u => u.id === confirmDeleteUserId)?.username}"?
  <br /><br />
  {t('This action cannot be undone.')}
  </p>

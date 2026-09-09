@@ -9,6 +9,55 @@ import { isSuperAdminUser, assertOwnsRow, hasPermission } from '../lib/authz.js'
 const router = express.Router();
 
 // --- Users ---
+
+// The Staff Accounts directory (AdminSettings.tsx) needs to browse a company OTHER than
+// whichever one is currently active in the top-nav selector — but GET /api/state (the
+// normal bundled-state path) always scopes db.users to exactly req.targetCompanyId, so a
+// super-admin's "Filter Directory" dropdown had nothing to actually fetch when it picked a
+// different company. This route exists specifically to serve that on-demand lookup.
+// A super-admin may pass ?companyId=<id> for one company, or ?companyId=all for every
+// company; anyone else is always hard-locked to their own req.targetCompanyId regardless
+// of what's in the query string, same as every other route in this file.
+router.get('/', async (req: any, res) => {
+  try {
+    const isSuperAdmin = isSuperAdminUser(req.user);
+    const requestedCompanyId = typeof req.query.companyId === 'string' ? req.query.companyId : undefined;
+
+    let rows;
+    if (isSuperAdmin && requestedCompanyId === 'all') {
+      rows = await db.select().from(schema.users).where(eq(schema.users.isDeleted, 0));
+    } else {
+      const companyId = isSuperAdmin && requestedCompanyId ? requestedCompanyId : req.targetCompanyId;
+      rows = await db.select().from(schema.users)
+        .where(and(eq(schema.users.companyId, companyId), eq(schema.users.isDeleted, 0)));
+    }
+
+    // Attach each user's role/branch assignments directly on the row — the client's
+    // edit-user prefill otherwise cross-references the bundled db.userRoles/db.userBranches
+    // from GET /api/state, which (like db.users itself) only ever covers the currently
+    // active company. A row fetched here for a DIFFERENT company (including via the
+    // "All Organizations" filter) would prefill as "no roles/branches assigned" even when
+    // real assignments exist, silently wiping them on save. Bounded by inArray(userIds) —
+    // exactly as many rows as users actually returned above, not a cross-company scan.
+    const userIds = rows.map(u => u.id);
+    let roleRows: any[] = [];
+    let branchRows: any[] = [];
+    if (userIds.length) {
+      roleRows = await db.select().from(schema.userRoles).where(inArray(schema.userRoles.userId, userIds));
+      branchRows = await db.select().from(schema.userBranches).where(inArray(schema.userBranches.userId, userIds));
+    }
+
+    res.json(rows.map(({ password, ...safe }) => ({
+      ...safe,
+      roleIds: roleRows.filter(r => r.userId === safe.id).map(r => r.roleId),
+      branchIds: branchRows.filter(b => b.userId === safe.id).map(b => b.branchId),
+      primaryBranchId: branchRows.find(b => b.userId === safe.id && b.isPrimary)?.branchId || '',
+    })));
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 router.post('/', async (req: any, res) => {
   try {
     const isSuperAdmin = isSuperAdminUser(req.user);
@@ -146,6 +195,15 @@ router.post('/', async (req: any, res) => {
       // sent" handling.
       employeeId: data.employeeId !== undefined ? (data.employeeId || null) : (existingUser?.employeeId ?? null),
     };
+    // fullName/phone are only ever this account's own data when it has NO linked
+    // employee — once employeeId is set, the employees row (which already carries its
+    // own name/phone) is the single source of truth, so these are forced to null here
+    // rather than kept as a second, driftable copy. The client pre-fills its form fields
+    // from the employee record purely as a UX convenience; this is what actually enforces
+    // it against a direct API call. Mirrors the same "don't duplicate what's on employees"
+    // reasoning applied to username/email above.
+    userRecord.fullName = userRecord.employeeId ? null : (data.fullName ? String(data.fullName).trim() : null);
+    userRecord.phone = userRecord.employeeId ? null : (data.phone ? String(data.phone).trim() : null);
     if (data.uid) userRecord.uid = data.uid;
     // An admin choosing/resetting someone else's password (or a brand-new account
     // defaulting to 123456) forces a change on that account's next login by default — see
@@ -360,10 +418,22 @@ router.delete('/:id', async (req: any, res) => {
     }
 
     const targetUser = await db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1).then(r => r[0]);
+    if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
+    // Was previously scoped to req.targetCompanyId (the CALLER's own active company),
+    // not the target row's actual company — a super-admin deleting a user from a
+    // different company than whichever one happened to be active for them silently
+    // matched zero rows and reported success anyway. assertOwnsRow is the correct check
+    // here (true for super-admin regardless of company, same as the sibling
+    // PATCH /:id/active route above), and it needs no companyId condition on the update
+    // itself once ownership's already been verified against the real row.
+    if (!assertOwnsRow(targetUser, req)) {
+      return res.status(403).json({ error: 'Forbidden: this user belongs to another company' });
+    }
 
     await db.update(schema.users)
       .set({ isDeleted: 1 })
-      .where(and(eq(schema.users.id, id), eq(schema.users.companyId, req.targetCompanyId)));
+      .where(eq(schema.users.id, id));
 
     if (targetUser) {
       await recordAuditLog(req, 'DELETE_USER', 'user', id, { username: targetUser.username });
