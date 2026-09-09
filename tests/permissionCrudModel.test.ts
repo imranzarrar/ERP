@@ -569,6 +569,46 @@ describe('Invoices: POST /transactions/invoices branches create-vs-update (regre
   });
 });
 
+// User explicitly asked for this live check: create a real user with every invoice
+// permission except delete, confirm cancel is refused, then grant delete and confirm the
+// exact same request now succeeds — the full round trip, not just "delete:false blocks
+// something."
+describe('Invoice cancel requires invoice.delete, independent of create/read/update', () => {
+  let cancelTargetId: string;
+
+  beforeAll(async () => {
+    cancelTargetId = generateId();
+    await db.insert(schema.invoices).values({
+      id: cancelTargetId, invoiceNumber: 'INV-PERMCRUD-CANCEL', date: '2026-08-01',
+      customerId, taxSlabId, bankId, notes: '', status: 'Active', paymentStatus: 'Unpaid',
+      createdById: adminUserId, createdAt: new Date(), amountPaid: '0', companyId,
+      documentType: 'Invoice', zatcaStatus: 'NOT_SUBMITTED',
+    });
+  });
+
+  it('a user with create+read+update but delete=false cannot cancel the invoice', async () => {
+    await setRolePermissions({
+      invoice: { create: { enabled: true }, read: { enabled: true }, update: { enabled: true }, delete: { enabled: false } },
+    });
+    const res = await api(scopedSessionId, `/api/transactions/invoices/${cancelTargetId}/cancel`, { method: 'POST' });
+    expect(res.status).toBe(403);
+
+    const [row] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, cancelTargetId));
+    expect(row.status).toBe('Active');
+  });
+
+  it('granting invoice.delete to the same user now allows the exact same cancel request', async () => {
+    await setRolePermissions({
+      invoice: { create: { enabled: true }, read: { enabled: true }, update: { enabled: true }, delete: { enabled: true } },
+    });
+    const res = await api(scopedSessionId, `/api/transactions/invoices/${cancelTargetId}/cancel`, { method: 'POST' });
+    expect(res.status).toBe(200);
+
+    const [row] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, cancelTargetId));
+    expect(row.status).toBe('Cancelled');
+  });
+});
+
 // Regression coverage for a real bug found live: PATCH /companies/:id/settings was
 // isAdminUser()-only with no delegation path at all, so a Role granting companyProfile.*
 // looked fully checked in the Roles editor but every save still 403'd — confirmed by
