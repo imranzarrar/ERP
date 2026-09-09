@@ -755,8 +755,11 @@ async function startServer() {
       return next();
     }
 
-    // Skip audit logs operations and general health checks
-    if (path.includes('/api/audit-logs') || path.includes('/api/health') || path === '/api/login' || path === '/api/logout') {
+    // Skip audit logs operations, general health checks, and routine background telemetry
+    // (register-missing-key fires many times per page load for any language with
+    // untranslated keys — logging it here would flood the last-100 window with noise and
+    // bury real business events, defeating the point of the audit trail).
+    if (path.includes('/api/audit-logs') || path.includes('/api/health') || path === '/api/login' || path === '/api/logout' || path === '/api/register-missing-key') {
       return next();
     }
 
