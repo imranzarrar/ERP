@@ -10,7 +10,7 @@ import { generateId } from '../../src/id.js';
 // preview endpoint all derive from this array automatically. No other file needs to change
 // to *support* a new type existing in the system; only the new feature's own creation route
 // needs the one extra line calling getAndIncrementDocumentNumber(tx, companyId, 'newKey', docDate, branchId).
-export const DOCUMENT_TYPE_REGISTRY: { key: string; label: string; defaultPrefix: string }[] = [
+export const DOCUMENT_TYPE_REGISTRY: { key: string; label: string; defaultPrefix: string; defaultStartNumber?: number; defaultPadWidth?: number }[] = [
   { key: 'quotation', label: 'Quotation', defaultPrefix: 'QT' },
   { key: 'invoice', label: 'Invoice', defaultPrefix: 'INV' },
   { key: 'creditNote', label: 'Credit Note', defaultPrefix: 'CN' },
@@ -25,6 +25,14 @@ export const DOCUMENT_TYPE_REGISTRY: { key: string; label: string; defaultPrefix
   { key: 'stockTake', label: 'Physical Stock Take', defaultPrefix: 'ST' },
   { key: 'dispatch', label: 'Warehouse Dispatch', defaultPrefix: 'DSP' },
   { key: 'receiving', label: 'Warehouse Receiving', defaultPrefix: 'RCV' },
+  // Master-data codes, not transactional documents — no prefix, a 5-digit zero-padded
+  // number by default (e.g. "00001"), no date/branch/reset relevance, and a start number
+  // of 0 (first issued value = 1) rather than the 1000 every other type above defaults
+  // to. Consumers: customers.customerCode / vendors.vendorCode / productsServices.sku,
+  // each assigned once on create via getAndIncrementDocumentNumber, never regenerated on edit.
+  { key: 'customerCode', label: 'Customer Code', defaultPrefix: '', defaultStartNumber: 0, defaultPadWidth: 5 },
+  { key: 'vendorCode', label: 'Vendor Code', defaultPrefix: '', defaultStartNumber: 0, defaultPadWidth: 5 },
+  { key: 'sku', label: 'Item SKU', defaultPrefix: '', defaultStartNumber: 0, defaultPadWidth: 5 },
 ];
 
 const DEFAULTS_BY_KEY = new Map(DOCUMENT_TYPE_REGISTRY.map(d => [d.key, d]));
@@ -38,6 +46,11 @@ export type NumberingRule = {
   padWidth: number;
   includeBranchCode: boolean;
   resetFrequency: ResetFrequency;
+  // Only consulted the very first time a (companyId, docType, periodKey) combination is
+  // ever requested — see reserveNextCounterValue's seedValue param. Meaningless once a
+  // documentCounters row already exists for that key, same as the legacy-counters seed it
+  // sits alongside in getAndIncrementDocumentNumber's resolution order below.
+  startNumber?: number;
 };
 
 function resolveRule(docType: DocType, policy: Record<string, Partial<NumberingRule>> | null | undefined): NumberingRule {
@@ -46,9 +59,10 @@ function resolveRule(docType: DocType, policy: Record<string, Partial<NumberingR
   return {
     prefix: override.prefix ?? registryDefault?.defaultPrefix ?? docType.toUpperCase(),
     separator: override.separator ?? '-',
-    padWidth: override.padWidth ?? 0,
+    padWidth: override.padWidth ?? registryDefault?.defaultPadWidth ?? 0,
     includeBranchCode: override.includeBranchCode ?? false,
     resetFrequency: override.resetFrequency ?? 'never',
+    startNumber: override.startNumber,
   };
 }
 
@@ -65,7 +79,10 @@ function computePeriodKey(resetFrequency: ResetFrequency, docDate: string): stri
 function formatNumber(rule: NumberingRule, value: number, branchCode: string | null | undefined): string {
   const padded = rule.padWidth > 0 ? String(value).padStart(rule.padWidth, '0') : String(value);
   const branchSegment = rule.includeBranchCode && branchCode ? `${branchCode}${rule.separator}` : '';
-  return `${rule.prefix}${rule.separator}${branchSegment}${padded}`;
+  // No leading separator when there's no prefix (customerCode/vendorCode/sku default to
+  // an empty prefix — a bare "00001", not "-00001").
+  const prefixSegment = rule.prefix ? `${rule.prefix}${rule.separator}` : '';
+  return `${prefixSegment}${branchSegment}${padded}`;
 }
 
 // Atomic upsert-increment against the shared documentCounters table — the one place
@@ -130,9 +147,13 @@ export async function getAndIncrementDocumentNumber(
   // value instead of the hard default of 1000, so cutover is a pure code deploy — every
   // existing company's first document after deploy continues exactly where it left off.
   // companies.counters stays in place afterward as a historical artifact, never written
-  // again by this function.
+  // again by this function. A docType with no legacy counters entry (customerCode/
+  // vendorCode/sku, or any brand-new type) falls back to the admin-configured
+  // numberingPolicy startNumber, then the registry's own defaultStartNumber, then 1000.
   const legacyCount = (company.counters as any)?.[docType];
-  const seedValue = typeof legacyCount === 'number' ? legacyCount : 1000;
+  const seedValue = typeof legacyCount === 'number'
+    ? legacyCount
+    : rule.startNumber ?? DEFAULTS_BY_KEY.get(docType)?.defaultStartNumber ?? 1000;
 
   const newValue = await reserveNextCounterValue(tx, companyId, docType, periodKey, seedValue);
 
@@ -175,7 +196,9 @@ export async function previewNextDocumentNumbers(companyId: string): Promise<Rec
     const rule = resolveRule(entry.key, company.numberingPolicy as any);
     const periodKey = computePeriodKey(rule.resetFrequency, todayIso);
     const legacyCount = (company.counters as any)?.[entry.key];
-    const seedValue = typeof legacyCount === 'number' ? legacyCount : 1000;
+    const seedValue = typeof legacyCount === 'number'
+      ? legacyCount
+      : rule.startNumber ?? entry.defaultStartNumber ?? 1000;
     const current = latestByTypeAndPeriod.get(`${entry.key}::${periodKey}`) ?? seedValue;
     result[entry.key] = formatNumber(rule, current + 1, rule.includeBranchCode ? illustrativeBranch?.code : null);
   }

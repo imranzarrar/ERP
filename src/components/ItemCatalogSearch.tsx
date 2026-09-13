@@ -61,16 +61,20 @@ export default function ItemCatalogSearch({
 
   const trimmed = value.trim();
   const query = trimmed.toLowerCase();
-  // A barcode/SKU is matched exactly, never as a substring — a scanner types the full
-  // code and hits Enter, so an exact hit (base product OR one of its packaging units,
-  // each a separate row — see CatalogItem's comment) takes priority over name search
-  // entirely, resolving straight to that one item instead of a filtered list.
+  // An exact barcode/SKU hit still takes priority over everything else — a scanner types
+  // the full code and hits Enter, so it should resolve straight to that one item (base
+  // product OR one of its packaging units, each a separate row — see CatalogItem's
+  // comment) instead of a filtered list, even if that code also happens to be a substring
+  // of some other item's name/SKU.
   const codeHits = trimmed
     ? items.filter(it => it.barcode === trimmed || (it.sku && it.sku.toLowerCase() === query))
     : [];
+  // Falls back to substring matching on name OR SKU — a partial SKU (e.g. typing "023" of
+  // a padded "00023") narrows the list the same way a partial name does, rather than
+  // requiring the full code.
   const filtered = codeHits.length > 0
     ? codeHits
-    : (query ? items.filter(it => it.name.toLowerCase().includes(query)) : items);
+    : (query ? items.filter(it => it.name.toLowerCase().includes(query) || (it.sku && it.sku.toLowerCase().includes(query))) : items);
 
   const measure = React.useCallback(() => {
     const el = inputRef.current;

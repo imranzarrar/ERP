@@ -398,6 +398,8 @@ export interface Customer {
   phone: string;
   email: string;
   address: string;
+  // Deprecated — see customers.taxRegNumber's comment in src/db/schema.ts. Superseded by
+  // vatNumber; never read/written by the app.
   taxRegNumber?: string;
   isSystem?: boolean; // Walk-in Customer (undeletable)
   isActive?: boolean;
@@ -405,6 +407,8 @@ export interface Customer {
   isPosSale?: boolean;
   shiftId?: string;
   attachmentUrl?: string;
+  // Auto-generated on create (server/lib/documentNumbering.ts's 'customerCode' sequence).
+  customerCode?: string;
   // ZATCA Buyer Fields — see customers table in src/db/schema.ts
   buyerType?: 'B2B' | 'B2C';
   vatNumber?: string;
@@ -424,6 +428,8 @@ export interface Vendor {
   phone: string;
   email: string;
   address: string;
+  // Deprecated — see vendors.taxRegNumber's comment in src/db/schema.ts. Superseded by
+  // vatNumber; never read/written by the app.
   taxRegNumber?: string;
   isSystem?: boolean; // Cash Vendor (undeletable)
   isActive?: boolean;
@@ -431,6 +437,8 @@ export interface Vendor {
   isPosSale?: boolean;
   shiftId?: string;
   attachmentUrl?: string;
+  // Auto-generated on create (server/lib/documentNumbering.ts's 'vendorCode' sequence).
+  vendorCode?: string;
   // ZATCA Address Fields — see vendors table in src/db/schema.ts
   buyerType?: 'B2B' | 'B2C';
   vatNumber?: string;

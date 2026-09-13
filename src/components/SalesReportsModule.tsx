@@ -314,8 +314,8 @@ export default function SalesReportsModule({ db, defaultReportType, onPrintDoc }
                     <table className="w-full text-xs text-start">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]">
-                          <th className="p-3">{t('Invoice #')}</th><th className="p-3">{t('Date')}</th><th className="p-3">{t('Customer')}</th>
-                          <th className="p-3">{t('Status')}</th><th className="p-3">{t('Payment')}</th><th className="p-3">{t('ZATCA')}</th>
+                          <th className="p-3 text-start">{t('Invoice #')}</th><th className="p-3 text-start">{t('Date')}</th><th className="p-3 text-start">{t('Customer')}</th>
+                          <th className="p-3 text-start">{t('Status')}</th><th className="p-3 text-start">{t('Payment')}</th><th className="p-3 text-start">{t('ZATCA')}</th>
                           <th className="p-3 text-end">{t('Grand Total')} ({currencySymbol})</th>
                         </tr>
                       </thead>
@@ -347,7 +347,7 @@ export default function SalesReportsModule({ db, defaultReportType, onPrintDoc }
                   <table className="w-full text-xs text-start">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]">
-                        <th className="p-3">{t('Product')}</th><th className="p-3 text-end">{t('Quantity Sold')}</th><th className="p-3 text-end">{t('Revenue')} ({currencySymbol})</th>
+                        <th className="p-3 text-start">{t('Product')}</th><th className="p-3 text-end">{t('Quantity Sold')}</th><th className="p-3 text-end">{t('Revenue')} ({currencySymbol})</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -378,7 +378,7 @@ export default function SalesReportsModule({ db, defaultReportType, onPrintDoc }
                     <table className="w-full text-xs text-start">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]">
-                          <th className="p-3">{t('Date')}</th><th className="p-3">{t('Type')}</th><th className="p-3">{t('Document #')}</th>
+                          <th className="p-3 text-start">{t('Date')}</th><th className="p-3 text-start">{t('Type')}</th><th className="p-3 text-start">{t('Document #')}</th>
                           <th className="p-3 text-end">{t('Invoiced')} ({currencySymbol})</th><th className="p-3 text-end">{t('Received')} ({currencySymbol})</th><th className="p-3 text-end">{t('Balance')} ({currencySymbol})</th>
                         </tr>
                       </thead>
@@ -413,7 +413,7 @@ export default function SalesReportsModule({ db, defaultReportType, onPrintDoc }
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs text-start">
-                      <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3">{t('Quotation #')}</th><th className="p-3">{t('Date')}</th><th className="p-3">{t('Customer')}</th><th className="p-3">{t('Status')}</th></tr></thead>
+                      <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3 text-start">{t('Quotation #')}</th><th className="p-3 text-start">{t('Date')}</th><th className="p-3 text-start">{t('Customer')}</th><th className="p-3 text-start">{t('Status')}</th></tr></thead>
                       <tbody>{data.rows.map((r, i) => (<tr key={i} className="border-b border-slate-100 text-slate-700"><td className="p-3 font-semibold">{r.quotationNumber}</td><td className="p-3">{r.date}</td><td className="p-3">{r.customerName}</td><td className="p-3">{t(r.status)}</td></tr>))}</tbody>
                     </table>
                   </div>
@@ -426,7 +426,7 @@ export default function SalesReportsModule({ db, defaultReportType, onPrintDoc }
               return (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-start">
-                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3">{t('Staff')}</th><th className="p-3 text-end">{t('Invoices')}</th><th className="p-3 text-end">{t('Revenue')} ({currencySymbol})</th></tr></thead>
+                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3 text-start">{t('Staff')}</th><th className="p-3 text-end">{t('Invoices')}</th><th className="p-3 text-end">{t('Revenue')} ({currencySymbol})</th></tr></thead>
                     <tbody>{data.rows.map((r, i) => (<tr key={i} className="border-b border-slate-100 text-slate-700"><td className="p-3 font-semibold">{r.username}</td><td className="p-3 text-end font-mono">{r.invoiceCount}</td><td className="p-3 text-end font-mono font-bold">{currencySymbol} {r.revenue.toFixed(2)}</td></tr>))}</tbody>
                     <tfoot><tr className="bg-slate-900 text-white font-bold text-xs"><td className="p-3.5" colSpan={2}>{t('Total:')}</td><td className="p-3.5 text-end font-mono text-emerald-400">{currencySymbol} {data.totalRevenue.toFixed(2)}</td></tr></tfoot>
                   </table>
@@ -439,7 +439,7 @@ export default function SalesReportsModule({ db, defaultReportType, onPrintDoc }
               return (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-start">
-                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3">{t('Date')}</th><th className="p-3">{t('Cashier')}</th><th className="p-3">{t('Status')}</th><th className="p-3 text-end">{t('Sales')} ({currencySymbol})</th><th className="p-3 text-end">{t('Expected Cash')}</th><th className="p-3 text-end">{t('End Cash')}</th><th className="p-3 text-end">{t('Variance')}</th></tr></thead>
+                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3 text-start">{t('Date')}</th><th className="p-3 text-start">{t('Cashier')}</th><th className="p-3 text-start">{t('Status')}</th><th className="p-3 text-end">{t('Sales')} ({currencySymbol})</th><th className="p-3 text-end">{t('Expected Cash')}</th><th className="p-3 text-end">{t('End Cash')}</th><th className="p-3 text-end">{t('Variance')}</th></tr></thead>
                     <tbody>{data.rows.map((r: any, i: number) => (
                       <tr key={i} className="border-b border-slate-100 text-slate-700">
                         <td className="p-3">{r.date}</td><td className="p-3 font-semibold">{r.cashier}</td><td className="p-3">{t(r.status)}</td>

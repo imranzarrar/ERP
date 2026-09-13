@@ -1566,12 +1566,12 @@ export default function InventoryModule({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Product / Material')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('SKU')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Location / Warehouse')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Batch Number')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Expiry Date')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">{t('On Hand Quantity')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Product / Material')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('SKU')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Location / Warehouse')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Batch Number')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Expiry Date')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-end">{t('On Hand Quantity')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -1635,12 +1635,12 @@ export default function InventoryModule({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('PR Number')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Requested By')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Date Requested')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Items Count')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Status')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">{t('Actions')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('PR Number')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Requested By')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Date Requested')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Items Count')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Status')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-end">{t('Actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -1695,12 +1695,12 @@ export default function InventoryModule({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('PO Number')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Vendor')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Date Created')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Total Amount')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Status')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">{t('Actions')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('PO Number')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Vendor')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Date Created')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Total Amount')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Status')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-end">{t('Actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -1760,13 +1760,13 @@ export default function InventoryModule({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('GRN Number')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Vendor')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Receiving Warehouse')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Vehicle / Driver')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Date Received')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Received By')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">{t('Actions')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('GRN Number')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Vendor')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Receiving Warehouse')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Vehicle / Driver')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Date Received')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Received By')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-end">{t('Actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -1864,12 +1864,12 @@ export default function InventoryModule({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Bill Number')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Vendor')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Grand Total')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Paid')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Status')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">{t('Actions')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Bill Number')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Vendor')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Grand Total')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Paid')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Status')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-end">{t('Actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -1924,12 +1924,12 @@ export default function InventoryModule({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Return Number')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Vendor')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Linked GRN')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Date')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Status')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">{t('Actions')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Return Number')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Vendor')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Linked GRN')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Date')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Status')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-end">{t('Actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -1982,12 +1982,12 @@ export default function InventoryModule({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Reference')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Warehouse')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Performed By')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Date')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Status')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">{t('Actions')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Reference')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Warehouse')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Performed By')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Date')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Status')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-end">{t('Actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -2040,12 +2040,12 @@ export default function InventoryModule({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Dispatch #')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('From → To')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Vehicle / Driver')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Date')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Status')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">{t('Actions')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Dispatch #')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('From → To')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Vehicle / Driver')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Date')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Status')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-end">{t('Actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -2113,12 +2113,12 @@ export default function InventoryModule({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Receiving #')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Dispatch #')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Destination Warehouse')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Received By')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">{t('Date')}</th>
-                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">{t('Actions')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Receiving #')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Dispatch #')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Destination Warehouse')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Received By')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-start">{t('Date')}</th>
+                  <th className="px-6 py-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-end">{t('Actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -2197,9 +2197,9 @@ export default function InventoryModule({
                   <table className="w-full text-left">
                     <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                       <tr>
-                        <th className="px-4 py-2">{t('Product')}</th>
-                        <th className="px-4 py-2 text-right">{t('Quantity')}</th>
-                        <th className="px-4 py-2">{t('Purpose')}</th>
+                        <th className="px-4 py-2 text-start">{t('Product')}</th>
+                        <th className="px-4 py-2 text-end">{t('Quantity')}</th>
+                        <th className="px-4 py-2 text-start">{t('Purpose')}</th>
                       </tr>
                     </thead>
                     <tbody className="text-sm divide-y divide-gray-100">
@@ -2311,11 +2311,11 @@ export default function InventoryModule({
                   <table className="w-full text-left">
                     <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                       <tr>
-                        <th className="px-4 py-2">{t('Product')}</th>
-                        <th className="px-4 py-2 text-right">{t('Quantity')}</th>
-                        <th className="px-4 py-2 text-right">{t('Unit Price')}</th>
-                        <th className="px-4 py-2 text-right">{t('VAT')}</th>
-                        <th className="px-4 py-2 text-right">{t('Total')}</th>
+                        <th className="px-4 py-2 text-start">{t('Product')}</th>
+                        <th className="px-4 py-2 text-end">{t('Quantity')}</th>
+                        <th className="px-4 py-2 text-end">{t('Unit Price')}</th>
+                        <th className="px-4 py-2 text-end">{t('VAT')}</th>
+                        <th className="px-4 py-2 text-end">{t('Total')}</th>
                       </tr>
                     </thead>
                     <tbody className="text-sm divide-y divide-gray-100">
@@ -2429,13 +2429,13 @@ export default function InventoryModule({
                   <table className="w-full text-left">
                     <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                       <tr>
-                        <th className="px-4 py-2">{t('Product')}</th>
-                        <th className="px-4 py-2 text-right">{t('Qty Received')}</th>
-                        <th className="px-4 py-2 text-right">{t('Unit Cost')}</th>
-                        <th className="px-4 py-2 text-right">{t('Tax %')}</th>
-                        <th className="px-4 py-2 text-right">{t('VAT')}</th>
-                        <th className="px-4 py-2 text-right">{t('Total')}</th>
-                        <th className="px-4 py-2">{t('Batch / Expiry')}</th>
+                        <th className="px-4 py-2 text-start">{t('Product')}</th>
+                        <th className="px-4 py-2 text-end">{t('Qty Received')}</th>
+                        <th className="px-4 py-2 text-end">{t('Unit Cost')}</th>
+                        <th className="px-4 py-2 text-end">{t('Tax %')}</th>
+                        <th className="px-4 py-2 text-end">{t('VAT')}</th>
+                        <th className="px-4 py-2 text-end">{t('Total')}</th>
+                        <th className="px-4 py-2 text-start">{t('Batch / Expiry')}</th>
                       </tr>
                     </thead>
                     <tbody className="text-sm divide-y divide-gray-100">
@@ -2581,9 +2581,9 @@ export default function InventoryModule({
                     <table className="w-full text-left">
                       <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                         <tr>
-                          <th className="px-4 py-2">{t('Product')}</th>
-                          <th className="px-4 py-2 text-right">{t('Qty Dispatched')}</th>
-                          <th className="px-4 py-2">{t('Batch / Expiry')}</th>
+                          <th className="px-4 py-2 text-start">{t('Product')}</th>
+                          <th className="px-4 py-2 text-end">{t('Qty Dispatched')}</th>
+                          <th className="px-4 py-2 text-start">{t('Batch / Expiry')}</th>
                         </tr>
                       </thead>
                       <tbody className="text-sm divide-y divide-gray-100">
@@ -2706,11 +2706,11 @@ export default function InventoryModule({
                     <table className="w-full text-left">
                       <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                         <tr>
-                          <th className="px-4 py-2">{t('Product')}</th>
-                          <th className="px-4 py-2 text-right">{t('Qty Dispatched')}</th>
-                          <th className="px-4 py-2 text-right">{t('Qty Received')}</th>
-                          <th className="px-4 py-2 text-right">{t('Variance')}</th>
-                          <th className="px-4 py-2">{t('Batch')}</th>
+                          <th className="px-4 py-2 text-start">{t('Product')}</th>
+                          <th className="px-4 py-2 text-end">{t('Qty Dispatched')}</th>
+                          <th className="px-4 py-2 text-end">{t('Qty Received')}</th>
+                          <th className="px-4 py-2 text-end">{t('Variance')}</th>
+                          <th className="px-4 py-2 text-start">{t('Batch')}</th>
                         </tr>
                       </thead>
                       <tbody className="text-sm divide-y divide-gray-100">
@@ -2863,10 +2863,10 @@ export default function InventoryModule({
                     <table className="w-full text-left">
                       <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                         <tr>
-                          <th className="px-4 py-2">{t('Product')}</th>
-                          <th className="px-4 py-2 text-right">{t('Qty')}</th>
-                          <th className="px-4 py-2">{t('Purpose')}</th>
-                          <th className="px-4 py-2 text-right">{t('Action')}</th>
+                          <th className="px-4 py-2 text-start">{t('Product')}</th>
+                          <th className="px-4 py-2 text-end">{t('Qty')}</th>
+                          <th className="px-4 py-2 text-start">{t('Purpose')}</th>
+                          <th className="px-4 py-2 text-end">{t('Action')}</th>
                         </tr>
                       </thead>
                       <tbody className="text-sm divide-y divide-gray-100 bg-white">
@@ -3122,12 +3122,12 @@ export default function InventoryModule({
                     <table className="w-full text-left">
                       <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                         <tr>
-                          <th className="px-4 py-2">{t('Product')}</th>
-                          <th className="px-4 py-2 text-right">{t('Qty')}</th>
-                          <th className="px-4 py-2 text-right">{t('Unit Cost')}</th>
-                          <th className="px-4 py-2 text-right">{t('VAT')}</th>
-                          <th className="px-4 py-2 text-right">{t('Total')}</th>
-                          <th className="px-4 py-2 text-right">{t('Action')}</th>
+                          <th className="px-4 py-2 text-start">{t('Product')}</th>
+                          <th className="px-4 py-2 text-end">{t('Qty')}</th>
+                          <th className="px-4 py-2 text-end">{t('Unit Cost')}</th>
+                          <th className="px-4 py-2 text-end">{t('VAT')}</th>
+                          <th className="px-4 py-2 text-end">{t('Total')}</th>
+                          <th className="px-4 py-2 text-end">{t('Action')}</th>
                         </tr>
                       </thead>
                       <tbody className="text-sm divide-y divide-gray-100 bg-white">
@@ -3487,14 +3487,14 @@ export default function InventoryModule({
                     <table className="w-full text-left">
                       <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                         <tr>
-                          <th className="px-4 py-2">{t('Product')}</th>
-                          <th className="px-4 py-2 text-right">{t('Qty Received')}</th>
-                          <th className="px-4 py-2 text-right">{t('Unit Cost')}</th>
-                          <th className="px-4 py-2 text-right">{t('Tax %')}</th>
-                          <th className="px-4 py-2 text-right">{t('VAT')}</th>
-                          <th className="px-4 py-2 text-right">{t('Total')}</th>
-                          <th className="px-4 py-2">{t('Batch / Expiry')}</th>
-                          <th className="px-4 py-2 text-right">{t('Action')}</th>
+                          <th className="px-4 py-2 text-start">{t('Product')}</th>
+                          <th className="px-4 py-2 text-end">{t('Qty Received')}</th>
+                          <th className="px-4 py-2 text-end">{t('Unit Cost')}</th>
+                          <th className="px-4 py-2 text-end">{t('Tax %')}</th>
+                          <th className="px-4 py-2 text-end">{t('VAT')}</th>
+                          <th className="px-4 py-2 text-end">{t('Total')}</th>
+                          <th className="px-4 py-2 text-start">{t('Batch / Expiry')}</th>
+                          <th className="px-4 py-2 text-end">{t('Action')}</th>
                         </tr>
                       </thead>
                       <tbody className="text-sm divide-y divide-gray-100 bg-white">
@@ -3754,10 +3754,10 @@ export default function InventoryModule({
                     <table className="w-full text-left">
                       <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                         <tr>
-                          <th className="px-4 py-2">{t('Product')}</th>
-                          <th className="px-4 py-2 text-right">{t('Qty')}</th>
-                          <th className="px-4 py-2">{t('Batch / Expiry')}</th>
-                          <th className="px-4 py-2 text-right">{t('Action')}</th>
+                          <th className="px-4 py-2 text-start">{t('Product')}</th>
+                          <th className="px-4 py-2 text-end">{t('Qty')}</th>
+                          <th className="px-4 py-2 text-start">{t('Batch / Expiry')}</th>
+                          <th className="px-4 py-2 text-end">{t('Action')}</th>
                         </tr>
                       </thead>
                       <tbody className="text-sm divide-y divide-gray-100 bg-white">
@@ -3892,11 +3892,11 @@ export default function InventoryModule({
                       <table className="w-full text-left">
                         <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                           <tr>
-                            <th className="px-4 py-2">{t('Product')}</th>
-                            <th className="px-4 py-2 text-right">{t('Qty Dispatched')}</th>
-                            <th className="px-4 py-2 text-right">{t('Qty Received')}</th>
-                            <th className="px-4 py-2 text-right">{t('Variance')}</th>
-                            <th className="px-4 py-2">{t('Batch')}</th>
+                            <th className="px-4 py-2 text-start">{t('Product')}</th>
+                            <th className="px-4 py-2 text-end">{t('Qty Dispatched')}</th>
+                            <th className="px-4 py-2 text-end">{t('Qty Received')}</th>
+                            <th className="px-4 py-2 text-end">{t('Variance')}</th>
+                            <th className="px-4 py-2 text-start">{t('Batch')}</th>
                           </tr>
                         </thead>
                         <tbody className="text-sm divide-y divide-gray-100 bg-white">
@@ -4325,9 +4325,9 @@ export default function InventoryModule({
                   <table className="w-full text-left">
                     <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                       <tr>
-                        <th className="px-4 py-2">{t('Product')}</th>
-                        <th className="px-4 py-2 text-right">{t('Qty Returned')}</th>
-                        <th className="px-4 py-2">{t('Batch')}</th>
+                        <th className="px-4 py-2 text-start">{t('Product')}</th>
+                        <th className="px-4 py-2 text-end">{t('Qty Returned')}</th>
+                        <th className="px-4 py-2 text-start">{t('Batch')}</th>
                       </tr>
                     </thead>
                     <tbody className="text-sm divide-y divide-gray-100">
@@ -4511,10 +4511,10 @@ export default function InventoryModule({
                   <table className="w-full text-left">
                     <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                       <tr>
-                        <th className="px-4 py-2">{t('Product')}</th>
-                        <th className="px-4 py-2 text-right">{t('System Qty')}</th>
-                        <th className="px-4 py-2 text-right">{t('Physical Qty')}</th>
-                        <th className="px-4 py-2 text-right">{t('Variance')}</th>
+                        <th className="px-4 py-2 text-start">{t('Product')}</th>
+                        <th className="px-4 py-2 text-end">{t('System Qty')}</th>
+                        <th className="px-4 py-2 text-end">{t('Physical Qty')}</th>
+                        <th className="px-4 py-2 text-end">{t('Variance')}</th>
                       </tr>
                     </thead>
                     <tbody className="text-sm divide-y divide-gray-100">

@@ -477,6 +477,8 @@ export const productsServices = pgTable('products_services', {
   categoryId: uuid('category_id').references(() => productCategories.id),
   base64Image: text('base64_image'),
   barcode: text('barcode'),
+  // Auto-generated on create (server/lib/documentNumbering.ts's 'sku' sequence) — no
+  // longer a manually-typed field; see customers.customerCode's comment for the pattern.
   sku: text('sku'),
   defaultWarehouseId: uuid('default_warehouse_id').references(() => warehouses.id),
   binLocation: text('bin_location'),
@@ -510,12 +512,25 @@ export const customers = pgTable('customers', {
   phone: text('phone').notNull(),
   email: text('email').notNull(),
   address: text('address').notNull(),
+  // Deprecated — superseded by vatNumber below (the field ZATCA and printing actually use).
+  // Left in place, unread and unwritten by the app, purely so pre-existing values aren't
+  // silently destroyed; never surfaced in the UI. See vatNumber's own comment.
   taxRegNumber: text('tax_reg_number'),
   isSystem: boolean('is_system').default(false),
   isActive: boolean('is_active').default(true),
   companyId: uuid('company_id').notNull().references(() => companies.id),
+  // Auto-generated on create (server/lib/documentNumbering.ts's 'customerCode' sequence,
+  // same per-company atomic counter that numbers invoices/quotations) — never
+  // user-editable, never regenerated on edit. Nullable only because rows created before
+  // this column existed have no value until the one-off backfill script assigns one.
+  customerCode: text('customer_code'),
   // ZATCA Buyer Fields
   buyerType: text('buyer_type').default('B2B'),
+  // The single VAT-number field for this customer, for both display and ZATCA. Strictly
+  // validated (15 digits, starts/ends with '3') only when buyerType is 'B2B' — free-form
+  // for B2C, where it's optional and ZATCA never checks it. Shown on the form regardless
+  // of buyerType (see MasterEntities.tsx) - taxRegNumber above used to be the box shown for
+  // B2C before this field was promoted to that role.
   vatNumber: text('vat_number'),
   buildingNumber: text('building_number'),
   streetName: text('street_name'),
@@ -537,13 +552,19 @@ export const vendors = pgTable('vendors', {
   phone: text('phone').notNull(),
   email: text('email').notNull(),
   address: text('address').notNull(),
+  // Deprecated — see the matching field's comment on customers above; same "superseded by
+  // vatNumber, never read/written, kept only so historical values aren't destroyed" story.
   taxRegNumber: text('tax_reg_number'),
   isSystem: boolean('is_system').default(false),
   apGlAccount: text('ap_gl_account'), // e.g., '2100 - Accounts Payable'
   isActive: boolean('is_active').default(true),
   companyId: uuid('company_id').notNull().references(() => companies.id),
+  // Auto-generated on create (server/lib/documentNumbering.ts's 'vendorCode' sequence) —
+  // see customers.customerCode's comment; same story here.
+  vendorCode: text('vendor_code'),
   // ZATCA Address Fields
   buyerType: text('buyer_type').default('B2B'),
+  // See customers.vatNumber's comment — same single-VAT-field story applies to vendors.
   vatNumber: text('vat_number'),
   buildingNumber: text('building_number'),
   streetName: text('street_name'),

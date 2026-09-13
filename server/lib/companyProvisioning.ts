@@ -1,6 +1,7 @@
 import * as schema from '../../src/db/schema.js';
 import { generateId } from '../../src/id.js';
 import { buildCompactA4Layout, DETAILED_TAX_INVOICE_LAYOUT } from '../../src/documentTemplateDefaults.js';
+import { getAndIncrementDocumentNumber } from './documentNumbering.js';
 
 // Server-side, atomic equivalent of AdminSettings.tsx's handleAddCompany starter-resource
 // bundle (bank account, walk-in customer, cash vendor, MAIN warehouse, standard document
@@ -27,6 +28,11 @@ export async function provisionStarterResources(tx: any, params: { companyId: st
   // B2C: ZATCA only requires a name for these (see server/lib/zatca/validators.ts's
   // validateBuyerFields) — these system placeholder records have no real VAT/address to
   // give, so they must be B2C, not the schema's B2B default.
+  //
+  // These are the very first customer/vendor a brand-new company ever gets, so they
+  // consume codes 00001 (customerCode/vendorCode) just like any other record would — no
+  // special-casing to skip/exclude the system placeholders from numbering.
+  const todayIso = new Date().toISOString().slice(0, 10);
   await tx.insert(schema.customers).values({
     id: generateId(),
     name: 'Walk-in Customer',
@@ -36,6 +42,7 @@ export async function provisionStarterResources(tx: any, params: { companyId: st
     isSystem: true,
     buyerType: 'B2C',
     companyId,
+    customerCode: await getAndIncrementDocumentNumber(tx, companyId, 'customerCode', todayIso),
   });
 
   await tx.insert(schema.vendors).values({
@@ -47,6 +54,7 @@ export async function provisionStarterResources(tx: any, params: { companyId: st
     isSystem: true,
     buyerType: 'B2C',
     companyId,
+    vendorCode: await getAndIncrementDocumentNumber(tx, companyId, 'vendorCode', todayIso),
   });
 
   // Every company owns its own complete, independent set of tax slabs — there is no

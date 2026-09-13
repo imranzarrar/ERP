@@ -295,7 +295,7 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
               return (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-start">
-                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3">{t('Product')}</th><th className="p-3">{t('Warehouse')}</th><th className="p-3 text-end">{t('On Hand')}</th><th className="p-3 text-end">{t('Unit Cost')} ({currencySymbol})</th><th className="p-3 text-end">{t('Value')} ({currencySymbol})</th></tr></thead>
+                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3 text-start">{t('Product')}</th><th className="p-3 text-start">{t('Warehouse')}</th><th className="p-3 text-end">{t('On Hand')}</th><th className="p-3 text-end">{t('Unit Cost')} ({currencySymbol})</th><th className="p-3 text-end">{t('Value')} ({currencySymbol})</th></tr></thead>
                     <tbody>{data.rows.map((r: any, i: number) => (<tr key={i} className="border-b border-slate-100 text-slate-700"><td className="p-3 font-semibold">{r.productName}</td><td className="p-3">{r.warehouseName}</td><td className="p-3 text-end font-mono">{r.quantity}</td><td className="p-3 text-end font-mono">{currencySymbol} {r.unitCost.toFixed(4)}</td><td className="p-3 text-end font-mono font-bold">{currencySymbol} {r.value.toFixed(2)}</td></tr>))}</tbody>
                     <tfoot><tr className="bg-slate-900 text-white font-bold text-xs"><td className="p-3.5" colSpan={4}>{t('Total Stock Value:')}</td><td className="p-3.5 text-end font-mono text-emerald-400">{currencySymbol} {data.totalValue.toFixed(2)}</td></tr></tfoot>
                   </table>
@@ -308,7 +308,7 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
               return (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-start">
-                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3">{t('Product')}</th><th className="p-3 text-end">{t('Qty Sold')}</th><th className="p-3 text-end">{t('Avg Cost')} ({currencySymbol})</th><th className="p-3 text-end">{t('Avg Sale Price')} ({currencySymbol})</th><th className="p-3 text-end">{t('Margin')} ({currencySymbol})</th><th className="p-3 text-end">{t('Margin %')}</th></tr></thead>
+                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3 text-start">{t('Product')}</th><th className="p-3 text-end">{t('Qty Sold')}</th><th className="p-3 text-end">{t('Avg Cost')} ({currencySymbol})</th><th className="p-3 text-end">{t('Avg Sale Price')} ({currencySymbol})</th><th className="p-3 text-end">{t('Margin')} ({currencySymbol})</th><th className="p-3 text-end">{t('Margin %')}</th></tr></thead>
                     <tbody>{data.rows.map((r: any, i: number) => (
                       <tr key={i} className="border-b border-slate-100 text-slate-700">
                         <td className="p-3 font-semibold">{r.productName}</td><td className="p-3 text-end font-mono">{r.totalQuantitySold}</td>
@@ -329,7 +329,7 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-start">
-                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3">{t('Product')}</th><th className="p-3">{t('Warehouse')}</th><th className="p-3 text-end">{t('On Hand')}</th><th className="p-3 text-end">{t('Min Level')}</th><th className="p-3 text-end">{t('Shortfall')}</th></tr></thead>
+                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3 text-start">{t('Product')}</th><th className="p-3 text-start">{t('Warehouse')}</th><th className="p-3 text-end">{t('On Hand')}</th><th className="p-3 text-end">{t('Min Level')}</th><th className="p-3 text-end">{t('Shortfall')}</th></tr></thead>
                     <tbody>{data.rows.map((r: any, i: number) => (<tr key={i} className="border-b border-slate-100 text-slate-700"><td className="p-3 font-semibold">{r.productName}</td><td className="p-3">{r.warehouseName}</td><td className="p-3 text-end font-mono">{r.onHand}</td><td className="p-3 text-end font-mono">{r.minLevel}</td><td className="p-3 text-end font-mono font-bold text-rose-600">{r.shortfall}</td></tr>))}</tbody>
                   </table>
                 </div>
@@ -343,7 +343,7 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-start">
-                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3">{t('Stock Take #')}</th><th className="p-3">{t('Date')}</th><th className="p-3">{t('Warehouse')}</th><th className="p-3">{t('Product')}</th><th className="p-3 text-end">{t('System Qty')}</th><th className="p-3 text-end">{t('Counted Qty')}</th><th className="p-3 text-end">{t('Variance')}</th></tr></thead>
+                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3 text-start">{t('Stock Take #')}</th><th className="p-3 text-start">{t('Date')}</th><th className="p-3 text-start">{t('Warehouse')}</th><th className="p-3 text-start">{t('Product')}</th><th className="p-3 text-end">{t('System Qty')}</th><th className="p-3 text-end">{t('Counted Qty')}</th><th className="p-3 text-end">{t('Variance')}</th></tr></thead>
                     <tbody>{data.rows.map((r: any, i: number) => (
                       <tr key={i} className="border-b border-slate-100 text-slate-700">
                         <td className="p-3 font-semibold">{r.referenceNumber}</td><td className="p-3">{r.date}</td><td className="p-3">{r.warehouseName}</td><td className="p-3">{r.productName}</td>
@@ -363,7 +363,7 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-start">
-                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3">{t('Date')}</th><th className="p-3">{t('Product')}</th><th className="p-3">{t('Warehouse')}</th><th className="p-3">{t('Type')}</th><th className="p-3">{t('Batch')}</th><th className="p-3 text-end">{t('Qty Change')}</th><th className="p-3 text-end">{t('Ending Qty')}</th></tr></thead>
+                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3 text-start">{t('Date')}</th><th className="p-3 text-start">{t('Product')}</th><th className="p-3 text-start">{t('Warehouse')}</th><th className="p-3 text-start">{t('Type')}</th><th className="p-3 text-start">{t('Batch')}</th><th className="p-3 text-end">{t('Qty Change')}</th><th className="p-3 text-end">{t('Ending Qty')}</th></tr></thead>
                     <tbody>{data.rows.map((r: any, i: number) => (
                       <tr key={i} className="border-b border-slate-100 text-slate-700">
                         <td className="p-3">{r.date.slice(0, 10)}</td><td className="p-3 font-semibold">{r.productName}</td><td className="p-3">{r.warehouseName}</td>
@@ -389,10 +389,10 @@ export default function InventoryReportsModule({ db, defaultReportType, onPrintD
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-start">
                     <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]">
-                      <th className="p-3">{t('Dispatch #')}</th><th className="p-3">{t('Date')}</th><th className="p-3">{t('From')}</th><th className="p-3">{t('To')}</th>
-                      <th className="p-3">{t('Product')}</th><th className="p-3">{t('Batch')}</th><th className="p-3 text-end">{t('Qty Dispatched')}</th>
-                      <th className="p-3">{t('Receiving #')}</th><th className="p-3 text-end">{t('Qty Received')}</th><th className="p-3 text-end">{t('Variance')}</th>
-                      <th className="p-3">{t('Status')}</th>
+                      <th className="p-3 text-start">{t('Dispatch #')}</th><th className="p-3 text-start">{t('Date')}</th><th className="p-3 text-start">{t('From')}</th><th className="p-3 text-start">{t('To')}</th>
+                      <th className="p-3 text-start">{t('Product')}</th><th className="p-3 text-start">{t('Batch')}</th><th className="p-3 text-end">{t('Qty Dispatched')}</th>
+                      <th className="p-3 text-start">{t('Receiving #')}</th><th className="p-3 text-end">{t('Qty Received')}</th><th className="p-3 text-end">{t('Variance')}</th>
+                      <th className="p-3 text-start">{t('Status')}</th>
                     </tr></thead>
                     <tbody>{data.rows.map((r: any, i: number) => (
                       <tr key={i} className="border-b border-slate-100 text-slate-700">

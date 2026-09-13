@@ -7,11 +7,29 @@ import { isSuperAdminUser, isAdminUser, hasPermission, assertOwnsRow, branchAcce
 import { generateId } from '../../src/id.js';
 import { validateBuyerFields } from '../lib/zatca/validators.js';
 import { isValidZatcaUnitCode } from '../../src/zatcaUnitCodes.js';
-import { previewNextDocumentNumbers, DOCUMENT_TYPE_REGISTRY } from '../lib/documentNumbering.js';
+import { previewNextDocumentNumbers, DOCUMENT_TYPE_REGISTRY, getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { assertModifierGroupsOwnedByCompany } from '../lib/businessLogic.js';
 import { imageSize } from 'image-size';
 
 const router = express.Router();
+
+// Plain, unlabeled mechanical concatenation of the B2B/ZATCA address fields into the
+// free-text `address` column — this is only ever a display fallback (the customer/vendor
+// list, and any print template not using the "itemized" address style), never what
+// actually gets sent to ZATCA (that's built straight from the granular columns
+// themselves — see xmlBuilder.ts). Deliberately unlabeled and untranslated: a stored DB
+// string can't be translated per-viewer/per-template the way DocumentRenderer's itemized
+// address style already is (labels + RTL there come from t()/isRTL at print time), so
+// baking one language's labels in here would just be wrong for every other viewer.
+// Building number sits directly before the street (as in "3045 Main Street"), postal
+// code directly after the city (as in "Riyadh 12871") — position alone tells a reader
+// which number is which, no labels needed.
+function composeAddressFromZatcaFields(f: { buildingNumber?: string | null; streetName?: string | null; district?: string | null; city?: string | null; postalCode?: string | null }): string | null {
+  const buildingAndStreet = [f.buildingNumber, f.streetName].filter(Boolean).join(' ');
+  const cityAndPostal = [f.city, f.postalCode].filter(Boolean).join(' ');
+  const parts = [buildingAndStreet, f.district, cityAndPostal].filter(Boolean);
+  return parts.length > 0 ? parts.join(', ') : null;
+}
 
 // --- Customers ---
 router.get('/customers', async (req: any, res) => {
@@ -64,9 +82,29 @@ router.post('/customers', async (req: any, res) => {
       return res.status(400).json({ error: fieldErrors.map(e => e.message).join(' '), fieldErrors });
     }
 
-    await db.insert(schema.customers).values(data).onConflictDoUpdate({
-      target: schema.customers.id,
-      set: data
+    // A B2B buyer's address is derived from its granular ZATCA fields, not typed twice —
+    // overrides whatever the client sent in the free-text box. B2C keeps whatever the
+    // user actually typed there, since it has no granular fields to derive from.
+    if (data.buyerType === 'B2B') {
+      data.address = composeAddressFromZatcaFields(data) || data.address;
+    }
+
+    // Auto-generated on create, immutable afterward — never let an edit payload overwrite it.
+    if (existing) {
+      delete data.customerCode;
+    }
+
+    const todayIso = new Date().toISOString().slice(0, 10);
+    await db.transaction(async (tx) => {
+      // Assigned once on create only — never regenerated on an edit, even if the row is
+      // somehow missing one (that's the backfill script's job, not this route's).
+      if (!existing) {
+        data.customerCode = await getAndIncrementDocumentNumber(tx, data.companyId, 'customerCode', todayIso);
+      }
+      await tx.insert(schema.customers).values(data).onConflictDoUpdate({
+        target: schema.customers.id,
+        set: data
+      });
     });
     res.json({ success: true });
   } catch (error: any) {
@@ -144,9 +182,19 @@ router.post('/vendors', async (req: any, res) => {
       return res.status(400).json({ error: fieldErrors.map(e => e.message).join(' '), fieldErrors });
     }
 
-    await db.insert(schema.vendors).values(data).onConflictDoUpdate({
-      target: schema.vendors.id,
-      set: data
+    if (data.buyerType === 'B2B') {
+      data.address = composeAddressFromZatcaFields(data) || data.address;
+    }
+
+    const todayIso = new Date().toISOString().slice(0, 10);
+    await db.transaction(async (tx) => {
+      if (!existing) {
+        data.vendorCode = await getAndIncrementDocumentNumber(tx, data.companyId, 'vendorCode', todayIso);
+      }
+      await tx.insert(schema.vendors).values(data).onConflictDoUpdate({
+        target: schema.vendors.id,
+        set: data
+      });
     });
     res.json({ success: true });
   } catch (error: any) {
@@ -291,7 +339,16 @@ router.post('/products', async (req: any, res) => {
       await assertModifierGroupsOwnedByCompany(db, data.companyId, modifierGroupIds);
     }
 
+    // sku is auto-generated on create and immutable afterward — never let an edit payload
+    // (or a stale value the client happened to still be holding) overwrite it.
+    if (existing) {
+      delete data.sku;
+    }
+
     await db.transaction(async (tx) => {
+      if (!existing) {
+        data.sku = await getAndIncrementDocumentNumber(tx, data.companyId, 'sku', new Date().toISOString().slice(0, 10));
+      }
       await tx.insert(schema.productsServices).values(data).onConflictDoUpdate({
         target: schema.productsServices.id,
         set: data

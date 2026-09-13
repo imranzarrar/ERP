@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import PartySearchSelect from './PartySearchSelect';
 import { DatabaseState, calculateInvoiceTotals, getDefaultTaxSlabId } from '../dbStore';
 import { getMonthToDateRange } from '../dateUtils';
 import { ProductService, Customer, PosShift, PosHeldInvoice, PosCartItem, TaxSlab, Invoice, BankAccount } from '../types';
@@ -990,16 +991,17 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
               </div>
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">{t("Customer (Optional for paid)")}</label>
-                <select 
-                  value={payCustomerId} 
-                  onChange={e => setPayCustomerId(e.target.value)}
+                <PartySearchSelect
+                  valueId={payCustomerId}
+                  onSelect={setPayCustomerId}
+                  items={[
+                    { id: '', name: t('Walk-in Customer (Default)') },
+                    ...(db.customers || []).filter((c: any) => c.companyId === activeCompanyId).map((c: any) => ({ id: c.id, name: c.name, code: c.customerCode, vatNumber: c.vatNumber, isSystem: c.isSystem })),
+                  ]}
+                  placeholder={t('Search by name, code, or VAT...')}
+                  noMatchesLabel={t('No matching customers')}
                   className="w-full bg-white border border-slate-200 text-slate-900 text-sm rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-600 shadow-sm"
-                >
-                  <option value="">{t("Walk-in Customer (Default)")}</option>
-                  {(db.customers || []).filter((c:any) => c.companyId === activeCompanyId).map((c:any) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                />
               </div>
             </div>
 
@@ -1128,11 +1130,11 @@ function PosHeldInvoices({ db, onUpdateDbLocal, currentUser, activeCompanyId, on
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
-              <th className="p-4 font-bold text-slate-700">{t("Reference")}</th>
-              <th className="p-4 font-bold text-slate-700">{t("Date")}</th>
-              <th className="p-4 font-bold text-slate-700">{t("Customer")}</th>
-              <th className="p-4 font-bold text-slate-700">{t("Items")}</th>
-              <th className="p-4 font-bold text-slate-700 text-right">{t("Actions")}</th>
+              <th className="p-4 font-bold text-slate-700 text-start">{t("Reference")}</th>
+              <th className="p-4 font-bold text-slate-700 text-start">{t("Date")}</th>
+              <th className="p-4 font-bold text-slate-700 text-start">{t("Customer")}</th>
+              <th className="p-4 font-bold text-slate-700 text-start">{t("Items")}</th>
+              <th className="p-4 font-bold text-slate-700 text-end">{t("Actions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -1190,11 +1192,11 @@ function PosSalesHistory({ db, activeCompanyId, currentUser, restricted, onViewI
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
-              <th className="p-4 font-bold text-slate-700">{t("Invoice No")}</th>
-              <th className="p-4 font-bold text-slate-700">{t("Date")}</th>
-              <th className="p-4 font-bold text-slate-700">{t("Customer")}</th>
-              <th className="p-4 font-bold text-slate-700">{t("Total")}</th>
-              <th className="p-4 font-bold text-slate-700">{t("Status")}</th>
+              <th className="p-4 font-bold text-slate-700 text-start">{t("Invoice No")}</th>
+              <th className="p-4 font-bold text-slate-700 text-start">{t("Date")}</th>
+              <th className="p-4 font-bold text-slate-700 text-start">{t("Customer")}</th>
+              <th className="p-4 font-bold text-slate-700 text-start">{t("Total")}</th>
+              <th className="p-4 font-bold text-slate-700 text-start">{t("Status")}</th>
               <th className="p-4 font-bold text-slate-700 text-center">{t("ZATCA Status")}</th>
               <th className="p-4 font-bold text-slate-700 text-end">{t("Actions")}</th>
             </tr>
@@ -1302,13 +1304,13 @@ function PosShiftsHistory({ db, activeCompanyId, currentUser }: any) {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="p-4 font-bold text-slate-700">{t("Shift Time")}</th>
-                <th className="p-4 font-bold text-slate-700">{t("User")}</th>
-                <th className="p-4 font-bold text-slate-700">{t("Start Cash")}</th>
-                <th className="p-4 font-bold text-slate-700">{t("Total Sales")}</th>
-                <th className="p-4 font-bold text-slate-700">{t("Expected End")}</th>
-                <th className="p-4 font-bold text-slate-700">{t("Actual End")}</th>
-                <th className="p-4 font-bold text-slate-700">{t("Status")}</th>
+                <th className="p-4 font-bold text-slate-700 text-start">{t("Shift Time")}</th>
+                <th className="p-4 font-bold text-slate-700 text-start">{t("User")}</th>
+                <th className="p-4 font-bold text-slate-700 text-start">{t("Start Cash")}</th>
+                <th className="p-4 font-bold text-slate-700 text-start">{t("Total Sales")}</th>
+                <th className="p-4 font-bold text-slate-700 text-start">{t("Expected End")}</th>
+                <th className="p-4 font-bold text-slate-700 text-start">{t("Actual End")}</th>
+                <th className="p-4 font-bold text-slate-700 text-start">{t("Status")}</th>
               </tr>
             </thead>
             <tbody>
@@ -1343,10 +1345,10 @@ function PosShiftsHistory({ db, activeCompanyId, currentUser }: any) {
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50">
               <tr>
-                <th className="p-2">{t("Cashier")}</th>
-                <th className="p-2">{t("Expected")}</th>
-                <th className="p-2">{t("Actual")}</th>
-                <th className="p-2">{t("Variance")}</th>
+                <th className="p-2 text-start">{t("Cashier")}</th>
+                <th className="p-2 text-start">{t("Expected")}</th>
+                <th className="p-2 text-start">{t("Actual")}</th>
+                <th className="p-2 text-start">{t("Variance")}</th>
               </tr>
             </thead>
             <tbody>

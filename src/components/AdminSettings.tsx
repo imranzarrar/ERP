@@ -1188,6 +1188,11 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  templates: [...prev.templates, newTemplate, newTemplateArabic, newTemplateDetailed],
  months: [...prev.months, ...newMonths]
  }));
+ // The customer/vendor codes above were assigned server-side (POST /api/customers and
+ // /api/vendors) and never came back in those calls' response body — newCustomer/
+ // newVendor above are the pre-save client-constructed objects, so they'd show a blank
+ // code until this refetch pulls the real rows.
+ if (onRefreshDb) await onRefreshDb();
  triggerSuccess(`Organization "${finalizedCompany.name}" registered successfully with standard operational defaults!`);
 
  // Reset form
@@ -1781,9 +1786,9 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  // Rules keyed by DOCUMENT_TYPE_REGISTRY's `key` (server/lib/documentNumbering.ts) — the
  // registry itself (label/defaultPrefix per type) is fetched from the preview endpoint
  // rather than duplicated here, so a future registry addition needs no frontend change.
- const [numberingRegistry, setNumberingRegistry] = React.useState<{ key: string; label: string; defaultPrefix: string }[]>([]);
+ const [numberingRegistry, setNumberingRegistry] = React.useState<{ key: string; label: string; defaultPrefix: string; defaultPadWidth?: number; defaultStartNumber?: number }[]>([]);
  const [numberingPreview, setNumberingPreview] = React.useState<Record<string, string>>({});
- const [numberingRules, setNumberingRules] = React.useState<Record<string, { prefix?: string; separator?: string; padWidth?: number; includeBranchCode?: boolean; resetFrequency?: 'never' | 'yearly' | 'monthly' }>>({});
+ const [numberingRules, setNumberingRules] = React.useState<Record<string, { prefix?: string; separator?: string; padWidth?: number; includeBranchCode?: boolean; resetFrequency?: 'never' | 'yearly' | 'monthly'; startNumber?: number }>>({});
  const [numberingLoading, setNumberingLoading] = React.useState(false);
 
  const loadNumberingSettings = React.useCallback(async () => {
@@ -1808,7 +1813,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
    // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [activeTab, db.selectedCompanyId]);
 
- const updateNumberingRule = (docType: string, patch: Partial<{ prefix: string; separator: string; padWidth: number; includeBranchCode: boolean; resetFrequency: 'never' | 'yearly' | 'monthly' }>) => {
+ const updateNumberingRule = (docType: string, patch: Partial<{ prefix: string; separator: string; padWidth: number; includeBranchCode: boolean; resetFrequency: 'never' | 'yearly' | 'monthly'; startNumber: number }>) => {
    setNumberingRules(prev => ({ ...prev, [docType]: { ...prev[docType], ...patch } }));
  };
 
@@ -1833,10 +1838,16 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  // Surfaces (never silently resolves) any two types whose effective prefix would collide —
  // e.g. debitNote/return both default to 'DN'. This is a pre-existing, true-to-today
  // ambiguity in the underlying data, not something this UI introduces or should hide.
+ // An empty prefix (customerCode/vendorCode/sku's default — a bare padded number, no
+ // prefix at all) is deliberately excluded from this check: those three are independent
+ // master-data sequences, never printed adjacent to each other or to a document number,
+ // so "same empty prefix" isn't a real collision the way two transactional doc types
+ // sharing 'DN' actually is.
  const numberingPrefixCollisions = React.useMemo(() => {
    const byPrefix = new Map<string, string[]>();
    for (const entry of numberingRegistry) {
      const prefix = numberingRules[entry.key]?.prefix ?? entry.defaultPrefix;
+     if (!prefix) continue;
      byPrefix.set(prefix, [...(byPrefix.get(prefix) || []), entry.key]);
    }
    const collidingKeys = new Set<string>();
@@ -4846,6 +4857,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <th className="p-3 text-start">{t('Prefix')}</th>
  <th className="p-3 text-start">{t('Separator')}</th>
  <th className="p-3 text-start">{t('Pad Width')}</th>
+ <th className="p-3 text-start">{t('Start Number')}</th>
  <th className="p-3 text-center">{t('Show Branch Code')}</th>
  <th className="p-3 text-start">{t('Reset')}</th>
  <th className="p-3 text-start">{t('Next Number Preview')}</th>
@@ -4876,9 +4888,15 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  className="w-12 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-indigo-500" />
  </td>
  <td className="p-2">
- <input type="number" min={0} max={10} value={rule.padWidth ?? 0}
+ <input type="number" min={0} max={10} value={rule.padWidth ?? entry.defaultPadWidth ?? 0}
  onChange={e => updateNumberingRule(entry.key, { padWidth: Math.max(0, parseInt(e.target.value) || 0) })}
  className="w-16 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+ </td>
+ <td className="p-2">
+ <input type="number" min={0} value={rule.startNumber ?? entry.defaultStartNumber ?? 1000}
+ onChange={e => updateNumberingRule(entry.key, { startNumber: Math.max(0, parseInt(e.target.value) || 0) })}
+ title={t('Only takes effect before this sequence has ever issued a number — changing it afterward has no effect.')}
+ className="w-20 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-mono text-center focus:outline-none focus:ring-1 focus:ring-indigo-500" />
  </td>
  <td className="p-2 text-center">
  <input type="checkbox" checked={rule.includeBranchCode ?? false}
@@ -4905,6 +4923,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  )}
 
  <p className="text-[10px] text-slate-400">{t('Resets follow the document\'s own date, not today\'s date — a backdated document correctly still lands in its own period.')}</p>
+ <p className="text-[10px] text-slate-400">{t('Start Number only matters before this sequence has ever issued a number — it has no effect once the first one is already out.')}</p>
 
  {canUpdateDocumentNumbering && (
  <div className="flex justify-end">
@@ -7527,11 +7546,11 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <table className="w-full text-start text-xs">
  <thead>
  <tr className="border-b border-slate-100 text-slate-400">
- <th className="py-2 font-bold uppercase text-[9px] tracking-wider">{t('Voucher No')}</th>
- <th className="py-2 font-bold uppercase text-[9px] tracking-wider">{t('Date')}</th>
- <th className="py-2 font-bold uppercase text-[9px] tracking-wider">{t('Investor')}</th>
- <th className="py-2 font-bold uppercase text-[9px] tracking-wider">{t('Bank Account')}</th>
- <th className="py-2 font-bold uppercase text-[9px] tracking-wider">{t('Description')}</th>
+ <th className="py-2 font-bold uppercase text-[9px] tracking-wider text-start">{t('Voucher No')}</th>
+ <th className="py-2 font-bold uppercase text-[9px] tracking-wider text-start">{t('Date')}</th>
+ <th className="py-2 font-bold uppercase text-[9px] tracking-wider text-start">{t('Investor')}</th>
+ <th className="py-2 font-bold uppercase text-[9px] tracking-wider text-start">{t('Bank Account')}</th>
+ <th className="py-2 font-bold uppercase text-[9px] tracking-wider text-start">{t('Description')}</th>
  <th className="py-2 text-end font-bold uppercase text-[9px] tracking-wider">{t('Amount')}</th>
  </tr>
  </thead>

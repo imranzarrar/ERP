@@ -222,7 +222,7 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
               return (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-start">
-                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3">{t('Expense #')}</th><th className="p-3">{t('Date')}</th><th className="p-3">{t('Vendor')}</th><th className="p-3">{t('Classification')}</th><th className="p-3">{t('Payment')}</th><th className="p-3 text-end">{t('Amount')} ({currencySymbol})</th></tr></thead>
+                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3 text-start">{t('Expense #')}</th><th className="p-3 text-start">{t('Date')}</th><th className="p-3 text-start">{t('Vendor')}</th><th className="p-3 text-start">{t('Classification')}</th><th className="p-3 text-start">{t('Payment')}</th><th className="p-3 text-end">{t('Amount')} ({currencySymbol})</th></tr></thead>
                     <tbody>{data.rows.map((r, i) => (<tr key={i} className="border-b border-slate-100 text-slate-700"><td className="p-3 font-semibold">{r.expenseNumber}</td><td className="p-3">{r.date}</td><td className="p-3">{r.vendorName}</td><td className="p-3">{t(r.classification || '')}</td><td className="p-3">{t(r.paymentStatus)}</td><td className="p-3 text-end font-mono font-bold">{currencySymbol} {r.amount.toFixed(2)}</td></tr>))}</tbody>
                     <tfoot><tr className="bg-slate-900 text-white font-bold text-xs"><td className="p-3.5" colSpan={5}>{t('Total:')}</td><td className="p-3.5 text-end font-mono text-emerald-400">{currencySymbol} {data.totalAmount.toFixed(2)}</td></tr></tfoot>
                   </table>
@@ -237,7 +237,7 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
                   <h3 className="text-sm font-bold text-slate-900">{data.vendorName}</h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs text-start">
-                      <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3">{t('Date')}</th><th className="p-3">{t('Type')}</th><th className="p-3">{t('Document #')}</th><th className="p-3 text-end">{t('Billed')} ({currencySymbol})</th><th className="p-3 text-end">{t('Paid')} ({currencySymbol})</th><th className="p-3 text-end">{t('Balance')} ({currencySymbol})</th></tr></thead>
+                      <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3 text-start">{t('Date')}</th><th className="p-3 text-start">{t('Type')}</th><th className="p-3 text-start">{t('Document #')}</th><th className="p-3 text-end">{t('Billed')} ({currencySymbol})</th><th className="p-3 text-end">{t('Paid')} ({currencySymbol})</th><th className="p-3 text-end">{t('Balance')} ({currencySymbol})</th></tr></thead>
                       <tbody>{data.entries.map((e, i) => (<tr key={i} className="border-b border-slate-100 text-slate-700"><td className="p-3">{e.date}</td><td className="p-3">{t(e.type)}</td><td className="p-3 font-semibold">{e.docNumber}</td><td className="p-3 text-end font-mono">{e.debit > 0 ? `${currencySymbol} ${e.debit.toFixed(2)}` : '-'}</td><td className="p-3 text-end font-mono">{e.credit > 0 ? `${currencySymbol} ${e.credit.toFixed(2)}` : '-'}</td><td className="p-3 text-end font-mono font-bold">{currencySymbol} {(e as any).runningBalance.toFixed(2)}</td></tr>))}</tbody>
                     </table>
                   </div>
@@ -251,7 +251,7 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
               return (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-start">
-                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3">{t('PO #')}</th><th className="p-3">{t('Date')}</th><th className="p-3">{t('Vendor')}</th><th className="p-3">{t('Status')}</th><th className="p-3 text-end">{t('Age (days)')}</th><th className="p-3 text-end">{t('Total')} ({currencySymbol})</th></tr></thead>
+                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3 text-start">{t('PO #')}</th><th className="p-3 text-start">{t('Date')}</th><th className="p-3 text-start">{t('Vendor')}</th><th className="p-3 text-start">{t('Status')}</th><th className="p-3 text-end">{t('Age (days)')}</th><th className="p-3 text-end">{t('Total')} ({currencySymbol})</th></tr></thead>
                     <tbody>{data.rows.map((r: any, i: number) => (<tr key={i} className="border-b border-slate-100 text-slate-700"><td className="p-3 font-semibold">{r.poNumber}</td><td className="p-3">{r.date}</td><td className="p-3">{r.vendorName}</td><td className="p-3">{t(r.status)}</td><td className="p-3 text-end font-mono">{r.ageDays !== null ? r.ageDays : '-'}</td><td className="p-3 text-end font-mono font-bold">{currencySymbol} {r.totalAmount.toFixed(2)}</td></tr>))}</tbody>
                     <tfoot><tr className="bg-slate-900 text-white font-bold text-xs"><td className="p-3.5" colSpan={5}>{t('Total:')}</td><td className="p-3.5 text-end font-mono text-emerald-400">{currencySymbol} {data.totalAmount.toFixed(2)}</td></tr></tfoot>
                   </table>
@@ -264,7 +264,7 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
               return (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-start">
-                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3">{t('PO #')}</th><th className="p-3">{t('Vendor')}</th><th className="p-3">{t('Product')}</th><th className="p-3 text-end">{t('Ordered')}</th><th className="p-3 text-end">{t('Received')}</th><th className="p-3 text-end">{t('Variance')}</th></tr></thead>
+                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3 text-start">{t('PO #')}</th><th className="p-3 text-start">{t('Vendor')}</th><th className="p-3 text-start">{t('Product')}</th><th className="p-3 text-end">{t('Ordered')}</th><th className="p-3 text-end">{t('Received')}</th><th className="p-3 text-end">{t('Variance')}</th></tr></thead>
                     <tbody>{data.rows.map((r: any, i: number) => (
                       <tr key={i} className="border-b border-slate-100 text-slate-700">
                         <td className="p-3 font-semibold">{r.poNumber}</td><td className="p-3">{r.vendorName}</td><td className="p-3">{r.productName}</td>

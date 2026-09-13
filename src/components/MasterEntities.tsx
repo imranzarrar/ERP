@@ -90,9 +90,10 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
  const [name, setName] = React.useState('');
  const [email, setEmail] = React.useState('');
  const [phone, setPhone] = React.useState('');
+ // Auto-filled server-side from the ZATCA fields below when buyerType is B2B (see
+ // composeAddressFromZatcaFields in server/routes/masterEntities.ts) — still directly
+ // editable here for B2C, which has no granular fields to derive it from.
  const [address, setAddress] = React.useState('');
- const [taxRegNumber, setTaxRegNumber] = React.useState('');
- // ZATCA buyer fields — distinct from the generic `taxRegNumber` display field above.
  // Standard (B2B) invoices need a full, verifiable buyer identity for a valid
  // AccountingCustomerParty; Simplified (B2C) only needs a name (see
  // server/lib/zatca/validators.ts's validateBuyerFields, which this mirrors).
@@ -103,6 +104,11 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
  // a retail/anonymous buyer by definition — ended up B2B this way, with no VAT/address
  // data, and any invoice against them was rejected pre-submission (BUYER_INCOMPLETE).
  const [buyerType, setBuyerType] = React.useState<'B2B' | 'B2C'>('B2C');
+ // The single VAT-number field, shown regardless of buyerType — free-form for B2C,
+ // strictly validated (15 digits, starts/ends with '3') only for B2B. Used to be gated
+ // to B2B-only, with a separate generic `taxRegNumber` field shown for every buyer type;
+ // that older field is now deprecated (superseded by this one) and no longer surfaced
+ // anywhere in this form.
  const [zatcaVatNumber, setZatcaVatNumber] = React.useState('');
  const [zatcaStreetName, setZatcaStreetName] = React.useState('');
  const [zatcaBuildingNumber, setZatcaBuildingNumber] = React.useState('');
@@ -195,7 +201,7 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
  // mappings are saved immediately via their own dedicated actions, not as part of this
  // main Save submission), same reasoning as InvoiceModule.tsx excluding formWarehouseId.
  const { isDirty: isEntityFormDirty, markClean: markFormClean } = useDirtyGuard({
-   name, email, phone, address, taxRegNumber, buyerType, zatcaVatNumber, zatcaStreetName,
+   name, email, phone, address, buyerType, zatcaVatNumber, zatcaStreetName,
    zatcaBuildingNumber, zatcaDistrict, zatcaCity, zatcaPostalCode, entityCrNumber,
    prodName, prodDescription, prodSalesPurchaseFlow, prodPrice, prodCostPrice, prodUnit, prodIsPos, prodCategory, prodImage,
    prodBarcode, prodSku, prodCatalogType, prodCategoryId, prodDefaultWarehouseId, prodBinLocation,
@@ -221,7 +227,7 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
  React.useEffect(() => {
    if (mode !== 'add' || editId) return;
    markFormClean({
-     name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
+     name: '', email: '', phone: '', address: '', buyerType: 'B2C',
      zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
      zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
      prodName: '', prodDescription: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
@@ -244,7 +250,6 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
  setEmail('');
  setPhone('');
  setAddress('');
- setTaxRegNumber('');
  setBuyerType('B2C');
  setZatcaVatNumber('');
  setZatcaStreetName('');
@@ -335,6 +340,28 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
   const companyVendors = db.vendors;
   const companyProducts = db.products;
 
+  // Shared search box above the Customers/Vendors directories — matches on name, the
+  // auto-generated code, or the VAT number (whichever the user actually has on hand).
+  const [entitySearchQuery, setEntitySearchQuery] = React.useState('');
+  const filteredCustomers = React.useMemo(() => {
+    const q = entitySearchQuery.trim().toLowerCase();
+    if (!q) return companyCustomers;
+    return companyCustomers.filter((c: any) =>
+      c.name.toLowerCase().includes(q) ||
+      (c.customerCode && c.customerCode.toLowerCase().includes(q)) ||
+      (c.vatNumber && c.vatNumber.toLowerCase().includes(q))
+    );
+  }, [companyCustomers, entitySearchQuery]);
+  const filteredVendors = React.useMemo(() => {
+    const q = entitySearchQuery.trim().toLowerCase();
+    if (!q) return companyVendors;
+    return companyVendors.filter((v: any) =>
+      v.name.toLowerCase().includes(q) ||
+      (v.vendorCode && v.vendorCode.toLowerCase().includes(q)) ||
+      (v.vatNumber && v.vatNumber.toLowerCase().includes(q))
+    );
+  }, [companyVendors, entitySearchQuery]);
+
  // Handlers - Customers
 const handleSaveCustomer = async (e: React.FormEvent) => {
   e.preventDefault();
@@ -343,7 +370,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
 
   const customerData = {
     id: editingId || generateId(),
-    name, email, phone, address, taxRegNumber,
+    name, email, phone, address,
     buyerType,
     vatNumber: zatcaVatNumber || null,
     streetName: zatcaStreetName || null,
@@ -423,7 +450,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  if (newDb.vendors[idx].isSystem) return triggerError('System Vendor is a critical record and cannot be edited.');
  savedVendor = {
  ...newDb.vendors[idx],
- name, email, phone, address, taxRegNumber, ...zatcaFields
+ name, email, phone, address, ...zatcaFields
  };
  newDb.vendors[idx] = savedVendor;
  }
@@ -432,7 +459,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  if (isDuplicate) return triggerError('Vendor name already exists.');
  savedVendor = {
  id: generateId(),
- name, email, phone, address, taxRegNumber, ...zatcaFields,
+ name, email, phone, address, ...zatcaFields,
  isSystem: false,
  companyId: db.selectedCompanyId
  };
@@ -452,6 +479,10 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  triggerSuccess(editingId ? 'Vendor updated successfully.' : 'Vendor added successfully.');
  clearForm();
  onDirtyChange?.(false);
+ // savedVendor above is the client-constructed object — it has no vendorCode (assigned
+ // server-side on create) and no server-derived address (composed server-side for B2B),
+ // so a create/edit needs this refetch to show the real row, same as handleSaveCustomer.
+ if (onRefreshDb) await onRefreshDb();
  onDone();
  } catch(err) {
  triggerError('Failed to save vendor.');
@@ -1012,7 +1043,6 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
      setEmail(entity.email || '');
      setPhone(entity.phone || '');
      setAddress(entity.address || '');
-     setTaxRegNumber(entity.taxRegNumber || '');
      setBuyerType(entity.buyerType === 'B2C' ? 'B2C' : 'B2B');
      setZatcaVatNumber(entity.vatNumber || '');
      setZatcaStreetName(entity.streetName || '');
@@ -1023,6 +1053,16 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
      setEntityCrNumber(entity.crNumber || '');
    }
  };
+
+ // Live preview only — mirrors server/routes/masterEntities.ts's
+ // composeAddressFromZatcaFields exactly, so what's shown here while typing matches what
+ // actually gets saved. The server recomputes and persists the real value on save; this
+ // never gets sent itself (the Physical Address input is read-only for B2B).
+ const b2bAddressPreview = React.useMemo(() => {
+   const buildingAndStreet = [zatcaBuildingNumber, zatcaStreetName].filter(Boolean).join(' ');
+   const cityAndPostal = [zatcaCity, zatcaPostalCode].filter(Boolean).join(' ');
+   return [buildingAndStreet, zatcaDistrict, cityAndPostal].filter(Boolean).join(', ');
+ }, [zatcaBuildingNumber, zatcaStreetName, zatcaDistrict, zatcaCity, zatcaPostalCode]);
 
  // Mirrors server/lib/zatca/validators.ts's validateBuyerFields — B2C only needs a
  // name; B2B needs a full, verifiable identity for a valid ZATCA AccountingCustomerParty.
@@ -1057,7 +1097,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
    // useState defaults regardless, so reusing the same literal here for those is exact.
    if (forceSubTab === 'products') {
      markFormClean({
-       name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
+       name: '', email: '', phone: '', address: '', buyerType: 'B2C',
        zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
        zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
        prodName: entity.name, prodDescription: entity.description || '', prodSalesPurchaseFlow: entity.salesPurchaseFlow ?? 0, prodPrice: entity.unitPrice.toString(),
@@ -1080,7 +1120,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
      });
    } else if (forceSubTab === 'categories') {
      markFormClean({
-       name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
+       name: '', email: '', phone: '', address: '', buyerType: 'B2C',
        zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
        zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
        prodName: '', prodDescription: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
@@ -1098,7 +1138,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
      });
    } else if (forceSubTab === 'units') {
      markFormClean({
-       name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
+       name: '', email: '', phone: '', address: '', buyerType: 'B2C',
        zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
        zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
        prodName: '', prodDescription: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
@@ -1114,7 +1154,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
      });
    } else if (forceSubTab === 'warehouses') {
      markFormClean({
-       name: '', email: '', phone: '', address: '', taxRegNumber: '', buyerType: 'B2C',
+       name: '', email: '', phone: '', address: '', buyerType: 'B2C',
        zatcaVatNumber: '', zatcaStreetName: '', zatcaBuildingNumber: '', zatcaDistrict: '',
        zatcaCity: '', zatcaPostalCode: '', entityCrNumber: '',
        prodName: '', prodDescription: '', prodSalesPurchaseFlow: 0, prodPrice: '', prodCostPrice: '', prodUnit: 'PCE',
@@ -1134,7 +1174,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
      // customers or vendors — same shared field shape.
      markFormClean({
        name: entity.name, email: entity.email || '', phone: entity.phone || '',
-       address: entity.address || '', taxRegNumber: entity.taxRegNumber || '',
+       address: entity.address || '',
        buyerType: (entity.buyerType === 'B2C' ? 'B2C' : 'B2B'),
        zatcaVatNumber: entity.vatNumber || '', zatcaStreetName: entity.streetName || '',
        zatcaBuildingNumber: entity.buildingNumber || '', zatcaDistrict: entity.district || '',
@@ -1322,6 +1362,18 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
 
  <div className="space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Physical Address')}</label>
+ {buyerType === 'B2B' ? (
+ <>
+ <input
+ type="text"
+ readOnly
+ value={b2bAddressPreview || t('Fill in the ZATCA address fields below')}
+ title={t('Derived automatically from the ZATCA address fields below for a B2B customer/vendor — not directly editable.')}
+ className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-500 cursor-not-allowed"
+ />
+ <p className="text-[10px] text-slate-400">{t('Derived automatically from the ZATCA address fields below.')}</p>
+ </>
+ ) : (
  <input
  type="text"
  placeholder={t('Street, City, Postal Code')}
@@ -1329,16 +1381,17 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  onChange={(e) => setAddress(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"
  />
+ )}
  </div>
 
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('VAT Registration Number')}</label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('VAT Number')}{buyerType === 'B2B' ? '*' : ''}</label>
  <input
  type="text"
- placeholder="e.g. 300123456700003"
- value={taxRegNumber}
- onChange={(e) => setTaxRegNumber(e.target.value)}
- className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"
+ placeholder={buyerType === 'B2B' ? '3xxxxxxxxxxxxxx' : t('Optional')}
+ value={zatcaVatNumber}
+ onChange={(e) => setZatcaVatNumber(e.target.value)}
+ className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"
  />
  </div>
 
@@ -1368,10 +1421,6 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
 
  {buyerType === 'B2B' && (
  <div className="grid grid-cols-2 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200/60">
- <div className="col-span-2 md:col-span-1 space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('ZATCA VAT Number (15 digits)*')}</label>
- <input type="text" placeholder="3xxxxxxxxxxxxxx" value={zatcaVatNumber} onChange={(e) => setZatcaVatNumber(e.target.value)} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
- </div>
  <div className="col-span-2 md:col-span-1 space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Building Number*')}</label>
  <input type="text" placeholder="1234" value={zatcaBuildingNumber} onChange={(e) => setZatcaBuildingNumber(e.target.value)} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
@@ -1811,7 +1860,14 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
                       </div>
                       <div className="col-span-2 md:col-span-1 space-y-1">
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('SKU')}</label>
-                        <input type="text" placeholder="Stock Keeping Unit" value={prodSku} onChange={(e) => setProdSku(e.target.value)} className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150" />
+                        <input
+                          type="text"
+                          readOnly
+                          placeholder={t('Auto-assigned on save')}
+                          value={prodSku}
+                          title={t('Auto-generated for every new product/service — not manually editable.')}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-500 cursor-not-allowed"
+                        />
                       </div>
                       {prodIsPos && (
                         <div className="col-span-2 md:col-span-1 space-y-1">
@@ -2226,8 +2282,17 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
  </div>
  <span className="px-2.5 py-1 bg-white border border-slate-200/60 rounded-xl text-[10px] font-bold text-slate-500">
- {t('Total:')} {subTab === 'customers' ? companyCustomers.length : subTab === 'vendors' ? companyVendors.length : subTab === 'products' ? companyProducts.length : subTab === 'categories' ? db.productCategories.length : subTab === 'units' ? db.unitsOfMeasure.length : db.warehouses.length} {t('records')}
+ {t('Total:')} {subTab === 'customers' ? filteredCustomers.length : subTab === 'vendors' ? filteredVendors.length : subTab === 'products' ? companyProducts.length : subTab === 'categories' ? db.productCategories.length : subTab === 'units' ? db.unitsOfMeasure.length : db.warehouses.length} {t('records')}
  </span>
+ {(subTab === 'customers' || subTab === 'vendors') && (
+ <input
+ type="text"
+ value={entitySearchQuery}
+ onChange={(e) => setEntitySearchQuery(e.target.value)}
+ placeholder={t('Search by name, code, or VAT number...')}
+ className="flex-1 min-w-[180px] bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3 py-1.5 text-[11px] text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"
+ />
+ )}
  {((subTab === 'customers' && canCreateCustomers) || (subTab === 'vendors' && canCreateVendors) || (subTab === 'products' && canCreateProducts) || (subTab === 'categories' && canCreateCategories) || (subTab === 'units' && canCreateUnits) || (subTab === 'warehouses' && canCreateWarehouses)) && (
  <button
  onClick={onCreateNew}
@@ -2252,15 +2317,16 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <table className="w-full text-start border-collapse">
  <thead>
  <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
- <th className="p-4 ps-5">{t('Customer Profile Name')}</th>
- <th className="p-4">{t('Contact Email')}</th>
- <th className="p-4">{t('VAT Registration')}</th>
- <th className="p-4">{t('Status')}</th>
+ <th className="p-4 ps-5 text-start">{t('Customer Profile Name')}</th>
+ <th className="p-4 text-start">{t('Code')}</th>
+ <th className="p-4 text-start">{t('Contact Email')}</th>
+ <th className="p-4 text-start">{t('VAT Registration')}</th>
+ <th className="p-4 text-start">{t('Status')}</th>
  <th className="p-4 pe-5 text-end">{t('Actions')}</th>
  </tr>
  </thead>
  <tbody className="divide-y divide-slate-100 ">
- {companyCustomers.map(c => (
+ {filteredCustomers.map((c: any) => (
  <tr key={c.id} className={`hover:bg-slate-50/40 transition-colors duration-150 ${c.isActive === false ? 'opacity-60 text-slate-500' : 'text-slate-700'}`}>
  <td className="p-4 ps-5">
  <span className="font-bold text-slate-900 block">{c.name}</span>
@@ -2268,10 +2334,11 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  {c.phone || t('No phone')} • {c.address || t('No physical address')}
  </span>
  </td>
+ <td className="p-4 font-mono text-slate-500">{c.customerCode || '—'}</td>
  <td className="p-4 font-medium text-slate-600">{c.email || <span className="text-slate-350 italic">{t('None')}</span>}</td>
  <td className="p-4">
- {c.taxRegNumber ? (
- <span className="font-mono font-bold bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{c.taxRegNumber}</span>
+ {c.vatNumber ? (
+ <span className="font-mono font-bold bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{c.vatNumber}</span>
  ) : (
  <span className="text-slate-350 italic text-[10px]">{t('Unregistered')}</span>
  )}
@@ -2321,15 +2388,16 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <table className="w-full text-start border-collapse">
  <thead>
  <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
- <th className="p-4 ps-5">{t('Vendor / Material Supplier')}</th>
- <th className="p-4">{t('Email')}</th>
- <th className="p-4">{t('VAT Registration')}</th>
- <th className="p-4">{t('Status')}</th>
+ <th className="p-4 ps-5 text-start">{t('Vendor / Material Supplier')}</th>
+ <th className="p-4 text-start">{t('Code')}</th>
+ <th className="p-4 text-start">{t('Email')}</th>
+ <th className="p-4 text-start">{t('VAT Registration')}</th>
+ <th className="p-4 text-start">{t('Status')}</th>
  <th className="p-4 pe-5 text-end">{t('Actions')}</th>
  </tr>
  </thead>
  <tbody className="divide-y divide-slate-100 ">
- {companyVendors.map(v => (
+ {filteredVendors.map((v: any) => (
  <tr key={v.id} className={`hover:bg-slate-50/40 transition-colors duration-150 ${v.isActive === false ? 'opacity-60 text-slate-500' : 'text-slate-700'}`}>
  <td className="p-4 ps-5">
  <span className="font-bold text-slate-900 block">{v.name}</span>
@@ -2337,10 +2405,11 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  {v.phone || t('No phone')} • {v.address || t('No physical address')}
  </span>
  </td>
+ <td className="p-4 font-mono text-slate-500">{v.vendorCode || '—'}</td>
  <td className="p-4 font-medium text-slate-600">{v.email || <span className="text-slate-350 italic">{t('None')}</span>}</td>
  <td className="p-4">
- {v.taxRegNumber ? (
- <span className="font-mono font-bold bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{v.taxRegNumber}</span>
+ {v.vatNumber ? (
+ <span className="font-mono font-bold bg-slate-50 border border-slate-100 text-slate-700 rounded px-1.5 py-0.5 text-[10px]">{v.vatNumber}</span>
  ) : (
  <span className="text-slate-350 italic text-[10px]">{t('Unregistered')}</span>
  )}
@@ -2390,12 +2459,13 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <table className="w-full text-start border-collapse">
  <thead>
  <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
- <th className="p-4 ps-5">{t('Catalog Service / Item')}</th>
- <th className="p-4">{t('Image')}</th>
- <th className="p-4">{t('POS Enabled')}</th>
- <th className="p-4">{t('Type / Ledger Scope')}</th>
- <th className="p-4">{t('Unit')}</th>
- <th className="p-4">{t('Status')}</th>
+ <th className="p-4 ps-5 text-start">{t('Catalog Service / Item')}</th>
+ <th className="p-4 text-start">{t('SKU')}</th>
+ <th className="p-4 text-start">{t('Image')}</th>
+ <th className="p-4 text-start">{t('POS Enabled')}</th>
+ <th className="p-4 text-start">{t('Type / Ledger Scope')}</th>
+ <th className="p-4 text-start">{t('Unit')}</th>
+ <th className="p-4 text-start">{t('Status')}</th>
  <th className="p-4 text-end">{t('Cost Price')}</th>
  <th className="p-4 text-end">{t('Sales Price')}</th>
  {(canUpdateProducts || canDeleteProducts) && <th className="p-4 pe-5 text-end">{t('Actions')}</th>}
@@ -2405,6 +2475,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  {companyProducts.map(p => (
  <tr key={p.id} className={`hover:bg-slate-50/40 transition-colors duration-150 ${p.isActive === false ? 'opacity-60 text-slate-500' : 'text-slate-700'}`}>
  <td className="p-4 ps-5 font-bold text-slate-900">{p.name}</td>
+ <td className="p-4 font-mono text-slate-500">{p.sku || '—'}</td>
  <td className="p-4">
    {p.base64Image ? <img src={p.base64Image} alt={p.name} className="w-10 h-10 object-cover rounded" /> : <div className="w-10 h-10 bg-slate-100 rounded"></div>}
  </td>
@@ -2467,12 +2538,12 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <table className="w-full text-start border-collapse">
  <thead>
  <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
- <th className="p-4 ps-5">{t('Category Name')}</th>
- <th className="p-4">{t('Parent Category')}</th>
- <th className="p-4">{t('Sales GL Mapping')}</th>
- <th className="p-4">{t('Asset GL Mapping')}</th>
- <th className="p-4">{t('COGS GL Mapping')}</th>
- <th className="p-4">{t('Status')}</th>
+ <th className="p-4 ps-5 text-start">{t('Category Name')}</th>
+ <th className="p-4 text-start">{t('Parent Category')}</th>
+ <th className="p-4 text-start">{t('Sales GL Mapping')}</th>
+ <th className="p-4 text-start">{t('Asset GL Mapping')}</th>
+ <th className="p-4 text-start">{t('COGS GL Mapping')}</th>
+ <th className="p-4 text-start">{t('Status')}</th>
  {(canUpdateCategories || canDeleteCategories) && <th className="p-4 pe-5 text-end">{t('Actions')}</th>}
  </tr>
  </thead>
@@ -2536,9 +2607,9 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <table className="w-full text-start border-collapse">
  <thead>
  <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
- <th className="p-4 ps-5">{t('Unit Name')}</th>
- <th className="p-4">{t('Unit Code / Abbreviation')}</th>
- <th className="p-4">{t('Status')}</th>
+ <th className="p-4 ps-5 text-start">{t('Unit Name')}</th>
+ <th className="p-4 text-start">{t('Unit Code / Abbreviation')}</th>
+ <th className="p-4 text-start">{t('Status')}</th>
  {canDeleteUnits && <th className="p-4 pe-5 text-end">{t('Actions')}</th>}
  </tr>
  </thead>
@@ -2580,11 +2651,11 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <table className="w-full text-start border-collapse">
  <thead>
  <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
- <th className="p-4 ps-5">{t('Warehouse Code')}</th>
- <th className="p-4">{t('Warehouse Name')}</th>
- <th className="p-4">{t('Location Address')}</th>
- <th className="p-4">{t('Type')}</th>
- <th className="p-4">{t('Status')}</th>
+ <th className="p-4 ps-5 text-start">{t('Warehouse Code')}</th>
+ <th className="p-4 text-start">{t('Warehouse Name')}</th>
+ <th className="p-4 text-start">{t('Location Address')}</th>
+ <th className="p-4 text-start">{t('Type')}</th>
+ <th className="p-4 text-start">{t('Status')}</th>
  {(canUpdateWarehouses || canDeleteWarehouses) && <th className="p-4 pe-5 text-end">{t('Actions')}</th>}
  </tr>
  </thead>

@@ -241,7 +241,7 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
  invoiceNumber: inv.invoiceNumber,
  date: inv.date,
  customerName: cust?.name || 'Walk-In',
- taxRegNumber: cust?.taxRegNumber || 'N/A',
+ vatNumber: cust?.vatNumber || 'N/A',
  subtotal: totals.subtotal * sign,
  taxAmount: totals.taxAmount * sign,
  grandTotal: totals.grandTotal * sign
@@ -273,7 +273,7 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
  expenseNumber: exp.expenseNumber,
  date: exp.date,
  vendorName: vend?.name || 'Cash Vendor',
- taxRegNumber: vend?.taxRegNumber || 'N/A',
+ vatNumber: vend?.vatNumber || 'N/A',
  subtotal,
  taxAmount,
  grandTotal: exp.amount
@@ -873,7 +873,7 @@ const getFiscalMonthClosingHistoryData = () => {
  <table className="w-full text-xs text-start">
  <thead>
  <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]">
- <th className="p-3">{t("Ledger Chart Account Head")}</th>
+ <th className="p-3 text-start">{t("Ledger Chart Account Head")}</th>
  <th className="p-3 text-end">{t("Debit")} ({currencySymbol})</th>
  <th className="p-3 text-end">{t("Credit")} ({currencySymbol})</th>
  </tr>
@@ -1109,10 +1109,10 @@ const getFiscalMonthClosingHistoryData = () => {
  <table className="w-full text-xs text-start">
  <thead>
  <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]">
- <th className="p-3">{t("Invoice No")}</th>
- <th className="p-3">{t("Date")}</th>
- <th className="p-3">{t("Customer Entity")}</th>
- <th className="p-3">{t("Tax Reg No")}</th>
+ <th className="p-3 text-start">{t("Invoice No")}</th>
+ <th className="p-3 text-start">{t("Date")}</th>
+ <th className="p-3 text-start">{t("Customer Entity")}</th>
+ <th className="p-3 text-start">{t("Tax Reg No")}</th>
  <th className="p-3 text-end">{t("Net Taxable")} ({currencySymbol})</th>
  <th className="p-3 text-end">{t("VAT Collected")} ({currencySymbol})</th>
  <th className="p-3 text-end font-bold">{t("Grand Total")} ({currencySymbol})</th>
@@ -1131,7 +1131,7 @@ const getFiscalMonthClosingHistoryData = () => {
  <td className="p-3 font-bold text-slate-950">{r.invoiceNumber}</td>
  <td className="p-3">{r.date}</td>
  <td className="p-3 font-medium">{r.customerName}</td>
- <td className="p-3 font-mono">{r.taxRegNumber}</td>
+ <td className="p-3 font-mono">{r.vatNumber}</td>
  <td className="p-3 text-end font-mono">{currencySymbol} {r.subtotal.toFixed(2)}</td>
  <td className="p-3 text-end font-mono text-indigo-600">+{currencySymbol} {r.taxAmount.toFixed(2)}</td>
  <td className="p-3 text-end font-mono font-bold">{currencySymbol} {r.grandTotal.toFixed(2)}</td>
@@ -1169,10 +1169,10 @@ const getFiscalMonthClosingHistoryData = () => {
  <table className="w-full text-xs text-start">
  <thead>
  <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]">
- <th className="p-3">{t("Expense No")}</th>
- <th className="p-3">{t("Date")}</th>
- <th className="p-3">{t("Vendor / Supplier")}</th>
- <th className="p-3">{t("Tax Reg No")}</th>
+ <th className="p-3 text-start">{t("Expense No")}</th>
+ <th className="p-3 text-start">{t("Date")}</th>
+ <th className="p-3 text-start">{t("Vendor / Supplier")}</th>
+ <th className="p-3 text-start">{t("Tax Reg No")}</th>
  <th className="p-3 text-end">{t("Taxable Subtotal")} ({currencySymbol})</th>
  <th className="p-3 text-end">{t("VAT Paid")} ({currencySymbol})</th>
  <th className="p-3 text-end font-bold">{t("Total Disbursed")} ({currencySymbol})</th>
@@ -1191,7 +1191,7 @@ const getFiscalMonthClosingHistoryData = () => {
  <td className="p-3 font-bold text-slate-950">{r.expenseNumber}</td>
  <td className="p-3">{r.date}</td>
  <td className="p-3 font-medium">{r.vendorName}</td>
- <td className="p-3 font-mono">{r.taxRegNumber}</td>
+ <td className="p-3 font-mono">{r.vatNumber}</td>
  <td className="p-3 text-end font-mono">{currencySymbol} {r.subtotal.toFixed(2)}</td>
  <td className="p-3 text-end font-mono text-rose-600">-{currencySymbol} {r.taxAmount.toFixed(2)}</td>
  <td className="p-3 text-end font-mono font-bold">{currencySymbol} {r.grandTotal.toFixed(2)}</td>
@@ -1740,7 +1740,7 @@ const getFiscalMonthClosingHistoryData = () => {
  <table className="w-full text-xs text-start">
  <thead>
  <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]">
- <th className="p-3">{t('Investor')}</th>
+ <th className="p-3 text-start">{t('Investor')}</th>
  <th className="p-3 text-end">{t('Profit %')}</th>
  <th className="p-3 text-end">{t('Share Amount')} ({currencySymbol})</th>
  </tr>
@@ -1776,8 +1776,8 @@ const getFiscalMonthClosingHistoryData = () => {
  <table className="w-full text-xs text-start">
  <thead>
  <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]">
- <th className="p-3">{t('Month')}</th>
- <th className="p-3">{t('Closed At')}</th>
+ <th className="p-3 text-start">{t('Month')}</th>
+ <th className="p-3 text-start">{t('Closed At')}</th>
  <th className="p-3 text-end">{t('Revenue')} ({currencySymbol})</th>
  <th className="p-3 text-end">{t('Expenses')} ({currencySymbol})</th>
  <th className="p-3 text-end">{t('Net Profit')} ({currencySymbol})</th>

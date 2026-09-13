@@ -17,6 +17,14 @@ import QRCode from 'qrcode';
 import { DEFAULT_DOCUMENT_LAYOUT, COL_SPAN_MD, COL_SPAN_PRINT } from '../documentTemplateDefaults';
 import { amountToWordsForCurrency } from '../numberToWords';
 
+// countryCode -> translation key, for the itemized address block's printed country name.
+// Every customer/vendor defaults to 'SA' today (schema.ts's countryCode column default) —
+// this map exists so a future non-Saudi country code degrades to its own translated name
+// instead of a hardcoded one, without needing a schema change to add it.
+const COUNTRY_NAME_TRANSLATION_KEYS: Record<string, string> = {
+ SA: 'Saudi Arabia',
+};
+
 interface DocumentRendererProps {
  documentType: 'Quotation' | 'Invoice' | 'Expense' | 'Voucher' | 'PaymentReceipt' | 'Ledger' | 'Report' | 'WarehouseDispatch' | 'WarehouseReceiving';
  data: any; // Can be Quotation, Invoice, Expense, Voucher, PaymentReceipt, or Ledger/Report data
@@ -58,136 +66,14 @@ interface DocumentRendererProps {
  preOpenedPrintWindow?: Window | null;
 }
 
-// Simple English-to-Arabic dictionary for high-fidelity bilingual output
-const TRANSLATIONS: Record<string, string> = {
- // Document Titles
- 'Quotation': 'عرض سعر',
- 'Invoice': 'فاتورة مبيعات',
- 'Credit Note': 'إشعار دائن',
- 'Debit Note': 'إشعار مدين',
- 'Reference Invoice': 'الفاتورة المرجعية',
- 'Expense': 'سند مصروف',
- 'Receipt Voucher': 'سند قبض',
- 'Payment Voucher': 'سند صرف',
- 'Reversal Voucher': 'سند عكسي',
- 'TransferOut Voucher': 'تحويل بنكي صادر',
- 'TransferIn Voucher': 'تحويل بنكي وارد',
- 'Bank Ledger': 'كشف حساب البنك',
-
- // Fields
- 'Quotation Number': 'رقم عرض السعر',
- 'Origin Quotation': 'عرض السعر المرجعي',
- 'Invoice Number': 'رقم الفاتورة',
- 'Expense Number': 'رقم المصروف',
- 'Voucher Number': 'رقم السند',
- 'Date': 'التاريخ',
- 'Payment Date': 'تاريخ الدفع',
- 'Customer': 'العميل',
- 'Vendor': 'المورد',
- 'Phone': 'الهاتف',
- 'Email': 'البريد الإلكتروني',
- 'Address': 'العنوان',
- 'Status': 'الحالة',
- 'Bank Account': 'الحساب البنكي',
- 'Payment Status': 'حالة الدفع',
-
- // Table columns
- 'S.No': 'الرقم',
- 'Description': 'الوصف / البند',
- 'Unit Cost': 'سعر الوحدة',
- 'Quantity': 'الكمية',
- 'Total': 'الإجمالي',
- 'Amount': 'المبلغ',
-
- // Summary
- 'Subtotal': 'المجموع الفرعي',
- 'VAT': 'ضريبة القيمة المضافة',
- 'Grand Total': 'المجموع الكلي',
- 'Notes': 'ملاحظات',
- 'Discount': 'الخصم',
-
- // POS thermal receipt (renderQuotationOrInvoice's forceThermalReceipt branch)
- 'Payment Method': 'طريقة الدفع',
- 'Amount Paid': 'المبلغ المدفوع',
- 'Balance Due': 'الرصيد المستحق',
- 'Change': 'الباقي',
- 'Against': 'مقابل',
- 'Thank you for your business!': 'شكرًا لتعاملكم معنا!',
-
- // Statuses
- 'Draft': 'مسودة',
- 'Sent': 'تم الإرسال',
- 'Accepted': 'مقبول',
- 'Converted': 'تم التحويل',
- 'Cancelled': 'ملغي',
- 'Paid': 'مدفوع',
- 'Pending': 'معلق',
- 'Unpaid': 'غير مدفوع',
- 'Active': 'نشط'
-};
-
-// Same keys, Urdu — mirrors TRANSLATIONS above so Urdu-language templates get the same
-// high-fidelity bilingual output Arabic templates already had.
-const URDU_TRANSLATIONS: Record<string, string> = {
- 'Quotation': 'کوٹیشن',
- 'Invoice': 'انوائس',
- 'Credit Note': 'کریڈٹ نوٹ',
- 'Debit Note': 'ڈیبٹ نوٹ',
- 'Reference Invoice': 'حوالہ انوائس',
- 'Expense': 'اخراجات کی رسید',
- 'Receipt Voucher': 'وصولی واؤچر',
- 'Payment Voucher': 'ادائیگی واؤچر',
- 'Reversal Voucher': 'واپسی واؤچر',
- 'TransferOut Voucher': 'بینک ٹرانسفر (بھیجا گیا)',
- 'TransferIn Voucher': 'بینک ٹرانسفر (موصول)',
- 'Bank Ledger': 'بینک لیجر',
-
- 'Quotation Number': 'کوٹیشن نمبر',
- 'Origin Quotation': 'اصل کوٹیشن',
- 'Invoice Number': 'انوائس نمبر',
- 'Expense Number': 'اخراجات نمبر',
- 'Voucher Number': 'واؤچر نمبر',
- 'Date': 'تاریخ',
- 'Payment Date': 'ادائیگی کی تاریخ',
- 'Customer': 'گاہک',
- 'Vendor': 'وینڈر',
- 'Phone': 'فون',
- 'Email': 'ای میل',
- 'Address': 'پتہ',
- 'Status': 'حیثیت',
- 'Bank Account': 'بینک اکاؤنٹ',
- 'Payment Status': 'ادائیگی کی حیثیت',
-
- 'S.No': 'نمبر شمار',
- 'Description': 'تفصیل',
- 'Unit Cost': 'فی یونٹ قیمت',
- 'Quantity': 'مقدار',
- 'Total': 'کل',
- 'Amount': 'رقم',
-
-  'Subtotal': 'ذیلی مجموعہ',
- 'VAT': 'ویٹ ٹیکس',
- 'Grand Total': 'مجموعی کل',
- 'Notes': 'نوٹس',
- 'Discount': 'رعایت',
-
- 'Payment Method': 'ادائیگی کا طریقہ',
- 'Amount Paid': 'ادا شدہ رقم',
- 'Balance Due': 'بقایا رقم',
- 'Change': 'بقیہ رقم',
- 'Against': 'کے عوض',
- 'Thank you for your business!': 'آپ کے کاروبار کا شکریہ!',
-
- 'Draft': 'مسودہ',
- 'Sent': 'بھیج دیا گیا',
- 'Accepted': 'منظور شدہ',
- 'Converted': 'تبدیل شدہ',
- 'Cancelled': 'منسوخ شدہ',
- 'Paid': 'ادا شدہ',
- 'Pending': 'زیر التواء',
- 'Unpaid': 'غیر ادا شدہ',
- 'Active': 'فعال'
-};
+// Bilingual print labels for Invoice/Quotation used to live in a standalone dictionary
+// here, completely separate from the app-wide db.translations/SEED_TRANSLATIONS system
+// every other screen uses — a real single-source-of-truth violation (the same label had
+// to be edited in two places to actually change). Removed: every key that dictionary
+// held is now in SEED_TRANSLATIONS (src/dbStore.ts) instead, and the `t` below resolves
+// through the exact same useTranslation() lookup as the rest of the app, just with the
+// language pinned to the template's own configured language instead of the viewer's —
+// see the comment above the `t` definition.
 
 export default function DocumentRenderer({
  documentType,
@@ -232,25 +118,21 @@ export default function DocumentRenderer({
  const isRTL = isArabic || isUrdu;
  const dir = isRTL ? 'rtl' : 'ltr';
 
- // Quotation/Invoice go through the fixed local dictionaries above, driven by the
- // TEMPLATE's own configured language (a company printing a customer-facing invoice in
- // Arabic regardless of which employee created it) — deliberately independent of the
- // viewing user's own UI language. Every other document type printed from this component
- // (Expense, Voucher, PaymentReceipt, Ledger, Report) is an internal/back-office document
- // with no customer-facing template language of its own, so it falls back to the app's
- // real, DB-backed translation system keyed on the *viewing user's* uiLanguage — the same
- // one every other screen in the app uses. Without this fallback, every t() call in
- // renderExpense/renderVoucher/renderPaymentReceipt/renderLedger/renderReport was a
- // silent no-op (isBilingualDoc is false for all of them), always rendering English
- // regardless of language — a real, previously-undiscovered bug this fixes for all five
- // render paths at once, rather than needing every call site touched individually.
- const { t: tGeneral } = useTranslation(db || ({ translations: [] } as unknown as DatabaseState));
- const t = (key: string): string => {
- if (isUrdu) return URDU_TRANSLATIONS[key] || key;
- if (isArabic) return TRANSLATIONS[key] || key;
- if (!isBilingualDoc) return tGeneral(key);
- return key;
- };
+ // Quotation/Invoice translate according to the TEMPLATE's own configured language (a
+ // company printing a customer-facing invoice in Arabic regardless of which employee
+ // created it) — deliberately independent of the viewing user's own UI language, so
+ // 'English' pins to English even if the viewer's own UI is in Arabic/Urdu. Every other
+ // document type printed from this component (Expense, Voucher, PaymentReceipt, Ledger,
+ // Report) has no customer-facing template language of its own, so it follows the
+ // *viewing user's* uiLanguage instead — the same one every other screen in the app
+ // uses (passing `undefined` here makes useTranslation fall back to it). Both paths
+ // resolve through the exact same db.translations/SEED_TRANSLATIONS lookup — a
+ // langOverride is the only thing that differs, never a separate dictionary (this used
+ // to be two standalone TRANSLATIONS/URDU_TRANSLATIONS objects hardcoded in this file,
+ // which had to be hand-edited in parallel with SEED_TRANSLATIONS for the same string
+ // and silently drifted out of sync — see BACKLOG/session notes on this fix).
+ const templateLang: 'en' | 'ar' | 'ur' = isUrdu ? 'ur' : isArabic ? 'ar' : 'en';
+ const { t } = useTranslation(db || ({ translations: [] } as unknown as DatabaseState), isBilingualDoc ? templateLang : undefined);
 
  // Helper to format currency
  const currencySymbol = companySetup?.currency || 'SAR';
@@ -1385,24 +1267,27 @@ export default function DocumentRenderer({
                 ZATCA address fields (customers.buildingNumber/streetName/district/city/
                 postalCode/countryCode — already stored, just never rendered separately
                 before) instead of one free-text line, matching the traditional GCC
-                tax-invoice layout — but folded onto one flowing, comma-joined line
-                (like a normal mailing address) rather than one label+value line per
-                field, which used to run up to 6 lines tall and was the single biggest
-                contributor to the header spilling the items table onto page 2. Falls
-                back to the single-line address whenever none of those granular fields
-                are actually filled in (e.g. older customer records created before this
-                data was collected), so an itemized template never prints an empty line. */}
+                tax-invoice layout — labeled (Building Number/District/Postal Code, each
+                through t() so it follows the template's own language) rather than a bare
+                comma list of numbers, which gives a reader no way to tell which number is
+                which. Wrapped in dir={dir} so the whole line reads right-to-left for an
+                Arabic/Urdu template and left-to-right for English, matching every other
+                bidi-aware block in this renderer. Falls back to the single-line address
+                whenever none of those granular fields are actually filled in (e.g. older
+                customer records created before this data was collected), so an itemized
+                template never prints an empty line. */}
             {showAddress && block.props?.addressStyle === 'itemized' && (
              data.customerData.buildingNumber || data.customerData.streetName ||
              data.customerData.district || data.customerData.city || data.customerData.postalCode
             ) ? (
-             <p>
+             <p dir={dir}>
               {[
-               [data.customerData.buildingNumber, data.customerData.streetName].filter(Boolean).join(' '),
-               data.customerData.district,
+               data.customerData.buildingNumber && `${t('Building Number')} ${data.customerData.buildingNumber}`,
+               data.customerData.streetName,
+               data.customerData.district && `${t('District')} ${data.customerData.district}`,
                data.customerData.city,
-               data.customerData.postalCode,
-               data.customerData.countryCode || 'SA'
+               data.customerData.postalCode && `${t('Postal Code')} ${data.customerData.postalCode}`,
+               t(COUNTRY_NAME_TRANSLATION_KEYS[data.customerData.countryCode || 'SA'] || 'Saudi Arabia')
               ].filter(Boolean).join(', ')}
              </p>
             ) : (
@@ -2354,10 +2239,10 @@ export default function DocumentRenderer({
  <div className="overflow-x-auto"><table className="w-full text-start text-[11px] min-w-[600px]">
  <thead>
  <tr className="bg-slate-100 text-slate-700 border-b border-slate-300">
- <th className="py-2 px-2">{t('Date')}</th>
- <th className="py-2 px-2">{t('Voucher No')}</th>
- <th className="py-2 px-2">{t('Type')}</th>
- <th className="py-2 px-2">{t('Description')}</th>
+ <th className="py-2 px-2 text-start">{t('Date')}</th>
+ <th className="py-2 px-2 text-start">{t('Voucher No')}</th>
+ <th className="py-2 px-2 text-start">{t('Type')}</th>
+ <th className="py-2 px-2 text-start">{t('Description')}</th>
  <th className="py-2 px-2 text-end">{t('Debit (Receipts)')}</th>
  <th className="py-2 px-2 text-end">{t('Credit (Payments)')}</th>
  <th className="py-2 px-2 text-end">{t('Running Balance')}</th>
@@ -2438,7 +2323,7 @@ export default function DocumentRenderer({
  r.invoiceNumber,
  r.date,
  r.customerName,
- r.taxRegNumber,
+ r.vatNumber,
  `${currencySymbol} ${r.subtotal.toFixed(2)}`,
  `${currencySymbol} ${r.taxAmount.toFixed(2)}`,
  `${currencySymbol} ${r.grandTotal.toFixed(2)}`
@@ -2462,7 +2347,7 @@ export default function DocumentRenderer({
  r.expenseNumber,
  r.date,
  r.vendorName,
- r.taxRegNumber,
+ r.vatNumber,
  `${currencySymbol} ${r.subtotal.toFixed(2)}`,
  `${currencySymbol} ${r.taxAmount.toFixed(2)}`,
  `${currencySymbol} ${r.grandTotal.toFixed(2)}`

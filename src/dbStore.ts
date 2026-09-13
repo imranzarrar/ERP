@@ -612,7 +612,56 @@ export const SEED_TRANSLATIONS: TranslationItem[] = [
   { id: 'b1c6e3a2-4f8d-4e1a-9c7b-2d5e8f6a1c30', key: 'Full Name', en: 'Full Name', ar: 'الاسم الكامل', ur: 'پورا نام' },
   { id: 'd4e7f2b5-8a1c-4d6e-b3f9-7c2a5e8d1b40', key: 'e.g. Sarah Al-Amin', en: 'e.g. Sarah Al-Amin', ar: 'مثال: سارة الأمين', ur: 'مثال: سارہ الامین' },
   { id: '2f8b5c1e-6d9a-4b3f-a7e2-9c1d4f6e8a50', key: 'e.g. +966 5x xxx xxxx', en: 'e.g. +966 5x xxx xxxx', ar: 'مثال: 966+ 5x xxx xxxx', ur: 'مثال: 966+ 5x xxx xxxx' },
-  { id: '9a3d6e2b-1f7c-4a8d-b5e3-6f2a9c1d4e60', key: 'Name and phone are pulled from the linked employee record — edit them on that employee\'s profile instead.', en: 'Name and phone are pulled from the linked employee record — edit them on that employee\'s profile instead.', ar: 'يتم سحب الاسم والهاتف من سجل الموظف المرتبط — قم بتعديلهما من الملف الشخصي لذلك الموظف بدلاً من ذلك.', ur: 'نام اور فون منسلک ملازم کے ریکارڈ سے لیے گئے ہیں — انہیں اس ملازم کی پروفائل میں تبدیل کریں۔' }
+  { id: '9a3d6e2b-1f7c-4a8d-b5e3-6f2a9c1d4e60', key: 'Name and phone are pulled from the linked employee record — edit them on that employee\'s profile instead.', en: 'Name and phone are pulled from the linked employee record — edit them on that employee\'s profile instead.', ar: 'يتم سحب الاسم والهاتف من سجل الموظف المرتبط — قم بتعديلهما من الملف الشخصي لذلك الموظف بدلاً من ذلك.', ur: 'نام اور فون منسلک ملازم کے ریکارڈ سے لیے گئے ہیں — انہیں اس ملازم کی پروفائل میں تبدیل کریں۔' },
+  // Printed itemized-address labels (DocumentRenderer.tsx) and the B2B country name —
+  // exact ar/ur values confirmed directly with the business owner.
+  { id: generateId(), key: 'Building Number', en: 'Building Number', ar: 'رقم المبنى', ur: 'عمارت نمبر' },
+  { id: generateId(), key: 'District', en: 'District', ar: 'الحي', ur: 'ضلع' },
+  { id: generateId(), key: 'Postal Code', en: 'Postal Code', ar: 'الرمز البريدي', ur: 'پوسٹل کوڈ' },
+  { id: generateId(), key: 'Saudi Arabia', en: 'Saudi Arabia', ar: 'السعودية', ur: 'سعو دی عریبیہ' },
+  // Migrated from DocumentRenderer.tsx's old standalone TRANSLATIONS/URDU_TRANSLATIONS
+  // dictionaries (Invoice/Quotation print labels) — single source of truth now: the
+  // print path resolves these same keys via useTranslation(db, templateLanguage)
+  // instead of a separate hardcoded lookup. Values are byte-identical to what those
+  // dictionaries held, so this migration changes no existing printed output.
+  { id: '51440dd6-f958-4d33-9dda-a30f78adc8ef', key: 'Quotation', en: 'Quotation', ar: 'عرض سعر', ur: 'کوٹیشن' },
+  { id: '0673b229-18f9-4021-8b6a-af8bcd7bf01c', key: 'Invoice', en: 'Invoice', ar: 'فاتورة مبيعات', ur: 'انوائس' },
+  { id: '0223b161-4038-4d77-87d6-c439e4b11f66', key: 'Credit Note', en: 'Credit Note', ar: 'إشعار دائن', ur: 'کریڈٹ نوٹ' },
+  { id: '8a3d579b-7d52-4c94-b29f-742e22513593', key: 'Debit Note', en: 'Debit Note', ar: 'إشعار مدين', ur: 'ڈیبٹ نوٹ' },
+  { id: '9706c7eb-ec99-4620-af48-9f759bb1c00d', key: 'Reference Invoice', en: 'Reference Invoice', ar: 'الفاتورة المرجعية', ur: 'حوالہ انوائس' },
+  { id: 'd557e424-efce-4b47-997a-11279acb8fdc', key: 'Expense', en: 'Expense', ar: 'سند مصروف', ur: 'اخراجات کی رسید' },
+  { id: '04655649-6ea5-49c7-b84d-02c66f1f1ec9', key: 'Receipt Voucher', en: 'Receipt Voucher', ar: 'سند قبض', ur: 'وصولی واؤچر' },
+  { id: '1ea1cd32-4531-43e4-87bf-cbaad1a123c5', key: 'Payment Voucher', en: 'Payment Voucher', ar: 'سند صرف', ur: 'ادائیگی واؤچر' },
+  { id: 'f35c5b07-3c77-4c45-8d10-e1471fde4a0d', key: 'Reversal Voucher', en: 'Reversal Voucher', ar: 'سند عكسي', ur: 'واپسی واؤچر' },
+  { id: '4d41dcab-5f47-4b34-a2ef-186295936ed6', key: 'TransferOut Voucher', en: 'TransferOut Voucher', ar: 'تحويل بنكي صادر', ur: 'بینک ٹرانسفر (بھیجا گیا)' },
+  { id: '28ad88cd-2fdd-4d8b-bd9e-9248eb028412', key: 'TransferIn Voucher', en: 'TransferIn Voucher', ar: 'تحويل بنكي وارد', ur: 'بینک ٹرانسفر (موصول)' },
+  { id: '31e0ac97-a9fa-43cc-8531-75cefb68a162', key: 'Bank Ledger', en: 'Bank Ledger', ar: 'كشف حساب البنك', ur: 'بینک لیجر' },
+  { id: '8810185c-a9cd-426d-8d7d-1bfc3f1f7652', key: 'Quotation Number', en: 'Quotation Number', ar: 'رقم عرض السعر', ur: 'کوٹیشن نمبر' },
+  { id: '89e92781-22a5-4b5c-aa9e-5c16167cf49f', key: 'Origin Quotation', en: 'Origin Quotation', ar: 'عرض السعر المرجعي', ur: 'اصل کوٹیشن' },
+  { id: '1a8373f2-3882-49b6-8a4e-c15613797e1a', key: 'Invoice Number', en: 'Invoice Number', ar: 'رقم الفاتورة', ur: 'انوائس نمبر' },
+  { id: '4859c8c0-69fc-4f3c-9523-3b8557dfb539', key: 'Expense Number', en: 'Expense Number', ar: 'رقم المصروف', ur: 'اخراجات نمبر' },
+  { id: 'a69e6799-f9da-43bd-928d-1904b51a0b13', key: 'Voucher Number', en: 'Voucher Number', ar: 'رقم السند', ur: 'واؤچر نمبر' },
+  { id: 'b09c943b-ea15-43ac-a67f-267092cebf67', key: 'Payment Date', en: 'Payment Date', ar: 'تاريخ الدفع', ur: 'ادائیگی کی تاریخ' },
+  { id: '1696aa7b-38e5-41a3-a79b-79ff47a22d03', key: 'Phone', en: 'Phone', ar: 'الهاتف', ur: 'فون' },
+  { id: '1541b2c0-de27-4cce-a8bd-c485a273a065', key: 'Email', en: 'Email', ar: 'البريد الإلكتروني', ur: 'ای میل' },
+  { id: 'd7574d46-abc0-491a-bbe8-321299232cbf', key: 'Address', en: 'Address', ar: 'العنوان', ur: 'پتہ' },
+  { id: 'a7a3e516-e872-4a30-a8f5-a3597a7c31a8', key: 'VAT Reg', en: 'VAT Reg', ar: 'الرقم الضريبي', ur: 'ویٹ رجسٹریشن' },
+  { id: 'f45af7ad-b32a-4b32-84ad-a0761daf107c', key: 'S.No', en: 'S.No', ar: 'الرقم', ur: 'نمبر شمار' },
+  { id: 'def06adb-3950-404e-a5a2-a5dbc1896b5d', key: 'Unit Cost', en: 'Unit Cost', ar: 'سعر الوحدة', ur: 'فی یونٹ قیمت' },
+  { id: 'a444cb08-74cd-4ff4-96d5-faa18c516d74', key: 'VAT', en: 'VAT', ar: 'ضريبة القيمة المضافة', ur: 'ویٹ ٹیکس' },
+  { id: 'fc0f4040-a520-4031-b292-622c17548f69', key: 'Notes', en: 'Notes', ar: 'ملاحظات', ur: 'نوٹس' },
+  { id: '6225e8c4-dee2-45a5-a38d-43f53d7efce0', key: 'Discount', en: 'Discount', ar: 'الخصم', ur: 'رعایت' },
+  { id: 'd733d26c-e915-4d27-b6d3-8c8e8e0cab40', key: 'Payment Method', en: 'Payment Method', ar: 'طريقة الدفع', ur: 'ادائیگی کا طریقہ' },
+  { id: '6ffef890-e8b2-44dc-b73c-39efb0ba140d', key: 'Amount Paid', en: 'Amount Paid', ar: 'المبلغ المدفوع', ur: 'ادا شدہ رقم' },
+  { id: '5bb72aeb-c63d-47a2-b348-478676b68e98', key: 'Balance Due', en: 'Balance Due', ar: 'الرصيد المستحق', ur: 'بقایا رقم' },
+  { id: '0fa7655c-126f-45cb-82d7-1b22d0dd94cc', key: 'Change', en: 'Change', ar: 'الباقي', ur: 'بقیہ رقم' },
+  { id: '391e2976-c1da-4a00-b9ed-0a371ab16512', key: 'Against', en: 'Against', ar: 'مقابل', ur: 'کے عوض' },
+  { id: '1b26bec1-6784-441a-98de-ab42b64c34b1', key: 'Thank you for your business!', en: 'Thank you for your business!', ar: 'شكرًا لتعاملكم معنا!', ur: 'آپ کے کاروبار کا شکریہ!' },
+  { id: '9245f31c-e53e-4e0b-ab86-e50ec105088a', key: 'Sent', en: 'Sent', ar: 'تم الإرسال', ur: 'بھیج دیا گیا' },
+  { id: '93d81017-39fd-4f01-8814-9d4fd3029594', key: 'Accepted', en: 'Accepted', ar: 'مقبول', ur: 'منظور شدہ' },
+  { id: 'b5caad60-5944-4329-a1ed-ce0b08f44692', key: 'Converted', en: 'Converted', ar: 'تم التحويل', ur: 'تبدیل شدہ' },
+  { id: '82d71a12-9844-4519-b8ec-5e4f9f5a829f', key: 'Cancelled', en: 'Cancelled', ar: 'ملغي', ur: 'منسوخ شدہ' },
+  { id: 'a51c2f67-300d-46d3-baca-d9bda6dcfbbb', key: 'Pending', en: 'Pending', ar: 'معلق', ur: 'زیر التواء' }
 ];
 
 export const INITIAL_DB: DatabaseState = {

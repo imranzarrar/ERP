@@ -7,6 +7,7 @@ import { getMonthToDateRange } from '../dateUtils';
 import { Invoice, InvoiceItem, Customer, TaxSlab, BankAccount, User, normalizePermissions } from '../types';
 import StatusPill, { StatusPillTone } from './StatusPill';
 import ItemCatalogSearch from './ItemCatalogSearch';
+import PartySearchSelect from './PartySearchSelect';
 import {
   Plus,
   Trash,
@@ -1056,16 +1057,16 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
 
  <div className="lg:col-span-3 space-y-0.5">
  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Customer')}<span className="text-rose-500"> *</span></label>
- <select
+ <PartySearchSelect
  required
- value={formCustomerId}
- onChange={(e) => setFormCustomerId(e.target.value)}
+ valueId={formCustomerId}
+ onSelect={setFormCustomerId}
+ items={db.customers.filter(c => c.companyId === db.selectedCompanyId || !c.companyId).map(c => ({ id: c.id, name: c.name, code: c.customerCode, vatNumber: c.vatNumber, isSystem: c.isSystem }))}
+ placeholder={t('Search by name, code, or VAT...')}
+ noMatchesLabel={t('No matching customers')}
+ systemLabel={t('Default')}
  className="w-full bg-slate-50/70 hover:bg-white border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-medium focus:outline-none transition-all"
- >
- {db.customers.filter(c => c.companyId === db.selectedCompanyId || !c.companyId).map(c => (
- <option key={c.id} value={c.id}>{c.name} {c.isSystem ? '(Default)' : ''}</option>
- ))}
- </select>
+ />
  </div>
 
  <div className="lg:col-span-2 space-y-0.5">

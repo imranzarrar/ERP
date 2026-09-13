@@ -5,6 +5,7 @@ import { generateId } from '../id';
 import { Quotation, QuotationItem, Customer, TaxSlab, User, normalizePermissions } from '../types';
 import StatusPill from './StatusPill';
 import ItemCatalogSearch from './ItemCatalogSearch';
+import PartySearchSelect from './PartySearchSelect';
 import {
   FileText,
   Plus,
@@ -1017,16 +1018,16 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
 
  <div className="lg:col-span-3 space-y-0.5">
  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Customer Selection')}<span className="text-rose-500"> *</span></label>
- <select
+ <PartySearchSelect
  required
- value={formCustomerId}
- onChange={(e) => setFormCustomerId(e.target.value)}
+ valueId={formCustomerId}
+ onSelect={setFormCustomerId}
+ items={db.customers.filter(c => c.companyId === db.selectedCompanyId || !c.companyId).map(c => ({ id: c.id, name: c.name, code: c.customerCode, vatNumber: c.vatNumber, isSystem: c.isSystem }))}
+ placeholder={t('Search by name, code, or VAT...')}
+ noMatchesLabel={t('No matching customers')}
+ systemLabel={t('Default')}
  className="w-full bg-slate-50/70 hover:bg-white border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-medium focus:outline-none transition-all"
- >
- {db.customers.filter(c => c.companyId === db.selectedCompanyId || !c.companyId).map(c => (
- <option key={c.id} value={c.id}>{c.name} {c.isSystem ? t('(Default)') : ''}</option>
- ))}
- </select>
+ />
  </div>
 
  <div className="lg:col-span-2 space-y-0.5">
@@ -1309,16 +1310,16 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
  <div className="space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Customer Relationship')}<span className="text-rose-500"> *</span></label>
- <select
+ <PartySearchSelect
  required
- value={convForm.customerId}
- onChange={(e) => setConvForm({ ...convForm, customerId: e.target.value })}
+ valueId={convForm.customerId}
+ onSelect={(id) => setConvForm({ ...convForm, customerId: id })}
+ items={db.customers.map(c => ({ id: c.id, name: c.name, code: c.customerCode, vatNumber: c.vatNumber, isSystem: c.isSystem }))}
+ placeholder={t('Search by name, code, or VAT...')}
+ noMatchesLabel={t('No matching customers')}
+ systemLabel={t('System Default')}
  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-indigo-600 font-medium"
- >
- {db.customers.map(c => (
- <option key={c.id} value={c.id}>{c.name} {c.isSystem ? t('(System Default)') : ''}</option>
- ))}
- </select>
+ />
  </div>
 
  <div className="space-y-1">

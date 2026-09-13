@@ -275,10 +275,10 @@ export default function InvoiceViewScreen({ db, invoiceId, onBack, onPrintDoc, o
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b border-slate-100 text-slate-400 text-xs">
-                <th className="text-left font-semibold py-2">{t('Item')}</th>
-                <th className="text-right font-semibold py-2">{t('Qty')}</th>
-                <th className="text-right font-semibold py-2">{t('Rate')}</th>
-                <th className="text-right font-semibold py-2">{t('Amount')}</th>
+                <th className="text-start font-semibold py-2">{t('Item')}</th>
+                <th className="text-end font-semibold py-2">{t('Qty')}</th>
+                <th className="text-end font-semibold py-2">{t('Rate')}</th>
+                <th className="text-end font-semibold py-2">{t('Amount')}</th>
               </tr>
             </thead>
             <tbody>
