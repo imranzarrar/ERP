@@ -18,10 +18,26 @@ if [ ! -f "$SECRETS_FILE" ]; then
 fi
 
 # app.secrets is a plain KEY=VALUE file (dotenv format) — source only the vars we need.
-SQL_HOST="$(grep -E '^SQL_HOST=' "$SECRETS_FILE" | cut -d= -f2-)"
-SQL_USER="$(grep -E '^SQL_USER=' "$SECRETS_FILE" | cut -d= -f2-)"
-SQL_PASSWORD="$(grep -E '^SQL_PASSWORD=' "$SECRETS_FILE" | cut -d= -f2-)"
-SQL_DB_NAME="$(grep -E '^SQL_DB_NAME=' "$SECRETS_FILE" | cut -d= -f2-)"
+# Node's `dotenv` package (what the app itself uses to read this same file) strips a
+# trailing \r (Windows line ending) and one layer of surrounding '...'/"..." quotes from
+# each value; a raw grep+cut does neither, so a value written with either would silently
+# reach pg_dump with extra characters the app itself never sees — e.g. a quoted password
+# failing auth here while the app connects fine. read_secret replicates dotenv's stripping
+# so this script is reading the exact same effective value the app does.
+read_secret() {
+  local raw
+  raw="$(grep -E "^$1=" "$SECRETS_FILE" | head -n1 | cut -d= -f2-)"
+  raw="${raw%$'\r'}"
+  if [[ "$raw" == \"*\" && "$raw" == *\" ]] || [[ "$raw" == \'*\' && "$raw" == *\' ]]; then
+    raw="${raw:1:-1}"
+  fi
+  printf '%s' "$raw"
+}
+
+SQL_HOST="$(read_secret SQL_HOST)"
+SQL_USER="$(read_secret SQL_USER)"
+SQL_PASSWORD="$(read_secret SQL_PASSWORD)"
+SQL_DB_NAME="$(read_secret SQL_DB_NAME)"
 
 mkdir -p "$BACKUP_DIR"
 STAMP="$(date +%Y%m%d-%H%M%S)"
