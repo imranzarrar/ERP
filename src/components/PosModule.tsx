@@ -38,12 +38,27 @@ interface PosModuleProps {
   onViewInvoice?: (id: string) => void;
 }
 
-export default function PosModule({ db, onUpdateDbLocal, onRefreshDb, currentUser, defaultTab = 'terminal', onClose, onViewInvoice }: PosModuleProps & { defaultTab?: 'terminal' | 'held' | 'history' | 'shifts', onClose?: () => void }) {
+export default function PosModule({ db, onUpdateDbLocal, onRefreshDb, currentUser, defaultTab = 'terminal', onClose, onViewInvoice }: PosModuleProps & { defaultTab?: 'terminal' | 'held' | 'history' | 'shifts' | 'returns', onClose?: () => void }) {
   const activeCompany = db.companies?.find((c:any) => c.id === (db.selectedCompanyId));
   const currency = activeCompany?.currency || 'SAR';
   const { t, isRTL } = useTranslation(db);
   const activeCompanyId = db.selectedCompanyId;
   const posSettings = db.companies?.find(c => c.id === activeCompanyId)?.posSettings || { autoPrint: true, maxImageSizeKB: 150 };
+
+  // Lifted up from PosMainApp so BOTH a completed sale (Terminal tab) and a completed
+  // return (Returns tab) can print through the same one thermal-receipt mechanism instead
+  // of two independent copies of this same DocumentRenderer-mounting logic drifting apart.
+  // See the RECEIPT render block below for the full behavior (auto vs manual print).
+  const [receiptInvoiceId, setReceiptInvoiceId] = useState<string | null>(null);
+  const [pendingPrintWindow, setPendingPrintWindow] = useState<Window | null>(null);
+  React.useEffect(() => {
+    if (!receiptInvoiceId || !posSettings.autoPrint) return;
+    const timer = setTimeout(() => {
+      setReceiptInvoiceId(null);
+      setPendingPrintWindow(null);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [receiptInvoiceId, posSettings.autoPrint]);
 
   const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
   const fetchMonths = async () => {
@@ -78,7 +93,7 @@ export default function PosModule({ db, onUpdateDbLocal, onRefreshDb, currentUse
   const { can } = usePermissions(currentUser);
 
   const [startingCash, setStartingCash] = useState<string>('0');
-  const [activeTab, setActiveTab] = useState<'terminal' | 'held' | 'history' | 'shifts'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'terminal' | 'held' | 'history' | 'shifts' | 'returns'>(defaultTab);
   const [cart, setCart] = useState<PosCartItem[]>([]);
   const [holdCustomerId, setHoldCustomerId] = useState<string>('');
 
@@ -165,23 +180,75 @@ export default function PosModule({ db, onUpdateDbLocal, onRefreshDb, currentUse
         {can('pos.shifts') && (
           <button onClick={() => setActiveTab('shifts')} className={`px-4 py-2 rounded-lg font-bold text-sm ${activeTab === 'shifts' ? 'bg-indigo-600' : 'hover:bg-slate-800'}`}>{t('Shifts & Z-Reports')}</button>
         )}
+        {/* Visible on baseline pos.access, same as Pending/History — a cashier without the
+            actual pos.return authority can still open this tab, search, and start a
+            return; they only hit the permission wall (the manager-override popup) at the
+            moment they try to confirm it. See server/routes/pos.ts's POST /returns. */}
+        {can('pos.access') && (
+          <button onClick={() => setActiveTab('returns')} className={`px-4 py-2 rounded-lg font-bold text-sm ${activeTab === 'returns' ? 'bg-indigo-600' : 'hover:bg-slate-800'}`}>{t('Returns')}</button>
+        )}
       </div>
       <div className="flex-1 overflow-hidden relative bg-white">
-        {activeTab === 'terminal' && <PosMainApp db={db} onUpdateDbLocal={onUpdateDbLocal} onRefreshDb={onRefreshDb} currentUser={currentUser} activeShift={activeShift} activeCompanyId={activeCompanyId} posSettings={posSettings} cart={cart} setCart={setCart} holdCustomerId={holdCustomerId} setHoldCustomerId={setHoldCustomerId} onClose={onClose} fiscalMonths={fiscalMonths} />}
+        {activeTab === 'terminal' && <PosMainApp db={db} onUpdateDbLocal={onUpdateDbLocal} onRefreshDb={onRefreshDb} currentUser={currentUser} activeShift={activeShift} activeCompanyId={activeCompanyId} posSettings={posSettings} cart={cart} setCart={setCart} holdCustomerId={holdCustomerId} setHoldCustomerId={setHoldCustomerId} onClose={onClose} fiscalMonths={fiscalMonths} receiptInvoiceId={receiptInvoiceId} setReceiptInvoiceId={setReceiptInvoiceId} pendingPrintWindow={pendingPrintWindow} setPendingPrintWindow={setPendingPrintWindow} />}
         {activeTab === 'held' && <PosHeldInvoices db={db} onUpdateDbLocal={onUpdateDbLocal} currentUser={currentUser} activeCompanyId={activeCompanyId} onResume={(heldInvoice: any) => { setCart(heldInvoice.items); setHoldCustomerId(heldInvoice.customerId); setActiveTab('terminal'); }} restricted={true} />}
 
         {activeTab === 'history' && <PosSalesHistory db={db} activeCompanyId={activeCompanyId} currentUser={currentUser} restricted={true} onViewInvoice={onViewInvoice} />}
 
         {activeTab === 'shifts' && <PosShiftsHistory db={db} activeCompanyId={activeCompanyId} currentUser={currentUser} />}
+
+        {activeTab === 'returns' && <PosReturns db={db} onRefreshDb={onRefreshDb} currentUser={currentUser} activeCompanyId={activeCompanyId} posSettings={posSettings} receiptInvoiceId={receiptInvoiceId} setReceiptInvoiceId={setReceiptInvoiceId} setPendingPrintWindow={setPendingPrintWindow} />}
       </div>
+
+      {/* RECEIPT — shared by a completed sale (Terminal) and a completed return (Returns):
+          a real 80mm thermal printout (see DocumentRenderer's forceThermalReceipt). Lifted
+          here (not inside either tab's own component) so both write to the same
+          receiptInvoiceId/pendingPrintWindow state instead of keeping two independent
+          copies of this exact mounting logic in sync by hand. When Auto Print is on, this
+          mounts off-screen and prints itself silently; when off, it's a normal visible
+          Print/Close modal. documentType stays 'Invoice' even for a CreditNote-typed row —
+          DocumentRenderer's own isCreditNote branch (driven by data.documentType) already
+          swaps the title/against-reference for a return, same as the full-size printout. */}
+      {receiptInvoiceId && (() => {
+        const receiptInvoice = (db.invoices || []).find((i: Invoice) => i.id === receiptInvoiceId);
+        if (!receiptInvoice) return null;
+        if (posSettings.autoPrint) {
+          return (
+            <div style={{ position: 'absolute', left: '-9999px', top: 0, width: '80mm' }} aria-hidden="true">
+              <DocumentRenderer
+                embedded
+                autoPrint
+                preOpenedPrintWindow={pendingPrintWindow}
+                forceThermalReceipt
+                documentType="Invoice"
+                data={receiptInvoice}
+                companySetup={db.companySetup as any}
+                templates={db.templates}
+                taxSlabs={db.taxSlabs}
+                db={db}
+                onClose={() => setReceiptInvoiceId(null)}
+              />
+            </div>
+          );
+        }
+        return (
+          <DocumentRenderer
+            forceThermalReceipt
+            documentType="Invoice"
+            data={receiptInvoice}
+            companySetup={db.companySetup as any}
+            templates={db.templates}
+            taxSlabs={db.taxSlabs}
+            db={db}
+            onClose={() => setReceiptInvoiceId(null)}
+          />
+        );
+      })()}
     </div>
   );
 
 }
 
-// Will write PosMainApp in next step to avoid payload too large
-
-function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift, activeCompanyId, posSettings, cart, setCart, holdCustomerId, setHoldCustomerId, onClose, fiscalMonths }: any) {
+function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift, activeCompanyId, posSettings, cart, setCart, holdCustomerId, setHoldCustomerId, onClose, fiscalMonths, receiptInvoiceId, setReceiptInvoiceId, pendingPrintWindow, setPendingPrintWindow }: any) {
   const { t, isRTL } = useTranslation(db);
 
   // Up to 3 fiscal months can be open concurrently now (see server/routes/transactions.ts,
@@ -217,30 +284,10 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
   const [receivedAmount, setReceivedAmount] = useState<string>('');
   const [isSavingPos, setIsSavingPos] = useState(false);
   const receivedAmountRef = React.useRef<HTMLInputElement>(null);
-  // The just-completed sale's invoice id, used to mount a real 80mm thermal-receipt
-  // DocumentRenderer (see below) — replaces the old fake "Receipt printing simulated!"
-  // alert with an actual print. When posSettings.autoPrint is on, it's mounted off-screen
-  // and prints itself silently; when off, it's shown as a normal visible Print/Close modal
-  // so the cashier still has a way to print (or reprint) that sale's receipt on demand.
-  const [receiptInvoiceId, setReceiptInvoiceId] = useState<string | null>(null);
-  // The receipt's print popup, opened synchronously in handlePayInvoice's click handler
-  // (before any await) — see DocumentRenderer's preOpenedPrintWindow prop doc comment for
-  // why: a window.open() fired later, from an effect after the sale's network round-trip,
-  // reliably gets blocked as an unsolicited popup.
-  const [pendingPrintWindow, setPendingPrintWindow] = useState<Window | null>(null);
-  // Auto Print mode is a silent, off-screen print (no Close button for the cashier to
-  // click) — unmount it a few seconds after firing so hidden DocumentRenderer instances
-  // don't pile up sale after sale. Manual mode (autoPrint off) is skipped here: that
-  // instance is a real visible modal the cashier closes themselves.
-  React.useEffect(() => {
-    if (!receiptInvoiceId || !posSettings.autoPrint) return;
-    const timer = setTimeout(() => {
-      setReceiptInvoiceId(null);
-      setPendingPrintWindow(null);
-    }, 4000);
-    return () => clearTimeout(timer);
-  }, [receiptInvoiceId, posSettings.autoPrint]);
-  
+  // receiptInvoiceId/pendingPrintWindow (and their auto-unmount effect) now live in the
+  // parent PosModule, passed down as props — shared with the new Returns tab's own
+  // completed-return receipt instead of two independent copies of this state.
+
   React.useEffect(() => {
     if (showPayModal) {
       setTimeout(() => {
@@ -498,7 +545,13 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
     // near the end of this component). A blank popup that never gets filled in (sale
     // fails, or autoPrint gets toggled off mid-flight) is harmless — it just sits empty;
     // closed defensively below on failure so it doesn't linger.
+    // Was previously opened here but never actually stored anywhere — setPendingPrintWindow
+    // was never called, so preOpenedPrintWindow always received null and DocumentRenderer's
+    // autoPrint fell back to opening its OWN popup later, from inside a useEffect — exactly
+    // the delayed, no-longer-carrying-user-activation case this synchronous pre-open was
+    // built to avoid. Storing it is what actually closes that gap.
     const printPopup = posSettings.autoPrint ? window.open('', '', 'height=800,width=1000') : null;
+    setPendingPrintWindow(printPopup);
 
     // Guard against confirming a sale for less cash than the (tax-inclusive) total
     // actually due — previously any received amount (including a blank/0 field) was
@@ -1047,46 +1100,281 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
         </div>
       )}
 
-      {/* RECEIPT — a real 80mm thermal printout of the sale just completed (see
-          DocumentRenderer's forceThermalReceipt). When Auto Print is on, this mounts
-          off-screen and prints itself silently (autoPrint prop), then unmounts itself a
-          few seconds later; when off, it's a normal visible Print/Close modal so the
-          cashier still has a way to print (or reprint) that sale's receipt. */}
-      {receiptInvoiceId && (() => {
-        const receiptInvoice = (db.invoices || []).find((i: Invoice) => i.id === receiptInvoiceId);
-        if (!receiptInvoice) return null;
-        if (posSettings.autoPrint) {
-          return (
-            <div style={{ position: 'absolute', left: '-9999px', top: 0, width: '80mm' }} aria-hidden="true">
-              <DocumentRenderer
-                embedded
-                autoPrint
-                preOpenedPrintWindow={pendingPrintWindow}
-                forceThermalReceipt
-                documentType="Invoice"
-                data={receiptInvoice}
-                companySetup={db.companySetup as any}
-                templates={db.templates}
-                taxSlabs={db.taxSlabs}
-                db={db}
-                onClose={() => setReceiptInvoiceId(null)}
-              />
-            </div>
-          );
+      {/* RECEIPT rendering now lives once in the parent PosModule — see its own comment. */}
+    </div>
+  );
+}
+
+// A return is a Credit Note, entered through a fast POS-native flow rather than the
+// back-office Invoice screen — see server/routes/pos.ts's own file-header comment for the
+// full architecture reasoning (one reversal mechanism, two front doors). This component
+// never uses the words "credit note" anywhere a cashier sees them.
+function PosReturns({ db, onRefreshDb, currentUser, activeCompanyId, posSettings, receiptInvoiceId, setReceiptInvoiceId, setPendingPrintWindow }: any) {
+  const { t } = useTranslation(db);
+  const activeCompany = db.companies?.find((c: any) => c.id === activeCompanyId);
+  const currency = activeCompany?.currency || 'SAR';
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [results, setResults] = useState<any[]>([]);
+  const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
+  const [returnQty, setReturnQty] = useState<Record<string, number>>({});
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [showOverride, setShowOverride] = useState(false);
+  const [overrideUsername, setOverrideUsername] = useState('');
+  const [overridePassword, setOverridePassword] = useState('');
+
+  const runSearch = async () => {
+    setSearching(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch(`/api/pos/returnable-invoices?search=${encodeURIComponent(searchTerm)}`);
+      const body = await res.json().catch(() => []);
+      if (!res.ok) {
+        setErrorMsg((body as any).error || t('Failed to search receipts.'));
+        setResults([]);
+        return;
+      }
+      setResults(Array.isArray(body) ? body : []);
+    } catch {
+      setErrorMsg(t('Failed to search receipts.'));
+    } finally {
+      setSearching(false);
+    }
+  };
+  // Loads the default (unfiltered, within-window) list on first mount, same as any real
+  // POS return screen — a cashier picking up a customer's receipt shouldn't have to type
+  // anything to see today's/this week's eligible sales.
+  React.useEffect(() => { runSearch(); }, []);
+
+  const selectInvoice = (inv: any) => {
+    setSelectedInvoice(inv);
+    setReturnQty({});
+    setReason('');
+    setErrorMsg(null);
+    setSuccessMsg(null);
+  };
+
+  const remainingFor = (item: any) => Number(item.quantity) - Number(item.alreadyReturnedQuantity || 0);
+
+  const setQtyFor = (itemId: string, qty: number, max: number) => {
+    const clamped = Math.max(0, Math.min(qty, max));
+    setReturnQty(prev => ({ ...prev, [itemId]: clamped }));
+  };
+
+  const taxSlabRate = (taxSlabId: string | null) => {
+    const slab = (db.taxSlabs || []).find((s: any) => s.id === (taxSlabId || selectedInvoice?.taxSlabId));
+    return slab ? Number(slab.percentage) : 0;
+  };
+
+  const refundPreview = useMemo(() => {
+    if (!selectedInvoice) return 0;
+    let total = 0;
+    for (const item of selectedInvoice.items) {
+      const qty = returnQty[item.id] || 0;
+      if (qty <= 0) continue;
+      const rate = taxSlabRate(item.taxSlabId);
+      total += qty * Number(item.unitCost) * (1 + rate / 100);
+    }
+    return Math.round(total * 100) / 100;
+  }, [selectedInvoice, returnQty, db.taxSlabs]);
+
+  const buildItemsPayload = () => {
+    if (!selectedInvoice) return [];
+    return selectedInvoice.items
+      .filter((i: any) => (returnQty[i.id] || 0) > 0)
+      .map((i: any) => ({ invoiceItemId: i.id, quantity: returnQty[i.id] }));
+  };
+
+  const submitReturn = async (overrides?: { overrideUsername: string; overridePassword: string }) => {
+    const itemsPayload = buildItemsPayload();
+    if (itemsPayload.length === 0) {
+      setErrorMsg(t('Select at least one item and quantity to return.'));
+      return;
+    }
+    setSubmitting(true);
+    setErrorMsg(null);
+    // Same synchronous-pre-open trick handlePayInvoice uses for the sale receipt — must
+    // happen inside this click's own call stack, before any await, or the popup carries no
+    // user-activation and gets blocked when DocumentRenderer's autoPrint later tries to
+    // use it. Harmless if the return fails below; nothing ever gets printed into it.
+    const printPopup = posSettings.autoPrint ? window.open('', '', 'height=800,width=1000') : null;
+    try {
+      const res = await fetch('/api/pos/returns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoiceId: selectedInvoice.id,
+          items: itemsPayload,
+          reason: reason || undefined,
+          overrideUsername: overrides?.overrideUsername,
+          overridePassword: overrides?.overridePassword,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        printPopup?.close();
+        if (body.requiresOverride) {
+          setShowOverride(true);
+          return;
         }
-        return (
-          <DocumentRenderer
-            forceThermalReceipt
-            documentType="Invoice"
-            data={receiptInvoice}
-            companySetup={db.companySetup as any}
-            templates={db.templates}
-            taxSlabs={db.taxSlabs}
-            db={db}
-            onClose={() => setReceiptInvoiceId(null)}
-          />
-        );
-      })()}
+        setErrorMsg(body.error || t('Failed to process return.'));
+        return;
+      }
+      setPendingPrintWindow(printPopup);
+      if (onRefreshDb) await onRefreshDb();
+      setSuccessMsg(t('Return processed — {number} refunded {amount}.').replace('{number}', body.noteNumber).replace('{amount}', `${currency} ${Number(body.refundAmount).toFixed(2)}`));
+      setReceiptInvoiceId(body.noteId);
+      setShowOverride(false);
+      setOverrideUsername('');
+      setOverridePassword('');
+      setSelectedInvoice(null);
+      setReturnQty({});
+      setReason('');
+      runSearch();
+    } catch {
+      printPopup?.close();
+      setErrorMsg(t('Failed to process return. Please check your connection and try again.'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="p-6 h-full overflow-y-auto">
+      <h2 className="text-xl font-bold mb-1">{t('Process a Return')}</h2>
+      <p className="text-sm text-slate-500 mb-4">{t('Search for the original receipt, choose which items and how many are being returned, and confirm to refund the customer.')}</p>
+
+      {successMsg && <div className="mb-4 p-3 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-100 text-sm font-semibold">{successMsg}</div>}
+      {errorMsg && <div className="mb-4 p-3 bg-rose-50 text-rose-700 rounded-xl border border-rose-100 text-sm font-semibold">{errorMsg}</div>}
+
+      <div className="flex gap-2 mb-4">
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') runSearch(); }}
+          placeholder={t('Search by receipt number...')}
+          className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-600"
+        />
+        <button onClick={runSearch} disabled={searching} className="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white rounded-xl text-sm font-bold flex items-center gap-2">
+          <Search className="w-4 h-4" /> {searching ? t('Searching...') : t('Search')}
+        </button>
+      </div>
+
+      {!selectedInvoice ? (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 divide-y divide-slate-100">
+          {results.length === 0 && (
+            <div className="p-6 text-center text-slate-400 text-sm">{t('No eligible receipts found — only sales within the configured return window can be returned.')}</div>
+          )}
+          {results.map(inv => (
+            <button key={inv.id} onClick={() => selectInvoice(inv)} className="w-full text-start p-4 flex items-center justify-between hover:bg-slate-50 transition">
+              <div>
+                <p className="font-bold text-slate-800">{inv.invoiceNumber}</p>
+                <p className="text-xs text-slate-500">{inv.date} · {inv.customerName}</p>
+              </div>
+              <span className="font-bold text-slate-700">{currency} {Number(inv.amountPaid || 0).toFixed(2)}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="font-bold text-slate-800">{selectedInvoice.invoiceNumber}</p>
+              <p className="text-xs text-slate-500">{selectedInvoice.date} · {selectedInvoice.customerName}</p>
+            </div>
+            <button onClick={() => setSelectedInvoice(null)} className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition">{t('Back to search')}</button>
+          </div>
+
+          <div className="space-y-3 mb-4">
+            {selectedInvoice.items.map((item: any) => {
+              const remaining = remainingFor(item);
+              return (
+                <div key={item.id} className="flex items-center justify-between border border-slate-100 rounded-xl p-3">
+                  <div>
+                    <p className="font-semibold text-slate-800 text-sm">{item.description}</p>
+                    <p className="text-xs text-slate-400">{currency} {Number(item.unitCost).toFixed(2)} · {t('Sold')} {item.quantity} · {t('Returnable')} {remaining}</p>
+                  </div>
+                  {remaining > 0 ? (
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setQtyFor(item.id, (returnQty[item.id] || 0) - 1, remaining)} className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold">−</button>
+                      <input
+                        type="number" min="0" max={remaining} value={returnQty[item.id] || 0}
+                        onChange={e => setQtyFor(item.id, parseFloat(e.target.value) || 0, remaining)}
+                        className="w-14 text-center bg-slate-50 border border-slate-200 rounded-lg py-1 text-sm"
+                      />
+                      <button onClick={() => setQtyFor(item.id, (returnQty[item.id] || 0) + 1, remaining)} className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold">+</button>
+                    </div>
+                  ) : (
+                    <span className="text-xs font-bold text-slate-400 uppercase">{t('Fully Returned')}</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-xs font-bold text-slate-600 mb-1">{t('Reason (optional)')}</label>
+            <input type="text" value={reason} onChange={e => setReason(e.target.value)} placeholder={t('e.g. Wrong item, customer changed mind')}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+          </div>
+
+          <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+            <div>
+              <p className="text-xs font-bold text-slate-500 uppercase">{t('Refund Total')}</p>
+              <p className="text-xl font-bold text-slate-900">{currency} {refundPreview.toFixed(2)}</p>
+            </div>
+            <button
+              onClick={() => submitReturn()}
+              disabled={submitting || refundPreview <= 0}
+              className="px-6 py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl font-bold flex items-center gap-2"
+            >
+              <Receipt className="w-4 h-4" /> {submitting ? t('Processing...') : t('Confirm Return')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Manager override — shown only when the acting cashier's own account lacks
+          pos.return and the server rejected the plain submit with requiresOverride. The
+          cashier's own session is untouched; this just supplies a SECOND identity's
+          credentials for the server to verify has pos.return before letting THIS one
+          return through. See server/routes/pos.ts's POST /returns. */}
+      {showOverride && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full space-y-4">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-amber-600" />
+              <h3 className="font-bold text-slate-800">{t('Manager Authorization Required')}</h3>
+            </div>
+            <p className="text-xs text-slate-500">{t('You do not have permission to process returns. Ask a manager or supervisor to authorize this one by entering their own login below.')}</p>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">{t('Manager Email/Username')}</label>
+              <input type="text" autoComplete="off" value={overrideUsername} onChange={e => setOverrideUsername(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">{t('Manager Password')}</label>
+              <input type="password" autoComplete="off" value={overridePassword} onChange={e => setOverridePassword(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { setShowOverride(false); setOverrideUsername(''); setOverridePassword(''); }} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl">{t('Cancel')}</button>
+              <button
+                onClick={() => submitReturn({ overrideUsername, overridePassword })}
+                disabled={submitting || !overrideUsername || !overridePassword}
+                className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold rounded-xl"
+              >
+                {t('Authorize & Return')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -3783,6 +3783,14 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
                 </label>
 
                 <div>
+                  <label className="block text-sm font-bold text-slate-800 mb-2">{t('Return Window (days)')}</label>
+                  <input type="number" min="0" max="365" value={posDraft.returnWindowDays ?? 7} onChange={e => {
+                    applyDraft({ returnWindowDays: parseInt(e.target.value) || 0 });
+                  }} className="w-full max-w-xs bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-indigo-600" />
+                  <p className="text-xs text-slate-500 mt-1">{t('A sale can only be returned within this many days of its own date — e.g. 7 means today\'s date minus 7 days. Enforced on the server, not just hidden in the search UI.')}</p>
+                </div>
+
+                <div>
                   <label className="block text-sm font-bold text-slate-800 mb-2">Max POS Product Image Size (KB)</label>
                   <input type="number" min="50" max="5000" value={posDraft.maxImageSizeKB || 150} onChange={e => {
                     applyDraft({ maxImageSizeKB: parseInt(e.target.value) || 150 });

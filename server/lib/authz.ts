@@ -1,7 +1,23 @@
-import { normalizePermissions } from '../../src/types.js';
+import { normalizePermissions, mergeRolePermissions } from '../../src/types.js';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq } from 'drizzle-orm';
+
+// A user's effective permissions are the union (per-leaf OR) of every Role assigned to
+// them — moved here from server.ts (which had its own unexported copy) so any route file
+// can resolve a DIFFERENT user's permissions on demand, not just the caller's own
+// req.user.permissions already resolved at login. First real caller: the POS Return
+// manager-override check (server/routes/pos.ts), which must verify a NAMED OTHER user
+// actually holds pos.return before honoring their override — that user was never part of
+// req.user, so hasPermission(req.user, ...) can't answer it; this can.
+export async function resolveUserPermissions(userId: string): Promise<any> {
+  const assignedRoles = await db.select({ permissions: schema.roles.permissions })
+    .from(schema.userRoles)
+    .innerJoin(schema.roles, eq(schema.userRoles.roleId, schema.roles.id))
+    .where(eq(schema.userRoles.userId, userId));
+  if (!assignedRoles.length) return null;
+  return mergeRolePermissions(assignedRoles.map((r: any) => r.permissions));
+}
 
 // Canonical super-admin check — replaces the ~20 ad-hoc variations of
 // `role === 'super-admin' || role === 'superadmin' || isSuperAdmin === true`

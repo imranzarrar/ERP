@@ -524,22 +524,32 @@ export async function syncVoucherForExpense(tx: any, expenseId: string, companyI
         );
 
       if (!existingReversal) {
-        const [openMonth] = await tx.select()
+        // See postCreditNoteReversalVoucher's own comment for why this must check every
+        // open month (up to 3 can be open concurrently) rather than grab one arbitrary
+        // row via `.limit(1)` — that previously risked misdating the reversal into an
+        // unrelated open month whenever more than one was open at once.
+        const openMonths = await tx.select()
           .from(schema.fiscalMonths)
           .where(
             and(
               eq(schema.fiscalMonths.status, 'Open'),
               eq(schema.fiscalMonths.companyId, companyId)
             )
-          )
-          .limit(1);
+          );
 
         const todayStr = new Date().toISOString().split('T')[0];
+        const todayMonthId = todayStr.slice(0, 7);
+        const dataMonthId = data.date ? data.date.slice(0, 7) : '';
+        const openMonthIds = new Set(openMonths.map((m: any) => m.id));
+
         let finalReversalDate = todayStr;
-        if (openMonth) {
-          finalReversalDate = todayStr.startsWith(openMonth.id)
-            ? todayStr
-            : (data.date && data.date.startsWith(openMonth.id) ? data.date : openMonth.id + "-01");
+        if (!openMonthIds.has(todayMonthId)) {
+          if (data.date && openMonthIds.has(dataMonthId)) {
+            finalReversalDate = data.date;
+          } else if (openMonths.length) {
+            const oldestOpenMonth = openMonths.slice().sort((a: any, b: any) => a.id.localeCompare(b.id))[0];
+            finalReversalDate = oldestOpenMonth.id + '-01';
+          }
         }
 
         const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', finalReversalDate, existingVoucher.branchId || null);
@@ -718,22 +728,32 @@ export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyI
         );
 
       if (!existingReversal) {
-        const [openMonth] = await tx.select()
+        // See postCreditNoteReversalVoucher's own comment for why this must check every
+        // open month (up to 3 can be open concurrently) rather than grab one arbitrary
+        // row via `.limit(1)` — that previously risked misdating the reversal into an
+        // unrelated open month whenever more than one was open at once.
+        const openMonths = await tx.select()
           .from(schema.fiscalMonths)
           .where(
             and(
               eq(schema.fiscalMonths.status, 'Open'),
               eq(schema.fiscalMonths.companyId, companyId)
             )
-          )
-          .limit(1);
+          );
 
         const todayStr = new Date().toISOString().split('T')[0];
+        const todayMonthId = todayStr.slice(0, 7);
+        const dataMonthId = data.date ? data.date.slice(0, 7) : '';
+        const openMonthIds = new Set(openMonths.map((m: any) => m.id));
+
         let finalReversalDate = todayStr;
-        if (openMonth) {
-          finalReversalDate = todayStr.startsWith(openMonth.id)
-            ? todayStr
-            : (data.date && data.date.startsWith(openMonth.id) ? data.date : openMonth.id + "-01");
+        if (!openMonthIds.has(todayMonthId)) {
+          if (data.date && openMonthIds.has(dataMonthId)) {
+            finalReversalDate = data.date;
+          } else if (openMonths.length) {
+            const oldestOpenMonth = openMonths.slice().sort((a: any, b: any) => a.id.localeCompare(b.id))[0];
+            finalReversalDate = oldestOpenMonth.id + '-01';
+          }
         }
 
         const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', finalReversalDate, existingVoucher.branchId || null);
@@ -767,7 +787,21 @@ export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyI
 // entry anywhere — the exact inconsistency reported against the Bank Statement Ledger.
 // So this always posts a genuine Reversal voucher and never touches the original Receipt,
 // regardless of whether the original's fiscal month is open or closed.
-export async function postCreditNoteReversalVoucher(tx: any, originalInvoiceId: string, companyId: string, creditNoteDate: string, userId: string) {
+export async function postCreditNoteReversalVoucher(
+  tx: any,
+  originalInvoiceId: string,
+  companyId: string,
+  creditNoteDate: string,
+  userId: string,
+  // Present only for a PARTIAL (POS Return) credit note — see server/routes/pos.ts.
+  // Absent, this behaves exactly as before: full original amount, and blocks a SECOND
+  // reversal against the same original invoice outright (the pre-partial-returns world,
+  // where one invoice could only ever have one Credit Note at all). With it, multiple
+  // partial returns against the SAME original invoice are legitimate — each is its own
+  // distinct credit note with its own new id, so there is nothing to duplicate-guard
+  // against for a specific one; the idempotency check below is skipped for this path.
+  opts?: { amount?: number; creditNoteNumber?: string }
+) {
   const [existingVoucher] = await tx.select()
     .from(schema.vouchers)
     .where(
@@ -779,38 +813,54 @@ export async function postCreditNoteReversalVoucher(tx: any, originalInvoiceId: 
     );
   if (!existingVoucher) return;
 
-  const [existingReversal] = await tx.select()
-    .from(schema.vouchers)
-    .where(
-      and(
-        eq(schema.vouchers.referenceType, 'Invoice'),
-        eq(schema.vouchers.referenceId, originalInvoiceId),
-        eq(schema.vouchers.type, 'Reversal')
-      )
-    );
-  if (existingReversal) return;
+  if (!opts?.creditNoteNumber) {
+    const [existingReversal] = await tx.select()
+      .from(schema.vouchers)
+      .where(
+        and(
+          eq(schema.vouchers.referenceType, 'Invoice'),
+          eq(schema.vouchers.referenceId, originalInvoiceId),
+          eq(schema.vouchers.type, 'Reversal')
+        )
+      );
+    if (existingReversal) return;
+  }
+
+  const reversalAmount = opts?.amount !== undefined ? opts.amount : Number(existingVoucher.amount);
 
   // The reversal is happening now, not on the original invoice's date — but a posting
   // still can't land in a closed fiscal month (same invariant syncVoucherForInvoice's own
-  // reversal branch enforces above). Prefer today; if today isn't in the open month, clamp
-  // into it the same way — the credit note's own date if that falls inside the open month,
-  // else the 1st of the open month.
-  const [openMonth] = await tx.select()
+  // reversal branch enforces above). Prefer today; if today's own month isn't open, clamp
+  // into whichever month IS open — the credit note's own date if THAT month is open, else
+  // the 1st of the oldest open month (same deterministic fallback cancelExpense uses).
+  // Must check every open month the company has, not grab one arbitrary row: the app
+  // explicitly allows up to 3 fiscal months open concurrently, and an unordered
+  // `.limit(1)` here previously picked whichever one Postgres happened to return first —
+  // silently misdating the voucher into an unrelated open month whenever more than one
+  // was open at once (caught live: a same-day POS return landed on an unrelated month
+  // that also happened to be open, instead of today).
+  const openMonths = await tx.select()
     .from(schema.fiscalMonths)
     .where(
       and(
         eq(schema.fiscalMonths.status, 'Open'),
         eq(schema.fiscalMonths.companyId, companyId)
       )
-    )
-    .limit(1);
+    );
 
   const todayStr = new Date().toISOString().split('T')[0];
+  const todayMonthId = todayStr.slice(0, 7);
+  const creditNoteMonthId = creditNoteDate ? creditNoteDate.slice(0, 7) : '';
+  const openMonthIds = new Set(openMonths.map((m: any) => m.id));
+
   let finalReversalDate = todayStr;
-  if (openMonth) {
-    finalReversalDate = todayStr.startsWith(openMonth.id)
-      ? todayStr
-      : (creditNoteDate && creditNoteDate.startsWith(openMonth.id) ? creditNoteDate : openMonth.id + "-01");
+  if (!openMonthIds.has(todayMonthId)) {
+    if (creditNoteDate && openMonthIds.has(creditNoteMonthId)) {
+      finalReversalDate = creditNoteDate;
+    } else if (openMonths.length) {
+      const oldestOpenMonth = openMonths.slice().sort((a: any, b: any) => a.id.localeCompare(b.id))[0];
+      finalReversalDate = oldestOpenMonth.id + '-01';
+    }
   }
 
   const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', finalReversalDate, existingVoucher.branchId || null);
@@ -820,8 +870,10 @@ export async function postCreditNoteReversalVoucher(tx: any, originalInvoiceId: 
     type: 'Reversal',
     date: finalReversalDate,
     bankId: existingVoucher.bankId,
-    amount: existingVoucher.amount,
-    description: `Reversal voucher for credited invoice (Original: ${existingVoucher.voucherNumber})`,
+    amount: reversalAmount.toFixed(2),
+    description: opts?.creditNoteNumber
+      ? `Reversal voucher for POS return (Credit Note: ${opts.creditNoteNumber}, Original: ${existingVoucher.voucherNumber})`
+      : `Reversal voucher for credited invoice (Original: ${existingVoucher.voucherNumber})`,
     referenceType: 'Invoice',
     referenceId: originalInvoiceId,
     companyId: companyId,

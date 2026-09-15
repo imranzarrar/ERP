@@ -841,6 +841,18 @@ export const invoiceItems = pgTable('invoice_items', {
   // display; server/lib/uomConversion.ts converts to base-unit terms before
   // deductStockForSale or the averageSalePrice fold ever run.
   unitOfMeasureId: uuid('unit_of_measure_id').references(() => unitsOfMeasure.id),
+  // Set only on a CreditNote/DebitNote line — points at the exact original-invoice line
+  // it's crediting/debiting. This is what makes a PARTIAL return possible without a
+  // separate "returns" table: the cumulative quantity already credited against one
+  // original line is SUM(invoiceItems.quantity) over every CreditNote whose line points
+  // back at it (via this column), checked against that original line's own quantity
+  // before a new return is allowed to proceed — a running counter on the original line
+  // itself would race under concurrent partial returns; this aggregation approach can't,
+  // since it's computed fresh (under the same row lock as the rest of the return
+  // transaction) every time rather than incrementally maintained. Nullable: a normal
+  // Invoice line, or a full-invoice-reversal CreditNote/DebitNote predating this column,
+  // has none — POS Returns (server/routes/transactions.ts) is the only writer.
+  originalInvoiceItemId: uuid('original_invoice_item_id').references((): any => invoiceItems.id),
 });
 
 export const expenses = pgTable('expenses', {

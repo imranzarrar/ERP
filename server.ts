@@ -16,7 +16,7 @@ import { eq, sql, and, or, desc, lt, ilike, inArray } from 'drizzle-orm';
 import { db, pool } from './src/db/index.js';
 import * as schema from './src/db/schema.js';
 import { mergeRolePermissions, normalizePermissions } from './src/types.js';
-import { isSuperAdminUser } from './server/lib/authz.js';
+import { isSuperAdminUser, resolveUserPermissions } from './server/lib/authz.js';
 import { generateId } from './src/id.js';
 import crypto from 'crypto';
 import { recordAuditLog } from './server/lib/audit.js';
@@ -37,20 +37,6 @@ import sessionsRouter from './server/routes/sessions.js';
 import roleTemplatesRouter from './server/routes/roleTemplates.js';
 import companiesRouter from './server/routes/companies.js';
 import { publicRouter as onboardingPublicRouter, adminRouter as onboardingAdminRouter } from './server/routes/onboarding.js';
-
-// A user's effective permissions come from every Role assigned to them (see the
-// `userRoles` junction table in src/db/schema.ts), not a per-user column — this is the
-// single point where that resolution happens for server-side checks. Every downstream
-// `normalizePermissions(req.user.permissions, ...)` call is unaffected by this
-// indirection since it still just reads a plain permissions-shaped object off the user.
-async function resolveUserPermissions(userId: string): Promise<any> {
-  const assignedRoles = await db.select({ permissions: schema.roles.permissions })
-    .from(schema.userRoles)
-    .innerJoin(schema.roles, eq(schema.userRoles.roleId, schema.roles.id))
-    .where(eq(schema.userRoles.userId, userId));
-  if (!assignedRoles.length) return null;
-  return mergeRolePermissions(assignedRoles.map(r => r.permissions));
-}
 
 async function startServer() {
   const app = express();

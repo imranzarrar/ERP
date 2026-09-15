@@ -2230,3 +2230,57 @@ Previously, onboarding a new tenant required a super-admin to manually create th
 - `src/components/CompanyOnboardingScreen.tsx` (new)
 - `src/components/AdminSettings.tsx` — 'onboarding' + 'roleTemplates' tabs
 - `tests/companyOnboarding.test.ts` (new)
+
+---
+
+## 105. Audit-Log Correctness, Always-Reversal Vouchers, Soft-Cancel, Report Totals (Sep 2026)
+
+A ZATCA compliance audit found two real bugs: a Credit Note could be created against an already-cancelled invoice (causing a real double-restock of inventory — cancel restocks once, then the erroneous Credit Note restocked the same units a second time), and the generic audit-log interceptor was broken for invoices/quotations — every write (create, cancel, pay, credit-note) collapsed into an identical, useless `CREATE_INVOICE` row with `entity_id: null, details: {}`, because it read fields from the wrong nesting level of the request body. Fiscal-month open/close audit entries had in fact never been written at all: `fiscalMonths.id` is text (`"2026-09"`), not a UUID, so every insert silently failed inside the interceptor's own try/catch.
+
+**Fixes**: Credit Note creation now rejects an already-cancelled original invoice, with a regression test proving the double-restock no longer happens. `syncVoucherForExpense`/`syncVoucherForInvoice` now always post a genuine Reversal voucher when a payment is undone instead of hard-deleting the original for a same-open-month correction (previously that silently erased the Receipt/Payment voucher, only switching to a Reversal once the month closed). Two inconsistent hard-deletes on financial documents converted to soft: `DELETE /recurring-templates/:id` now deactivates instead of deleting a row with existing postings; `DELETE /accruals/:id` now reuses the same `cancelExpense` logic `POST /expenses/:id/cancel` already applies, extracted into one shared helper so the two paths can't drift apart. The audit-log interceptor was rewritten: ~15 broken per-entity branches removed in favor of precise `recordAuditLog(...)` calls placed directly in each invoice/quotation/expense/recurring-template route (reusing the row the route already fetched, so the real id and document number are correct by construction), with a `req._auditLogged` flag stopping the now-generic fallback from double-logging a route that already called it explicitly. `GET /api/audit-logs` now defaults to the last 100 records with real keyset pagination instead of a flat 200-row cap, plus working company/user-level filters (the client previously sent a broken pseudo-auth `userId`/`sessionId` pair the server never read). `POST /api/audit-logs/purge` (the one intentional hard-delete exception) now has a test proving it actually scopes correctly per-tenant. Sales/Purchase Register and PO Status report totals now exclude Cancelled documents from their sums while leaving them visible in the row list, matching the existing correct convention elsewhere in the app.
+
+**Verified**: `npm run lint`, `check:isolation`, and the full suite (415/415, up from 406, including two new files `auditLogCoverage.test.ts` and `auditLogPurge.test.ts`) all passed. Also fixed a pre-existing test-cleanup race in `migrateCountersRegression.test.ts`.
+
+**Explicitly not yet done** (stated in the commit itself, not discovered later): explicit `recordAuditLog` calls for the remaining ~70 routes (`inventory.ts`, `masterEntities.ts`, `pos.ts`, `branches.ts`, etc.) — these still get a real, correctly-shaped *generic* fallback entry rather than a precise one. A real improvement over the previous broken/silent state, but not the end state the original plan describes.
+
+### Critical files
+- `server/routes/transactions.ts` — cancelled-invoice Credit Note guard, explicit `recordAuditLog` calls
+- `server/lib/businessLogic.ts` — always-Reversal voucher logic, shared `cancelExpense` helper
+- `server/lib/audit.ts` — `req._auditLogged` flag
+- `server.ts` — rewritten audit interceptor, `GET /api/audit-logs` pagination/filters
+- `tests/auditLogCoverage.test.ts`, `tests/auditLogPurge.test.ts` (new)
+
+---
+
+## 106. POS Returns — Permission-Gated, Manager-Override, Voucher-Posting Refund Flow (Sep 2026)
+
+Previously, a POS sale could only be reversed through the back-office Credit Note screen — no return existed inside the POS Terminal itself. Built as a thin front-end layer over the exact same Credit Note engine the back-office Invoice screen already uses (same `invoices`/`invoiceItems` rows, same ZATCA pipeline, same voucher-reversal mechanism), not a parallel reversal system — the cashier-facing UI never uses the words "credit note."
+
+**Permission and override.** New `pos.return` leaf (already present in `permissionSchema.ts`, previously unenforced anywhere). A cashier lacking it can still complete a return by supplying a named manager's own username+password inline in the same request (`server/routes/pos.ts`'s `POST /returns`); the server verifies that user is real, active, same-company (or super-admin), password-correct, and actually holds `pos.return` via `resolveUserPermissions` (moved from a `server.ts`-local helper into `server/lib/authz.ts` so any route can resolve a *different* user's permissions on demand). Both identities are recorded in the audit log. Verified live end-to-end in the browser with two real throwaway accounts: wrong manager password (401), an authorizer who themselves lacks `pos.return` (403), and a correct override (200, both identities present in the audit row).
+
+**Partial returns.** New nullable self-referencing `invoiceItems.originalInvoiceItemId` column lets a return line point back at the exact original-sale line it credits. Already-returned quantity per line is a fresh `SUM` aggregation over every Credit Note pointing at it, recomputed on every check inside the transaction — deliberately not an incrementally-maintained counter, to avoid races under concurrent partial returns. Verified: two separate partial returns (1 unit, then the remaining 1 unit) against one 2-unit line, then a third attempt correctly rejected server-side ("only 0 remain returnable").
+
+**Return-window enforcement, defense-in-depth.** `company.posSettings.returnWindowDays` (default 7) gates both the search results and, independently, the actual return submission — verified live by backdating a test invoice 10 days, confirming it disappeared from search AND was rejected server-side on direct submission, then widening the window to 14 in Admin Settings and confirming both re-admitted it.
+
+**Cancelled invoices excluded.** `original.status === 'Cancelled'` is checked both in the search query and independently at submission time — verified live (cancelled invoice vanished from search; direct submission attempt got a 400).
+
+**Real, pre-existing bug found and fixed while building this**: `postCreditNoteReversalVoucher` and two sibling functions (`syncVoucherForExpense`/`syncVoucherForInvoice`'s Cancel-reversal branches) all picked "the open fiscal month" via an unordered `.limit(1)` query — harmless with one month open, but this app explicitly allows up to 3 concurrently open, and with more than one open the query could grab an unrelated month, misdating the reversal voucher entirely (caught live: a same-day POS return's reversal voucher landed on 2026-06-01 instead of today, because an unrelated older month also happened to be open). Fixed all three call sites to check the full set of open months and prefer whichever actually contains the relevant date, falling back to the oldest open month deterministically (matching the convention `cancelExpense` already used). For the POS return path specifically, also stopped using the *original sale's* date for the new Credit Note/voucher/document-numbering entirely — a POS return's own date is always today's system date, never backdated to match the sale being returned (confirmed as the intended design, distinct from the back-office Credit Note route which intentionally still inherits the original invoice's date).
+
+**Two more small, real bugs found and fixed in passing**: `PosModule.tsx`'s `handlePayInvoice` opened a synchronous pre-print popup but never actually stored the reference (`setPendingPrintWindow` was never called), silently defeating the auto-print-without-popup-blocking mechanism for every regular sale, not just returns. And the "Document Print Engine" modal's template-selector dropdown showed a misleading "Detailed Tax Invoice (A4)" label even when actually rendering a forced-80mm thermal receipt — now shows a static, accurate "Thermal Receipt (80mm)" label whenever `forceThermalReceipt` is set.
+
+**Verified**: `tsc --noEmit`, `check:isolation`, and the full suite (462/463, same single pre-existing/unrelated `documentNumbering.test.ts` failure) all clean. Extensive live browser verification covering: full and partial returns, refund-amount computation (per-line tax, not proportional), thermal receipt printing (both the return and a regular sale) with correct "Credit Note / Against INV-xxxx" formatting, the manager-override modal end-to-end with two real throwaway accounts, return-window enforcement in both directions, and cancelled-invoice exclusion.
+
+### Known gap, deliberately deferred
+No filter, column, or badge anywhere on the back-office Sales Invoices screen (`InvoiceModule.tsx`) distinguishes a POS-originated Invoice/Credit Note from one created manually via "New Invoice"/"Issue credit note" — its only filter is Document Type (Invoice/Credit Note/Debit Note). The underlying data already supports this: `invoices.isPosSale` is correctly set `true` for every POS sale and POS return. Adding a "Source: POS / Manual" filter (and ideally a small badge on each row) to `InvoiceModule.tsx` would be a small, low-risk addition reusing that existing column — not done in this pass, flagged for later. Separately noticed but not acted on: `vouchers.isPosSale` exists in the schema but is never actually set by the real voucher-creation code (`syncVoucherForInvoice`, `postCreditNoteReversalVoucher`) — it stays at its default `false` even for a voucher tied to a POS sale/return. Nothing in the live app currently reads that column (only the legacy migration-sync path touches it), so it's inert today rather than a live bug, but would need to actually be set if a future report ever wants to filter vouchers by POS origin.
+
+### ZATCA verification — not yet performed
+Per this project's own dual-gate protocol (see CLAUDE.md), a partial-return Credit Note is a new document shape this app's ZATCA pipeline has never actually produced before and has not yet been run through real ZATCA sandbox clearance/reporting or the `fatoora -validate` CLI. This company's ZATCA integration is disabled (`zatcaStatus: DISABLED` throughout this session's testing), so dual-gate verification needs a separate session against a ZATCA-enabled company.
+
+### Critical files
+- `src/db/schema.ts` — `invoiceItems.originalInvoiceItemId`
+- `server/lib/authz.ts` — `resolveUserPermissions` (moved from `server.ts`)
+- `server/lib/businessLogic.ts` — `postCreditNoteReversalVoucher` partial-amount support + the open-fiscal-month selection fix (3 call sites)
+- `server/routes/pos.ts` — `GET /returnable-invoices`, `POST /returns`
+- `src/components/AdminSettings.tsx` — `returnWindowDays` POS setting
+- `src/components/DocumentRenderer.tsx` — thermal-vs-A4 label fix
+- `src/components/PosModule.tsx` — Returns tab, override modal, lifted receipt-print state, `handlePayInvoice` popup-reference fix, "Back to search" button styling

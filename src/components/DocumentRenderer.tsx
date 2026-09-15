@@ -2958,8 +2958,15 @@ export default function DocumentRenderer({
  </div>
 
  <div className="flex items-center gap-2">
- {/* Template Selector for invoices and quotations */}
- {(documentType === 'Quotation' || documentType === 'Invoice') && (
+ {/* Template Selector for invoices and quotations — hidden for a forced-thermal POS
+     receipt: forceThermalReceipt unconditionally renders at 80mm regardless of which
+     template is picked here (see the isThermal/w-[80mm] overrides and the @page rule
+     in handlePrint()), so showing this selector let a cashier pick a template that
+     visibly did nothing, while the dropdown's own label kept claiming an A4 template
+     was about to print — confusing and simply wrong for what's actually about to come
+     out of the printer. A plain, accurate label replaces it instead of just
+     disappearing the control silently. */}
+ {(documentType === 'Quotation' || documentType === 'Invoice') && !forceThermalReceipt && (
  <div className="flex items-center gap-1.5 me-2">
  <Globe className="w-3.5 h-3.5 text-slate-400" />
  <select
@@ -2973,6 +2980,12 @@ export default function DocumentRenderer({
  </option>
  ))}
  </select>
+ </div>
+ )}
+ {forceThermalReceipt && (
+ <div className="flex items-center gap-1.5 me-2 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500 font-medium">
+ <Globe className="w-3.5 h-3.5 text-slate-400" />
+ Thermal Receipt (80mm)
  </div>
  )}
 
