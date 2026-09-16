@@ -1,7 +1,7 @@
 import { motion } from 'motion/react';
 import React from 'react';
 import { useTranslation, translateMonthLabel, usePermissions } from '../hooks';
-import { DatabaseState, getActiveOpenMonth, getOpenMonths, calculateInvoiceTotals, getBankBalance, getInvoiceSign } from '../dbStore';
+import { DatabaseState, getActiveOpenMonth, getOpenMonths, calculateInvoiceTotals, getInvoiceSign } from '../dbStore';
 import { AreaChart, Area, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
  TrendingUp,
@@ -122,6 +122,44 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  return selectedMonthFilter === 'all' ? true : dateStr.startsWith(selectedMonthFilter);
  };
 
+ // Real server-side date range equivalent to matchesPeriod above — feeds
+ // /api/reports/dashboard-summary (see .claude/skills/server-side-report-aggregation).
+ // '-01'/'-31' month bounds are a safe over-approximation (no real date ever falls on a
+ // nonexistent Feb 31, so a text-date >=/<= comparison against it is harmless) — the same
+ // pattern this codebase's own server/lib/vatReturn.ts-adjacent reports use elsewhere.
+ const [reportStartDate, reportEndDate] = React.useMemo((): [string, string] => {
+ if (periodMode === 'last3') {
+ const sorted = [...last3MonthIds].sort();
+ return [`${sorted[0]}-01`, `${sorted[sorted.length - 1]}-31`];
+ }
+ if (periodMode === 'year') return [`${currentCalendarYear}-01-01`, `${currentCalendarYear}-12-31`];
+ return selectedMonthFilter === 'all' ? ['2000-01-01', '2099-12-31'] : [`${selectedMonthFilter}-01`, `${selectedMonthFilter}-31`];
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [periodMode, selectedMonthFilter, last3MonthIds, currentCalendarYear]);
+
+ const closedMonthIdsForTarget = React.useMemo(() => availableMonths
+ .filter(m => m.status === 'Closed' && m.id !== openMonth?.id)
+ .map(m => m.id)
+ .sort()
+ .slice(-3),
+ // eslint-disable-next-line react-hooks/exhaustive-deps
+ [availableMonths, openMonth?.id]);
+
+ const [dashboardSummary, setDashboardSummary] = React.useState<any | null>(null);
+ React.useEffect(() => {
+ if (!db.selectedCompanyId) return;
+ let cancelled = false;
+ const params = new URLSearchParams({
+ startDate: reportStartDate, endDate: reportEndDate,
+ ...(closedMonthIdsForTarget.length ? { trailingMonthIds: closedMonthIdsForTarget.join(',') } : {}),
+ });
+ fetch(`/api/reports/dashboard-summary?${params.toString()}`)
+ .then(r => r.ok ? r.json() : null)
+ .then(data => { if (!cancelled && data) setDashboardSummary(data); })
+ .catch(() => {});
+ return () => { cancelled = true; };
+ }, [db.selectedCompanyId, reportStartDate, reportEndDate, closedMonthIdsForTarget.join(',')]);
+
  // Filter invoices and quotations
  const monthInvoices = db.invoices.filter(inv => {
  const invCompanyId = inv.companyId;
@@ -164,43 +202,22 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
     return matchesPeriod(v.date);
   });
 
-  const totalSales = monthInvoices
-    .filter(inv => inv.status === 'Active')
-    .reduce((sum, inv) => {
-      const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId);
-      return sum + totals.grandTotal * getInvoiceSign(inv);
-    }, 0);
+  // Core money KPIs below are now server-computed (GET /api/reports/dashboard-summary,
+  // server/lib/financialReports.ts's computeDashboardSummary) — see
+  // .claude/skills/server-side-report-aggregation/SKILL.md. Previously these summed
+  // client-side db.invoices/db.expenses/db.vouchers, which src/db/apiState.ts caps to
+  // DEFAULT_LIST_LIMIT (500) rows; a real server query has no such cap. `dashboardSummary`
+  // is null until the fetch above resolves, so every figure defaults to 0/empty until then
+  // rather than flashing a stale or undefined value.
+  const totalSales = dashboardSummary?.totalSales ?? 0;
+  const pendingCollection = dashboardSummary?.pendingCollection ?? 0;
+  const receivedSales = dashboardSummary?.receivedSales ?? 0;
+  const totalExpenseActual = dashboardSummary?.totalExpenseActual ?? 0;
 
-  const pendingCollection = db.invoices
-    .filter(inv => {
-      const invCompanyId = inv.companyId;
-      if (invCompanyId !== db.selectedCompanyId) return false;
-      if (!branchMatches((inv as any).branchId)) return false;
-      // A Credit Note is never itself a receivable — it always carries amountPaid: 0
-      // (schema default, never meaningful, see the note in InvoiceModule.tsx), so
-      // `grandTotal - amountPaid` is its full positive amount, then getInvoiceSign flips
-      // that to a large NEGATIVE "pending collection" instead of correctly contributing
-      // nothing. The actual reduction in what's owed already happened by not incrementing
-      // amountPaid on any invoice this CN reverses; excluding CN rows here avoids
-      // double-counting that reduction a second time as a negative KPI.
-      return inv.status === 'Active' && inv.documentType !== 'CreditNote';
-    })
-    .reduce((sum, inv) => {
-      const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId);
-      return sum + (totals.grandTotal - (inv.amountPaid || 0)) * getInvoiceSign(inv);
-    }, 0);
-
-  const receivedSales = monthVouchers
-    .filter(v => v.referenceType === 'Invoice' && v.type === 'Receipt')
-    .reduce((sum, v) => sum + v.amount, 0) -
-    monthVouchers
-    .filter(v => v.referenceType === 'Invoice' && v.type === 'Reversal')
-    .reduce((sum, v) => sum + v.amount, 0);
-
-  const totalExpenseActual = monthExpenses
-    .filter(exp => exp.status === 'Active' && exp.type === 'Actual' && exp.classification !== 'Asset')
-    .reduce((sum, exp) => sum + exp.amount, 0);
-
+  // paidExpenseActual (cash actually paid out this period, distinct from totalExpenseActual's
+  // accrual-basis expense total) stays client-computed from monthVouchers — a single
+  // period's own vouchers, inherently bounded, not part of the capped-array bug this port
+  // addresses (see the skill's "plain list screen" carve-out reasoning).
   const paidExpenseActual = monthVouchers
     .filter(v => v.referenceType === 'Expense' && v.type === 'Payment')
     .reduce((sum, v) => sum + v.amount, 0) -
@@ -208,24 +225,11 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
     .filter(v => v.referenceType === 'Expense' && v.type === 'Reversal')
     .reduce((sum, v) => sum + v.amount, 0);
 
-  const totalExpenseAccrual = monthExpenses
-    .filter(exp => exp.status === 'Active' && exp.type === 'Accrual' && exp.classification !== 'Asset')
-    .reduce((sum, exp) => sum + exp.amount, 0);
-
-  const totalExpensesCombined = totalExpenseActual + totalExpenseAccrual;
-
- const totalAssetCapEx = monthExpenses
- .filter(exp => exp.status === 'Active' && exp.classification === 'Asset')
- .reduce((sum, exp) => sum + exp.amount, 0);
-
- // Simple Net Profit Margin
- const netProfit = totalSales - totalExpenseActual;
- const netProfitMargin = totalSales > 0 ? (netProfit / totalSales) * 100 : 0;
-
- // Active bank balances combined (Admin only)
- const totalBankCapital = db.banks
- .filter(b => b.companyId === db.selectedCompanyId && b.isActive)
- .reduce((sum, b) => sum + getBankBalance(db, b.id), 0);
+  const totalExpenseAccrual = dashboardSummary?.totalExpenseAccrual ?? 0;
+  const totalAssetCapEx = dashboardSummary?.totalAssetCapEx ?? 0;
+  const netProfit = dashboardSummary?.netProfit ?? 0;
+  const netProfitMargin = dashboardSummary?.netProfitMargin ?? 0;
+  const totalBankCapital = dashboardSummary?.totalBankCapital ?? 0;
 
  // Recharts Chart Data (e.g. daily sales of the current month)
  // Let's group monthInvoices by date to get a timeline
@@ -272,41 +276,21 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  const zatcaFailureCount = zatcaFailedInvoices.length;
  const zatcaOk = zatcaFailureCount === 0;
 
- // Real investor capital-reconciliation signal (same math as the Partners' Equity panel
- // above): flags a genuine mismatch rather than a hardcoded "active" claim.
- const investorTotalContributed = companyInvestors.reduce((sum, inv) => {
- const actual = db.vouchers
- .filter(v => v.referenceType === 'Equity' && v.referenceId === inv.id)
- .reduce((vSum, v) => vSum + v.amount, 0);
- return sum + actual;
- }, 0);
- const investorHasImbalance = companyInvestors.length > 0 && (
- investorTotalContributed === 0 ||
- companyInvestors.some(inv => {
- const actual = db.vouchers
- .filter(v => v.referenceType === 'Equity' && v.referenceId === inv.id)
- .reduce((vSum, v) => vSum + v.amount, 0);
- const targetShare = (investorTotalContributed * inv.equityPercentage) / 100;
- return Math.abs(targetShare - actual) > 0.01;
- })
- );
+ // Server-computed (see dashboardSummary fetch above) — was previously an unbounded sum
+ // over ALL of db.vouchers (not just this period's), the exact single-tenant-growth case
+ // this port exists for: a company with a long enough history could exceed the /api/state
+ // cap in vouchers alone.
+ const investorTotalContributed = dashboardSummary?.investorTotalContributed ?? 0;
+ const investorHasImbalance = dashboardSummary?.investorHasImbalance ?? false;
 
  // User Targets - derived from the trailing average of actual monthly closed sales so
  // every company sees a target grounded in its own history rather than an identical
  // hardcoded number. Falls back to a modest placeholder only when there's no history yet.
- const closedMonthIds = availableMonths
- .filter(m => m.status === 'Closed' && m.id !== openMonth?.id)
- .map(m => m.id)
- .sort()
- .slice(-3);
- const trailingMonthlySales = closedMonthIds.map(monthId =>
- db.invoices
- .filter(inv => inv.companyId === db.selectedCompanyId && branchMatches((inv as any).branchId) && inv.status === 'Active' && inv.date.startsWith(monthId))
- .reduce((sum, inv) => {
- const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId);
- return sum + totals.grandTotal * getInvoiceSign(inv);
- }, 0)
- );
+ // closedMonthIdsForTarget/trailingMonthlySales are resolved above (closedMonthIdsForTarget
+ // feeds the dashboardSummary fetch's trailingMonthIds param; trailingMonthlySales itself
+ // is server-computed, in the same order).
+ const closedMonthIds = closedMonthIdsForTarget;
+ const trailingMonthlySales: number[] = dashboardSummary?.trailingMonthlySales ?? [];
  const hasHistoricalTarget = trailingMonthlySales.length > 0;
  const salesTarget = hasHistoricalTarget
  ? trailingMonthlySales.reduce((sum, v) => sum + v, 0) / trailingMonthlySales.length
@@ -324,30 +308,16 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  // Pending Invoices / Pending Expenses — deliberately company-wide (not gated by the
  // reporting period filter above), same reasoning as `pendingCollection`: what's actually
  // owed right now doesn't reset just because the admin is looking at a different month.
- const todayMs = Date.now();
- const daysOutstanding = (dateStr: string) => Math.max(0, Math.floor((todayMs - new Date(`${dateStr}T00:00:00`).getTime()) / 86400000));
-
- const pendingInvoicesBase = db.invoices
- .filter(inv => inv.companyId === db.selectedCompanyId && branchMatches((inv as any).branchId) && inv.status === 'Active' && (inv.documentType === undefined || inv.documentType === 'Invoice'))
- .map(inv => {
- const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId);
- const due = totals.grandTotal - (inv.amountPaid || 0);
- return { inv, due, grandTotal: totals.grandTotal };
- })
- .filter(x => x.due > 0.01);
- const pendingInvoicesList = [...pendingInvoicesBase]
- .sort((a, b) => a.inv.date.localeCompare(b.inv.date))
- .slice(0, 8);
- const pendingInvoicesTotal = pendingInvoicesBase.reduce((sum, x) => sum + x.due, 0);
- // Aging buckets for the pictogram strip — same day thresholds already used per-row below
- // (>30 overdue, >14 aging), just aggregated into counts instead of per-invoice text.
- const pendingInvoicesAging = pendingInvoicesBase.reduce((acc, x) => {
- const days = daysOutstanding(x.inv.date);
- if (days > 30) acc.overdue++;
- else if (days > 14) acc.aging++;
- else acc.onTime++;
- return acc;
- }, { onTime: 0, aging: 0, overdue: 0 });
+ // Server-computed (dashboardSummary.pendingInvoiceRows/pendingExpenseRows) — previously an
+ // unbounded scan over ALL of db.invoices/db.expenses, same single-tenant-growth exposure
+ // as investorTotalContributed above.
+ const pendingInvoicesList: Array<{ id: string; invoiceNumber: string; customerName: string; amount: number; daysOutstanding: number }> = dashboardSummary?.pendingInvoiceRows?.slice(0, 8) ?? [];
+ const pendingInvoicesTotal = dashboardSummary?.pendingInvoicesTotal ?? 0;
+ const pendingInvoicesAging = {
+ onTime: dashboardSummary?.pendingInvoicesOnTime ?? 0,
+ aging: dashboardSummary?.pendingInvoicesAging ?? 0,
+ overdue: dashboardSummary?.pendingInvoicesOverdue ?? 0,
+ };
  // Caps rendered icons per bucket so a company with hundreds of open invoices doesn't
  // blow out the card layout — overflow collapses to a "+N" label instead of more squares.
  const renderAgingPictogram = (count: number, colorClass: string, cap: number = 10) => {
@@ -363,50 +333,25 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  );
  };
 
- const pendingExpensesList = db.expenses
- .filter(exp => exp.companyId === db.selectedCompanyId && branchMatches((exp as any).branchId) && exp.status === 'Active' && exp.type === 'Actual')
- .map(exp => ({ exp, due: exp.amount - (exp.amountPaid || 0) }))
- .filter(x => x.due > 0.01)
- .sort((a, b) => a.exp.date.localeCompare(b.exp.date))
- .slice(0, 8);
- const pendingExpensesTotal = db.expenses
- .filter(exp => exp.companyId === db.selectedCompanyId && branchMatches((exp as any).branchId) && exp.status === 'Active' && exp.type === 'Actual')
- .reduce((sum, exp) => sum + Math.max(0, exp.amount - (exp.amountPaid || 0)), 0);
+ // Pure date math, not a data query — kept client-side for the expense rows' day-count
+ // coloring below (pendingInvoiceRows already carries a server-computed daysOutstanding).
+ const todayMs = Date.now();
+ const daysOutstanding = (dateStr: string) => Math.max(0, Math.floor((todayMs - new Date(`${dateStr}T00:00:00`).getTime()) / 86400000));
+
+ const pendingExpensesList: Array<{ id: string; expenseNumber: string; vendorName: string; amount: number; date: string }> = dashboardSummary?.pendingExpenseRows?.slice(0, 8) ?? [];
+ const pendingExpensesTotal = dashboardSummary?.pendingExpensesTotal ?? 0;
  const accrualsAwaitingSettlement = db.expenses.filter(exp =>
  exp.companyId === db.selectedCompanyId && branchMatches((exp as any).branchId) && exp.status === 'Active' && exp.type === 'Accrual' && !exp.accrualSettled
  ).length;
 
  // Top Customers by Sales / Top Vendors by Expense — respects the active reporting period,
  // unlike the pending lists above (this is a "who mattered this period" breakdown, not a
- // point-in-time balance).
- const topCustomersBySales = (() => {
- const byCustomer = new Map<string, number>();
- monthInvoices.filter(inv => inv.status === 'Active').forEach(inv => {
- const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId);
- byCustomer.set(inv.customerId, (byCustomer.get(inv.customerId) || 0) + totals.grandTotal * getInvoiceSign(inv));
- });
- return Array.from(byCustomer.entries())
- .map(([customerId, amount]) => ({
- name: db.customers.find(c => c.id === customerId)?.name || t('Unknown Customer'),
- amount
- }))
- .sort((a, b) => b.amount - a.amount)
- .slice(0, 5);
- })();
-
- const topVendorsByExpense = (() => {
- const byVendor = new Map<string, number>();
- monthExpenses.filter(exp => exp.status === 'Active' && exp.type === 'Actual').forEach(exp => {
- byVendor.set(exp.vendorId, (byVendor.get(exp.vendorId) || 0) + exp.amount);
- });
- return Array.from(byVendor.entries())
- .map(([vendorId, amount]) => ({
- name: db.vendors.find(v => v.id === vendorId)?.name || t('Unknown Vendor'),
- amount
- }))
- .sort((a, b) => b.amount - a.amount)
- .slice(0, 5);
- })();
+ // point-in-time balance). Server-computed; `total` renamed to `amount` here to match the
+ // existing recharts `dataKey="amount"` below without changing the chart itself.
+ const topCustomersBySales: Array<{ name: string; amount: number }> = (dashboardSummary?.topCustomersBySales ?? [])
+ .map((r: any) => ({ name: r.name, amount: r.total }));
+ const topVendorsByExpense: Array<{ name: string; amount: number }> = (dashboardSummary?.topVendorsByExpense ?? [])
+ .map((r: any) => ({ name: r.name, amount: r.total }));
 
  return (
  <div className="space-y-6">
@@ -884,7 +829,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  {t('View All')} <ArrowUpRight className="w-3 h-3" />
  </button>
  </div>
- {pendingInvoicesBase.length > 0 && (
+ {(pendingInvoicesAging.onTime + pendingInvoicesAging.aging + pendingInvoicesAging.overdue) > 0 && (
  <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mb-4 pb-3 border-b border-slate-100 text-[9px] font-bold text-slate-400 uppercase tracking-wide">
  <span className="flex items-center gap-1.5">{t('On time')} {renderAgingPictogram(pendingInvoicesAging.onTime, 'bg-slate-300')} <span className="text-slate-500">{pendingInvoicesAging.onTime}</span></span>
  <span className="flex items-center gap-1.5">{t('Aging')} {renderAgingPictogram(pendingInvoicesAging.aging, 'bg-amber-400')} <span className="text-amber-600">{pendingInvoicesAging.aging}</span></span>
@@ -898,21 +843,20 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  </div>
  ) : (
  <div className="space-y-1.5">
- {pendingInvoicesList.map(({ inv, due }) => {
- const customerName = db.customers.find(c => c.id === inv.customerId)?.name || t('Unknown Customer');
- const days = daysOutstanding(inv.date);
+ {pendingInvoicesList.map((row) => {
+ const days = row.daysOutstanding;
  return (
  <button
- key={inv.id}
+ key={row.id}
  onClick={() => onNavigate('invoices')}
  className="w-full flex items-center justify-between gap-3 p-2.5 rounded-xl hover:bg-slate-50 transition text-start"
  >
  <div className="min-w-0">
- <span className="text-xs font-bold text-slate-800 block truncate">{customerName}</span>
- <span className="text-[10px] text-slate-400 font-mono">{inv.invoiceNumber}</span>
+ <span className="text-xs font-bold text-slate-800 block truncate">{row.customerName}</span>
+ <span className="text-[10px] text-slate-400 font-mono">{row.invoiceNumber}</span>
  </div>
  <div className="text-end shrink-0">
- <span className="text-xs font-extrabold text-slate-900 block">{currencySymbol} {due.toFixed(2)}</span>
+ <span className="text-xs font-extrabold text-slate-900 block">{currencySymbol} {row.amount.toFixed(2)}</span>
  <span className={`text-[9px] font-bold ${days > 30 ? 'text-rose-600' : days > 14 ? 'text-amber-600' : 'text-slate-400'}`}>
  {days} {t('days outstanding')}
  </span>
@@ -955,21 +899,20 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  </div>
  ) : (
  <div className="space-y-1.5">
- {pendingExpensesList.map(({ exp, due }) => {
- const vendorName = db.vendors.find(v => v.id === exp.vendorId)?.name || t('Unknown Vendor');
- const days = daysOutstanding(exp.date);
+ {pendingExpensesList.map((row) => {
+ const days = daysOutstanding(row.date);
  return (
  <button
- key={exp.id}
+ key={row.id}
  onClick={() => onNavigate('expenses')}
  className="w-full flex items-center justify-between gap-3 p-2.5 rounded-xl hover:bg-slate-50 transition text-start"
  >
  <div className="min-w-0">
- <span className="text-xs font-bold text-slate-800 block truncate">{vendorName}</span>
- <span className="text-[10px] text-slate-400 font-mono">{exp.expenseNumber}</span>
+ <span className="text-xs font-bold text-slate-800 block truncate">{row.vendorName}</span>
+ <span className="text-[10px] text-slate-400 font-mono">{row.expenseNumber}</span>
  </div>
  <div className="text-end shrink-0">
- <span className="text-xs font-extrabold text-slate-900 block">{currencySymbol} {due.toFixed(2)}</span>
+ <span className="text-xs font-extrabold text-slate-900 block">{currencySymbol} {row.amount.toFixed(2)}</span>
  <span className={`text-[9px] font-bold ${days > 30 ? 'text-rose-600' : days > 14 ? 'text-amber-600' : 'text-slate-400'}`}>
  {days} {t('days outstanding')}
  </span>

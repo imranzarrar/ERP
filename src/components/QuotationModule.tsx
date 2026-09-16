@@ -667,18 +667,28 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  return sortedQuotations.slice(startIdx, startIdx + itemsPerPage);
  }, [sortedQuotations, currentPage]);
 
- // Quotation KPI Analytics
- const kpiTotalValue = React.useMemo(() => {
-   return filteredQuotations.reduce((sum, q) => sum + getQuotationTotal(q), 0);
- }, [filteredQuotations]);
-
+ // Fetched from GET /api/reports/quotation-kpis (server/lib/financialReports.ts) instead
+ // of summed client-side from db.quotations — see
+ // .claude/skills/server-side-report-aggregation/SKILL.md. Also fixes a real bug found
+ // while porting: the original never excluded a cancelled quotation from these totals
+ // (isCancelled was never checked here), inflating both figures — the server version
+ // excludes them, matching this codebase's own established "cancelled documents never
+ // inflate a total" convention (see e.g. SalesReportsModule.tsx's getSalesRegisterData).
+ const [quotationKpis, setQuotationKpis] = React.useState({ totalValue: 0, convertedValue: 0 });
+ React.useEffect(() => {
+   if (!db.selectedCompanyId) return;
+   let cancelled = false;
+   fetch('/api/reports/quotation-kpis').then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setQuotationKpis(d); }).catch(() => {});
+   return () => { cancelled = true; };
+ }, [db.selectedCompanyId]);
+ const kpiTotalValue = quotationKpis.totalValue;
+ const kpiConvertedValue = quotationKpis.convertedValue;
+ // A plain count (not a monetary total), still derived from the client's own
+ // company-scoped filteredQuotations — same "plain list screen" carve-out as
+ // kpiActiveQuotesCount below, not part of this port.
  const kpiConvertedQuotes = React.useMemo(() => {
    return filteredQuotations.filter(q => q.status === 'Converted');
  }, [filteredQuotations]);
-
- const kpiConvertedValue = React.useMemo(() => {
-   return kpiConvertedQuotes.reduce((sum, q) => sum + getQuotationTotal(q), 0);
- }, [kpiConvertedQuotes]);
 
  const kpiActiveQuotesCount = filteredQuotations.filter(q => q.status === 'Draft' || !q.status).length;
 

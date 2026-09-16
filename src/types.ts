@@ -128,6 +128,13 @@ export function mergeRolePermissions(rolePermissionsList: any[]): any {
       const targetVal = result[key];
       if (typeof sourceVal === 'boolean') {
         result[key] = Boolean(targetVal) || sourceVal;
+      } else if (typeof sourceVal === 'number') {
+        // A numeric leaf value (e.g. pos.discount.maxPercent/maxAmount — the first
+        // non-boolean leaf value this permission system has ever needed) is a CAP, not a
+        // flag — "union of every assigned role" for a cap means the most permissive one
+        // wins, same reasoning as the boolean OR above, not "whichever role happened to
+        // be merged in first" (which the old fallthrough below silently did).
+        result[key] = Math.max(typeof targetVal === 'number' ? targetVal : 0, sourceVal);
       } else if (sourceVal && typeof sourceVal === 'object') {
         result[key] = mergeInto(targetVal, sourceVal);
       } else {

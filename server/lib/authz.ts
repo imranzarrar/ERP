@@ -1,7 +1,8 @@
 import { normalizePermissions, mergeRolePermissions } from '../../src/types.js';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
+import bcrypt from 'bcrypt';
 
 // A user's effective permissions are the union (per-leaf OR) of every Role assigned to
 // them — moved here from server.ts (which had its own unexported copy) so any route file
@@ -17,6 +18,56 @@ export async function resolveUserPermissions(userId: string): Promise<any> {
     .where(eq(schema.userRoles.userId, userId));
   if (!assignedRoles.length) return null;
   return mergeRolePermissions(assignedRoles.map((r: any) => r.permissions));
+}
+
+// pos.discount is the first permission leaf in this app that carries a numeric CAP
+// alongside its boolean `enabled` — every other leaf normalizePermissions() produces is
+// just `{enabled: boolean}` by design (see its own comment), which deliberately discards
+// anything else stored on a leaf. A cap has to be read from the RAW, pre-normalized
+// merged-role permissions instead (same object resolveUserPermissions already returns —
+// mergeRolePermissions takes Math.max() across roles for a numeric leaf value, so this
+// naturally resolves to "the most permissive cap across every role this user holds",
+// matching the same union-of-roles philosophy the boolean leaves already use).
+// Admin/super-admin bypass every granular check elsewhere in this app; a discount cap is
+// no different — Infinity here means "no cap", not "cap of zero because nothing is set".
+export async function resolveUserDiscountCap(userIdOrUser: string | { id: string; role?: string; isSuperAdmin?: boolean }): Promise<{ maxPercent: number; maxAmount: number }> {
+  const user = typeof userIdOrUser === 'string' ? await db.select().from(schema.users).where(eq(schema.users.id, userIdOrUser)).then(r => r[0]) : userIdOrUser;
+  if (!user) return { maxPercent: 0, maxAmount: 0 };
+  if (isSuperAdminUser(user) || (user as any).role === 'admin') return { maxPercent: Infinity, maxAmount: Infinity };
+  const raw = await resolveUserPermissions(user.id);
+  const discount = raw?.pos?.discount;
+  // A cap only counts when the leaf is actually enabled. The Roles editor's own
+  // shallow-copy-down-the-path update (setNestedValue) never clears maxPercent/maxAmount
+  // when the checkbox is unchecked — same behavior as every other leaf's own stored
+  // fields surviving a re-check — so a previously-set cap can still be sitting in storage
+  // on a role whose `enabled` was later flipped back to false. Without this check,
+  // revoking the permission wouldn't actually revoke the cap.
+  if (discount?.enabled !== true) return { maxPercent: 0, maxAmount: 0 };
+  return {
+    maxPercent: typeof discount?.maxPercent === 'number' ? discount.maxPercent : 0,
+    maxAmount: typeof discount?.maxAmount === 'number' ? discount.maxAmount : 0,
+  };
+}
+
+// Shared "manager override" credential check — a NAMED other user's own username+password,
+// verified inline in the same request, without ever switching the acting user's own
+// session/identity. First built inline in server/routes/pos.ts's POST /returns (kept
+// there untouched, working code); extracted here so the POS header-discount override
+// (server/routes/transactions.ts) can reuse the exact same verification instead of a
+// second, potentially-drifting copy of security-sensitive logic. Returns the verified
+// user row, or null if the username/password/active/company checks fail for any reason —
+// deliberately one generic "Invalid manager credentials" outcome for every failure mode,
+// same as the original, so a wrong username can't be distinguished from a wrong password.
+export async function verifyOverrideCredentials(companyId: string, overrideUsername: string, overridePassword: string) {
+  const [overrideUser] = await db.select().from(schema.users)
+    .where(sql`LOWER(${schema.users.username}) = ${String(overrideUsername).trim().toLowerCase()}`);
+  const ok = overrideUser
+    && overrideUser.isDeleted !== 1
+    && overrideUser.isActive !== false
+    && (overrideUser.isSuperAdmin || overrideUser.companyId === companyId)
+    && overrideUser.password
+    && await bcrypt.compare(overridePassword, overrideUser.password);
+  return ok ? overrideUser : null;
 }
 
 // Canonical super-admin check — replaces the ~20 ad-hoc variations of

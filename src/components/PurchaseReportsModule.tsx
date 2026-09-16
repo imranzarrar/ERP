@@ -69,43 +69,31 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
   const companyPOs = (db.purchaseOrders || []).filter((po: any) => po.companyId === companyId && branchMatches(po.branchId));
   const companyGRNs = (db.goodsReceiptNotes || []).filter((g: any) => g.companyId === companyId && branchMatchesViaWarehouse(g.warehouseId));
 
-  // 1. Purchase Register — every expense in the period.
-  const getPurchaseRegisterData = () => {
-    const rows = companyExpenses
-      .filter(e => e.date >= startDate && e.date <= endDate && (selectedVendorId === 'ALL' || e.vendorId === selectedVendorId))
-      .map(e => {
-        const vend = db.vendors.find(v => v.id === e.vendorId);
-        return { expenseNumber: e.expenseNumber, date: e.date, vendorName: vend?.name || t('Cash Vendor'), classification: e.classification || e.type, paymentStatus: e.paymentStatus, status: e.status, amount: e.amount };
-      })
-      .sort((a, b) => a.date.localeCompare(b.date));
-    // Cancelled expenses stay visible in the row list (still findable there) but must
-    // never inflate the printed total — same convention as vatReturn.ts/ReportViewer.tsx.
-    return { rows, totalAmount: rows.filter(r => r.status === 'Active').reduce((s, r) => s + r.amount, 0) };
-  };
+  // Purchase Register / Vendor Statement are fetched from GET /api/reports/purchase-register
+  // and /vendor-statement (server/lib/financialReports.ts) instead of computed client-side
+  // — see .claude/skills/server-side-report-aggregation/SKILL.md. PO Status and GRN vs. PO
+  // Variance below are untouched: purchaseOrders/goodsReceiptNotes were never among the
+  // capped tables in src/db/apiState.ts, so they were never subject to this bug.
+  const emptyPurchaseRegister = { rows: [] as any[], totalAmount: 0 };
+  const [purchaseRegisterData, setPurchaseRegisterData] = React.useState(emptyPurchaseRegister);
+  React.useEffect(() => {
+    if (reportType !== 'PurchaseRegister' || !companyId) return;
+    let cancelled = false;
+    const params = new URLSearchParams({ startDate, endDate, ...(selectedVendorId !== 'ALL' ? { vendorId: selectedVendorId } : {}) });
+    fetch(`/api/reports/purchase-register?${params}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setPurchaseRegisterData(d); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [reportType, companyId, startDate, endDate, selectedVendorId, selectedBranchId]);
+  const getPurchaseRegisterData = () => purchaseRegisterData;
 
-  // 2. Vendor Statement — combines both purchasing paths this app has: simple Expenses
-  // AND the full PR->PO->GRN->Purchase Bill flow's own bills, since a vendor's real
-  // obligation spans both. Payment vouchers reference either 'Expense' or 'PurchaseBill'.
-  const getVendorStatementData = () => {
-    if (!statementVendorId) return { entries: [], endingBalance: 0, vendorName: '' };
-    const vendor = db.vendors.find(v => v.id === statementVendorId);
-    const vendExpenses = companyExpenses.filter(e => e.vendorId === statementVendorId && e.status === 'Active');
-    const vendBills = (db.purchaseBills || []).filter((b: any) => b.companyId === companyId && branchMatches(b.branchId) && b.vendorId === statementVendorId && b.status !== 'Cancelled');
-    const expenseIds = new Set(vendExpenses.map(e => e.id));
-    const billIds = new Set(vendBills.map((b: any) => b.id));
-    const payments = db.vouchers.filter(v => v.companyId === companyId && branchMatches((v as any).branchId) && v.type === 'Payment'
-      && ((v.referenceType === 'Expense' && expenseIds.has(v.referenceId)) || (v.referenceType === 'PurchaseBill' && billIds.has(v.referenceId))));
-
-    const entries: { date: string; type: string; docNumber: string; debit: number; credit: number }[] = [];
-    vendExpenses.forEach(e => entries.push({ date: e.date, type: 'Expense', docNumber: e.expenseNumber, debit: e.amount, credit: 0 }));
-    vendBills.forEach((b: any) => entries.push({ date: String(b.date).slice(0, 10), type: 'Purchase Bill', docNumber: b.billNumber, debit: Number(b.grandTotal), credit: 0 }));
-    payments.forEach(v => entries.push({ date: v.date, type: 'Payment', docNumber: v.voucherNumber, debit: 0, credit: v.amount }));
-    entries.sort((a, b) => a.date.localeCompare(b.date));
-
-    let running = 0;
-    const withBalance = entries.map(e => { running += e.debit - e.credit; return { ...e, runningBalance: running }; });
-    return { entries: withBalance, endingBalance: running, vendorName: vendor?.name || '' };
-  };
+  const emptyVendorStatement = { entries: [] as any[], endingBalance: 0, vendorName: '' };
+  const [vendorStatementData, setVendorStatementData] = React.useState(emptyVendorStatement);
+  React.useEffect(() => {
+    if (reportType !== 'VendorStatement' || !companyId || !statementVendorId) return;
+    let cancelled = false;
+    fetch(`/api/reports/vendor-statement?vendorId=${statementVendorId}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setVendorStatementData(d); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [reportType, companyId, statementVendorId, selectedBranchId]);
+  const getVendorStatementData = () => vendorStatementData;
 
   // 3. PO Status — every PO by fulfillment status, with aging for what's still open.
   const getPoStatusData = () => {

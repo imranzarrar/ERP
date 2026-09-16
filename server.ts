@@ -32,6 +32,7 @@ import inventoryRouter from './server/routes/inventory.js';
 import settingsResourcesRouter from './server/routes/settingsResources.js';
 import branchesRouter from './server/routes/branches.js';
 import taxReturnsRouter from './server/routes/taxReturns.js';
+import reportsRouter from './server/routes/reports.js';
 import employeesRouter from './server/routes/employees.js';
 import sessionsRouter from './server/routes/sessions.js';
 import roleTemplatesRouter from './server/routes/roleTemplates.js';
@@ -791,6 +792,7 @@ async function startServer() {
   app.use('/api', masterEntitiesRouter);
   app.use('/api', branchesRouter);
   app.use('/api', taxReturnsRouter);
+  app.use('/api', reportsRouter);
   app.use('/api', employeesRouter);
   app.use('/api', sessionsRouter);
   app.use('/api', onboardingAdminRouter);
@@ -1031,12 +1033,18 @@ async function startServer() {
       // user as "I just created X and a refresh still doesn't show it" even though the
       // server and DB are already correct. Force real revalidation every time.
       res.set('Cache-Control', 'no-store');
-      const { getFullState } = await import('./src/db/apiState.js');
-      // Scope state by companyId
-      const state = await getFullState();
-      
       const isSuper = req.user?.isSuperAdmin === true || req.user?.role === 'super-admin';
       const companyId = req.targetCompanyId || req.user?.companyId || req.session?.companyId;
+
+      // Resolved BEFORE getFullState() so its own capped queries (invoices/quotations/
+      // expenses/vouchers/stockLedgerTransactions — see that file's own comment) can be
+      // scoped by company at the DB level, not just re-filtered afterward below. Passing
+      // it in doesn't replace the filteredState filtering below — that stays as a
+      // deliberate second, redundant check (same defense-in-depth this file already
+      // applies everywhere: "every business/transaction field is scoped to companyId
+      // unconditionally, even for a super-admin").
+      const { getFullState } = await import('./src/db/apiState.js');
+      const state = await getFullState(companyId);
 
       // Branch (physical-location) scoping — req.allowedBranchIds is null for an admin/
       // super-admin/branches.viewAllBranches holder (no ceiling, see isAuthenticated in
@@ -1185,7 +1193,20 @@ async function startServer() {
                 : null;
               return { ...userWithoutPassword, permissions: mergedPermissions };
             });
-        })()
+        })(),
+        // Tells the client, authoritatively, which company this entire response is
+        // scoped to — the resolved req.targetCompanyId, never re-derivable correctly by
+        // the client on its own. Before this field existed, App.tsx's merge logic had to
+        // GUESS which company was active (prev.selectedCompanyId if already in memory,
+        // else the logged-in user's own home company) — correct while the SPA stays open
+        // and its in-memory state survives, but wrong the instant that state doesn't (a
+        // hard reload, a fresh tab): a super-admin who'd switched to a different company
+        // would see that company's real data returned here (session-driven, correct), but
+        // the client would still render the WRONG company name/id in the switcher and
+        // header, because it fell back to guessing the user's own home company instead of
+        // trusting what this response was actually scoped to. The client now uses this
+        // field directly instead of guessing.
+        activeCompanyId: companyId,
       };
       res.json(filteredState);
     } catch (error: any) {

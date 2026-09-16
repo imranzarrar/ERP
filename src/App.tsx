@@ -126,16 +126,17 @@ export default function App() {
     
     const loggedUser = users.find((u: any) => u.id === sessionUserId);
     
-    let selectedCompanyId = prev.selectedCompanyId;
-    if (loggedUser) {
-      const isSuperAdminUser = loggedUser.isSuperAdmin === true || loggedUser.role === 'super-admin' || loggedUser.role === 'superadmin';
-      // Super-admins can switch companies (multi-tenant access) — keep whatever they've
-      // already switched to across a refresh; only pin to their assigned company on
-      // first load. Regular users are always pinned to their assigned company.
-      if (!isSuperAdminUser || !selectedCompanyId) {
-        selectedCompanyId = loggedUser.companyId;
-      }
-    }
+    // Trust the server's own resolved scope directly (data.activeCompanyId — the exact
+    // req.targetCompanyId server.ts's /api/state used to build this whole response),
+    // rather than re-guessing it client-side from prev.selectedCompanyId/loggedUser.companyId.
+    // The old guess (kept here as a fallback only for a response that predates this field)
+    // was correct only while the SPA's in-memory state survived (prev.selectedCompanyId set
+    // by an earlier switch) — a hard reload wipes that state, so a super-admin who'd
+    // switched companies would see the CORRECT company's data (server-session-driven) but
+    // the WRONG company name/id in the switcher and header (silently re-pinned to their own
+    // home company). Since the server always knows exactly which company this response is
+    // scoped to, there's nothing left to guess.
+    const selectedCompanyId = data.activeCompanyId || prev.selectedCompanyId || loggedUser?.companyId;
 
     const companySetup = companies.find((c: any) => c.id === selectedCompanyId) || companies[0] || prev.companySetup;
     
@@ -250,13 +251,9 @@ export default function App() {
             const users = data.users || [];
             const companies = data.companies || [];
             const loggedUser = users.find((u: any) => u.id === sessionUserId);
-            let selectedCompanyId = prev.selectedCompanyId;
-            if (loggedUser) {
-              const isSuperAdminUser = loggedUser.isSuperAdmin === true || loggedUser.role === 'super-admin' || loggedUser.role === 'superadmin';
-              if (!isSuperAdminUser || !selectedCompanyId) {
-                selectedCompanyId = loggedUser.companyId;
-              }
-            }
+            // Same reasoning as the initial-load effect above — trust the server's own
+            // resolved scope (data.activeCompanyId) directly instead of re-guessing it.
+            const selectedCompanyId = data.activeCompanyId || prev.selectedCompanyId || loggedUser?.companyId;
             const merged = {
               ...prev,
               companies,

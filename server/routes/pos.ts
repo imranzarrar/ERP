@@ -7,7 +7,7 @@ import { normalizePermissions } from '../../src/types.js';
 import { branchAccessOk, resolveDocumentBranchId, hasPermission, resolveUserPermissions } from '../lib/authz.js';
 import { generateId } from '../../src/id.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
-import { restockForSaleReversal, validateTransactionDate, assertQuarterNotFiled, postCreditNoteReversalVoucher } from '../lib/businessLogic.js';
+import { restockForSaleReversal, validateTransactionDate, assertQuarterNotFiled, postCreditNoteReversalVoucher, computeInvoiceServerTotals } from '../lib/businessLogic.js';
 import { processInvoiceZatca } from '../lib/zatca/processInvoice.js';
 import { recordAuditLog } from '../lib/audit.js';
 
@@ -255,6 +255,11 @@ router.get('/returnable-invoices', async (req: any, res) => {
       date: inv.date,
       customerName: customerNameById.get(inv.customerId) || 'Walk-in Customer',
       amountPaid: inv.amountPaid,
+      // Needed client-side so the return screen's refund preview can apply the same
+      // header-discount shrink-factor math as computeInvoiceServerTotals (see below) —
+      // without this the preview silently priced returned lines at their raw, undiscounted
+      // rate, showing a refund total that didn't match what the server actually pays out.
+      discountPercentage: inv.discountPercentage,
       items: items.filter(i => i.invoiceId === inv.id).map(i => ({
         id: i.id,
         description: i.description,
@@ -375,25 +380,40 @@ router.post('/returns', async (req: any, res) => {
       }
     }
 
-    // Refund amount for the voucher: flat subtotal + this line's own tax-slab rate,
-    // summed across only the returned lines — matches the same per-line tax model
-    // src/dbStore.ts's calculateInvoiceTotals and the POS thermal receipt already use,
-    // not a proportional slice of the original's single combined total.
+    // Refund amount for the voucher AND for the Credit Note's own stored total: reuses
+    // computeInvoiceServerTotals — the exact same function POST /invoices already uses
+    // to compute a sale's real total — instead of a second, hand-rolled tax/discount
+    // calculation, specifically so the returned-lines subset is taxed and discounted
+    // exactly the way the original sale itself was.
+    //
+    // The original sale's own header discount (invoices.discountPercentage — always
+    // populated, whether the cashier entered it as a percent or a flat amount, see
+    // POST /invoices) MUST be passed through here too. A real, quantifiable bug
+    // otherwise: without it, a return against ANY header-discounted sale over-refunds by
+    // the discount's own tax-inclusive amount — not just on a partial return either. A
+    // FULL return of a sale that had a 10% header discount would refund the pre-discount
+    // total, not what the customer actually paid, since the original version of this
+    // calculation read only each line's raw unitCost with no reference to the header
+    // discount at all (there was none to reference before header discounts existed on
+    // POS sales — this gap was unreachable dead code until that feature shipped, not a
+    // pre-existing bug that happened to go unnoticed). The Credit Note's own
+    // discountPercentage (set below, on the insert) inherits the original's for the same
+    // reason: its own ZATCA XML/printed total must reflect what was actually refunded,
+    // not the pre-discount line prices.
     const taxSlabIds = [...new Set(originalItems.map(i => i.taxSlabId).filter(Boolean))] as string[];
     const taxSlabs = taxSlabIds.length
       ? await db.select().from(schema.taxSlabs).where(inArray(schema.taxSlabs.id, taxSlabIds))
       : [];
-    const taxRateById = new Map(taxSlabs.map(t => [t.id, Number(t.percentage)]));
-    const fallbackTaxRate = original.taxSlabId ? (taxRateById.get(original.taxSlabId) ?? 0) : 0;
+    const lineSlabPercentageById = new Map(taxSlabs.map(t => [t.id, Number(t.percentage)]));
+    const [headerTaxSlab] = original.taxSlabId ? await db.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, original.taxSlabId)) : [undefined];
+    const headerPercentage = headerTaxSlab ? Number(headerTaxSlab.percentage) : 0;
+    const originalDiscountPercentage = Number(original.discountPercentage || 0);
 
-    let refundAmount = 0;
-    for (const [itemId, qty] of requestedByItemId.entries()) {
+    const returnedLineItems = [...requestedByItemId.entries()].map(([itemId, qty]) => {
       const originalItem = originalItemById.get(itemId)!;
-      const lineSubtotal = qty * Number(originalItem.unitCost);
-      const rate = originalItem.taxSlabId ? (taxRateById.get(originalItem.taxSlabId) ?? fallbackTaxRate) : fallbackTaxRate;
-      refundAmount += lineSubtotal * (1 + rate / 100);
-    }
-    refundAmount = Math.round(refundAmount * 100) / 100;
+      return { unitCost: Number(originalItem.unitCost), quantity: qty, discountAmount: 0, taxSlabId: originalItem.taxSlabId };
+    });
+    const refundAmount = computeInvoiceServerTotals(returnedLineItems, headerPercentage, originalDiscountPercentage, lineSlabPercentageById).grandTotal;
 
     // A POS return happens now — the return receipt/credit note is always dated with
     // today's system date, never backdated to the original sale's date (that's a
@@ -425,6 +445,10 @@ router.post('/returns', async (req: any, res) => {
         status: 'Active',
         createdById: req.user.id,
         createdAt: new Date(),
+        // Inherited from the original sale so this document's own computed total (the
+        // receipt, the Sales Invoices list, its ZATCA XML) matches the actual refund
+        // amount above — see this block's own comment for why.
+        discountPercentage: original.discountPercentage,
         amountPaid: '0',
         companyId,
         branchId: original.branchId,

@@ -87,7 +87,14 @@ export default function InvoiceViewScreen({ db, invoiceId, onBack, onPrintDoc, o
   const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId, inv.discountPercentage);
   const existingCreditNote = db.invoices.find(i => i.originalInvoiceId === inv.id && i.documentType === 'CreditNote');
   const zatcaBlocksCancel = !!inv.zatcaStatus && ['SUBMITTING', 'CLEARED', 'REPORTED'].includes(inv.zatcaStatus);
-  const canCancel = userPermissions.invoice.delete.enabled && inv.status === 'Active' && !zatcaBlocksCancel;
+  // Mirrors POST /invoices/:id/cancel's own branch exactly (server/routes/transactions.ts) —
+  // a POS-sold invoice is gated by pos.cancel, everything else by invoice.delete. Before
+  // this, the button only ever checked invoice.delete regardless of origin: a user granted
+  // only pos.cancel saw the button disabled even for a POS sale they were actually
+  // authorized to cancel, and a user granted only invoice.delete saw it enabled for a POS
+  // sale and got a confusing 403 on click.
+  const canCancelPermission = (inv as any).isPosSale ? !!(userPermissions as any)?.pos?.cancel?.enabled : userPermissions.invoice.delete.enabled;
+  const canCancel = canCancelPermission && inv.status === 'Active' && !zatcaBlocksCancel;
   const isCreditNote = inv.documentType === 'CreditNote';
 
   const zatcaTone: StatusPillTone =
@@ -435,7 +442,16 @@ export default function InvoiceViewScreen({ db, invoiceId, onBack, onPrintDoc, o
           )}
 
           {!isCreditNote && (
-            <button onClick={handleCancel} disabled={!canCancel || busy} title={!canCancel ? t('This invoice has already been submitted to ZATCA and cannot be cancelled. Issue a Credit Note instead.') : ''} className="w-full text-sm font-bold text-rose-600 border border-rose-200 rounded-xl py-2 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5">
+            <button
+              onClick={handleCancel}
+              disabled={!canCancel || busy}
+              title={
+                zatcaBlocksCancel ? t('This invoice has already been submitted to ZATCA and cannot be cancelled. Issue a Credit Note instead.')
+                : !canCancelPermission ? t('You do not have permission to cancel this invoice.')
+                : ''
+              }
+              className="w-full text-sm font-bold text-rose-600 border border-rose-200 rounded-xl py-2 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-1.5"
+            >
               <Ban className="w-4 h-4" />{t('Cancel invoice')}
             </button>
           )}

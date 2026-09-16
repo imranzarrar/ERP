@@ -35,14 +35,25 @@ export const ZATCA_ENDPOINTS = {
   production: 'https://gw-fatoora.zatca.gov.sa/e-invoicing/core',
 };
 
-// ZATCA's error responses carry field-level detail in a `data.errors` array that the
-// bare `err.message` string used to discard entirely — the exact detail needed to
-// diagnose a rejection (e.g. which CSR field or OTP was wrong) never reached the caller,
-// the UI, or any log. Every real-network method below throws via this helper instead of
-// a bare `new Error(...)`, and callers (server/routes/zatca.ts, processInvoice.ts) log
+// ZATCA's error responses carry field-level detail — either a `data.errors` array (the
+// CSID-request endpoints) or a `data.validationResults.errorMessages` array (the
+// clearance/reporting endpoints, same shape as a successful response's own
+// `validationResults` — see ClearanceReportingResponse above) — that the bare
+// `err.message` string used to discard entirely. Confirmed missing live: a real
+// clearance rejection (seller VAT == buyer VAT, a genuine ZATCA business-rule error)
+// came back as a non-200 response with no top-level `message` field and its real detail
+// only in `validationResults.errorMessages`, not `errors` — this function only checked
+// the latter, so the invoice's own `zatcaValidationResults` recorded the generic
+// fallback message instead of the real reason, even though the full raw response body
+// was (and still is) separately preserved in the audit log via `err.zatcaResponseBody`.
+// Every real-network method below throws via this helper instead of a bare
+// `new Error(...)`, and callers (server/routes/zatca.ts, processInvoice.ts) log
 // `err.zatcaResponseBody`/`err.zatcaHttpStatus` to auditLogs on failure.
 function buildZatcaError(step: string, message: string, httpStatus?: number, responseBody?: any): Error {
-  const detail = responseBody?.errors ? ` — details: ${JSON.stringify(responseBody.errors)}` : '';
+  const errorMessages = responseBody?.validationResults?.errorMessages;
+  const detail = Array.isArray(errorMessages) && errorMessages.length
+    ? `: ${errorMessages.map((e: any) => e?.code ? `${e.code} — ${e.message}` : e?.message).filter(Boolean).join('; ')}`
+    : (responseBody?.errors ? ` — details: ${JSON.stringify(responseBody.errors)}` : '');
   const err: any = new Error(`${message}${detail}`);
   err.zatcaStep = step;
   err.zatcaHttpStatus = httpStatus;

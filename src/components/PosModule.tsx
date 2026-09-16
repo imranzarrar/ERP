@@ -284,6 +284,20 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
   const [receivedAmount, setReceivedAmount] = useState<string>('');
   const [isSavingPos, setIsSavingPos] = useState(false);
   const receivedAmountRef = React.useRef<HTMLInputElement>(null);
+  // Header-level discount — applies to the whole sale, not per line (see the
+  // pos.discount/BACKLOG discussion: a manual courtesy discount is overwhelmingly a
+  // whole-transaction cashier action, and this reuses the same proportional-across-tax-
+  // categories math the back-office Invoice's own header discountPercentage already uses,
+  // rather than resurrecting the never-built per-line cart[i].discount field). Two entry
+  // modes sharing one numeric field so only one is ever "live" at a time; the server
+  // authorizes whichever mode was actually used against that mode's own cap
+  // (pos.discount.maxPercent / maxAmount) and may require a manager override — see
+  // POST /api/transactions/invoices in server/routes/transactions.ts.
+  const [discountMode, setDiscountMode] = useState<'percent' | 'amount'>('percent');
+  const [discountValue, setDiscountValue] = useState<string>('');
+  const [showDiscountOverride, setShowDiscountOverride] = useState(false);
+  const [discountOverrideUsername, setDiscountOverrideUsername] = useState('');
+  const [discountOverridePassword, setDiscountOverridePassword] = useState('');
   // receiptInvoiceId/pendingPrintWindow (and their auto-unmount effect) now live in the
   // parent PosModule, passed down as props — shared with the new Returns tab's own
   // completed-return receipt instead of two independent copies of this state.
@@ -495,12 +509,20 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
   // guess was itself a stop-gap and silently wrong for any company whose real default
   // rate wasn't 15%.
   const posTaxSlabId = getDefaultTaxSlabId(db, activeCompanyId);
-  const cartTotals = calculateInvoiceTotals(
-    db,
-    cart.map((item: PosCartItem) => ({ unitCost: item.unitPrice, quantity: item.quantity, discountAmount: item.discount || 0 })),
-    posTaxSlabId,
-    0
-  );
+  const cartLineItems = cart.map((item: PosCartItem) => ({ unitCost: item.unitPrice, quantity: item.quantity, discountAmount: item.discount || 0 }));
+  // Header discount preview — two-pass, same shape as the server's own conversion (see
+  // POST /invoices in transactions.ts): a flat-amount entry is converted to its
+  // equivalent percentage of the PRE-discount subtotal first, so a percent-mode and an
+  // amount-mode entry that resolve to the same money always show the identical total, and
+  // both flow through the one real calculateInvoiceTotals discount math, not a second
+  // implementation of it.
+  const parsedDiscountValue = parseFloat(discountValue) || 0;
+  const preDiscountSubtotal = calculateInvoiceTotals(db, cartLineItems, posTaxSlabId, 0).subtotal;
+  const effectiveDiscountPercent = parsedDiscountValue <= 0 ? 0
+    : discountMode === 'amount'
+      ? (preDiscountSubtotal > 0 ? (parsedDiscountValue / preDiscountSubtotal) * 100 : 0)
+      : parsedDiscountValue;
+  const cartTotals = calculateInvoiceTotals(db, cartLineItems, posTaxSlabId, effectiveDiscountPercent);
   const taxAmount = cartTotals.taxAmount;
   const taxPercentage = cartTotals.percentage;
   const total = cartTotals.grandTotal;
@@ -535,7 +557,7 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
     setShowHoldModal(false);
   };
 
-  const handlePayInvoice = async () => {
+  const handlePayInvoice = async (overrides?: { overrideUsername: string; overridePassword: string }) => {
     if (!payBankId) return alert(t('Please select a payment method (Bank/Cash).'));
     if (isSavingPos) return;
 
@@ -620,6 +642,13 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
       status: 'Active',
       originQuotationId: null,
       items,
+      // Sent as whichever mode the cashier actually used — the server converts an amount
+      // to its equivalent percentage itself (same two-pass shape as the client preview
+      // above) and authorizes against that mode's own cap. Omit both entirely rather than
+      // sending 0 when no discount was entered, so a $0 discount never triggers the
+      // permission/cap check at all (see isNewPosSale's own guard server-side).
+      ...(parsedDiscountValue > 0 && discountMode === 'percent' ? { discountPercentage: parsedDiscountValue } : {}),
+      ...(parsedDiscountValue > 0 && discountMode === 'amount' ? { discountAmount: parsedDiscountValue } : {}),
     };
 
     // Persist via the same real, dedicated route every other invoice-creation path uses
@@ -635,14 +664,25 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
       const res = await fetch('/api/transactions/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceData }),
+        body: JSON.stringify({ invoiceData, ...(overrides || {}) }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         printPopup?.close();
-        alert(body.error || t('Failed to complete sale.'));
+        if (body.requiresOverride) {
+          // Same manager-override shape as POS Returns: the cashier's own session never
+          // changes, this just asks a named manager to authorize THIS discount inline.
+          // Cart/pay-modal state is left exactly as-is so retrying after authorization
+          // (or cancelling) doesn't lose what the cashier already entered.
+          setShowDiscountOverride(true);
+        } else {
+          alert(body.error || t('Failed to complete sale.'));
+        }
         return;
       }
+      setShowDiscountOverride(false);
+      setDiscountOverrideUsername('');
+      setDiscountOverridePassword('');
 
       // The dedicated endpoint is the source of truth for the generated invoice number,
       // computed totals, and items — refresh from it rather than trusting local echo
@@ -665,6 +705,8 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
     setCart([]);
     setShowPayModal(false);
     setReceivedAmount('');
+    setDiscountValue('');
+    setDiscountMode('percent');
   };
 
   const handleCloseShiftConfirm = async () => {
@@ -832,6 +874,27 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
             <span>{t("Subtotal")}</span>
             <span>{currency} {subtotal.toFixed(2)}</span>
           </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm text-slate-500 font-medium">{t("Discount")}</span>
+            <div className="flex items-center gap-1.5">
+              <div className="flex rounded-lg overflow-hidden border border-slate-200 shrink-0">
+                <button type="button" onClick={() => setDiscountMode('percent')} className={`px-2 py-1 text-[11px] font-bold transition ${discountMode === 'percent' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}>%</button>
+                <button type="button" onClick={() => setDiscountMode('amount')} className={`px-2 py-1 text-[11px] font-bold transition border-l border-slate-200 ${discountMode === 'amount' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}>{currency}</button>
+              </div>
+              <input
+                type="number" min={0} step="0.01" placeholder="0"
+                value={discountValue}
+                onChange={(e) => setDiscountValue(e.target.value)}
+                className="w-20 bg-white border border-slate-200 rounded-lg px-2 py-1 text-sm text-right text-slate-800 font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+          {parsedDiscountValue > 0 && (
+            <div className="flex justify-between text-xs text-rose-500 font-semibold">
+              <span>{t("Discount applied")}</span>
+              <span>-{currency} {(preDiscountSubtotal - cartTotals.discountedSubtotal).toFixed(2)}</span>
+            </div>
+          )}
           {totalDiscount > 0 && (
             <div className="flex justify-between text-sm text-rose-500 font-semibold">
               <span>{t("Discount")}</span>
@@ -1060,8 +1123,46 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
 
             <div className="flex gap-3 mt-8">
               <button onClick={() => setShowPayModal(false)} disabled={isSavingPos} className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition disabled:opacity-50">{t("Cancel")}</button>
-              <button onClick={handlePayInvoice} disabled={isSavingPos} className="flex-[2] py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 disabled:opacity-50">
+              <button onClick={() => handlePayInvoice()} disabled={isSavingPos} className="flex-[2] py-3.5 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 disabled:opacity-50">
                 <Check className="w-5 h-5" /> {isSavingPos ? t('Processing...') : t('Confirm Payment')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manager override for a header discount that exceeds the acting cashier's own
+          authority (no pos.discount at all, or a discount past their own cap) — same
+          shape as POS Returns' override modal: the cashier's own session is untouched,
+          this just supplies a NAMED other user's credentials for the server to verify
+          holds pos.discount and a high-enough cap before letting THIS sale through. See
+          POST /api/transactions/invoices in server/routes/transactions.ts. */}
+      {showDiscountOverride && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full space-y-4">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-amber-600" />
+              <h3 className="font-bold text-slate-800">{t('Manager Authorization Required')}</h3>
+            </div>
+            <p className="text-xs text-slate-500">{t('This discount exceeds what you are authorized to give. Ask a manager or supervisor to authorize it by entering their own login below.')}</p>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">{t('Manager Email/Username')}</label>
+              <input type="text" autoComplete="off" value={discountOverrideUsername} onChange={e => setDiscountOverrideUsername(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">{t('Manager Password')}</label>
+              <input type="password" autoComplete="off" value={discountOverridePassword} onChange={e => setDiscountOverridePassword(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { setShowDiscountOverride(false); setDiscountOverrideUsername(''); setDiscountOverridePassword(''); }} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl">{t('Cancel')}</button>
+              <button
+                onClick={() => handlePayInvoice({ overrideUsername: discountOverrideUsername, overridePassword: discountOverridePassword })}
+                disabled={isSavingPos || !discountOverrideUsername || !discountOverridePassword}
+                className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold rounded-xl"
+              >
+                {isSavingPos ? t('Processing...') : t('Authorize & Sell')}
               </button>
             </div>
           </div>
@@ -1170,16 +1271,29 @@ function PosReturns({ db, onRefreshDb, currentUser, activeCompanyId, posSettings
     return slab ? Number(slab.percentage) : 0;
   };
 
+  // Mirrors computeInvoiceServerTotals (server/lib/businessLogic.ts) exactly — same
+  // shrink-factor distribution of the original sale's header discount across only the
+  // returned lines — so this preview matches what POST /returns actually refunds to the
+  // cent. A naive qty*unitCost*(1+vat) preview (the old version of this) silently ignored
+  // any header discount on the original sale, showing the customer/cashier a refund total
+  // higher than what they'd actually get back.
+  const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
   const refundPreview = useMemo(() => {
     if (!selectedInvoice) return 0;
-    let total = 0;
-    for (const item of selectedInvoice.items) {
-      const qty = returnQty[item.id] || 0;
-      if (qty <= 0) continue;
-      const rate = taxSlabRate(item.taxSlabId);
-      total += qty * Number(item.unitCost) * (1 + rate / 100);
-    }
-    return Math.round(total * 100) / 100;
+    const lines = selectedInvoice.items
+      .map((item: any) => ({ item, qty: returnQty[item.id] || 0 }))
+      .filter((l: any) => l.qty > 0);
+    if (lines.length === 0) return 0;
+    const itemsSubtotal = round2(lines.reduce((acc: number, l: any) => acc + round2(Number(l.item.unitCost) * l.qty), 0));
+    const headerDiscount = round2(itemsSubtotal * (Number(selectedInvoice.discountPercentage || 0) / 100));
+    const shrinkFactor = itemsSubtotal > 0 ? (itemsSubtotal - headerDiscount) / itemsSubtotal : 1;
+    const discountedSubtotal = round2(Math.max(0, itemsSubtotal - headerDiscount));
+    const taxAmount = round2(lines.reduce((acc: number, l: any) => {
+      const lineSubtotal = round2(round2(Number(l.item.unitCost) * l.qty) * shrinkFactor);
+      const rate = taxSlabRate(l.item.taxSlabId);
+      return acc + round2(lineSubtotal * (rate / 100));
+    }, 0));
+    return round2(discountedSubtotal + taxAmount);
   }, [selectedInvoice, returnQty, db.taxSlabs]);
 
   const buildItemsPayload = () => {

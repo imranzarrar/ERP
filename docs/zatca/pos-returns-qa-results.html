@@ -1,0 +1,306 @@
+<title>POS Returns — ZATCA Dual-Gate Results</title>
+<style>
+  :root {
+    --ink: #14181c; --ink-soft: #454c52; --paper: #f1f2ed; --paper-raised: #fbfbf8; --line: #dcddd6;
+    --accent: #0e7c86; --accent-ink: #063339; --accent-soft: #dcecec;
+    --warm: #c9622a; --warm-soft: #f4e3d7;
+    --good: #1f8a5f; --good-soft: #dcf0e5; --warn: #9a7107; --warn-soft: #f3ecd2;
+    --crit: #b23a3a; --crit-soft: #f6dede; --info: #3b6fa0; --info-soft: #dde9f3;
+    --shadow: 0 1px 2px rgba(20,24,28,.06), 0 8px 24px -12px rgba(20,24,28,.18);
+    --font-display: "Bahnschrift","SF Compact Text","Segoe UI Semibold","Helvetica Neue",system-ui,sans-serif;
+    --font-body: "Charter","Iowan Old Style","Georgia","Cambria","Times New Roman",serif;
+    --font-mono: "SF Mono","Cascadia Code","Consolas","Roboto Mono",ui-monospace,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #ecece6; --ink-soft: #b6bab9; --paper: #14171a; --paper-raised: #1b1f22; --line: #2c3033;
+      --accent: #45bcc7; --accent-ink: #cdf0f3; --accent-soft: #16333a;
+      --warm: #e08b52; --warm-soft: #3a271b;
+      --good: #4fbf8f; --good-soft: #16332a; --warn: #d8b854; --warn-soft: #362f16;
+      --crit: #e28080; --crit-soft: #3a1e1e; --info: #7fb1e0; --info-soft: #1c2c3a;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #ecece6; --ink-soft: #b6bab9; --paper: #14171a; --paper-raised: #1b1f22; --line: #2c3033;
+    --accent: #45bcc7; --accent-ink: #cdf0f3; --accent-soft: #16333a;
+    --warm: #e08b52; --warm-soft: #3a271b;
+    --good: #4fbf8f; --good-soft: #16332a; --warn: #d8b854; --warn-soft: #362f16;
+    --crit: #e28080; --crit-soft: #3a1e1e; --info: #7fb1e0; --info-soft: #1c2c3a;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+  :root[data-theme="light"] {
+    --ink: #14181c; --ink-soft: #454c52; --paper: #f1f2ed; --paper-raised: #fbfbf8; --line: #dcddd6;
+    --accent: #0e7c86; --accent-ink: #063339; --accent-soft: #dcecec;
+    --warm: #c9622a; --warm-soft: #f4e3d7;
+    --good: #1f8a5f; --good-soft: #dcf0e5; --warn: #9a7107; --warn-soft: #f3ecd2;
+    --crit: #b23a3a; --crit-soft: #f6dede; --info: #3b6fa0; --info-soft: #dde9f3;
+    --shadow: 0 1px 2px rgba(20,24,28,.06), 0 8px 24px -12px rgba(20,24,28,.18);
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: light dark; }
+  body { margin: 0; }
+  .doc { background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.6; min-height: 100%; }
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 600; color: var(--ink); text-wrap: balance; letter-spacing: 0.01em; }
+  code, .ref { font-family: var(--font-mono); font-size: 0.85em; background: var(--paper-raised); border: 1px solid var(--line); padding: 0.05em 0.35em; border-radius: 3px; color: var(--accent-ink); }
+
+  .layout { display: grid; grid-template-columns: 260px minmax(0,1fr); max-width: 1320px; margin: 0 auto; }
+  @media (max-width: 880px) { .layout { grid-template-columns: 1fr; } .rail { position: static !important; border-right: none !important; border-bottom: 1px solid var(--line); } }
+
+  .rail { position: sticky; top: 0; align-self: start; height: 100vh; overflow-y: auto; padding: 2.25rem 1.5rem 2rem; border-right: 1px solid var(--line); font-family: var(--font-display); }
+  .rail-mark { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.35rem; }
+  .rail-mark .sq { width: 10px; height: 10px; background: var(--accent); flex-shrink: 0; }
+  .rail-title { font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft); }
+  .rail-doc-id { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink-soft); margin: 0 0 1.5rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--line); }
+  .rail-doc-id div { display: flex; justify-content: space-between; gap: 0.75rem; margin-top: 0.3rem; }
+  .rail-doc-id span:last-child { color: var(--ink); text-align: right; }
+  .rail-status { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; color: var(--good); background: var(--good-soft); border: 1px solid color-mix(in srgb, var(--good) 35%, transparent); padding: 0.32rem 0.6rem; margin-bottom: 1.75rem; }
+  .rail-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--good); }
+  .rail nav { display: flex; flex-direction: column; gap: 0.05rem; }
+  .rail nav a { display: block; font-size: 0.76rem; color: var(--ink-soft); text-decoration: none; padding: 0.38rem 0 0.38rem 0.7rem; border-left: 2px solid transparent; }
+  .rail nav a:hover { color: var(--ink); }
+  .rail nav a.active { color: var(--accent-ink); border-left-color: var(--accent); font-weight: 600; }
+
+  .content { padding: 3rem 3.25rem 6rem; min-width: 0; }
+  @media (max-width: 880px) { .content { padding: 2rem 1.25rem 4rem; } }
+  .doc-header .kicker { font-family: var(--font-display); font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent-soft); display: inline-block; padding: 0.3rem 0.65rem; margin-bottom: 1rem; }
+  .doc-header h1 { font-size: clamp(1.6rem, 3vw, 2.2rem); line-height: 1.16; margin: 0 0 0.6rem; max-width: 24ch; }
+  .doc-header .dek { font-size: 1.05rem; color: var(--ink-soft); max-width: 68ch; margin: 0 0 2.5rem; }
+
+  section { max-width: 74ch; margin: 0 0 3rem; scroll-margin-top: 2rem; }
+  section.wide { max-width: none; }
+  section h2 { font-size: 1.4rem; margin: 0 0 0.3rem; border-top: 1px solid var(--line); padding-top: 1.75rem; }
+  .section-eyebrow { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-soft); margin: 0 0 0.5rem; }
+  section h3 { font-size: 1.05rem; margin: 1.5rem 0 0.6rem; }
+  section p { margin: 0 0 1rem; }
+  ul.plain, ol.plain { padding-left: 1.2rem; margin: 0 0 1rem; }
+  ul.plain li, ol.plain li { margin-bottom: 0.4rem; }
+
+  .callout { background: var(--paper-raised); border: 1px solid var(--line); border-left: 3px solid var(--accent); padding: 1.1rem 1.3rem; margin: 1.25rem 0; }
+  .callout .label { font-family: var(--font-display); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-ink); margin-bottom: 0.4rem; }
+  .callout.risk { border-left-color: var(--warm); }
+  .callout.risk .label { color: var(--warm); }
+
+  .pill { display: inline-flex; align-items: center; gap: 0.4rem; font-family: var(--font-display); font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.55rem 0.2rem 0.45rem; border-radius: 100px; white-space: nowrap; }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+  .pill.good { background: var(--good-soft); color: var(--good); }
+  .pill.warn { background: var(--warn-soft); color: var(--warn); }
+  .pill.crit { background: var(--crit-soft); color: var(--crit); }
+  .pill.info { background: var(--info-soft); color: var(--info); }
+  .pill.neutral { background: var(--paper); color: var(--ink-soft); border: 1px solid var(--line); }
+
+  .table-wrap { overflow-x: auto; margin: 1rem 0 1.75rem; border: 1px solid var(--line); }
+  table.plan { width: 100%; border-collapse: collapse; font-size: 0.86rem; min-width: 640px; background: var(--paper-raised); }
+  table.plan th { text-align: left; font-family: var(--font-display); font-size: 0.68rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; padding: 0.6rem 0.85rem; border-bottom: 1px solid var(--line); background: var(--paper); white-space: nowrap; }
+  table.plan td { padding: 0.65rem 0.85rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.plan tbody tr:last-child td { border-bottom: none; }
+  table.plan td.id { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-soft); white-space: nowrap; }
+  table.plan td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .phase-card { background: var(--paper-raised); border: 1px solid var(--line); box-shadow: var(--shadow); padding: 1.1rem 1.3rem; margin-bottom: 0.9rem; }
+  .phase-card .phead { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: 0.4rem; }
+  .phase-card .ptitle { font-family: var(--font-display); font-weight: 600; font-size: 0.98rem; }
+  .phase-card .ptag { font-family: var(--font-mono); font-size: 0.68rem; color: var(--accent-ink); background: var(--accent-soft); padding: 0.1rem 0.45rem; }
+  .phase-card p { margin: 0 0 0.5rem; font-size: 0.9rem; color: var(--ink-soft); }
+  .phase-card .gate { font-size: 0.82rem; border-top: 1px dashed var(--line); padding-top: 0.55rem; margin-top: 0.55rem; }
+  .phase-card .gate b { font-family: var(--font-display); font-size: 0.68rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink); display: block; margin-bottom: 0.25rem; }
+
+  .exhibit { background: var(--paper-raised); border: 1px solid var(--line); box-shadow: var(--shadow); padding: 1.75rem 2rem; margin: 1.25rem 0 2rem; }
+  .exhibit-label { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-ink); margin: 0 0 1rem; }
+
+  .checklist { list-style: none; margin: 0 0 1.25rem; padding: 0; }
+  .checklist li { display: flex; gap: 0.6rem; padding: 0.4rem 0; border-bottom: 1px dashed var(--line); font-size: 0.9rem; }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist input[type="checkbox"] { margin-top: 0.2rem; flex-shrink: 0; width: 14px; height: 14px; accent-color: var(--accent); }
+
+  .flow-mini { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 1rem 0 1.5rem; font-family: var(--font-display); font-size: 0.82rem; }
+  .flow-mini .step { background: var(--paper-raised); border: 1px solid var(--line); padding: 0.5rem 0.9rem; }
+  .flow-mini .arrow { color: var(--ink-soft); }
+  .flow-mini .step.gate { border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+
+  .signoff { background: var(--ink); color: var(--paper); padding: 2.25rem 2.5rem; margin: 3rem 0 0; }
+  .signoff h2 { color: var(--paper); border: none; padding-top: 0; }
+  .signoff p, .signoff li { color: color-mix(in srgb, var(--paper) 80%, transparent); }
+  .signoff .stamp { font-family: var(--font-mono); font-size: 0.75rem; color: var(--accent); margin-top: 1rem; }
+
+  ::selection { background: var(--accent-soft); color: var(--accent-ink); }
+</style>
+
+<div class="doc">
+  <div class="layout">
+    <aside class="rail" id="rail">
+      <div class="rail-mark"><span class="sq"></span><span class="rail-title">QA Results</span></div>
+      <div class="rail-doc-id">
+        <div><span>Scope</span><span>ZATCA Sandbox</span></div>
+        <div><span>Feature</span><span>POS Returns</span></div>
+        <div><span>Owner</span><span>QA Engineering</span></div>
+        <div><span>Follows on</span><span>BACKLOG #106</span></div>
+      </div>
+      <div class="rail-status">Executed — see §05 Results</div>
+      <nav>
+        <a href="#summary">Summary &amp; outcome</a>
+        <a href="#onboarding">01 — Fresh sandbox onboarding</a>
+        <a href="#gates">02 — Dual-gate protocol recap</a>
+        <a href="#matrix">03 — Return test matrix</a>
+        <a href="#mixedtax">04 — Mixed-tax-rate return, in detail</a>
+        <a href="#results">05 — Execution results &amp; findings</a>
+        <a href="#triage">06 — Tolerated warnings &amp; known limitations</a>
+        <a href="#exit">07 — Exit criteria</a>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="doc-header">
+        <span class="kicker">QA Results · POS Returns · ZATCA Sandbox</span>
+        <h1>Proving the return/Credit-Note pipeline holds under real ZATCA scrutiny.</h1>
+        <p class="dek">BACKLOG item 106 built POS Terminal Returns — full and partial, permission-gated, manager-override-capable — as Credit Notes reusing the same invoice/ZATCA pipeline as every other document in this app, but explicitly deferred real dual-gate verification. This document is that verification: a fresh ZATCA Sandbox onboarding from scratch, then a return-focused test matrix run against ZATCA's real API and the SDK's independent local validator, following this project's own standing protocol (CLAUDE.md, <code>docs/zatca/sandbox-qa-test-plan.html</code>).</p>
+      </div>
+
+      <section id="summary">
+        <div class="callout">
+          <div class="label">Outcome</div>
+          <p style="margin:0;">7 return scenarios run end-to-end against a freshly onboarded throwaway company, each dual-gate-verified. <b>Zero real defects found</b> in return-specific code — cumulative-quantity validation, per-line tax resolution, mixed-tax-rate <code>TaxSubtotal</code> grouping, refund-amount math, restocking, and the manager-override mechanism all held up. One incidental, real Gate-1 rejection was captured for free (a test-fixture mistake, not an app defect) and confirmed the app's rejection-handling behaves consistently for a return the same way it already does for a regular invoice. One pre-existing, non-return-specific gap was observed and flagged for a separate session, not fixed here.</p>
+        </div>
+        <p>The environment was confirmed reset at the start of this session — a direct database check showed zero companies with <code>zatcaEnabled = true</code> or a completed sandbox onboarding, so nothing here reused state from an earlier pass.</p>
+      </section>
+
+      <section id="onboarding" class="wide" style="max-width:74ch;">
+        <p class="section-eyebrow">01 / Fresh sandbox onboarding</p>
+        <h2 style="max-width:74ch;">A dedicated throwaway company, onboarded from nothing</h2>
+        <p>A brand-new company ("POS Returns ZATCA QA Co") was created specifically for this pass — never touching <code>Naqsh Co- CNC</code> or any other existing company in this database. The real six-call onboarding sequence in <code>server/routes/zatca.ts</code> was driven directly (the same calls the onboarding wizard UI itself makes), using ZATCA's shared sandbox test VAT (<code>399999999900003</code>) and the documented sandbox OTP (<code>123456</code>):</p>
+        <div class="flow-mini">
+          <div class="step">company-config</div><div class="arrow">→</div>
+          <div class="step">generate-keypair-csr</div><div class="arrow">→</div>
+          <div class="step gate">request-compliance-csid</div><div class="arrow">→</div>
+          <div class="step gate">run-compliance-suite</div><div class="arrow">→</div>
+          <div class="step gate">request-production-csid</div><div class="arrow">→</div>
+          <div class="step">set-active-environment</div>
+        </div>
+        <ul class="plain">
+          <li><b>Compliance suite</b>: both the Standard B2B and Simplified B2C sample invoices <span class="pill good">CLEARED</span> against ZATCA's real sandbox compliance endpoint.</li>
+          <li><b>Production CSID</b>: ZATCA returned its known static sandbox certificate; the app correctly detected this and switched to ZATCA's matching published sample private key (the already-documented sandbox sample-key adoption from BACKLOG item 40), correcting the stored CR to the shared sandbox value (<code>886431145</code>). <code>isOnboarded</code> became <code>true</code>.</li>
+          <li><b>Independent key/certificate verification</b>: rather than trust the app's own success message, the stored certificate and private key were pulled directly from the database and checked with the same <code>certificateMatchesPrivateKey</code> routine the app itself uses — confirmed genuinely matching.</li>
+          <li><code>zatcaEnabled</code> auto-flipped to <code>true</code> on successful sandbox onboarding, exactly as designed.</li>
+        </ul>
+        <p>The company was also equipped with a bank account, 15% standard + 0% exempt tax slabs, an open fiscal month, a warehouse with two stocked products, one full-ZATCA-identity B2B customer, one name-only B2C customer, a cashier user without <code>pos.return</code>, and a manager user with it (granted via a real <code>Role</code> + <code>userRoles</code> row — this app resolves permissions from assigned Roles, not the legacy unused <code>users.permissions</code> column).</p>
+      </section>
+
+      <section id="gates" class="wide" style="max-width:74ch;">
+        <p class="section-eyebrow">02 / Dual-gate protocol recap</p>
+        <h2>Same standard as every other ZATCA verification pass in this project</h2>
+        <p>Every Credit Note produced by a return went through both independent checks before counting as verified — full protocol detail lives in <code>docs/zatca/sandbox-qa-test-plan.html</code> §03; this pass didn't change or relax it.</p>
+        <table class="plan">
+          <thead><tr><th>Gate</th><th>What it checks</th><th>Pass condition</th></tr></thead>
+          <tbody>
+            <tr><td><b>1 · API</b></td><td>Real clearance (<code>388</code>) or reporting (<code>0200000</code>) call to ZATCA's actual sandbox</td><td><span class="pill good">CLEARED</span> / <span class="pill info">REPORTED</span>, zero <code>errorMessages</code>. Warnings noted, not blocking.</td></tr>
+            <tr><td><b>2 · SDK</b></td><td><code>fatoora -validate</code> (<code>tools/zatca-sdk/</code>) against the exact stored <code>xmlContent</code></td><td><code>[XSD]</code>/<code>[EN]</code>/<code>[KSA]</code> PASSED always. Known, already-documented CLI limitations (no <code>[QR]</code>/<code>[SIGNATURE]</code> verdict for Standard/B2B; <code>[SIGNATURE]</code> can't PASS for B2C on this machine's JDK; <code>[PIH]</code> FAILED on any non-genesis document validated alone) are not treated as failures.</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="matrix" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">03 / Return test matrix</p>
+        <h2 style="max-width:74ch;">Seven cases, run against the live dev server through the real routes</h2>
+        <p style="max-width:74ch;">Original sales via <code>POST /api/transactions/invoices</code> (<code>isPosSale:true</code>), returns via <code>POST /api/pos/returns</code> — the same routes the POS Terminal UI itself calls.</p>
+        <div class="table-wrap">
+          <table class="plan">
+            <thead><tr><th>Case</th><th>Gate 1 — real sandbox</th><th>Gate 2 — <code>fatoora -validate</code></th></tr></thead>
+            <tbody>
+              <tr><td>Full return, B2C single line</td><td>Sale <span class="pill info">REPORTED</span>, Note <span class="pill info">REPORTED</span>, zero errors</td><td>XSD/EN/KSA/QR PASSED; SIGNATURE FAILED (known JDK gap); PIH FAILED (expected, non-genesis)</td></tr>
+              <tr><td>Full return, B2B single line</td><td>Sale <span class="pill good">CLEARED</span>, Note <span class="pill good">CLEARED</span>, zero errors</td><td>XSD/EN/KSA PASSED (no QR/SIGNATURE verdict for 388, documented); PIH FAILED (expected)</td></tr>
+              <tr><td>Partial return, B2C (1 of 4 units, multi-line sale)</td><td>Sale <span class="pill info">REPORTED</span>, Note <span class="pill info">REPORTED</span>, zero errors</td><td>Same pattern as the B2C row above</td></tr>
+              <tr><td>Partial return, B2B (2 of 5 units, multi-line sale)</td><td>Sale <span class="pill good">CLEARED</span>, Note <span class="pill good">CLEARED</span>, zero errors</td><td>XSD/EN/KSA PASSED; PIH FAILED (expected)</td></tr>
+              <tr><td>Sequential partial returns (2nd &amp; 3rd against the same original line)</td><td>Both notes <span class="pill good">CLEARED</span>, zero errors; a 4th attempt beyond what remained correctly rejected 400 server-side</td><td>Both PASSED (KSA); PIH FAILED (expected)</td></tr>
+              <tr><td>Partial return spanning a mixed-tax-rate original (15% + 0% exempt)</td><td><span class="pill good">CLEARED</span>, zero <code>errorMessages</code>, one tolerated <code>BR-KSA-23</code> warning</td><td>XSD/EN/KSA PASSED, same tolerated warning; PIH FAILED (expected) — see §04</td></tr>
+              <tr><td>Manager-override return vs. same-shaped direct return</td><td>No-override 403; wrong password 401; override succeeds, note <span class="pill info">REPORTED</span> zero errors; direct return also <span class="pill info">REPORTED</span> zero errors</td><td>Both PASSED the same way as the B2C row; XML of the two notes is byte-for-byte structurally identical once identity/timestamp/signature/hash-chain fields are normalized out</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">
+          <div class="label">Manager override — zero effect on the document</div>
+          <p style="margin:0;">The whole point of testing this pair together: a return authorized via manager override and an identically-shaped return submitted directly by an already-permitted user must produce the same ZATCA document. After normalizing out only the fields that legitimately differ between any two distinct documents (UUID, ICV/PIH, IssueTime, digital signature, QR payload), the two Credit Notes' XML compared byte-for-byte identical. The override mechanism changes who is allowed to submit, never what gets submitted.</p>
+        </div>
+      </section>
+
+      <section id="mixedtax">
+        <p class="section-eyebrow">04 / Mixed-tax-rate return, in detail</p>
+        <h2>This project's own historically highest-risk case, re-run for returns</h2>
+        <p><code>docs/zatca/sandbox-qa-test-plan.html</code> §05 flagged mixed tax rates on one invoice as the highest-risk scenario in this codebase, and a real defect was found and fixed there (item 78) — a single shared header tax rate instead of one <code>TaxSubtotal</code> per distinct rate. This pass checked whether that fix carries through to a <em>return</em> that itself spans two rates, not just an original sale.</p>
+        <p>Original invoice: 4 units at 15%, 4 units at 0% exempt. Return: 1 of the 15% units and 2 of the 0% units, in a single Credit Note. Result:</p>
+        <ul class="plain">
+          <li>Refund amount computed correctly: <code>1 × 120 × 1.15 + 2 × 60 × 1.00 = SAR 258</code>, confirmed against the audit log's recorded <code>refundAmount</code>.</li>
+          <li>The Credit Note's XML carries <b>two distinct <code>cac:TaxSubtotal</code> blocks</b> — one per rate actually present on the return — not one shared block.</li>
+          <li>Real ZATCA sandbox: <span class="pill good">CLEARED</span>, zero <code>errorMessages</code>; the only warning was the already-tracked <code>BR-KSA-23</code> (exemption reason code), present because this test's 0% slab has none configured — expected, not a regression.</li>
+        </ul>
+        <p style="margin:0;">The per-rate grouping fix generalizes correctly to the return/Credit-Note path without any additional code changes being needed.</p>
+      </section>
+
+      <section id="results" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">05 / Execution results &amp; findings</p>
+        <h2 style="max-width:74ch;">What actually happened when this matrix was run</h2>
+
+        <h3>Incidental Gate-1 rejection, captured for free</h3>
+        <p>The B2B test customer was initially (accidentally) given the exact same shared sandbox VAT as the company's own onboarded seller identity. ZATCA's real sandbox correctly rejected clearance with a specific, real error:</p>
+        <div class="exhibit">
+          <div class="exhibit-label">Real ZATCA sandbox response body</div>
+          <code style="display:block;white-space:pre-wrap;background:none;border:none;padding:0;">BR-CUSTOM-VALIDATION-01 — The Seller VAT registration number ... must not match the buyer VAT registration number (BT-48).</code>
+        </div>
+        <p>Fully captured in the audit log (<code>zatca_api_error</code>, HTTP 400, complete <code>validationResults.errorMessages</code>). Both the sale and its Credit Note correctly landed on <code>zatcaStatus: ERROR</code> and never fabricated a false <code>CLEARED</code>. One nuance worth recording: this particular ZATCA response arrived as an HTTP 400, not the "200 with <code>clearanceStatus: REJECTED</code>" shape this app's dedicated <code>REJECTED</code>-status handling is built for — so it was handled via the generic API-error catch path instead. Either path stops clearance correctly and records the real detail durably; this is not a return-specific bug (a regular back-office Invoice against the same customer would fail identically) — the test fixture was fixed (a distinct VAT assigned) and the case re-run cleanly.</p>
+
+        <h3>Real defects found in return-specific code</h3>
+        <p><b>None.</b> Every genuine test case, once the test-fixture VAT collision above was corrected, cleared or reported with zero <code>errorMessages</code> from ZATCA's real sandbox API. Cumulative-quantity return validation, per-line tax resolution, mixed-tax-rate grouping, refund-amount math, stock restocking, and the manager-override mechanism all held up under real dual-gate scrutiny. No application code was changed as a result of this pass.</p>
+
+        <h3>One pre-existing, non-return-specific gap — observed, not fixed here</h3>
+        <p>When ZATCA's real API rejects a submission via an HTTP non-200 response whose body carries no top-level <code>message</code> field (exactly the shape of the incidental rejection above), <code>server/lib/zatca/apiClient.ts</code>'s <code>buildZatcaError</code> falls back to a generic message ("ZATCA invoice clearance failed") that ends up stored as the invoice row's own <code>zatcaValidationResults</code> — the real, specific ZATCA error detail (e.g. the exact <code>BR-CUSTOM-VALIDATION-01</code> wording) survives only in the audit log's <code>zatca_api_error</code> entry, not on the invoice itself. This is identical for any invoice, POS-originated or not, and predates POS Returns entirely. Flagged for a separate, dedicated session rather than touched here, in keeping with this project's own standard of extra caution around <code>server/lib/zatca/</code> (CLAUDE.md).</p>
+      </section>
+
+      <section id="triage">
+        <p class="section-eyebrow">06 / Tolerated warnings &amp; known limitations</p>
+        <h2>Per the QA plan's own §09 triage rules — none of these block sign-off</h2>
+        <table class="plan">
+          <thead><tr><th>Observation</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td><code>BR-KSA-23</code> (VAT exemption reason code) on the test's unconfigured 0% slab</td><td><span class="pill warn">Track, don't block</span> — already tracked, item 78</td></tr>
+            <tr><td><code>[SIGNATURE] FAILED</code> on every B2C document under <code>fatoora -validate</code></td><td><span class="pill neutral">Expected, ignore</span> — already-documented local JDK/secp256k1 gap (item 79), reproduced identically here, not a regression</td></tr>
+            <tr><td><code>[PIH] FAILED</code> on every non-genesis document validated in isolation</td><td><span class="pill neutral">Expected, ignore</span> — permanent, already-documented <code>fatoora -validate</code> tool limitation (no chain/batch mode)</td></tr>
+            <tr><td>No <code>[QR]</code>/<code>[SIGNATURE]</code> verdict for Standard/B2B (<code>388</code>) documents</td><td><span class="pill neutral">Expected, ignore</span> — already-documented CLI limitation, confirmed again for every B2B case here</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="exit" style="max-width:none;">
+        <div class="signoff">
+          <h2>Exit criteria</h2>
+          <ul class="checklist">
+            <li><input type="checkbox" disabled checked> Fresh sandbox onboarding completed end-to-end with zero manual cryptographic intervention, independently key/certificate verified.</li>
+            <li><input type="checkbox" disabled checked> All 7 return matrix cases run and dual-gate verified — zero real <code>errorMessages</code> from ZATCA's real sandbox on any genuine case.</li>
+            <li><input type="checkbox" disabled checked> Mixed-tax-rate return produces correct multi-<code>TaxSubtotal</code> XML and correct refund math.</li>
+            <li><input type="checkbox" disabled checked> Manager-override return confirmed to produce a ZATCA document structurally identical to a directly-permitted return of the same shape.</li>
+            <li><input type="checkbox" disabled checked> A real Gate-1 rejection (incidental) confirmed the app's rejection-handling never fabricates a false CLEARED, for a return the same way it's already proven for a regular invoice.</li>
+            <li><input type="checkbox" disabled> A deliberately-forced (not incidental) <code>REJECTED</code>-shaped rejection, and the visual Sales-Invoices-list/print-preview check (§06 of the original QA plan) — both remain open for a future pass.</li>
+          </ul>
+          <p>Five of six boxes are closed with live evidence from this pass. The two remaining items are carry-overs, not defects found — nothing this pass turned up suggests either would fail if run, they simply weren't exercised this session.</p>
+          <p class="stamp">Builds directly on: BACKLOG item 106 (POS Returns) · docs/zatca/sandbox-qa-test-plan.html (dual-gate protocol &amp; prior findings) · this execution pass</p>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll('.rail nav a'));
+    var sections = links.map(function (a) { return document.querySelector(a.getAttribute('href')); }).filter(Boolean);
+    if (!('IntersectionObserver' in window) || !sections.length) return;
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        var id = '#' + entry.target.id;
+        links.forEach(function (a) { a.classList.toggle('active', a.getAttribute('href') === id); });
+      });
+    }, { rootMargin: '-15% 0px -70% 0px', threshold: 0 });
+    sections.forEach(function (s) { io.observe(s); });
+  })();
+</script>

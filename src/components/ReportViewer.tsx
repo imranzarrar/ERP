@@ -105,6 +105,49 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
  }
  }, [db.selectedCompanyId, db.banks]);
 
+ // Trial Balance / Profit & Loss / Balance Sheet are fetched from
+ // GET /api/reports/trial-balance|profit-loss|balance-sheet (server/lib/financialReports.ts)
+ // instead of computed client-side from db.invoices/db.expenses/db.vouchers — see
+ // .claude/skills/server-side-report-aggregation/SKILL.md. Only fetches whichever report
+ // is actually on screen, re-fetching when its own inputs change. Every OTHER report in
+ // this file (VAT views, Bank Ledger, Outstanding, Investor Profit Share, Fiscal Month
+ // History) is untouched and still reads getSalesVATData()/etc. directly, including
+ // getInvestorProfitShareData's own internal call to the (still-synchronous)
+ // getProfitLossData() below — that function stays exactly as it was for that one caller.
+ const [trialBalanceData, setTrialBalanceData] = React.useState<ReturnType<typeof getTrialBalance> | null>(null);
+ const [profitLossData, setProfitLossData] = React.useState<ReturnType<typeof getProfitLossData> | null>(null);
+ const [balanceSheetData, setBalanceSheetData] = React.useState<ReturnType<typeof getBalanceSheetData> | null>(null);
+
+ React.useEffect(() => {
+ if (reportType !== 'TrialBalance' || !db.selectedCompanyId) return;
+ let cancelled = false;
+ fetch(`/api/reports/trial-balance?startDate=${startDate}&endDate=${endDate}`)
+ .then(r => r.ok ? r.json() : null)
+ .then(data => { if (!cancelled && data) setTrialBalanceData(data); })
+ .catch(() => {});
+ return () => { cancelled = true; };
+ }, [reportType, db.selectedCompanyId, startDate, endDate]);
+
+ React.useEffect(() => {
+ if (reportType !== 'ProfitLoss' || !db.selectedCompanyId) return;
+ let cancelled = false;
+ fetch(`/api/reports/profit-loss?startDate=${startDate}&endDate=${endDate}&basis=${accountingBasis}`)
+ .then(r => r.ok ? r.json() : null)
+ .then(data => { if (!cancelled && data) setProfitLossData(data); })
+ .catch(() => {});
+ return () => { cancelled = true; };
+ }, [reportType, db.selectedCompanyId, startDate, endDate, accountingBasis]);
+
+ React.useEffect(() => {
+ if (reportType !== 'BalanceSheet' || !db.selectedCompanyId) return;
+ let cancelled = false;
+ fetch(`/api/reports/balance-sheet?asOfDate=${endDate}`)
+ .then(r => r.ok ? r.json() : null)
+ .then(data => { if (!cancelled && data) setBalanceSheetData(data); })
+ .catch(() => {});
+ return () => { cancelled = true; };
+ }, [reportType, db.selectedCompanyId, endDate]);
+
  // Column Sorting States
  const [sortField, setSortField] = React.useState<string>('date');
  const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('asc');
@@ -693,7 +736,9 @@ const getFiscalMonthClosingHistoryData = () => {
  if (!can(REPORT_PERMISSION_KEYS[reportType])) return;
  let reportData: any = {};
  if (reportType === 'TrialBalance') {
- reportData = getTrialBalance();
+ // Print exactly what's on screen (server-fetched) rather than a fresh, possibly-racy
+ // re-derivation — see the trialBalanceData/profitLossData/balanceSheetData fetch effects above.
+ reportData = trialBalanceData || {};
  } else if (reportType === 'SalesVAT') {
  reportData = getSalesVATData();
  } else if (reportType === 'PurchaseVAT') {
@@ -703,9 +748,9 @@ const getFiscalMonthClosingHistoryData = () => {
  } else if (reportType === 'Outstanding') {
  reportData = getOutstandingData();
  } else if (reportType === 'ProfitLoss') {
- reportData = getProfitLossData();
+ reportData = profitLossData || {};
  } else if (reportType === 'BalanceSheet') {
- reportData = getBalanceSheetData();
+ reportData = balanceSheetData || {};
  } else if (reportType === 'VatReturnSummary') {
  reportData = getVatReturnSummaryData();
  } else if (reportType === 'InvestorProfitShare') {
@@ -861,7 +906,8 @@ const getFiscalMonthClosingHistoryData = () => {
 
  {/* 1. Trial Balance viewport */}
  {reportType === 'TrialBalance' && (() => {
- const { ledgers, totalDebits, totalCredits, totalSalesRev, totalPurchaseExp } = getTrialBalance();
+ if (!trialBalanceData) return <div className="text-center py-12 text-xs text-slate-400">{t('Loading...')}</div>;
+ const { ledgers, totalDebits, totalCredits, totalSalesRev, totalPurchaseExp } = trialBalanceData;
  return (
  <div className="space-y-6">
  <div className="text-center">
@@ -1539,7 +1585,8 @@ const getFiscalMonthClosingHistoryData = () => {
  })()}
 
  {reportType === 'ProfitLoss' && (() => {
- const data = getProfitLossData();
+ if (!profitLossData) return <div className="text-center py-12 text-xs text-slate-400">{t('Loading...')}</div>;
+ const data = profitLossData;
  return (
  <div className="space-y-6">
  {/* Header and Toggle */}
@@ -1661,7 +1708,8 @@ const getFiscalMonthClosingHistoryData = () => {
 
  {/* Balance Sheet viewport */}
  {reportType === 'BalanceSheet' && (() => {
- const data = getBalanceSheetData();
+ if (!balanceSheetData) return <div className="text-center py-12 text-xs text-slate-400">{t('Loading...')}</div>;
+ const data = balanceSheetData;
  return (
  <div className="space-y-6">
  <div className="text-center">

@@ -10,6 +10,7 @@ import { isValidZatcaUnitCode } from '../../src/zatcaUnitCodes.js';
 import { previewNextDocumentNumbers, DOCUMENT_TYPE_REGISTRY, getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { assertModifierGroupsOwnedByCompany } from '../lib/businessLogic.js';
 import { imageSize } from 'image-size';
+import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
 
 const router = express.Router();
 
@@ -32,28 +33,41 @@ function composeAddressFromZatcaFields(f: { buildingNumber?: string | null; stre
 }
 
 // --- Customers ---
-router.get('/customers', async (req: any, res) => {
+// Proof-of-concept for the tenantDb RLS rollout (see src/db/schema.ts's TENANT_DB_ROLE
+// comment): these 3 routes query via tenantDb() under withTenantDb, instead of the app's
+// default superuser `db` — company scoping is enforced by both the existing app-level
+// `req.targetCompanyId` filters below (unchanged, kept as-is deliberately) AND the
+// database-level RLS policy on `customers`, as two independent layers.
+router.get('/customers', withTenantDb, async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.customers.read.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const companyId = req.targetCompanyId;
-    const customers = await db.select().from(schema.customers).where(eq(schema.customers.companyId, companyId));
+    const customers = await tenantDb().select().from(schema.customers).where(eq(schema.customers.companyId, companyId));
     res.json(customers);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.post('/customers', async (req: any, res) => {
+router.post('/customers', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     const data = { ...req.body };
 
     // Upsert route: an `id` naming an existing row is an edit, gated by customers.update
     // (not customers.create) - the two are separately grantable now. A deactivated
     // customer is terminal for edits regardless of permission.
+    //
+    // Deliberately queries via the superuser `db`, NOT tenantDb — this check needs to see
+    // a row EVEN IF IT BELONGS TO ANOTHER COMPANY, precisely to catch and reject that case
+    // (assertOwnsRow below) with the correct 403. Querying this via tenantDb would make a
+    // cross-company row invisible under RLS instead of visibly-rejected, turning a clean
+    // "Forbidden: belongs to another company" response into a confusing insert-conflict
+    // error instead (caught by tests/crossCompanyIsolation.test.ts during this migration).
     let existing: typeof schema.customers.$inferSelect | undefined;
     if (data.id) {
       [existing] = await db.select().from(schema.customers).where(eq(schema.customers.id, data.id));
@@ -94,17 +108,16 @@ router.post('/customers', async (req: any, res) => {
       delete data.customerCode;
     }
 
+    // No separate db.transaction() wrapper needed here — withTenantDb already wraps the
+    // entire request in one transaction (BEGIN in the middleware, COMMIT/ROLLBACK on
+    // response finish), so these two statements are already atomic within it.
     const todayIso = new Date().toISOString().slice(0, 10);
-    await db.transaction(async (tx) => {
-      // Assigned once on create only — never regenerated on an edit, even if the row is
-      // somehow missing one (that's the backfill script's job, not this route's).
-      if (!existing) {
-        data.customerCode = await getAndIncrementDocumentNumber(tx, data.companyId, 'customerCode', todayIso);
-      }
-      await tx.insert(schema.customers).values(data).onConflictDoUpdate({
-        target: schema.customers.id,
-        set: data
-      });
+    if (!existing) {
+      data.customerCode = await getAndIncrementDocumentNumber(tdb, data.companyId, 'customerCode', todayIso);
+    }
+    await tdb.insert(schema.customers).values(data).onConflictDoUpdate({
+      target: schema.customers.id,
+      set: data
     });
     res.json({ success: true });
   } catch (error: any) {
@@ -117,20 +130,21 @@ router.post('/customers', async (req: any, res) => {
 // referenceable, just hidden from pickers for new documents. Replaces the old hard
 // DELETE route (which had to guard against exactly those references); toggling needs no
 // such guard since nothing is actually removed.
-router.patch('/customers/:id/toggle-active', async (req: any, res) => {
+router.patch('/customers/:id/toggle-active', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.customers.delete.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
-    const [existing] = await db.select().from(schema.customers)
+    const [existing] = await tdb.select().from(schema.customers)
       .where(and(eq(schema.customers.id, id), eq(schema.customers.companyId, req.targetCompanyId)));
     if (!existing) {
       return res.status(404).json({ error: 'Customer not found.' });
     }
     const nextActive = existing.isActive === false;
-    await db.update(schema.customers).set({ isActive: nextActive }).where(eq(schema.customers.id, id));
+    await tdb.update(schema.customers).set({ isActive: nextActive }).where(eq(schema.customers.id, id));
     res.json({ success: true, isActive: nextActive });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

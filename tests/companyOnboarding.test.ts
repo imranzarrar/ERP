@@ -183,6 +183,7 @@ afterAll(async () => {
     await db.delete(schema.vendors).where(eq(schema.vendors.companyId, companyId));
     await db.delete(schema.customers).where(eq(schema.customers.companyId, companyId));
     await db.delete(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, companyId));
+    await db.delete(schema.documentCounters).where(eq(schema.documentCounters.companyId, companyId));
     await db.delete(schema.companies).where(eq(schema.companies.id, companyId));
   }
   await db.delete(schema.roleTemplates).where(eq(schema.roleTemplates.id, templateId));
@@ -190,6 +191,7 @@ afterAll(async () => {
   await db.delete(schema.auditLogs).where(eq(schema.auditLogs.userId, companyAdminUserId));
   await db.delete(schema.users).where(eq(schema.users.id, superAdminUserId));
   await db.delete(schema.users).where(eq(schema.users.id, companyAdminUserId));
+  await db.delete(schema.documentCounters).where(eq(schema.documentCounters.companyId, superAdminHomeCompanyId));
   await db.delete(schema.companies).where(eq(schema.companies.id, superAdminHomeCompanyId));
 });
 

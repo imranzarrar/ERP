@@ -123,7 +123,17 @@ describe('getAndIncrementDocumentNumber — no-policy regression', () => {
   it('produces the exact legacy PREFIX-1001 format for every registry type when numberingPolicy is unset', async () => {
     for (const entry of DOCUMENT_TYPE_REGISTRY) {
       const number = await db.transaction((tx) => getAndIncrementDocumentNumber(tx, companyId, entry.key, '2026-01-15', null));
-      expect(number).toBe(`${entry.defaultPrefix}-1001`);
+      // Master-data codes (customerCode/vendorCode/sku) are deliberately NOT transactional
+      // documents — see their own registry entries' comment in documentNumbering.ts: no
+      // prefix, a defaultPadWidth-digit zero-padded number, startNumber 0 (first issued
+      // value is 1). This loop previously asserted the PREFIX-1001 shape uniformly across
+      // every entry, which was simply wrong for these three — not a numbering bug, a test
+      // bug that never accounted for them.
+      if (!entry.defaultPrefix) {
+        expect(number).toBe('1'.padStart(entry.defaultPadWidth ?? 0, '0'));
+      } else {
+        expect(number).toBe(`${entry.defaultPrefix}-1001`);
+      }
     }
   });
 

@@ -95,6 +95,11 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  const [filterStatus, setFilterStatus] = React.useState<'All' | 'Unpaid'>('All');
  const [filterZatcaStatus, setFilterZatcaStatus] = React.useState<string>('All');
  const [filterDocType, setFilterDocType] = React.useState<'All' | 'Invoice' | 'CreditNote' | 'DebitNote'>('All');
+ // Origin filter — POS-sold vs. manually-created back-office invoices. No way to isolate
+ // one from the other in this list before this; isPosSale exists on the schema and is
+ // already used server-side (server/routes/pos.ts) but this list never exposed a filter
+ // for it.
+ const [filterOrigin, setFilterOrigin] = React.useState<'All' | 'POS' | 'Manual'>('All');
 
  // Update filters if openMonth changes
   // Filter Invoices
@@ -125,9 +130,14 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
         if (docType !== filterDocType) return false;
       }
 
+      // Origin Filter (POS-sold vs. manually-created back-office) — see filterOrigin's
+      // own declaration comment.
+      if (filterOrigin === 'POS' && !(inv as any).isPosSale) return false;
+      if (filterOrigin === 'Manual' && (inv as any).isPosSale) return false;
+
       return userPermissions.invoice.read.enabled || (currentUser?.id ? inv.createdById === currentUser.id : false);
     });
-  }, [db.invoices, db.selectedCompanyId, filterStartDate, filterEndDate, filterStatus, filterZatcaStatus, filterDocType, isAdmin, currentUser]);
+  }, [db.invoices, db.selectedCompanyId, filterStartDate, filterEndDate, filterStatus, filterZatcaStatus, filterDocType, filterOrigin, isAdmin, currentUser]);
 
  // Reset page when length changes
  React.useEffect(() => {
@@ -586,17 +596,26 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
    return filteredInvoices.filter(i => i.status === 'Active');
  }, [filteredInvoices]);
 
- const kpiTotalInvoiced = React.useMemo(() => {
-   return activeInvoices.reduce((sum, inv) => sum + getInvoiceTotal(inv), 0);
- }, [activeInvoices]);
-
- const kpiTotalCollected = React.useMemo(() => {
-   return activeInvoices.reduce((sum, inv) => {
-     const tot = getInvoiceTotal(inv);
-     if (inv.paymentStatus === 'Paid') return sum + tot;
-     return sum + (inv.amountPaid || 0);
-   }, 0);
- }, [activeInvoices]);
+ // Fetched from GET /api/reports/invoice-kpis (server/lib/financialReports.ts) with the
+ // SAME filter params as filteredInvoices above, instead of summed client-side from
+ // db.invoices — see .claude/skills/server-side-report-aggregation/SKILL.md. The server
+ // version also fixes two real bugs found while porting: a Credit Note previously
+ // inflated "Total Invoiced" instead of reducing it (no sign applied), and "Total
+ // Collected" is now the same Paid-uses-grandTotal-else-amountPaid logic, correctly signed.
+ const [invoiceKpis, setInvoiceKpis] = React.useState({ totalInvoiced: 0, totalCollected: 0 });
+ React.useEffect(() => {
+   if (!db.selectedCompanyId) return;
+   let cancelled = false;
+   const params = new URLSearchParams({
+     ...(filterStartDate ? { startDate: filterStartDate } : {}),
+     ...(filterEndDate ? { endDate: filterEndDate } : {}),
+     status: filterStatus, zatcaStatus: filterZatcaStatus, docType: filterDocType, origin: filterOrigin,
+   });
+   fetch(`/api/reports/invoice-kpis?${params}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setInvoiceKpis(d); }).catch(() => {});
+   return () => { cancelled = true; };
+ }, [db.selectedCompanyId, filterStartDate, filterEndDate, filterStatus, filterZatcaStatus, filterDocType, filterOrigin]);
+ const kpiTotalInvoiced = invoiceKpis.totalInvoiced;
+ const kpiTotalCollected = invoiceKpis.totalCollected;
 
  const kpiPendingBalance = kpiTotalInvoiced - kpiTotalCollected;
  const kpiPaidCount = activeInvoices.filter(i => i.paymentStatus === 'Paid').length;
@@ -794,6 +813,18 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  <option value="Invoice">{t("Invoices Only")}</option>
  <option value="CreditNote">{t("Credit Notes Only")}</option>
  <option value="DebitNote">{t("Debit Notes Only")}</option>
+ </select>
+ </div>
+ <div className="flex items-center gap-2">
+ <label className="text-[10px] font-bold text-slate-500 uppercase">{t("Origin:")}</label>
+ <select
+ value={filterOrigin}
+ onChange={(e) => setFilterOrigin(e.target.value as any)}
+ className="bg-slate-50 border border-slate-200 rounded px-2 py-1 text-xs focus:outline-none font-semibold text-slate-700"
+ >
+ <option value="All">{t("All Origins")}</option>
+ <option value="POS">{t("POS Sales Only")}</option>
+ <option value="Manual">{t("Manually Created Only")}</option>
  </select>
  </div>
  <div className="flex items-center gap-2 ms-auto">

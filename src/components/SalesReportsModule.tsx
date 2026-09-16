@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation, usePermissions } from '../hooks';
-import { DatabaseState, calculateInvoiceTotals, getInvoiceSign } from '../dbStore';
+import { DatabaseState } from '../dbStore';
 import { getMonthToDateRange } from '../dateUtils';
 import { Printer, Filter } from 'lucide-react';
 
@@ -73,146 +73,72 @@ export default function SalesReportsModule({ db, defaultReportType, onPrintDoc }
   const companyCustomers = db.customers.filter(c => c.companyId === companyId);
   const companyInvoices = db.invoices.filter(inv => inv.companyId === companyId && branchMatches((inv as any).branchId));
 
-  // 1. Sales Register — every invoice in the period, full status detail.
-  const getSalesRegisterData = () => {
-    const rows = companyInvoices
-      .filter(inv => inv.date >= startDate && inv.date <= endDate
-        && (selectedCustomerId === 'ALL' || inv.customerId === selectedCustomerId))
-      .map(inv => {
-        const cust = db.customers.find(c => c.id === inv.customerId);
-        // Signed — a Credit Note shows as its own line with a negative grandTotal, a real,
-        // auditable reduction rather than being silently excluded or double-counted as
-        // more sales (see dbStore.ts's getInvoiceSign).
-        const total = calculateInvoiceTotals(db, inv.items, inv.taxSlabId, inv.discountPercentage).grandTotal * getInvoiceSign(inv);
-        return {
-          invoiceNumber: inv.invoiceNumber, date: inv.date, customerName: cust?.name || 'Walk-In',
-          status: inv.status,
-          // A Credit Note's stored paymentStatus is always 'Unpaid' (vestigial — it's not
-          // a receivable), so it's relabeled here rather than shown as if a customer still
-          // owes on it.
-          paymentStatus: inv.documentType === 'CreditNote' ? 'Not Applicable' : inv.paymentStatus,
-          zatcaStatus: (inv as any).zatcaStatus || 'NOT_SUBMITTED',
-          grandTotal: total,
-        };
-      })
-      .sort((a, b) => a.date.localeCompare(b.date));
-    // Cancelled documents stay visible in the row list above (so one can still be found
-    // there, clearly marked) but must never inflate the printed total — matches the
-    // convention already used correctly elsewhere (e.g. server/lib/vatReturn.ts,
-    // ReportViewer.tsx, dbStore.ts's calculateMonthPnL).
-    const totalSales = rows.filter(r => r.status === 'Active').reduce((s, r) => s + r.grandTotal, 0);
-    return { rows, totalSales };
-  };
+  // All 6 reports below are fetched from GET /api/reports/* (server/lib/financialReports.ts)
+  // instead of computed client-side from db.invoices/db.quotations/db.vouchers/db.posShifts
+  // — see .claude/skills/server-side-report-aggregation/SKILL.md. Each report only fetches
+  // while it's the one actually on screen. Company/branch scope is resolved server-side
+  // from req.targetCompanyId/req.allowedBranchIds — never sent by the client.
+  const emptySalesRegister = { rows: [] as any[], totalSales: 0 };
+  const [salesRegisterData, setSalesRegisterData] = React.useState(emptySalesRegister);
+  React.useEffect(() => {
+    if (reportType !== 'SalesRegister' || !companyId) return;
+    let cancelled = false;
+    const params = new URLSearchParams({ startDate, endDate, ...(selectedCustomerId !== 'ALL' ? { customerId: selectedCustomerId } : {}) });
+    fetch(`/api/reports/sales-register?${params}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setSalesRegisterData(d); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [reportType, companyId, startDate, endDate, selectedCustomerId, selectedBranchId]);
+  const getSalesRegisterData = () => salesRegisterData;
 
-  // 2. Item-wise Sales — quantity and revenue per product, from invoice line items with a
-  // real productId (free-typed lines with no catalog link don't contribute — matches how
-  // averageSalePrice itself is folded, same reasoning: nothing to aggregate them against).
-  const getItemWiseSalesData = () => {
-    const inRangeInvoices = companyInvoices.filter(inv => inv.date >= startDate && inv.date <= endDate && inv.status === 'Active');
-    const byProduct = new Map<string, { productId: string; name: string; quantity: number; revenue: number }>();
-    inRangeInvoices.forEach(inv => {
-      // A Credit Note's items are a positive-amount copy of the original invoice's items
-      // (ZATCA convention — see dbStore.ts's getInvoiceSign) representing goods effectively
-      // un-sold, so both quantity and revenue must subtract here, not add on top.
-      const sign = getInvoiceSign(inv);
-      (inv.items || []).forEach((item: any) => {
-        if (!item.productId) return;
-        const product = db.products.find(p => p.id === item.productId);
-        const key = item.productId;
-        const existing = byProduct.get(key) || { productId: key, name: product?.name || item.description, quantity: 0, revenue: 0 };
-        const qty = Number(item.quantity) || 0;
-        const netUnit = Math.max(0, Number(item.unitCost) - Number(item.discountAmount || 0));
-        existing.quantity += qty * sign;
-        existing.revenue += qty * netUnit * sign;
-        byProduct.set(key, existing);
-      });
-    });
-    const rows = Array.from(byProduct.values()).sort((a, b) => b.revenue - a.revenue);
-    return { rows, totalQuantity: rows.reduce((s, r) => s + r.quantity, 0), totalRevenue: rows.reduce((s, r) => s + r.revenue, 0) };
-  };
+  const emptyItemWiseSales = { rows: [] as any[], totalQuantity: 0, totalRevenue: 0 };
+  const [itemWiseSalesData, setItemWiseSalesData] = React.useState(emptyItemWiseSales);
+  React.useEffect(() => {
+    if (reportType !== 'ItemWiseSales' || !companyId) return;
+    let cancelled = false;
+    fetch(`/api/reports/item-wise-sales?startDate=${startDate}&endDate=${endDate}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setItemWiseSalesData(d); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [reportType, companyId, startDate, endDate, selectedBranchId]);
+  const getItemWiseSalesData = () => itemWiseSalesData;
 
-  // 3. Customer Statement — chronological invoices (debit) and receipt vouchers (credit)
-  // for one customer, with a running balance. Same shape as ReportViewer's Bank Ledger.
-  const getCustomerStatementData = () => {
-    if (!statementCustomerId) return { entries: [], endingBalance: 0, customerName: '' };
-    const customer = db.customers.find(c => c.id === statementCustomerId);
-    const custInvoices = companyInvoices.filter(inv => inv.customerId === statementCustomerId && inv.status === 'Active');
-    const invoiceIds = new Set(custInvoices.map(inv => inv.id));
-    const receipts = db.vouchers.filter(v => v.companyId === companyId && branchMatches((v as any).branchId) && v.type === 'Receipt' && v.referenceType === 'Invoice' && invoiceIds.has(v.referenceId));
+  const emptyCustomerStatement = { entries: [] as any[], endingBalance: 0, customerName: '' };
+  const [customerStatementData, setCustomerStatementData] = React.useState(emptyCustomerStatement);
+  React.useEffect(() => {
+    if (reportType !== 'CustomerStatement' || !companyId || !statementCustomerId) return;
+    let cancelled = false;
+    fetch(`/api/reports/customer-statement?customerId=${statementCustomerId}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setCustomerStatementData(d); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [reportType, companyId, statementCustomerId, selectedBranchId]);
+  const getCustomerStatementData = () => customerStatementData;
 
-    const entries: { date: string; type: string; docNumber: string; debit: number; credit: number }[] = [];
-    custInvoices.forEach(inv => {
-      const total = calculateInvoiceTotals(db, inv.items, inv.taxSlabId, inv.discountPercentage).grandTotal;
-      // A Credit Note reduces what the customer owes — it's a credit entry (like a
-      // receipt), not another debit charge, or it would inflate their balance instead of
-      // reducing it.
-      if (inv.documentType === 'CreditNote') {
-        entries.push({ date: inv.date, type: 'Credit Note', docNumber: inv.invoiceNumber, debit: 0, credit: total });
-      } else {
-        entries.push({ date: inv.date, type: 'Invoice', docNumber: inv.invoiceNumber, debit: total, credit: 0 });
-      }
-    });
-    receipts.forEach(v => {
-      entries.push({ date: v.date, type: 'Receipt', docNumber: v.voucherNumber, debit: 0, credit: v.amount });
-    });
-    entries.sort((a, b) => a.date.localeCompare(b.date));
+  const emptyQuotationConversion = { rows: [] as any[], total: 0, converted: 0, cancelled: 0, pending: 0, conversionRate: 0 };
+  const [quotationConversionData, setQuotationConversionData] = React.useState(emptyQuotationConversion);
+  React.useEffect(() => {
+    if (reportType !== 'QuotationConversion' || !companyId) return;
+    let cancelled = false;
+    const params = new URLSearchParams({ startDate, endDate, ...(selectedCustomerId !== 'ALL' ? { customerId: selectedCustomerId } : {}) });
+    fetch(`/api/reports/quotation-conversion?${params}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setQuotationConversionData(d); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [reportType, companyId, startDate, endDate, selectedCustomerId, selectedBranchId]);
+  const getQuotationConversionData = () => quotationConversionData;
 
-    let running = 0;
-    const withBalance = entries.map(e => {
-      running += e.debit - e.credit;
-      return { ...e, runningBalance: running };
-    });
-    return { entries: withBalance, endingBalance: running, customerName: customer?.name || '' };
-  };
+  const emptySalesByStaff = { rows: [] as any[], totalRevenue: 0 };
+  const [salesByStaffData, setSalesByStaffData] = React.useState(emptySalesByStaff);
+  React.useEffect(() => {
+    if (reportType !== 'SalesByStaff' || !companyId) return;
+    let cancelled = false;
+    fetch(`/api/reports/sales-by-staff?startDate=${startDate}&endDate=${endDate}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setSalesByStaffData(d); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [reportType, companyId, startDate, endDate, selectedBranchId]);
+  const getSalesByStaffData = () => salesByStaffData;
 
-  // 4. Quotation Conversion — funnel view of quotation outcomes in the period.
-  const getQuotationConversionData = () => {
-    const quotations = db.quotations.filter(q => q.companyId === companyId && branchMatches((q as any).branchId) && q.date >= startDate && q.date <= endDate
-      && (selectedCustomerId === 'ALL' || q.customerId === selectedCustomerId));
-    const converted = quotations.filter(q => q.status === 'Converted' && !q.isCancelled).length;
-    const cancelled = quotations.filter(q => q.isCancelled).length;
-    const pending = quotations.length - converted - cancelled;
-    const conversionRate = quotations.length > 0 ? (converted / quotations.length) * 100 : 0;
-    const rows = quotations.map(q => {
-      const cust = db.customers.find(c => c.id === q.customerId);
-      return { quotationNumber: q.quotationNumber, date: q.date, customerName: cust?.name || '', status: q.isCancelled ? 'Cancelled' : q.status };
-    }).sort((a, b) => a.date.localeCompare(b.date));
-    return { rows, total: quotations.length, converted, cancelled, pending, conversionRate };
-  };
-
-  // 5. Sales by Staff — revenue grouped by who created the invoice.
-  const getSalesByStaffData = () => {
-    const inRange = companyInvoices.filter(inv => inv.date >= startDate && inv.date <= endDate && inv.status === 'Active');
-    const byStaff = new Map<string, { userId: string; username: string; invoiceCount: number; revenue: number }>();
-    inRange.forEach(inv => {
-      const user = db.users?.find(u => u.id === inv.createdById);
-      const key = inv.createdById || 'unknown';
-      const existing = byStaff.get(key) || { userId: key, username: user?.username || t('Unknown'), invoiceCount: 0, revenue: 0 };
-      existing.invoiceCount += 1;
-      existing.revenue += calculateInvoiceTotals(db, inv.items, inv.taxSlabId, inv.discountPercentage).grandTotal * getInvoiceSign(inv);
-      byStaff.set(key, existing);
-    });
-    const rows = Array.from(byStaff.values()).sort((a, b) => b.revenue - a.revenue);
-    return { rows, totalRevenue: rows.reduce((s, r) => s + r.revenue, 0) };
-  };
-
-  // 6. POS Shift Summary — cash vs. bank sales and cash variance per shift.
-  const getPosShiftSummaryData = () => {
-    const shifts = (db.posShifts || []).filter((s: any) => s.companyId === companyId
-      && s.startTime && String(s.startTime).slice(0, 10) >= startDate && String(s.startTime).slice(0, 10) <= endDate);
-    const rows = shifts.map((s: any) => {
-      const shiftInvoices = companyInvoices.filter(inv => (inv as any).isPosSale && (inv as any).shiftId === s.id && inv.status === 'Active');
-      const totalSales = shiftInvoices.reduce((sum, inv) => sum + calculateInvoiceTotals(db, inv.items, inv.taxSlabId, inv.discountPercentage).grandTotal, 0);
-      const user = db.users?.find(u => u.id === s.userId);
-      const variance = (s.endCash || 0) - (s.expectedCash || 0);
-      return {
-        id: s.id, date: String(s.startTime).slice(0, 10), cashier: user?.username || t('Unknown'),
-        status: s.status, startCash: s.startCash, endCash: s.endCash || 0, expectedCash: s.expectedCash || 0,
-        variance, totalSales, saleCount: shiftInvoices.length,
-      };
-    }).sort((a: any, b: any) => a.date.localeCompare(b.date));
-    return { rows, totalSales: rows.reduce((s: number, r: any) => s + r.totalSales, 0) };
-  };
+  const emptyPosShiftSummary = { rows: [] as any[], totalSales: 0 };
+  const [posShiftSummaryData, setPosShiftSummaryData] = React.useState(emptyPosShiftSummary);
+  React.useEffect(() => {
+    if (reportType !== 'PosShiftSummary' || !companyId) return;
+    let cancelled = false;
+    fetch(`/api/reports/pos-shift-summary?startDate=${startDate}&endDate=${endDate}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setPosShiftSummaryData(d); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [reportType, companyId, startDate, endDate, selectedBranchId]);
+  const getPosShiftSummaryData = () => posShiftSummaryData;
 
   const handlePrint = () => {
     if (!can(REPORT_PERMISSION_KEYS[reportType])) return;

@@ -152,7 +152,7 @@ const isNodePartiallyChecked = (node: PermissionNode, permissionsObj: any): bool
 
 const toggleNodeRecursively = (node: PermissionNode, checked: boolean, currentPermissions: any) => {
   let updated = { ...currentPermissions };
-  
+
   const recurse = (n: PermissionNode) => {
     if (n.permissionPath) {
       updated = setNestedValue(updated, n.permissionPath, checked);
@@ -164,6 +164,37 @@ const toggleNodeRecursively = (node: PermissionNode, checked: boolean, currentPe
 
   recurse(node);
   return updated;
+};
+
+// pos.discount is the one permission leaf in this app whose stored value carries more
+// than just `enabled` — a numeric cap (see resolveUserDiscountCap in server/lib/authz.ts).
+// Mirrors setNestedValue's own shallow-copy-down-the-path shape exactly, but sets a named
+// sibling field on the leaf's object instead of always overwriting `enabled`, so toggling
+// the checkbox and editing a cap never clobber each other.
+const setLeafNumericField = (obj: any, leafPermissionPath: string, field: 'maxPercent' | 'maxAmount', value: number): any => {
+  const keys = leafPermissionPath.split('.').slice(0, -1); // drop the trailing "enabled"
+  const newObj = { ...obj };
+  let current = newObj;
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (i === keys.length - 1) {
+      current[key] = { ...(current[key] || {}), [field]: value };
+    } else {
+      current[key] = { ...(current[key] || {}) };
+      current = current[key];
+    }
+  }
+  return newObj;
+};
+const getLeafNumericField = (permissionsObj: any, leafPermissionPath: string, field: 'maxPercent' | 'maxAmount'): number => {
+  const keys = leafPermissionPath.split('.').slice(0, -1);
+  let current = permissionsObj;
+  for (const key of keys) {
+    current = current?.[key];
+    if (current === undefined) return 0;
+  }
+  const v = current?.[field];
+  return typeof v === 'number' ? v : 0;
 };
 
 // Reusable cascading permission-tree editor. Used by the Roles editor (a role's own
@@ -238,6 +269,32 @@ function PermissionTree({ permissions, onChange, t }: { permissions: any; onChan
             {t(node.label)}
           </span>
         </div>
+
+        {node.permissionPath === 'pos.discount.enabled' && fullyChecked && (
+          <div className="ml-6 mb-2 flex items-center gap-3 flex-wrap">
+            <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase">
+              {t('Max Discount %')}
+              <input
+                type="number" min={0} max={100} step="0.01"
+                value={getLeafNumericField(permissions || {}, node.permissionPath, 'maxPercent') || ''}
+                onChange={(e) => onChange(setLeafNumericField(permissions || {}, node.permissionPath!, 'maxPercent', parseFloat(e.target.value) || 0))}
+                placeholder="0"
+                className="w-16 bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] text-slate-800 font-semibold"
+              />
+            </label>
+            <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase">
+              {t('Max Discount Amount')}
+              <input
+                type="number" min={0} step="0.01"
+                value={getLeafNumericField(permissions || {}, node.permissionPath, 'maxAmount') || ''}
+                onChange={(e) => onChange(setLeafNumericField(permissions || {}, node.permissionPath!, 'maxAmount', parseFloat(e.target.value) || 0))}
+                placeholder="0"
+                className="w-20 bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] text-slate-800 font-semibold"
+              />
+            </label>
+            <span className="text-[9px] text-slate-400">{t('Whichever limit is reached first applies. Leave at 0 to block all discounts for this role even though the leaf is checked.')}</span>
+          </div>
+        )}
 
         {hasChildren && isExpanded && (
           <div className="pl-6 border-l border-dashed border-slate-200 ml-[7px] space-y-0.5">
@@ -465,6 +522,25 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  const [copyingTemplate, setCopyingTemplate] = React.useState<DocumentTemplate | null>(null);
  const [copyTargetCompanyId, setCopyTargetCompanyId] = React.useState('');
  const [copyTargetName, setCopyTargetName] = React.useState('');
+
+ // Investor "Total Funded Capital" (Capital & Equity tab) — fetched from
+ // GET /api/reports/investor-contributions (server/lib/financialReports.ts) instead of
+ // summed client-side from db.vouchers on every render — see
+ // .claude/skills/server-side-report-aggregation/SKILL.md. One batched call per company,
+ // keyed by investorId, consumed at the actual render site further down this component.
+ const [investorContributions, setInvestorContributions] = React.useState<Record<string, number>>({});
+ React.useEffect(() => {
+   if (!db.selectedCompanyId) return;
+   let cancelled = false;
+   fetch('/api/reports/investor-contributions')
+     .then(r => r.ok ? r.json() : null)
+     .then((rows: Array<{ investorId: string; totalContributed: number }> | null) => {
+       if (cancelled || !rows) return;
+       setInvestorContributions(Object.fromEntries(rows.map(r => [r.investorId, r.totalContributed])));
+     })
+     .catch(() => {});
+   return () => { cancelled = true; };
+ }, [db.selectedCompanyId]);
 
   const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
   const fetchMonths = async () => {
@@ -7395,10 +7471,9 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  return (
  <div className="space-y-3 divide-y divide-slate-100">
  {filteredInvestors.map((inv) => {
- // Calculate exact total capital contributed by summing vouchers in db
- const currentTotalContributed = db.vouchers
- .filter(v => v.referenceType === 'Equity' && v.referenceId === inv.id)
- .reduce((sum, v) => sum + v.amount, 0);
+ // Server-computed (see investorContributions fetch above) — was previously an
+ // unbounded per-row scan of ALL of db.vouchers on every render.
+ const currentTotalContributed = investorContributions[inv.id] || 0;
 
  const assignedCompanyName = db.companies?.find(c => c.id === inv.companyId)?.name || t('Scoped Company');
 

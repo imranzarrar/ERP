@@ -3,12 +3,13 @@ import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, inArray, and, desc, or, isNull } from 'drizzle-orm';
 import { validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, postCreditNoteReversalVoucher, round2, round4, computePaymentStatus, computeInvoiceServerTotals, deductStockForSale, restockForSaleReversal, assertQuarterNotFiled, resolveSaleWarehouse, assertStockAvailable, assertProductsOwnedByCompany, cancelExpense } from '../lib/businessLogic.js';
+import { computeMonthPnL } from '../lib/financialReports.js';
 import { toBaseQuantity, toBaseUnitCost, loadZatcaCodesByUnitId } from '../lib/uomConversion.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { isStillChainTip, setHashChainState, ZatcaEnvironment } from '../lib/zatca/hashChain.js';
 import { normalizePermissions } from '../../src/types.js';
 import { processInvoiceZatca } from '../lib/zatca/processInvoice.js';
-import { hasPermission, assertOwnsRow, resolveDocumentBranchId, branchAccessOk } from '../lib/authz.js';
+import { hasPermission, assertOwnsRow, resolveDocumentBranchId, branchAccessOk, resolveUserDiscountCap, verifyOverrideCredentials } from '../lib/authz.js';
 import { parseLimitOffset } from '../lib/pagination.js';
 import { generateId } from '../../src/id.js';
 import { normalizeZatcaUnitCode } from '../../src/zatcaUnitCodes.js';
@@ -571,6 +572,72 @@ router.post('/invoices', async (req: any, res) => {
       }
     }
 
+    // POS header-discount authorization — gated strictly to a NEW POS Terminal sale.
+    // Back-office Invoice creation (isPosSale falsy) has no cap on discountPercentage at
+    // all today (invoice.create/update is the only gate there) — deliberately untouched,
+    // this only restricts the POS Terminal's own header-discount control. Two independent
+    // caps, matching how a discount is actually entered: a role's pos.discount.maxPercent
+    // covers a percentage discount, pos.discount.maxAmount covers a flat-SAR discount —
+    // set either or both; leaving one at 0 blocks that entry mode entirely even if the
+    // other is generously capped, same fail-closed default as the leaf's own UI copy says.
+    // A flat amount is converted to its equivalent percentage of the pre-discount items
+    // subtotal right here, before anything else touches discountPercentage, so every
+    // downstream calculation (computeInvoiceServerTotals below, the ZATCA XML builder)
+    // reuses that one already-correct, already-ZATCA-verified proportional-distribution
+    // path unchanged — there is no second discount-math implementation for the amount case.
+    let discountOverrideBy: { id: string; username: string } | null = null;
+    const isNewPosSale = !invData.id && invData.isPosSale === true;
+    const requestedAmount = Number(invData.discountAmount || 0);
+    const requestedPercentRaw = Number(invData.discountPercentage || 0);
+    if (isNewPosSale && (requestedAmount > 0 || requestedPercentRaw > 0)) {
+      const itemsSubtotal = computeInvoiceServerTotals(items, 0, 0, new Map()).itemsSubtotal;
+      const mode: 'amount' | 'percent' = requestedAmount > 0 ? 'amount' : 'percent';
+      const effectivePercent = mode === 'amount'
+        ? (itemsSubtotal > 0 ? round2((requestedAmount / itemsSubtotal) * 100) : 0)
+        : requestedPercentRaw;
+      invData.discountPercentage = effectivePercent;
+      invData.discountAmount = mode === 'amount' ? String(round2(requestedAmount)) : null;
+
+      const withinCap = (cap: { maxPercent: number; maxAmount: number }) =>
+        mode === 'amount' ? requestedAmount <= cap.maxAmount : effectivePercent <= cap.maxPercent;
+
+      // resolveUserDiscountCap is the ONE source of truth for "does this user have
+      // pos.discount, and what's their cap" — it already folds enablement into the cap
+      // itself (disabled or unset resolves to {0, 0}), so there is deliberately no
+      // separate hasPermission() check alongside it here. An earlier draft of this route
+      // called hasPermission(overrideUser, 'pos.discount') directly on the raw row
+      // verifyOverrideCredentials returns — that looked identical to the pattern
+      // server/routes/pos.ts's return-override correctly uses, but hasPermission() reads
+      // `user.permissions`, which is only ever populated on req.user by the auth
+      // middleware's own role resolution; a fresh row fetched straight from `users` has
+      // no such field, so the check silently always failed for any non-admin-tier
+      // override user. Caught live: a real manager with a real 50 SAR cap authorizing a
+      // 30 SAR discount was incorrectly rejected. resolveUserDiscountCap does its own
+      // resolveUserPermissions() lookup internally, so it never has this gap.
+      const actingCap = await resolveUserDiscountCap(req.user);
+
+      if (!withinCap(actingCap)) {
+        const { overrideUsername, overridePassword } = req.body;
+        if (!overrideUsername || !overridePassword) {
+          return res.status(403).json({
+            error: actingCap.maxPercent > 0 || actingCap.maxAmount > 0
+              ? 'This discount exceeds your own authorized limit. Ask a manager to authorize it.'
+              : 'You do not have permission to apply a discount. Ask a manager to authorize this one.',
+            requiresOverride: true,
+          });
+        }
+        const overrideUser = await verifyOverrideCredentials(req.targetCompanyId, overrideUsername, overridePassword);
+        if (!overrideUser) {
+          return res.status(401).json({ error: 'Invalid manager credentials.' });
+        }
+        const overrideCap = await resolveUserDiscountCap(overrideUser);
+        if (!withinCap(overrideCap)) {
+          return res.status(403).json({ error: 'That user is not authorized for a discount this large.' });
+        }
+        discountOverrideBy = { id: overrideUser.id, username: overrideUser.username };
+      }
+    }
+
     // Branch is immutable after creation, same reasoning/pattern as the Quotation route
     // just above — resolved/validated before the transaction so an invalid branch 400/
     // 403s before the ICV/counter reservation.
@@ -743,6 +810,7 @@ router.post('/invoices', async (req: any, res) => {
       invoiceNumber: invData.invoiceNumber,
       documentType: invData.documentType,
       customerId: invData.customerId,
+      ...(discountOverrideBy ? { discountOverrideBy } : {}),
     });
     res.json({ success: true, invoiceId: savedInvoiceId });
   } catch (error: any) {
@@ -1072,10 +1140,22 @@ router.post('/invoices/:id/paid', async (req: any, res) => {
 
 router.post('/invoices/:id/cancel', async (req: any, res) => {
   try {
-    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
-    if (!permissions.invoice.delete.enabled) return res.status(403).json({ error: 'Forbidden' });
-
     const { id } = req.params;
+    // A POS-sold invoice is gated by pos.cancel, everything else by invoice.delete.
+    // pos.cancel existed in permissionSchema.ts (the Roles editor already showed it as a
+    // real, checkable leaf, "Allow POS Order Cancellations") but was never actually
+    // enforced anywhere — this route, the only place a POS sale ever gets cancelled,
+    // checked invoice.delete unconditionally instead. An admin unchecking pos.cancel for
+    // a role believed they'd blocked that role from cancelling POS sales; they hadn't, as
+    // long as the role (or any other role assigned to the user) still had invoice.delete.
+    // Looked up before the real transactional fetch below purely to pick which permission
+    // applies — isPosSale is immutable once set at creation, so there's no race to worry
+    // about between this read and the row lock the transaction takes further down.
+    const [preCheck] = await db.select({ isPosSale: schema.invoices.isPosSale })
+      .from(schema.invoices).where(and(eq(schema.invoices.id, id), eq(schema.invoices.companyId, req.targetCompanyId)));
+    const requiredLeaf = preCheck?.isPosSale ? 'pos.cancel' : 'invoice.delete';
+    if (!hasPermission(req.user, requiredLeaf)) return res.status(403).json({ error: 'Forbidden' });
+
     let cancelledInvoiceNumber = '';
     let cancelledDocType = '';
     await db.transaction(async (tx) => {
@@ -1399,6 +1479,18 @@ router.post('/months', async (req: any, res) => {
           error: `Cannot close month. Unposted active recurring expenses found: [${list}]. These must be posted as Actual or Accrual first.`
         });
       }
+    }
+
+    // Never trust the client's own closedPnL — it was computed client-side from
+    // whatever db.invoices/db.expenses the browser happened to have loaded (previously
+    // also missing header-discount math entirely, see computeMonthPnL's own comment),
+    // and once this row is inserted the value is effectively permanent (it later feeds
+    // the Balance Sheet's retained-earnings figure via computeBalanceSheet). Recompute it
+    // authoritatively server-side, overwriting whatever mData.closedPnL held.
+    if (mData.status === 'Closed') {
+      const pnl = await computeMonthPnL(mData.companyId, mData.id);
+      const chosen = mData.closedOption === 'including_pending' ? pnl.includingPending : pnl.paid;
+      mData.closedPnL = { totalRevenue: chosen.revenue, totalExpenses: chosen.expenses, netProfit: chosen.net };
     }
 
     await db.insert(schema.fiscalMonths).values(mData).onConflictDoUpdate({

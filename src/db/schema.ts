@@ -1,5 +1,19 @@
 import { relations, sql } from 'drizzle-orm';
-import { integer, bigint, pgTable, serial, text, timestamp, boolean, decimal, jsonb, uuid, primaryKey, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { integer, bigint, pgTable, serial, text, timestamp, boolean, decimal, jsonb, uuid, primaryKey, uniqueIndex, index, pgPolicy } from 'drizzle-orm/pg-core';
+
+// Row-Level Security, introduced as a defense-in-depth SECOND layer on top of (never
+// instead of) this app's existing req.targetCompanyId application-level checks — see
+// server/lib/tenantDb.ts and .claude/skills (session-company-scoping/data-isolation-guard)
+// for the existing app-level model this supplements. TENANT_DB_ROLE is the name of a real,
+// separate, NON-superuser Postgres role (created once, see app.secrets' TENANT_DB_USER
+// comment) that ONLY the new, opt-in tenantDb data-access path connects as — RLS has ZERO
+// effect on a superuser/BYPASSRLS role, which is what this app's main `db` export (SQL_USER)
+// still connects as and continues to use, completely unaffected by any of this. Policies
+// below are being added table-by-table as each is migrated to tenantDb, not all at once —
+// a table with a policy defined here but never queried via tenantDb behaves exactly as
+// before for every existing route (which never binds `app.company_id`, so the main `db`
+// connection - a bypassing superuser - is unaffected either way).
+const TENANT_DB_ROLE = 'erp_app_tenant';
 
 export const companies = pgTable('companies', {
   id: uuid('id').primaryKey(),
@@ -544,7 +558,30 @@ export const customers = pgTable('customers', {
   crNumber: text('cr_number'),
 }, (table) => ({
   companyIdIdx: index('customers_company_id_idx').on(table.companyId),
-}));
+  // Proof-of-concept table for the tenantDb RLS rollout (see the TENANT_DB_ROLE comment
+  // above) — first table migrated, deliberately simple (no branch-scoping complexity) to
+  // validate the whole pipeline (policy + tenantDb + ALS context + a real migrated route)
+  // end-to-end before expanding to more tables.
+  //
+  // CONFIRMED drizzle-kit 0.31.10 LIMITATION: `db:push` creates this policy but silently
+  // drops the using/withCheck predicate from the generated DDL (verified directly via
+  // `SELECT pg_get_expr(polqual, polrelid) FROM pg_policy` showing NULL after a push) —
+  // root cause not isolated (not a duplicate drizzle-orm install; only one is present).
+  // The real predicate below was therefore applied ONCE, out-of-band, via a direct
+  // `ALTER POLICY customers_tenant_isolation ON customers USING (...) WITH CHECK (...)`
+  // SQL statement — NOT reproducible by re-running db:push. Empirically re-verified safe:
+  // a subsequent real db:push run (with unrelated schema changes) left this policy's
+  // predicate completely untouched, no CREATE/ALTER POLICY statement was even printed for
+  // it, meaning drizzle-kit's push-mode diff isn't attempting to revert it either. Still,
+  // after ANY future db:push that could plausibly touch this table, re-verify with the
+  // same query before trusting this policy — don't assume the predicate survived.
+  tenantIsolationPolicy: pgPolicy('customers_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const vendors = pgTable('vendors', {
   id: uuid('id').primaryKey(),
@@ -733,6 +770,18 @@ export const invoices = pgTable('invoices', {
   createdAt: timestamp('created_at').notNull(),
   originQuotationId: uuid('origin_quotation_id').references(() => quotations.id),
   discountPercentage: decimal('discount_percentage', { precision: 5, scale: 2 }),
+  // Header-level discount, display-only — distinct from invoiceItems.discountAmount
+  // (a per-LINE discount, a completely different concept). Set only when the discount was
+  // actually entered as a flat SAR amount (POS header-discount UI) rather than a percent;
+  // discountPercentage above is always still the one true value every tax/total
+  // calculation actually uses (calculateInvoiceTotals, the ZATCA XML builder) — a flat
+  // amount is converted to its equivalent percentage of the pre-discount subtotal before
+  // it's ever stored there, specifically so this reuses that already-correct,
+  // ZATCA-verified proportional-distribution-across-tax-categories logic unchanged rather
+  // than needing a second calculation path. This column exists purely so the receipt and
+  // audit trail can honestly show "SAR 50 off" instead of a re-derived, less legible
+  // percentage when that's genuinely what the cashier typed.
+  discountAmount: decimal('discount_amount', { precision: 12, scale: 2 }),
   amountPaid: decimal('amount_paid', { precision: 14, scale: 2 }),
   companyId: uuid('company_id').notNull().references(() => companies.id),
   isPosSale: boolean('is_pos_sale').default(false),

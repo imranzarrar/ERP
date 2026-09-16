@@ -1,11 +1,11 @@
 import { db } from './index.js';
 import * as schema from './schema.js';
-import { desc, inArray } from 'drizzle-orm';
+import { desc, eq, inArray } from 'drizzle-orm';
 import fs from 'fs';
 import path from 'path';
 import { DEFAULT_LIST_LIMIT } from '../../server/lib/pagination.js';
 
-export async function getFullState() {
+export async function getFullState(companyId?: string | null) {
   try {
     const companies = await db.select().from(schema.companies);
     const roleTemplates = await db.select().from(schema.roleTemplates);
@@ -45,21 +45,42 @@ export async function getFullState() {
     // DEFAULT_LIST_LIMIT) — these tables grow unboundedly with normal usage, and this
     // was previously an unfiltered full-table scan on every /api/state call. Response
     // shape stays a flat object of arrays, so dbStore.ts/components need no changes.
-    const quotations = await db.select().from(schema.quotations).orderBy(desc(schema.quotations.createdAt)).limit(DEFAULT_LIST_LIMIT);
+    //
+    // Scoped by companyId BEFORE the cap, not after (see server.ts's own downstream
+    // filteredState, which re-filters by companyId anyway — that's now a deliberate
+    // redundant second check, not the only one). Previously this ran unfiltered across
+    // EVERY tenant on the platform, ordered by createdAt/date, then got filtered down to
+    // one company afterward — meaning the "most recent 500" was 500 most-recent rows
+    // PLATFORM-WIDE, not per company. Once combined volume across all tenants exceeded
+    // 500, a smaller/older tenant's own rows could silently fall out of that global
+    // window before their own filter ever ran, vanishing from their own dashboard/reports
+    // with no error. The `companyId ? ... : []` guard (not a bare `.where(eq(...))`)
+    // matches how every other company-scoped table in this function already behaves when
+    // no company is selected yet (e.g. a super-admin who has never switched and has no
+    // home company) — empty arrays, not a query error from an undefined uuid param.
+    const quotations = companyId
+      ? await db.select().from(schema.quotations).where(eq(schema.quotations.companyId, companyId)).orderBy(desc(schema.quotations.createdAt)).limit(DEFAULT_LIST_LIMIT)
+      : [];
     const quotationIds = quotations.map(q => q.id);
     const quotationItems = quotationIds.length ? await db.select().from(schema.quotationItems).where(inArray(schema.quotationItems.quotationId, quotationIds)) : [];
 
-    const invoices = await db.select().from(schema.invoices).orderBy(desc(schema.invoices.createdAt)).limit(DEFAULT_LIST_LIMIT);
+    const invoices = companyId
+      ? await db.select().from(schema.invoices).where(eq(schema.invoices.companyId, companyId)).orderBy(desc(schema.invoices.createdAt)).limit(DEFAULT_LIST_LIMIT)
+      : [];
     const invoiceIds = invoices.map(i => i.id);
     const invoiceItems = invoiceIds.length ? await db.select().from(schema.invoiceItems).where(inArray(schema.invoiceItems.invoiceId, invoiceIds)) : [];
 
-    const expenses = await db.select().from(schema.expenses).orderBy(desc(schema.expenses.createdAt)).limit(DEFAULT_LIST_LIMIT);
+    const expenses = companyId
+      ? await db.select().from(schema.expenses).where(eq(schema.expenses.companyId, companyId)).orderBy(desc(schema.expenses.createdAt)).limit(DEFAULT_LIST_LIMIT)
+      : [];
     const expenseIds = expenses.map(e => e.id);
     const expenseItems = expenseIds.length ? await db.select().from(schema.expenseItems).where(inArray(schema.expenseItems.expenseId, expenseIds)) : [];
 
     const recurringTemplates = await db.select().from(schema.recurringExpenseTemplates);
     const recurringPostings = await db.select().from(schema.recurringPostings);
-    const vouchers = await db.select().from(schema.vouchers).orderBy(desc(schema.vouchers.createdAt)).limit(DEFAULT_LIST_LIMIT);
+    const vouchers = companyId
+      ? await db.select().from(schema.vouchers).where(eq(schema.vouchers.companyId, companyId)).orderBy(desc(schema.vouchers.createdAt)).limit(DEFAULT_LIST_LIMIT)
+      : [];
     const investors = await db.select().from(schema.investors);
     const translations = await db.select().from(schema.translations);
     const posShifts = await db.select().from(schema.posShifts);
@@ -80,8 +101,10 @@ export async function getFullState() {
     const physicalStockTakes = await db.select().from(schema.physicalStockTakes);
     const physicalStockTakeItems = await db.select().from(schema.physicalStockTakeItems);
     // Grows with every stock-mutating transaction (GRN/Return/Sale/Adjustment/StockTake/
-    // TransferOut/TransferIn) — bounded the same way invoices/vouchers are above, most-recent-first.
-    const stockLedgerTransactions = await db.select().from(schema.stockLedgerTransactions).orderBy(desc(schema.stockLedgerTransactions.date)).limit(DEFAULT_LIST_LIMIT);
+    // TransferOut/TransferIn) — bounded and company-scoped the same way invoices/vouchers are above.
+    const stockLedgerTransactions = companyId
+      ? await db.select().from(schema.stockLedgerTransactions).where(eq(schema.stockLedgerTransactions.companyId, companyId)).orderBy(desc(schema.stockLedgerTransactions.date)).limit(DEFAULT_LIST_LIMIT)
+      : [];
     const warehouseDispatches = await db.select().from(schema.warehouseDispatches);
     const warehouseDispatchItems = await db.select().from(schema.warehouseDispatchItems);
     const warehouseReceivings = await db.select().from(schema.warehouseReceivings);
