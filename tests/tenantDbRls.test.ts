@@ -167,3 +167,31 @@ describe('Database-level RLS enforcement (bypasses the app entirely)', () => {
     expect(rows.length).toBe(1);
   });
 });
+
+describe('withTenantDb commits before the HTTP response is sent, not after', () => {
+  // Regression test for a real, confirmed ordering bug: the transaction used to be
+  // finalized from a res.on('finish', ...) listener, which fires only AFTER the response
+  // has already reached the client — a caller could receive its 200, immediately issue a
+  // follow-up read on a different connection, and race ahead of the still-in-flight async
+  // COMMIT, observing stale pre-write data. Fixed by overriding res.end() itself to await
+  // COMMIT/ROLLBACK before actually flushing the response. This test hammers exactly that
+  // sequence (write via the API, immediately re-read via a separate superuser connection)
+  // many times in a row — a probabilistic race won't necessarily reproduce on a single
+  // attempt, so repetition is what gives this test real power to catch a regression.
+  it('an immediate cross-connection read after a 200 response always sees the write, across many repetitions', async () => {
+    for (let i = 0; i < 25; i++) {
+      const id = generateId();
+      const { status } = await api('/api/customers', {
+        method: 'POST',
+        body: JSON.stringify({ id, name: `Race Test Customer ${i}`, phone: '111', email: `race${i}@example.com`, address: 'A', buyerType: 'B2C' }),
+      });
+      expect(status).toBe(200);
+      // Deliberately the superuser `db` — a different connection than the one tenantDb
+      // used for the write, so this can only see the row if the COMMIT has genuinely
+      // already happened by the time the API call's promise resolved.
+      const [row] = await db.select().from(schema.customers).where(eq(schema.customers.id, id));
+      expect(row, `iteration ${i}: row not visible immediately after a 200 response`).toBeTruthy();
+      await db.delete(schema.customers).where(eq(schema.customers.id, id));
+    }
+  });
+});

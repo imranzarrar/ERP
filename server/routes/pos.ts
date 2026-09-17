@@ -10,6 +10,7 @@ import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { restockForSaleReversal, validateTransactionDate, assertQuarterNotFiled, postCreditNoteReversalVoucher, computeInvoiceServerTotals } from '../lib/businessLogic.js';
 import { processInvoiceZatca } from '../lib/zatca/processInvoice.js';
 import { recordAuditLog } from '../lib/audit.js';
+import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
 
 const router = express.Router();
 
@@ -19,7 +20,7 @@ const router = express.Router();
 // maxImageSizeKB — see src/components/PosModule.tsx's own default object).
 const DEFAULT_RETURN_WINDOW_DAYS = 7;
 
-router.get('/shifts', async (req: any, res) => {
+router.get('/shifts', withTenantDb, async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.pos.access.enabled) {
@@ -35,15 +36,16 @@ router.get('/shifts', async (req: any, res) => {
       if (req.allowedBranchIds.length === 0) return res.json([]);
       conditions.push(inArray(schema.posShifts.branchId, req.allowedBranchIds));
     }
-    const shifts = await db.select().from(schema.posShifts).where(and(...conditions));
+    const shifts = await tenantDb().select().from(schema.posShifts).where(and(...conditions));
     res.json(shifts);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.post('/shifts', async (req: any, res) => {
+router.post('/shifts', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.pos.shifts.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -57,7 +59,7 @@ router.post('/shifts', async (req: any, res) => {
       return res.status(branchErr.status || 400).json({ error: branchErr.error || 'Invalid branch.' });
     }
 
-    await db.insert(schema.posShifts).values({
+    await tdb.insert(schema.posShifts).values({
         ...data,
         startTime: new Date(data.startTime),
         endTime: data.endTime ? new Date(data.endTime) : null,
@@ -68,8 +70,9 @@ router.post('/shifts', async (req: any, res) => {
   }
 });
 
-router.put('/shifts/:id', async (req: any, res) => {
+router.put('/shifts/:id', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.pos.shifts.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -77,7 +80,7 @@ router.put('/shifts/:id', async (req: any, res) => {
     const { id } = req.params;
     const data = { ...req.body };
 
-    const [existing] = await db.select().from(schema.posShifts)
+    const [existing] = await tdb.select().from(schema.posShifts)
       .where(and(eq(schema.posShifts.id, id), eq(schema.posShifts.companyId, req.targetCompanyId)));
     if (!existing) return res.status(404).json({ error: 'Shift not found.' });
     // A branch-restricted cashier must not be able to close/edit (cash figures, notes,
@@ -90,7 +93,7 @@ router.put('/shifts/:id', async (req: any, res) => {
     // — never let this update move a shift to a different branch.
     data.branchId = existing.branchId;
 
-    await db.update(schema.posShifts).set({
+    await tdb.update(schema.posShifts).set({
         ...data,
         endTime: data.endTime ? new Date(data.endTime) : null,
     }).where(eq(schema.posShifts.id, id));
@@ -102,7 +105,7 @@ router.put('/shifts/:id', async (req: any, res) => {
 
 // Held (pending) invoices — parked carts. Gated on pos.access, mirroring the "Pending
 // (Held)" tab's own `can('pos.access')` check in PosModule.tsx.
-router.get('/held-invoices', async (req: any, res) => {
+router.get('/held-invoices', withTenantDb, async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.pos.access.enabled) {
@@ -114,15 +117,16 @@ router.get('/held-invoices', async (req: any, res) => {
       if (req.allowedBranchIds.length === 0) return res.json([]);
       conditions.push(inArray(schema.posHeldInvoices.branchId, req.allowedBranchIds));
     }
-    const heldInvoices = await db.select().from(schema.posHeldInvoices).where(and(...conditions));
+    const heldInvoices = await tenantDb().select().from(schema.posHeldInvoices).where(and(...conditions));
     res.json(heldInvoices);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.post('/held-invoices', async (req: any, res) => {
+router.post('/held-invoices', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.pos.access.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -133,7 +137,7 @@ router.post('/held-invoices', async (req: any, res) => {
     // branchId is never trusted from the client — always inherited from the owning
     // shift's own (already-validated-at-open-time) branchId, same "denormalized from a
     // real parent" convention as every other carry-your-own-branchId table.
-    const [shift] = await db.select({ id: schema.posShifts.id, branchId: schema.posShifts.branchId })
+    const [shift] = await tdb.select({ id: schema.posShifts.id, branchId: schema.posShifts.branchId })
       .from(schema.posShifts).where(and(eq(schema.posShifts.id, data.shiftId), eq(schema.posShifts.companyId, data.companyId)));
     if (!shift) return res.status(404).json({ error: 'Shift not found for this company.' });
     if (!branchAccessOk(req, shift.branchId)) {
@@ -141,7 +145,7 @@ router.post('/held-invoices', async (req: any, res) => {
     }
     data.branchId = shift.branchId;
 
-    await db.insert(schema.posHeldInvoices).values({
+    await tdb.insert(schema.posHeldInvoices).values({
         ...data,
         createdAt: data.createdAt ? new Date(data.createdAt) : new Date(),
     });
@@ -151,14 +155,15 @@ router.post('/held-invoices', async (req: any, res) => {
   }
 });
 
-router.delete('/held-invoices/:id', async (req: any, res) => {
+router.delete('/held-invoices/:id', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.pos.access.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
-    const [existing] = await db.select().from(schema.posHeldInvoices)
+    const [existing] = await tdb.select().from(schema.posHeldInvoices)
       .where(and(eq(schema.posHeldInvoices.id, id), eq(schema.posHeldInvoices.companyId, req.targetCompanyId)));
     if (!existing) return res.status(404).json({ error: 'Held invoice not found.' });
     // A branch-restricted cashier must not be able to delete/resume another branch's
@@ -166,7 +171,7 @@ router.delete('/held-invoices/:id', async (req: any, res) => {
     if (!branchAccessOk(req, existing.branchId)) {
       return res.status(403).json({ error: 'Forbidden: you are not assigned to this branch.' });
     }
-    await db.delete(schema.posHeldInvoices).where(eq(schema.posHeldInvoices.id, id));
+    await tdb.delete(schema.posHeldInvoices).where(eq(schema.posHeldInvoices.id, id));
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -190,8 +195,9 @@ function getReturnWindowDays(posSettings: any): number {
 // Requires only baseline POS access — a cashier without pos.return can still SEE what's
 // returnable (and how much of each line is left), so they know whether to call a manager
 // over at all, before hitting the permission wall on the actual submit below.
-router.get('/returnable-invoices', async (req: any, res) => {
+router.get('/returnable-invoices', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.pos.access.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -199,7 +205,7 @@ router.get('/returnable-invoices', async (req: any, res) => {
     const companyId = req.targetCompanyId;
     const search = String(req.query.search || '').trim();
 
-    const [company] = await db.select({ posSettings: schema.companies.posSettings })
+    const [company] = await tdb.select({ posSettings: schema.companies.posSettings })
       .from(schema.companies).where(eq(schema.companies.id, companyId));
     const windowDays = getReturnWindowDays(company?.posSettings);
     const cutoffDate = new Date();
@@ -221,19 +227,19 @@ router.get('/returnable-invoices', async (req: any, res) => {
       conditions.push(sql`${schema.invoices.invoiceNumber} ILIKE ${'%' + search + '%'}`);
     }
 
-    const candidates = await db.select().from(schema.invoices).where(and(...conditions))
+    const candidates = await tdb.select().from(schema.invoices).where(and(...conditions))
       .orderBy(sql`${schema.invoices.createdAt} desc`).limit(25);
     if (candidates.length === 0) return res.json([]);
 
     const invoiceIds = candidates.map(c => c.id);
-    const items = await db.select().from(schema.invoiceItems).where(inArray(schema.invoiceItems.invoiceId, invoiceIds));
+    const items = await tdb.select().from(schema.invoiceItems).where(inArray(schema.invoiceItems.invoiceId, invoiceIds));
 
     // Cumulative already-returned quantity per original line — every CreditNote item
     // anywhere that points back at it via originalInvoiceItemId, regardless of which
     // credit note or when. This is what caps how much of THIS line can be returned again.
     const originalItemIds = items.map(i => i.id);
     const priorReturnItems = originalItemIds.length
-      ? await db.select({ originalInvoiceItemId: schema.invoiceItems.originalInvoiceItemId, quantity: schema.invoiceItems.quantity })
+      ? await tdb.select({ originalInvoiceItemId: schema.invoiceItems.originalInvoiceItemId, quantity: schema.invoiceItems.quantity })
           .from(schema.invoiceItems)
           .where(inArray(schema.invoiceItems.originalInvoiceItemId, originalItemIds))
       : [];
@@ -245,7 +251,7 @@ router.get('/returnable-invoices', async (req: any, res) => {
 
     const customerIds = [...new Set(candidates.map(c => c.customerId).filter(Boolean))];
     const customers = customerIds.length
-      ? await db.select({ id: schema.customers.id, name: schema.customers.name }).from(schema.customers).where(inArray(schema.customers.id, customerIds))
+      ? await tdb.select({ id: schema.customers.id, name: schema.customers.name }).from(schema.customers).where(inArray(schema.customers.id, customerIds))
       : [];
     const customerNameById = new Map(customers.map(c => [c.id, c.name]));
 
@@ -277,6 +283,12 @@ router.get('/returnable-invoices', async (req: any, res) => {
   }
 });
 
+// DEFERRED from the tenantDb RLS rollout (stays on the superuser `db`) — same category
+// as server/routes/transactions.ts's POST /invoices and /invoices/:id/note (see those
+// routes' own comments). This route fires processInvoiceZatca(savedNoteId) as
+// fire-and-forget immediately after its transaction commits, which needs the same
+// dual-gate ZATCA verification rigor before migrating as any other change to this
+// pipeline. `invoices` itself still gets a real RLS policy from this rollout.
 router.post('/returns', async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);

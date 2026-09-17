@@ -9,10 +9,11 @@ import { parseLimitOffset } from '../lib/pagination.js';
 import { generateId } from '../../src/id.js';
 import { assertOwnsRow, resolveDocumentBranchId, branchAccessOk } from '../lib/authz.js';
 import { recordAuditLog } from '../lib/audit.js';
+import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
 
 const router = express.Router();
 
-router.get('/', async (req: any, res) => {
+router.get('/', withTenantDb, async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.expense.read.enabled) {
@@ -28,7 +29,7 @@ router.get('/', async (req: any, res) => {
     if (Array.isArray(req.allowedBranchIds)) {
       conditions.push(req.allowedBranchIds.length > 0 ? inArray(schema.expenses.branchId, req.allowedBranchIds) : sql`false`);
     }
-    const expenses = await db.select().from(schema.expenses).where(and(...conditions))
+    const expenses = await tenantDb().select().from(schema.expenses).where(and(...conditions))
       .orderBy(desc(schema.expenses.createdAt)).limit(limit).offset(offset);
     res.json(expenses);
   } catch (error: any) {
@@ -36,8 +37,9 @@ router.get('/', async (req: any, res) => {
   }
 });
 
-router.post('/', async (req: any, res) => {
+router.post('/', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     const data = { ...req.body };
 
@@ -45,6 +47,9 @@ router.post('/', async (req: any, res) => {
     // must be gated by expense.update, not expense.create - the two are separately
     // grantable now. A cancelled expense is also terminal for edits regardless of
     // permission, same as every other "U blocked once cancelled" rule in this app.
+    //
+    // Deliberately the superuser `db` — same hijack-detection reasoning as POST
+    // /customers in masterEntities.ts.
     let existing: typeof schema.expenses.$inferSelect | undefined;
     if (data.id) {
       [existing] = await db.select().from(schema.expenses).where(eq(schema.expenses.id, data.id));
@@ -105,44 +110,44 @@ router.post('/', async (req: any, res) => {
     data.amountPaid = String(paidAmount);
     data.paymentStatus = computePaymentStatus(paidAmount, totalAmount);
 
-    await db.transaction(async (tx) => {
-      await validateTransactionDate(data.date, data.companyId);
-      await assertQuarterNotFiled(data.date, data.companyId);
-      const isNew = !data.id;
-      const expenseId = data.id || generateId();
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
+    await validateTransactionDate(data.date, data.companyId);
+    await assertQuarterNotFiled(data.date, data.companyId);
+    const isNew = !data.id;
+    const expenseId = data.id || generateId();
 
-      if (isNew) {
-        data.expenseNumber = await getAndIncrementDocumentNumber(tx, data.companyId, 'expense', data.date, data.branchId);
-        data.createdById = req.user.id;
-        data.createdAt = new Date();
-      } else if (existing) {
-        data.expenseNumber = existing.expenseNumber;
-        data.createdById = existing.createdById;
-        data.createdAt = existing.createdAt;
-      }
+    if (isNew) {
+      data.expenseNumber = await getAndIncrementDocumentNumber(tdb, data.companyId, 'expense', data.date, data.branchId);
+      data.createdById = req.user.id;
+      data.createdAt = new Date();
+    } else if (existing) {
+      data.expenseNumber = existing.expenseNumber;
+      data.createdById = existing.createdById;
+      data.createdAt = existing.createdAt;
+    }
 
-      await tx.insert(schema.expenses).values({
+    await tdb.insert(schema.expenses).values({
+      ...data,
+      id: expenseId,
+      date: data.date,
+      paymentDate: data.paymentDate ? new Date(data.paymentDate) : null,
+    }).onConflictDoUpdate({
+      target: schema.expenses.id,
+      set: {
         ...data,
-        id: expenseId,
         date: data.date,
         paymentDate: data.paymentDate ? new Date(data.paymentDate) : null,
-      }).onConflictDoUpdate({
-        target: schema.expenses.id,
-        set: {
-          ...data,
-          date: data.date,
-          paymentDate: data.paymentDate ? new Date(data.paymentDate) : null,
-        }
-      });
+      }
+    });
 
-      await syncVoucherForExpense(tx, expenseId, data.companyId, data, req.user.id);
+    await syncVoucherForExpense(tdb, expenseId, data.companyId, data, req.user.id);
 
-      recordAuditLog(req, isNew ? 'CREATE_EXPENSE' : 'UPDATE_EXPENSE', 'expense', expenseId, {
-        expenseNumber: data.expenseNumber,
-        billNumber: data.billNumber,
-        vendorId: data.vendorId,
-        amount: data.amount,
-      });
+    recordAuditLog(req, isNew ? 'CREATE_EXPENSE' : 'UPDATE_EXPENSE', 'expense', expenseId, {
+      expenseNumber: data.expenseNumber,
+      billNumber: data.billNumber,
+      vendorId: data.vendorId,
+      amount: data.amount,
     });
     res.json({ success: true });
   } catch (error: any) {
@@ -153,8 +158,9 @@ router.post('/', async (req: any, res) => {
 // Mark an existing (subsequently) pending expense as paid — ports src/dbStore.ts's
 // markExpensePaid exactly: open-month check, partial-payment support, and a fresh
 // Payment voucher per settlement (not synced/overwritten like syncVoucherForExpense).
-router.post('/:id/pay', async (req: any, res) => {
+router.post('/:id/pay', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.expense.update.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -165,94 +171,94 @@ router.post('/:id/pay', async (req: any, res) => {
 
     let createdVoucher: any;
     let paidExpenseNumber = '';
-    await db.transaction(async (tx) => {
-      // FOR UPDATE — without this, two payments landing close together both read the same
-      // currentPaid/remaining and the second write silently clobbers the first's
-      // amountPaid, even though both Payment vouchers were correctly inserted. Purchase
-      // Bills' own /pay route already locks this way; this mirrors it.
-      const [expense] = await tx.select().from(schema.expenses)
-        .where(and(eq(schema.expenses.id, id), eq(schema.expenses.companyId, companyId))).for('update');
-      if (!expense) throw new Error('Expense not found.');
-      if (!branchAccessOk(req, expense.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
-      if (expense.status === 'Cancelled') throw new Error('Cancelled expenses cannot be paid.');
-      if (expense.paymentStatus === 'Paid') throw new Error('Expense is already paid.');
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; the row lock below still applies within it.
+    // FOR UPDATE — without this, two payments landing close together both read the same
+    // currentPaid/remaining and the second write silently clobbers the first's
+    // amountPaid, even though both Payment vouchers were correctly inserted. Purchase
+    // Bills' own /pay route already locks this way; this mirrors it.
+    const [expense] = await tdb.select().from(schema.expenses)
+      .where(and(eq(schema.expenses.id, id), eq(schema.expenses.companyId, companyId))).for('update');
+    if (!expense) throw new Error('Expense not found.');
+    if (!branchAccessOk(req, expense.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
+    if (expense.status === 'Cancelled') throw new Error('Cancelled expenses cannot be paid.');
+    if (expense.paymentStatus === 'Paid') throw new Error('Expense is already paid.');
 
-      await validateTransactionDate(date, companyId);
+    await validateTransactionDate(date, companyId);
 
-      const targetBankId = bankId || expense.bankId;
-      // A client-supplied bankId must actually belong to this company — otherwise a
-      // malformed/malicious request could post a disbursement against another tenant's
-      // bank account.
-      if (bankId) {
-        const [bank] = await tx.select({ id: schema.bankAccounts.id }).from(schema.bankAccounts)
-          .where(and(eq(schema.bankAccounts.id, targetBankId), eq(schema.bankAccounts.companyId, companyId)));
-        if (!bank) {
-          const err: any = new Error('Selected bank account was not found for this company.');
-          err.status = 400;
-          throw err;
-        }
-      }
-      const currentPaid = round2(Number(expense.amountPaid || 0));
-      const totalAmount = round2(Number(expense.amount));
-      const remaining = round2(totalAmount - currentPaid);
-
-      const paymentAmount = amount !== undefined ? Number(amount) : undefined;
-      let amountToPost = remaining;
-      if (paymentAmount !== undefined) {
-        if (isNaN(paymentAmount) || paymentAmount <= 0) {
-          const err: any = new Error('Payment amount must be greater than zero.');
-          err.status = 400;
-          throw err;
-        }
-        if (paymentAmount > remaining + 0.01) {
-          const err: any = new Error(`Payment amount (${paymentAmount}) exceeds the remaining balance (${remaining}).`);
-          err.status = 400;
-          throw err;
-        }
-        amountToPost = Math.min(paymentAmount, remaining);
-      }
-      if (amountToPost <= 0) {
-        const err: any = new Error('No remaining balance to pay.');
+    const targetBankId = bankId || expense.bankId;
+    // A client-supplied bankId must actually belong to this company — otherwise a
+    // malformed/malicious request could post a disbursement against another tenant's
+    // bank account.
+    if (bankId) {
+      const [bank] = await tdb.select({ id: schema.bankAccounts.id }).from(schema.bankAccounts)
+        .where(and(eq(schema.bankAccounts.id, targetBankId), eq(schema.bankAccounts.companyId, companyId)));
+      if (!bank) {
+        const err: any = new Error('Selected bank account was not found for this company.');
         err.status = 400;
         throw err;
       }
+    }
+    const currentPaid = round2(Number(expense.amountPaid || 0));
+    const totalAmount = round2(Number(expense.amount));
+    const remaining = round2(totalAmount - currentPaid);
 
-      const newPaidAmount = round2(currentPaid + amountToPost);
-      const newPaymentStatus = newPaidAmount >= totalAmount - 0.01 ? 'Paid' : 'Partially Paid';
-
-      // The expense's own bankId is left as originally assigned — each installment's real
-      // disbursing bank is recorded on its own Payment voucher below instead, the same
-      // way the invoice payment route now works.
-      await tx.update(schema.expenses).set({
-        amountPaid: String(newPaidAmount),
-        paymentStatus: newPaymentStatus,
-        paymentDate: new Date(date),
-      }).where(eq(schema.expenses.id, id));
-
-      // Payment voucher (only if Actual type; accrual settlement handles its own voucher
-      // when actual is posted) — matches dbStore.markExpensePaid exactly.
-      if (expense.type === 'Actual') {
-        const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', date, expense.branchId);
-        const [voucher] = await tx.insert(schema.vouchers).values({
-          id: generateId(),
-          voucherNumber,
-          type: 'Payment',
-          date,
-          bankId: targetBankId,
-          amount: String(amountToPost),
-          description: `Payment voucher generated for expense ${expense.expenseNumber} paid subsequently (${amountToPost.toFixed(2)})`,
-          referenceType: 'Expense',
-          referenceId: id,
-          createdById: req.user.id,
-          createdAt: new Date(),
-          companyId,
-          // Always the expense's own branch, never independently picked.
-          branchId: expense.branchId,
-        }).returning();
-        createdVoucher = voucher;
+    const paymentAmount = amount !== undefined ? Number(amount) : undefined;
+    let amountToPost = remaining;
+    if (paymentAmount !== undefined) {
+      if (isNaN(paymentAmount) || paymentAmount <= 0) {
+        const err: any = new Error('Payment amount must be greater than zero.');
+        err.status = 400;
+        throw err;
       }
-      paidExpenseNumber = expense.expenseNumber;
-    });
+      if (paymentAmount > remaining + 0.01) {
+        const err: any = new Error(`Payment amount (${paymentAmount}) exceeds the remaining balance (${remaining}).`);
+        err.status = 400;
+        throw err;
+      }
+      amountToPost = Math.min(paymentAmount, remaining);
+    }
+    if (amountToPost <= 0) {
+      const err: any = new Error('No remaining balance to pay.');
+      err.status = 400;
+      throw err;
+    }
+
+    const newPaidAmount = round2(currentPaid + amountToPost);
+    const newPaymentStatus = newPaidAmount >= totalAmount - 0.01 ? 'Paid' : 'Partially Paid';
+
+    // The expense's own bankId is left as originally assigned — each installment's real
+    // disbursing bank is recorded on its own Payment voucher below instead, the same
+    // way the invoice payment route now works.
+    await tdb.update(schema.expenses).set({
+      amountPaid: String(newPaidAmount),
+      paymentStatus: newPaymentStatus,
+      paymentDate: new Date(date),
+    }).where(eq(schema.expenses.id, id));
+
+    // Payment voucher (only if Actual type; accrual settlement handles its own voucher
+    // when actual is posted) — matches dbStore.markExpensePaid exactly.
+    if (expense.type === 'Actual') {
+      const voucherNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'voucher', date, expense.branchId);
+      const [voucher] = await tdb.insert(schema.vouchers).values({
+        id: generateId(),
+        voucherNumber,
+        type: 'Payment',
+        date,
+        bankId: targetBankId,
+        amount: String(amountToPost),
+        description: `Payment voucher generated for expense ${expense.expenseNumber} paid subsequently (${amountToPost.toFixed(2)})`,
+        referenceType: 'Expense',
+        referenceId: id,
+        createdById: req.user.id,
+        createdAt: new Date(),
+        companyId,
+        // Always the expense's own branch, never independently picked.
+        branchId: expense.branchId,
+      }).returning();
+      createdVoucher = voucher;
+    }
+    paidExpenseNumber = expense.expenseNumber;
 
     recordAuditLog(req, 'RECORD_EXPENSE_PAYMENT', 'expense', id, {
       expenseNumber: paidExpenseNumber,
@@ -272,8 +278,9 @@ router.post('/:id/pay', async (req: any, res) => {
 // fiscal month, breaks the accrual<->actual settlement link either direction, and posts
 // a Reversal voucher (dated per the open-month-aware fallback below) if a Payment
 // voucher was active.
-router.post('/:id/cancel', async (req: any, res) => {
+router.post('/:id/cancel', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.expense.delete.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -281,10 +288,9 @@ router.post('/:id/cancel', async (req: any, res) => {
     const { id } = req.params;
     const companyId = req.targetCompanyId;
 
-    let cancelled: { expenseNumber: string } | undefined;
-    await db.transaction(async (tx) => {
-      cancelled = await cancelExpense(tx, req, id, companyId);
-    });
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
+    const cancelled = await cancelExpense(tdb, req, id, companyId);
 
     recordAuditLog(req, 'CANCEL_EXPENSE', 'expense', id, { expenseNumber: cancelled?.expenseNumber });
     res.json({ success: true });

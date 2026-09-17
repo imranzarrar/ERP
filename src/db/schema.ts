@@ -77,7 +77,19 @@ export const companies = pgTable('companies', {
   // 'Cancelled' blocks login for that company's users (see isAuthenticated in server.ts) and
   // is the only status that exposes the "Delete Company & All Data" purge in the admin UI.
   registrationStatus: text('registration_status').notNull().default('Registered'),
-});
+}, (table) => ({
+  // Self-scoping: a tenant connection sees/acts on only its OWN company row, matched by
+  // id (this table has no separate companyId column — it IS the tenant root every other
+  // table's companyId points at). Cross-company browsing (company list, deletion) is a
+  // deliberate exception that stays on the superuser `db` — see
+  // .claude/skills/rls-tenant-isolation/SKILL.md.
+  tenantIsolationPolicy: pgPolicy('companies_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.id} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.id} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // Per-(company, environment) ZATCA onboarding state — sandbox/simulation/production are
 // fully independent identities AND credential sets that never overwrite one another.
@@ -113,7 +125,13 @@ export const zatcaEnvironmentConfigs = pgTable('zatca_environment_configs', {
 }, (table) => ({
   companyIdIdx: index('zatca_env_configs_company_id_idx').on(table.companyId),
   companyEnvUnique: uniqueIndex('zatca_env_configs_company_env_unique').on(table.companyId, table.environment),
-}));
+  tenantIsolationPolicy: pgPolicy('zatca_environment_configs_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // Roles hold one reusable, company-scoped permission set each (e.g. "Sales Rep",
 // "Cashier"). Users are assigned one or more roles instead of having permissions
@@ -129,7 +147,13 @@ export const roles = pgTable('roles', {
 }, (table) => ({
   companyIdIdx: index('roles_company_id_idx').on(table.companyId),
   companyNameUnique: uniqueIndex('roles_company_name_unique').on(table.companyId, table.name),
-}));
+  tenantIsolationPolicy: pgPolicy('roles_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey(),
@@ -194,7 +218,13 @@ export const users = pgTable('users', {
   // conflict check is needed before this specific change (unlike widening one).
   usernameUniqueCi: uniqueIndex('users_username_unique_ci').on(sql`lower(${table.username})`).where(sql`is_deleted = 0`),
   emailUniqueCi: uniqueIndex('users_email_unique_ci').on(sql`lower(${table.email})`).where(sql`is_deleted = 0`),
-}));
+  tenantIsolationPolicy: pgPolicy('users_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // Many-to-many: a user can hold multiple roles at once. Effective permissions are the
 // per-leaf OR/union of every assigned role — a user can legitimately have the same page
@@ -206,7 +236,16 @@ export const userRoles = pgTable('user_roles', {
   pk: primaryKey({ columns: [table.userId, table.roleId] }),
   userIdIdx: index('user_roles_user_id_idx').on(table.userId),
   roleIdIdx: index('user_roles_role_id_idx').on(table.roleId),
-}));
+  // Dual-parent junction (users + roles) — checked via the users side only, relying on
+  // the existing app-level invariant that a userRoles row's user and role always belong
+  // to the same company (enforced at write time, e.g. server/routes/users.ts/roles.ts).
+  tenantIsolationPolicy: pgPolicy('user_roles_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`EXISTS (SELECT 1 FROM ${users} WHERE ${users.id} = ${table.userId} AND ${users.companyId} = current_setting('app.company_id', true)::uuid)`,
+    withCheck: sql`EXISTS (SELECT 1 FROM ${users} WHERE ${users.id} = ${table.userId} AND ${users.companyId} = current_setting('app.company_id', true)::uuid)`,
+  }),
+})).enableRLS();
 
 // NOTE: the per-environment zatcaEnvironmentConfigs table (splitting sandbox/simulation/
 // production into independent credential rows) is Phase VI-A scope — added when that
@@ -232,7 +271,14 @@ export const documentTemplates = pgTable('document_templates', {
   globalFontFamily: text('global_font_family'),
 }, (table) => ({
   unique_active_template: uniqueIndex('unique_active_template').on(table.companyId, table.language).where(sql`is_active = true`),
-}));
+  companyIdIdx: index('document_templates_company_id_idx').on(table.companyId),
+  tenantIsolationPolicy: pgPolicy('document_templates_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const taxSlabs = pgTable('tax_slabs', {
   id: uuid('id').primaryKey(),
@@ -266,7 +312,13 @@ export const taxSlabs = pgTable('tax_slabs', {
 }, (table) => ({
   companyIdIdx: index('tax_slabs_company_id_idx').on(table.companyId),
   unique_default_tax_slab: uniqueIndex('unique_default_tax_slab').on(table.companyId).where(sql`is_default = true`),
-}));
+  tenantIsolationPolicy: pgPolicy('tax_slabs_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const productCategories = pgTable('product_categories', {
   id: uuid('id').primaryKey(),
@@ -285,7 +337,14 @@ export const productCategories = pgTable('product_categories', {
   companyId: uuid('company_id').notNull().references(() => companies.id),
 }, (table) => ({
   parentCategoryFk: index('product_categories_parent_idx').on(table.parentCategoryId),
-}));
+  companyIdIdx: index('product_categories_company_id_idx').on(table.companyId),
+  tenantIsolationPolicy: pgPolicy('product_categories_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const warehouses = pgTable('warehouses', {
   id: uuid('id').primaryKey(),
@@ -313,7 +372,13 @@ export const warehouses = pgTable('warehouses', {
 }, (table) => ({
   companyIdx: index('warehouses_company_idx').on(table.companyId),
   uniqueCompanyDefault: uniqueIndex('warehouses_company_default_unique').on(table.companyId).where(sql`is_company_default = true`),
-}));
+  tenantIsolationPolicy: pgPolicy('warehouses_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // A physical location under one company (Riyadh, Jeddah, ...) — company-wide config
 // (tax slabs, product catalog, templates, roles) stays shared across all of a company's
@@ -353,7 +418,13 @@ export const branches = pgTable('branches', {
 }, (table) => ({
   companyIdIdx: index('branches_company_id_idx').on(table.companyId),
   unique_default_branch: uniqueIndex('unique_default_branch').on(table.companyId).where(sql`is_default = true`),
-}));
+  tenantIsolationPolicy: pgPolicy('branches_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // Many-to-many: a staff member can legitimately be assigned to more than one branch (not
 // just one "home" branch) — some roles genuinely work across locations. Zero rows for a
@@ -370,7 +441,15 @@ export const userBranches = pgTable('user_branches', {
   userIdIdx: index('user_branches_user_id_idx').on(table.userId),
   branchIdIdx: index('user_branches_branch_id_idx').on(table.branchId),
   unique_primary_branch: uniqueIndex('unique_primary_user_branch').on(table.userId).where(sql`is_primary = true`),
-}));
+  // Dual-parent junction (users + branches) — checked via the users side only, same
+  // reasoning as userRoles' own policy comment above.
+  tenantIsolationPolicy: pgPolicy('user_branches_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`EXISTS (SELECT 1 FROM ${users} WHERE ${users.id} = ${table.userId} AND ${users.companyId} = current_setting('app.company_id', true)::uuid)`,
+    withCheck: sql`EXISTS (SELECT 1 FROM ${users} WHERE ${users.id} = ${table.userId} AND ${users.companyId} = current_setting('app.company_id', true)::uuid)`,
+  }),
+})).enableRLS();
 
 // A company-scoped job title/position (Sales Associate, Cashier, Warehouse Supervisor)
 // — deliberately named "Job Title", not "Role", to stay unambiguous against the
@@ -396,7 +475,13 @@ export const jobTitles = pgTable('job_titles', {
 }, (table) => ({
   companyIdx: index('job_titles_company_idx').on(table.companyId),
   uniqueTitle: uniqueIndex('job_titles_unique').on(table.companyId, table.title).where(sql`is_active = true`),
-}));
+  tenantIsolationPolicy: pgPolicy('job_titles_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // The HR foundation this app has never had: a real employee roster, independent of
 // `users` (ERP login accounts). Not every employee needs ERP access (a shop-floor worker
@@ -430,7 +515,13 @@ export const employees = pgTable('employees', {
 }, (table) => ({
   companyIdx: index('employees_company_idx').on(table.companyId),
   uniqueEmployeeNumber: uniqueIndex('employees_number_unique').on(table.companyId, table.employeeNumber),
-}));
+  tenantIsolationPolicy: pgPolicy('employees_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // The hot, concurrently-incremented state behind every document's human-readable number
 // (INV-1042, QT-1001, ...) — see companies.numberingPolicy above and
@@ -458,7 +549,13 @@ export const documentCounters = pgTable('document_counters', {
   currentValue: integer('current_value').notNull().default(1000), // pre-increment; first issued number is currentValue + 1
 }, (table) => ({
   lookupIdx: uniqueIndex('document_counters_lookup_idx').on(table.companyId, table.docType, table.periodKey),
-}));
+  tenantIsolationPolicy: pgPolicy('document_counters_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const productsServices = pgTable('products_services', {
   id: uuid('id').primaryKey(),
@@ -518,7 +615,13 @@ export const productsServices = pgTable('products_services', {
   companyId: uuid('company_id').notNull().references(() => companies.id),
 }, (table) => ({
   companyIdIdx: index('products_services_company_id_idx').on(table.companyId),
-}));
+  tenantIsolationPolicy: pgPolicy('products_services_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const customers = pgTable('customers', {
   id: uuid('id').primaryKey(),
@@ -614,7 +717,13 @@ export const vendors = pgTable('vendors', {
   crNumber: text('cr_number'),
 }, (table) => ({
   companyIdIdx: index('vendors_company_id_idx').on(table.companyId),
-}));
+  tenantIsolationPolicy: pgPolicy('vendors_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const bankAccounts = pgTable('bank_accounts', {
   id: uuid('id').primaryKey(),
@@ -628,7 +737,13 @@ export const bankAccounts = pgTable('bank_accounts', {
 }, (table) => ({
   unique_default_bank: uniqueIndex('unique_default_bank').on(table.companyId).where(sql`is_default = true`),
   companyIdIdx: index('bank_accounts_company_id_idx').on(table.companyId),
-}));
+  tenantIsolationPolicy: pgPolicy('bank_accounts_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // Fiscal months use a semantic "YYYY-MM" string as their id (e.g. "2026-07"), not a
 // generated entity id — intentionally excluded from the UUID migration.
@@ -642,7 +757,14 @@ export const fiscalMonths = pgTable('fiscal_months', {
   companyId: uuid('company_id').notNull().references(() => companies.id),
 }, (table) => ({
   pk: primaryKey({ columns: [table.id, table.companyId] }),
-}));
+  companyIdIdx: index('fiscal_months_company_id_idx').on(table.companyId),
+  tenantIsolationPolicy: pgPolicy('fiscal_months_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // A quarterly VAT filing record (server/routes/taxReturns.ts) — a governance/compliance
 // document, not a report: 'Generated' captures a frozen server-computed snapshot,
@@ -677,7 +799,13 @@ export const taxReturns = pgTable('tax_returns', {
   // outright — see taxReturns.ts), so this alone protects a Filed row from ever being
   // superseded; no need for an additional `OR status = 'Filed'` clause.
   uniqueActivePerQuarter: uniqueIndex('tax_returns_company_quarter_unique').on(table.companyId, table.year, table.quarter).where(sql`is_deleted = false`),
-}));
+  tenantIsolationPolicy: pgPolicy('tax_returns_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const quotations = pgTable('quotations', {
   id: uuid('id').primaryKey(),
@@ -704,7 +832,13 @@ export const quotations = pgTable('quotations', {
   branchId: uuid('branch_id').references(() => branches.id),
 }, (table) => ({
   companyIdIdx: index('quotations_company_id_idx').on(table.companyId),
-}));
+  tenantIsolationPolicy: pgPolicy('quotations_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const quotationItems = pgTable('quotation_items', {
   id: uuid('id').primaryKey(),
@@ -727,7 +861,16 @@ export const quotationItems = pgTable('quotation_items', {
   // never touch inventory, so this is carried purely for display/carry-through into the
   // invoice this quotation converts to.
   unitOfMeasureId: uuid('unit_of_measure_id').references(() => unitsOfMeasure.id),
-});
+}, (table) => ({
+  quotationIdIdx: index('quotation_items_quotation_id_idx').on(table.quotationId),
+  // Child table, no local companyId — scoped via its parent quotation's own companyId.
+  tenantIsolationPolicy: pgPolicy('quotation_items_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`EXISTS (SELECT 1 FROM ${quotations} WHERE ${quotations.id} = ${table.quotationId} AND ${quotations.companyId} = current_setting('app.company_id', true)::uuid)`,
+    withCheck: sql`EXISTS (SELECT 1 FROM ${quotations} WHERE ${quotations.id} = ${table.quotationId} AND ${quotations.companyId} = current_setting('app.company_id', true)::uuid)`,
+  }),
+})).enableRLS();
 
 export const posShifts = pgTable('pos_shifts', {
   id: uuid('id').primaryKey(),
@@ -753,7 +896,13 @@ export const posShifts = pgTable('pos_shifts', {
   attachmentUrl: text('attachment_url'),
 }, (table) => ({
   companyIdIdx: index('pos_shifts_company_id_idx').on(table.companyId),
-}));
+  tenantIsolationPolicy: pgPolicy('pos_shifts_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const invoices = pgTable('invoices', {
   id: uuid('id').primaryKey(),
@@ -832,7 +981,13 @@ export const invoices = pgTable('invoices', {
   salesAssociateId: uuid('sales_associate_id').references(() => employees.id),
 }, (table) => ({
   companyIdIdx: index('invoices_company_id_idx').on(table.companyId),
-}));
+  tenantIsolationPolicy: pgPolicy('invoices_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // Tracks the tip of each company's ZATCA ICV/PIH chain, independently per environment
 // (sandbox/simulation/production are entirely separate ZATCA backends — see CLAUDE.md's
@@ -853,7 +1008,13 @@ export const zatcaChainState = pgTable('zatca_chain_state', {
   updatedAt: timestamp('updated_at').notNull(),
 }, (table) => ({
   companyEnvIdx: uniqueIndex('zatca_chain_state_company_env_idx').on(table.companyId, table.environment),
-}));
+  tenantIsolationPolicy: pgPolicy('zatca_chain_state_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const invoiceItems = pgTable('invoice_items', {
   id: uuid('id').primaryKey(),
@@ -902,7 +1063,15 @@ export const invoiceItems = pgTable('invoice_items', {
   // Invoice line, or a full-invoice-reversal CreditNote/DebitNote predating this column,
   // has none — POS Returns (server/routes/transactions.ts) is the only writer.
   originalInvoiceItemId: uuid('original_invoice_item_id').references((): any => invoiceItems.id),
-});
+}, (table) => ({
+  invoiceIdIdx: index('invoice_items_invoice_id_idx').on(table.invoiceId),
+  tenantIsolationPolicy: pgPolicy('invoice_items_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`EXISTS (SELECT 1 FROM ${invoices} WHERE ${invoices.id} = ${table.invoiceId} AND ${invoices.companyId} = current_setting('app.company_id', true)::uuid)`,
+    withCheck: sql`EXISTS (SELECT 1 FROM ${invoices} WHERE ${invoices.id} = ${table.invoiceId} AND ${invoices.companyId} = current_setting('app.company_id', true)::uuid)`,
+  }),
+})).enableRLS();
 
 export const expenses = pgTable('expenses', {
   id: uuid('id').primaryKey(),
@@ -944,7 +1113,13 @@ export const expenses = pgTable('expenses', {
 }, (table) => ({
   companyIdIdx: index('expenses_company_id_idx').on(table.companyId),
   originAccrualFk: index('expenses_origin_accrual_idx').on(table.originAccrualId),
-}));
+  tenantIsolationPolicy: pgPolicy('expenses_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const expenseItems = pgTable('expense_items', {
   id: uuid('id').primaryKey(),
@@ -952,7 +1127,15 @@ export const expenseItems = pgTable('expense_items', {
   description: text('description').notNull(),
   unitCost: decimal('unit_cost', { precision: 12, scale: 2 }).notNull(),
   quantity: decimal('quantity', { precision: 10, scale: 2 }).notNull(),
-});
+}, (table) => ({
+  expenseIdIdx: index('expense_items_expense_id_idx').on(table.expenseId),
+  tenantIsolationPolicy: pgPolicy('expense_items_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`EXISTS (SELECT 1 FROM ${expenses} WHERE ${expenses.id} = ${table.expenseId} AND ${expenses.companyId} = current_setting('app.company_id', true)::uuid)`,
+    withCheck: sql`EXISTS (SELECT 1 FROM ${expenses} WHERE ${expenses.id} = ${table.expenseId} AND ${expenses.companyId} = current_setting('app.company_id', true)::uuid)`,
+  }),
+})).enableRLS();
 
 export const recurringExpenseTemplates = pgTable('recurring_expense_templates', {
   id: uuid('id').primaryKey(),
@@ -965,7 +1148,13 @@ export const recurringExpenseTemplates = pgTable('recurring_expense_templates', 
   companyId: uuid('company_id').notNull().references(() => companies.id),
 }, (table) => ({
   companyIdIdx: index('rec_exp_temp_company_id_idx').on(table.companyId),
-}));
+  tenantIsolationPolicy: pgPolicy('recurring_expense_templates_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // monthId uses the same semantic "YYYY-MM" string as fiscalMonths.id — not a generated
 // entity id, intentionally excluded from the UUID migration.
@@ -979,7 +1168,13 @@ export const recurringPostings = pgTable('recurring_postings', {
 }, (table) => ({
   companyIdIdx: index('rec_post_company_id_idx').on(table.companyId),
   templateMonthUnique: uniqueIndex('rec_post_template_month_unique').on(table.templateId, table.monthId, table.companyId),
-}));
+  tenantIsolationPolicy: pgPolicy('recurring_postings_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const vouchers = pgTable('vouchers', {
   id: uuid('id').primaryKey(),
@@ -1007,7 +1202,13 @@ export const vouchers = pgTable('vouchers', {
 }, (table) => ({
   companyIdIdx: index('vouchers_company_id_idx').on(table.companyId),
   referenceIdIdx: index('vouchers_reference_id_idx').on(table.referenceId),
-}));
+  tenantIsolationPolicy: pgPolicy('vouchers_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const investors = pgTable('investors', {
   id: uuid('id').primaryKey(),
@@ -1023,7 +1224,13 @@ export const investors = pgTable('investors', {
   companyId: uuid('company_id').notNull().references(() => companies.id),
 }, (table) => ({
   companyIdIdx: index('investors_company_id_idx').on(table.companyId),
-}));
+  tenantIsolationPolicy: pgPolicy('investors_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const translations = pgTable('translations', {
   id: uuid('id').primaryKey(),
@@ -1031,7 +1238,17 @@ export const translations = pgTable('translations', {
   en: text('en').notNull(),
   ar: text('ar').notNull(),
   ur: text('ur').notNull(),
-});
+}, (table) => ({
+  // Genuinely cross-tenant by design (no companyId column at all — see the table's own
+  // header comment) — RLS is still enabled with an explicit allow-all policy rather than
+  // left off entirely, so this is an auditable, deliberate choice, not an accidental gap.
+  tenantIsolationPolicy: pgPolicy('translations_shared_access', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`true`,
+    withCheck: sql`true`,
+  }),
+})).enableRLS();
 
 // Cross-tenant by design — deliberately NOT company-scoped, unlike `roles` above (whose
 // companyId is NOT NULL). A reusable, platform-curated permission-set library, same JSON
@@ -1046,7 +1263,15 @@ export const roleTemplates = pgTable('role_templates', {
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => ({
   nameUnique: uniqueIndex('role_templates_name_unique').on(table.name),
-}));
+  // Cross-tenant by design — see the table's own header comment. Allow-all, same
+  // reasoning as translations above.
+  tenantIsolationPolicy: pgPolicy('role_templates_shared_access', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`true`,
+    withCheck: sql`true`,
+  }),
+})).enableRLS();
 
 // Cross-tenant by design, same reasoning as roleTemplates above — submitted by a
 // prospective customer before any company or session exists. `createdCompanyId` is only
@@ -1084,7 +1309,16 @@ export const companyOnboardingRequests = pgTable('company_onboarding_requests', 
   emailVerifiedAt: timestamp('email_verified_at'),
   emailConfirmTokenHash: text('email_confirm_token_hash'),
   emailConfirmExpiresAt: timestamp('email_confirm_expires_at'),
-});
+}, (table) => ({
+  // Cross-tenant by design — see the table's own header comment (submitted before any
+  // company exists). Allow-all, same reasoning as translations/roleTemplates above.
+  tenantIsolationPolicy: pgPolicy('company_onboarding_requests_shared_access', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`true`,
+    withCheck: sql`true`,
+  }),
+})).enableRLS();
 
 // Cross-tenant by design — a tombstone for the "Delete Company & All Data" purge
 // (server/routes/companies.ts). Deliberately NOT a live FK to companies.id: by the time
@@ -1099,7 +1333,17 @@ export const deletedCompanyLog = pgTable('deleted_company_log', {
   deletedByUserId: uuid('deleted_by_user_id').notNull(),
   deletedByUsername: text('deleted_by_username').notNull(),
   deletedAt: timestamp('deleted_at').defaultNow(),
-});
+}, (table) => ({
+  // Cross-tenant tombstone by design — see the table's own header comment (the company it
+  // describes no longer exists by the time this is read). Allow-all, same reasoning as
+  // translations/roleTemplates/companyOnboardingRequests above.
+  tenantIsolationPolicy: pgPolicy('deleted_company_log_shared_access', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`true`,
+    withCheck: sql`true`,
+  }),
+})).enableRLS();
 
 export const posHeldInvoices = pgTable('pos_held_invoices', {
   id: uuid('id').primaryKey(),
@@ -1116,7 +1360,13 @@ export const posHeldInvoices = pgTable('pos_held_invoices', {
   reference: text('reference').notNull(),
 }, (table) => ({
   companyIdIdx: index('pos_held_inv_company_id_idx').on(table.companyId),
-}));
+  tenantIsolationPolicy: pgPolicy('pos_held_invoices_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // Forgot-password reset links. Only the SHA-256 hash of the raw token is ever stored —
 // the raw token exists only in the emailed URL and briefly in memory server-side while
@@ -1132,7 +1382,17 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
 }, (table) => ({
   tokenHashIdx: index('password_reset_tokens_hash_idx').on(table.tokenHash),
   userIdIdx: index('password_reset_tokens_user_id_idx').on(table.userId),
-}));
+  // User-scoped, not company-scoped directly — via the owning user's own companyId.
+  // Inert today (the forgot-password routes stay on the superuser db — this table has no
+  // company context to bind at the pre-session point those routes run at), but covered
+  // for schema-level completeness per this project's "every table" RLS rule.
+  tenantIsolationPolicy: pgPolicy('password_reset_tokens_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`EXISTS (SELECT 1 FROM ${users} WHERE ${users.id} = ${table.userId} AND ${users.companyId} = current_setting('app.company_id', true)::uuid)`,
+    withCheck: sql`EXISTS (SELECT 1 FROM ${users} WHERE ${users.id} = ${table.userId} AND ${users.companyId} = current_setting('app.company_id', true)::uuid)`,
+  }),
+})).enableRLS();
 
 // Owned by the `connect-pg-simple` session-store library, not app-generated —
 // intentionally excluded from the UUID migration. `sid`/`sess`/`expire` are the only
@@ -1155,7 +1415,19 @@ export const user_sessions = pgTable('user_sessions', {
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
   companyId: uuid('company_id').references(() => companies.id, { onDelete: 'cascade' }),
   lastActivity: timestamp('last_activity', { mode: 'date' }),
-});
+}, (table) => ({
+  // This table's real traffic (the connect-pg-simple session-store library's own reads/
+  // writes, plus the admin session list/revoke routes which deliberately cross companies)
+  // stays on the superuser db permanently — see .claude/skills/rls-tenant-isolation. This
+  // policy exists for schema-level completeness, matching auditLogs' own nullable-companyId
+  // treatment (a NULL-company row is invisible under a tenant-scoped connection).
+  tenantIsolationPolicy: pgPolicy('user_sessions_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // Pure append-only log table — no benefit from unguessable/client-generated ids and
 // everything to gain from fast sequential appends at high volume, so this uses a native
@@ -1178,7 +1450,18 @@ export const auditLogs = pgTable('audit_logs', {
   companyIdIdx: index('audit_logs_company_id_idx').on(table.companyId),
   userIdIdx: index('audit_logs_user_id_idx').on(table.userId),
   createdAtIdx: index('audit_logs_created_at_idx').on(table.createdAt),
-}));
+  // companyId is nullable (system-level entries with no attributable company) — a NULL
+  // row is simply invisible under a tenant-scoped connection, which is correct: a tenant
+  // has no legitimate reason to see one. A true cross-company audit view stays on the
+  // superuser db, matching how it already works today (server.ts falls back to a
+  // never-matching filter when req.targetCompanyId is falsy).
+  tenantIsolationPolicy: pgPolicy('audit_logs_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // 2. Inventory Stock State (Tracks current qty per warehouse, batch, lot)
 export const inventoryStocks = pgTable('inventory_stocks', {
@@ -1192,7 +1475,13 @@ export const inventoryStocks = pgTable('inventory_stocks', {
 }, (table) => ({
   prodWhIdx: index('inv_stock_prod_wh_idx').on(table.productId, table.warehouseId),
   companyIdx: index('inv_stock_company_idx').on(table.companyId),
-}));
+  tenantIsolationPolicy: pgPolicy('inventory_stocks_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // 2c. Units of Measure Table
 export const unitsOfMeasure = pgTable('units_of_measure', {
@@ -1207,7 +1496,15 @@ export const unitsOfMeasure = pgTable('units_of_measure', {
   code: text('code').notNull(),
   isActive: boolean('is_active').default(true),
   companyId: uuid('company_id').notNull().references(() => companies.id),
-});
+}, (table) => ({
+  companyIdIdx: index('units_of_measure_company_id_idx').on(table.companyId),
+  tenantIsolationPolicy: pgPolicy('units_of_measure_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // POS-only, optional per product (e.g. "Size", "Milk") — a product with zero rows in
 // productModifierGroups below has no modifiers, the default/untouched state for every
@@ -1224,7 +1521,13 @@ export const modifierGroups = pgTable('modifier_groups', {
   sortOrder: integer('sort_order'),
 }, (table) => ({
   companyIdIdx: index('modifier_groups_company_id_idx').on(table.companyId),
-}));
+  tenantIsolationPolicy: pgPolicy('modifier_groups_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const modifierChoices = pgTable('modifier_choices', {
   id: uuid('id').primaryKey(),
@@ -1234,7 +1537,13 @@ export const modifierChoices = pgTable('modifier_choices', {
   sortOrder: integer('sort_order'),
 }, (table) => ({
   groupIdIdx: index('modifier_choices_group_id_idx').on(table.modifierGroupId),
-}));
+  tenantIsolationPolicy: pgPolicy('modifier_choices_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`EXISTS (SELECT 1 FROM ${modifierGroups} WHERE ${modifierGroups.id} = ${table.modifierGroupId} AND ${modifierGroups.companyId} = current_setting('app.company_id', true)::uuid)`,
+    withCheck: sql`EXISTS (SELECT 1 FROM ${modifierGroups} WHERE ${modifierGroups.id} = ${table.modifierGroupId} AND ${modifierGroups.companyId} = current_setting('app.company_id', true)::uuid)`,
+  }),
+})).enableRLS();
 
 // Which modifier groups attach to which product, and their display order in the POS
 // modal. No companyId of its own (same convention as invoiceItems/quotationItems) —
@@ -1249,7 +1558,16 @@ export const productModifierGroups = pgTable('product_modifier_groups', {
 }, (table) => ({
   productIdIdx: index('product_modifier_groups_product_id_idx').on(table.productId),
   uniquePair: uniqueIndex('product_modifier_groups_unique').on(table.productId, table.modifierGroupId),
-}));
+  // Dual-parent junction (productsServices + modifierGroups) — checked via the
+  // productsServices side only, relying on the existing app-level invariant that both
+  // sides belong to the same company (assertModifierGroupsOwnedByCompany).
+  tenantIsolationPolicy: pgPolicy('product_modifier_groups_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`EXISTS (SELECT 1 FROM ${productsServices} WHERE ${productsServices.id} = ${table.productId} AND ${productsServices.companyId} = current_setting('app.company_id', true)::uuid)`,
+    withCheck: sql`EXISTS (SELECT 1 FROM ${productsServices} WHERE ${productsServices.id} = ${table.productId} AND ${productsServices.companyId} = current_setting('app.company_id', true)::uuid)`,
+  }),
+})).enableRLS();
 
 // A product's packaging/alternate units — e.g. "Cell 4 AMP" (base unit: Piece) also sold/
 // bought as "Carton-12" (1 Carton = 12 Piece). Inventory (inventoryStocks/
@@ -1282,7 +1600,13 @@ export const productUnitConversions = pgTable('product_unit_conversions', {
   productIdx: index('product_unit_conversions_product_idx').on(table.productId),
   barcodeIdx: index('product_unit_conversions_barcode_idx').on(table.barcode),
   uniqueProductUnit: uniqueIndex('product_unit_conversions_unique').on(table.productId, table.unitOfMeasureId).where(sql`is_active = true`),
-}));
+  tenantIsolationPolicy: pgPolicy('product_unit_conversions_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // 2d. Product-Warehouse Junction Table
 export const productWarehouses = pgTable('product_warehouses', {
@@ -1294,7 +1618,15 @@ export const productWarehouses = pgTable('product_warehouses', {
   maxLevel: decimal('max_level', { precision: 12, scale: 3 }).default('0.000'),
   reorderLeadTime: text('reorder_lead_time'), // e.g., "3 days"
   companyId: uuid('company_id').notNull().references(() => companies.id),
-});
+}, (table) => ({
+  companyIdIdx: index('product_warehouses_company_id_idx').on(table.companyId),
+  tenantIsolationPolicy: pgPolicy('product_warehouses_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // 3. GL Group Mappings for Products/Categories
 export const glGroupMappings = pgTable('gl_group_mappings', {
@@ -1306,7 +1638,15 @@ export const glGroupMappings = pgTable('gl_group_mappings', {
   salesGlGroup: text('sales_gl_group').notNull(),       // e.g. '4000 - Product Sales'
   cogsGlGroup: text('cogs_gl_group').notNull(),         // e.g. '5000 - Cost of Goods Sold'
   companyId: uuid('company_id').notNull().references(() => companies.id),
-});
+}, (table) => ({
+  companyIdIdx: index('gl_group_mappings_company_id_idx').on(table.companyId),
+  tenantIsolationPolicy: pgPolicy('gl_group_mappings_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // 4. Purchase Requisitions (PR)
 export const purchaseRequisitions = pgTable('purchase_requisitions', {
@@ -1320,7 +1660,15 @@ export const purchaseRequisitions = pgTable('purchase_requisitions', {
   // Direct branchId (unlike GRN/Returns/StockTakes, a PR has no warehouseId to derive
   // branch from) — nullable, additive, see quotations.branchId's comment.
   branchId: uuid('branch_id').references(() => branches.id),
-});
+}, (table) => ({
+  companyIdIdx: index('purchase_requisitions_company_id_idx').on(table.companyId),
+  tenantIsolationPolicy: pgPolicy('purchase_requisitions_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const purchaseRequisitionItems = pgTable('purchase_requisition_items', {
   id: uuid('id').primaryKey(),
@@ -1328,7 +1676,15 @@ export const purchaseRequisitionItems = pgTable('purchase_requisition_items', {
   productId: uuid('product_id').notNull().references(() => productsServices.id),
   quantity: decimal('quantity', { precision: 12, scale: 3 }).notNull(),
   purpose: text('purpose'),
-});
+}, (table) => ({
+  requisitionIdIdx: index('purchase_requisition_items_requisition_id_idx').on(table.requisitionId),
+  tenantIsolationPolicy: pgPolicy('purchase_requisition_items_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`EXISTS (SELECT 1 FROM ${purchaseRequisitions} WHERE ${purchaseRequisitions.id} = ${table.requisitionId} AND ${purchaseRequisitions.companyId} = current_setting('app.company_id', true)::uuid)`,
+    withCheck: sql`EXISTS (SELECT 1 FROM ${purchaseRequisitions} WHERE ${purchaseRequisitions.id} = ${table.requisitionId} AND ${purchaseRequisitions.companyId} = current_setting('app.company_id', true)::uuid)`,
+  }),
+})).enableRLS();
 
 // 5. Purchase Orders (PO)
 export const purchaseOrders = pgTable('purchase_orders', {
@@ -1342,7 +1698,15 @@ export const purchaseOrders = pgTable('purchase_orders', {
   totalAmount: decimal('total_amount', { precision: 12, scale: 2 }).notNull(),
   companyId: uuid('company_id').notNull().references(() => companies.id),
   branchId: uuid('branch_id').references(() => branches.id),
-});
+}, (table) => ({
+  companyIdIdx: index('purchase_orders_company_id_idx').on(table.companyId),
+  tenantIsolationPolicy: pgPolicy('purchase_orders_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const purchaseOrderItems = pgTable('purchase_order_items', {
   id: uuid('id').primaryKey(),
@@ -1356,7 +1720,15 @@ export const purchaseOrderItems = pgTable('purchase_order_items', {
   // is expressed in THIS unit — server/lib/uomConversion.ts converts to base-unit terms
   // wherever this line is compared against a GRN's own (possibly different-unit) receipt.
   unitOfMeasureId: uuid('unit_of_measure_id').references(() => unitsOfMeasure.id),
-});
+}, (table) => ({
+  purchaseOrderIdIdx: index('purchase_order_items_purchase_order_id_idx').on(table.purchaseOrderId),
+  tenantIsolationPolicy: pgPolicy('purchase_order_items_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`EXISTS (SELECT 1 FROM ${purchaseOrders} WHERE ${purchaseOrders.id} = ${table.purchaseOrderId} AND ${purchaseOrders.companyId} = current_setting('app.company_id', true)::uuid)`,
+    withCheck: sql`EXISTS (SELECT 1 FROM ${purchaseOrders} WHERE ${purchaseOrders.id} = ${table.purchaseOrderId} AND ${purchaseOrders.companyId} = current_setting('app.company_id', true)::uuid)`,
+  }),
+})).enableRLS();
 
 // 6. Goods Receipt Notes (GRN)
 export const goodsReceiptNotes = pgTable('goods_receipt_notes', {
@@ -1376,7 +1748,15 @@ export const goodsReceiptNotes = pgTable('goods_receipt_notes', {
   // re-entered by hand, so PO/GRN/Bill can never independently drift from each other.
   isBilled: boolean('is_billed').default(false).notNull(),
   companyId: uuid('company_id').notNull().references(() => companies.id),
-});
+}, (table) => ({
+  companyIdIdx: index('goods_receipt_notes_company_id_idx').on(table.companyId),
+  tenantIsolationPolicy: pgPolicy('goods_receipt_notes_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const goodsReceiptNoteItems = pgTable('goods_receipt_note_items', {
   id: uuid('id').primaryKey(),
@@ -1392,7 +1772,15 @@ export const goodsReceiptNoteItems = pgTable('goods_receipt_note_items', {
   // THIS unit; server/lib/uomConversion.ts converts to base-unit quantity/cost before this
   // receipt ever touches inventoryStocks/stockLedgerTransactions/averageCost.
   unitOfMeasureId: uuid('unit_of_measure_id').references(() => unitsOfMeasure.id),
-});
+}, (table) => ({
+  grnIdIdx: index('goods_receipt_note_items_grn_id_idx').on(table.grnId),
+  tenantIsolationPolicy: pgPolicy('goods_receipt_note_items_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`EXISTS (SELECT 1 FROM ${goodsReceiptNotes} WHERE ${goodsReceiptNotes.id} = ${table.grnId} AND ${goodsReceiptNotes.companyId} = current_setting('app.company_id', true)::uuid)`,
+    withCheck: sql`EXISTS (SELECT 1 FROM ${goodsReceiptNotes} WHERE ${goodsReceiptNotes.id} = ${table.grnId} AND ${goodsReceiptNotes.companyId} = current_setting('app.company_id', true)::uuid)`,
+  }),
+})).enableRLS();
 
 // 7. Purchase Bills / Invoices
 export const purchaseBills = pgTable('purchase_bills', {
@@ -1410,7 +1798,15 @@ export const purchaseBills = pgTable('purchase_bills', {
   bankId: uuid('bank_id').references(() => bankAccounts.id),
   companyId: uuid('company_id').notNull().references(() => companies.id),
   branchId: uuid('branch_id').references(() => branches.id),
-});
+}, (table) => ({
+  companyIdIdx: index('purchase_bills_company_id_idx').on(table.companyId),
+  tenantIsolationPolicy: pgPolicy('purchase_bills_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // 8. Purchase Returns (Debit Notes)
 export const purchaseReturns = pgTable('purchase_returns', {
@@ -1423,7 +1819,15 @@ export const purchaseReturns = pgTable('purchase_returns', {
   notes: text('notes'),
   status: text('status').default('Active').notNull(), // 'Active', 'Cancelled'
   companyId: uuid('company_id').notNull().references(() => companies.id),
-});
+}, (table) => ({
+  companyIdIdx: index('purchase_returns_company_id_idx').on(table.companyId),
+  tenantIsolationPolicy: pgPolicy('purchase_returns_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const purchaseReturnItems = pgTable('purchase_return_items', {
   id: uuid('id').primaryKey(),
@@ -1436,7 +1840,15 @@ export const purchaseReturnItems = pgTable('purchase_return_items', {
   // converted to base-unit terms before touching inventoryStocks, and when checked against
   // the source GRN's own remaining-returnable quantity (which may itself be a different unit).
   unitOfMeasureId: uuid('unit_of_measure_id').references(() => unitsOfMeasure.id),
-});
+}, (table) => ({
+  returnIdIdx: index('purchase_return_items_return_id_idx').on(table.returnId),
+  tenantIsolationPolicy: pgPolicy('purchase_return_items_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`EXISTS (SELECT 1 FROM ${purchaseReturns} WHERE ${purchaseReturns.id} = ${table.returnId} AND ${purchaseReturns.companyId} = current_setting('app.company_id', true)::uuid)`,
+    withCheck: sql`EXISTS (SELECT 1 FROM ${purchaseReturns} WHERE ${purchaseReturns.id} = ${table.returnId} AND ${purchaseReturns.companyId} = current_setting('app.company_id', true)::uuid)`,
+  }),
+})).enableRLS();
 
 // 9. Physical Stock Takes
 export const physicalStockTakes = pgTable('physical_stock_takes', {
@@ -1448,7 +1860,15 @@ export const physicalStockTakes = pgTable('physical_stock_takes', {
   performedBy: text('performed_by').notNull(), // User ID or Name (loosely typed by design) — stays text
   notes: text('notes'),
   companyId: uuid('company_id').notNull().references(() => companies.id),
-});
+}, (table) => ({
+  companyIdIdx: index('physical_stock_takes_company_id_idx').on(table.companyId),
+  tenantIsolationPolicy: pgPolicy('physical_stock_takes_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const physicalStockTakeItems = pgTable('physical_stock_take_items', {
   id: uuid('id').primaryKey(),
@@ -1464,7 +1884,15 @@ export const physicalStockTakeItems = pgTable('physical_stock_take_items', {
   // terms exactly as today, and the finalize route converts physicalQuantity to base-unit
   // before writing it as the new inventoryStocks quantity.
   unitOfMeasureId: uuid('unit_of_measure_id').references(() => unitsOfMeasure.id),
-});
+}, (table) => ({
+  stockTakeIdIdx: index('physical_stock_take_items_stock_take_id_idx').on(table.stockTakeId),
+  tenantIsolationPolicy: pgPolicy('physical_stock_take_items_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`EXISTS (SELECT 1 FROM ${physicalStockTakes} WHERE ${physicalStockTakes.id} = ${table.stockTakeId} AND ${physicalStockTakes.companyId} = current_setting('app.company_id', true)::uuid)`,
+    withCheck: sql`EXISTS (SELECT 1 FROM ${physicalStockTakes} WHERE ${physicalStockTakes.id} = ${table.stockTakeId} AND ${physicalStockTakes.companyId} = current_setting('app.company_id', true)::uuid)`,
+  }),
+})).enableRLS();
 
 // 10. Stock Ledger / Transaction Log (audit trail for all movements)
 export const stockLedgerTransactions = pgTable('stock_ledger_transactions', {
@@ -1479,7 +1907,18 @@ export const stockLedgerTransactions = pgTable('stock_ledger_transactions', {
   endingQuantity: decimal('ending_quantity', { precision: 12, scale: 3 }).notNull(),
   batchNumber: text('batch_number'),
   companyId: uuid('company_id').notNull().references(() => companies.id),
-});
+}, (table) => ({
+  // High-volume append-only ledger table with no other index at all before this — adding
+  // one alongside the RLS policy is necessary, not optional, or the policy's predicate
+  // forces a sequential scan on every query.
+  companyIdIdx: index('stock_ledger_transactions_company_id_idx').on(table.companyId),
+  tenantIsolationPolicy: pgPolicy('stock_ledger_transactions_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 // 11. Warehouse Transfers (Dispatch -> Receiving)
 // A transfer moves stock between two warehouses that may belong to two different branches
@@ -1520,7 +1959,13 @@ export const warehouseDispatches = pgTable('warehouse_dispatches', {
   companyId: uuid('company_id').notNull().references(() => companies.id),
 }, (table) => ({
   companyIdIdx: index('warehouse_dispatches_company_id_idx').on(table.companyId),
-}));
+  tenantIsolationPolicy: pgPolicy('warehouse_dispatches_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const warehouseDispatchItems = pgTable('warehouse_dispatch_items', {
   id: uuid('id').primaryKey(),
@@ -1535,7 +1980,13 @@ export const warehouseDispatchItems = pgTable('warehouse_dispatch_items', {
   unitOfMeasureId: uuid('unit_of_measure_id').references(() => unitsOfMeasure.id),
 }, (table) => ({
   dispatchIdIdx: index('warehouse_dispatch_items_dispatch_id_idx').on(table.dispatchId),
-}));
+  tenantIsolationPolicy: pgPolicy('warehouse_dispatch_items_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`EXISTS (SELECT 1 FROM ${warehouseDispatches} WHERE ${warehouseDispatches.id} = ${table.dispatchId} AND ${warehouseDispatches.companyId} = current_setting('app.company_id', true)::uuid)`,
+    withCheck: sql`EXISTS (SELECT 1 FROM ${warehouseDispatches} WHERE ${warehouseDispatches.id} = ${table.dispatchId} AND ${warehouseDispatches.companyId} = current_setting('app.company_id', true)::uuid)`,
+  }),
+})).enableRLS();
 
 export const warehouseReceivings = pgTable('warehouse_receivings', {
   id: uuid('id').primaryKey(),
@@ -1557,7 +2008,13 @@ export const warehouseReceivings = pgTable('warehouse_receivings', {
 }, (table) => ({
   companyIdIdx: index('warehouse_receivings_company_id_idx').on(table.companyId),
   dispatchIdIdx: index('warehouse_receivings_dispatch_id_idx').on(table.dispatchId),
-}));
+  tenantIsolationPolicy: pgPolicy('warehouse_receivings_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
 
 export const warehouseReceivingItems = pgTable('warehouse_receiving_items', {
   id: uuid('id').primaryKey(),
@@ -1573,4 +2030,10 @@ export const warehouseReceivingItems = pgTable('warehouse_receiving_items', {
   unitOfMeasureId: uuid('unit_of_measure_id').references(() => unitsOfMeasure.id),
 }, (table) => ({
   receivingIdIdx: index('warehouse_receiving_items_receiving_id_idx').on(table.receivingId),
-}));
+  tenantIsolationPolicy: pgPolicy('warehouse_receiving_items_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`EXISTS (SELECT 1 FROM ${warehouseReceivings} WHERE ${warehouseReceivings.id} = ${table.receivingId} AND ${warehouseReceivings.companyId} = current_setting('app.company_id', true)::uuid)`,
+    withCheck: sql`EXISTS (SELECT 1 FROM ${warehouseReceivings} WHERE ${warehouseReceivings.id} = ${table.receivingId} AND ${warehouseReceivings.companyId} = current_setting('app.company_id', true)::uuid)`,
+  }),
+})).enableRLS();

@@ -1,4 +1,3 @@
-import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, and, gte, lte, ne, inArray } from 'drizzle-orm';
 import { round2, computeInvoiceServerTotals } from './businessLogic.js';
@@ -30,11 +29,11 @@ interface InvoiceTotals { itemsSubtotal: number; headerDiscount: number; discoun
 // discountPercentage argument, silently ignoring any header discount on the invoice.
 // That's a real, separate bug (found while porting this), not a deliberate design this
 // port needs to preserve — every consumer here gets the correct, discount-aware total.
-async function computeInvoiceTotalsMap(invoices: (typeof schema.invoices.$inferSelect)[]): Promise<Map<string, InvoiceTotals>> {
+async function computeInvoiceTotalsMap(executor: any, invoices: (typeof schema.invoices.$inferSelect)[]): Promise<Map<string, InvoiceTotals>> {
   const result = new Map<string, InvoiceTotals>();
   if (invoices.length === 0) return result;
   const invoiceIds = invoices.map(inv => inv.id);
-  const items = await db.select().from(schema.invoiceItems).where(inArray(schema.invoiceItems.invoiceId, invoiceIds));
+  const items = await executor.select().from(schema.invoiceItems).where(inArray(schema.invoiceItems.invoiceId, invoiceIds));
   const itemsByInvoiceId = new Map<string, typeof items>();
   for (const item of items) {
     if (!itemsByInvoiceId.has(item.invoiceId)) itemsByInvoiceId.set(item.invoiceId, []);
@@ -44,7 +43,7 @@ async function computeInvoiceTotalsMap(invoices: (typeof schema.invoices.$inferS
     ...invoices.map(inv => inv.taxSlabId).filter(Boolean),
     ...items.map(it => it.taxSlabId).filter(Boolean),
   ])) as string[];
-  const taxSlabRows = taxSlabIds.length > 0 ? await db.select().from(schema.taxSlabs).where(inArray(schema.taxSlabs.id, taxSlabIds)) : [];
+  const taxSlabRows: any[] = taxSlabIds.length > 0 ? await executor.select().from(schema.taxSlabs).where(inArray(schema.taxSlabs.id, taxSlabIds)) : [];
   const percentageById = new Map(taxSlabRows.map(s => [s.id, Number(s.percentage)]));
 
   for (const inv of invoices) {
@@ -63,11 +62,11 @@ export interface BankBalance { bankId: string; bankName: string; balance: number
 // with no row cap, computing only the ending balance — every caller in this module only
 // ever needs the final number, never the ledger rows themselves (ReportViewer.tsx's own
 // Bank Ledger report view is untouched and keeps using the existing client-side function).
-export async function computeAllBankBalances(companyId: string): Promise<BankBalance[]> {
-  const banks = await db.select().from(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, companyId));
+export async function computeAllBankBalances(executor: any, companyId: string): Promise<BankBalance[]> {
+  const banks = await executor.select().from(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, companyId));
   if (banks.length === 0) return [];
   const bankIds = banks.map(b => b.id);
-  const vouchers = await db.select().from(schema.vouchers).where(
+  const vouchers = await executor.select().from(schema.vouchers).where(
     and(eq(schema.vouchers.companyId, companyId), inArray(schema.vouchers.bankId, bankIds))
   );
   const vouchersByBankId = new Map<string, typeof vouchers>();
@@ -98,8 +97,8 @@ export async function computeAllBankBalances(companyId: string): Promise<BankBal
   });
 }
 
-export async function computeBankBalance(companyId: string, bankId: string): Promise<number> {
-  const all = await computeAllBankBalances(companyId);
+export async function computeBankBalance(executor: any, companyId: string, bankId: string): Promise<number> {
+  const all = await computeAllBankBalances(executor, companyId);
   return all.find(b => b.bankId === bankId)?.balance || 0;
 }
 
@@ -116,21 +115,21 @@ export interface TrialBalanceFigures {
 
 // Ports ReportViewer.tsx's getTrialBalance (~145-221) — same account derivation (no
 // formal chart-of-accounts in this app), same account lines, no row cap.
-export async function computeTrialBalance(companyId: string, startDate: string, endDate: string): Promise<TrialBalanceFigures> {
-  const bankBalances = await computeAllBankBalances(companyId);
+export async function computeTrialBalance(executor: any, companyId: string, startDate: string, endDate: string): Promise<TrialBalanceFigures> {
+  const bankBalances = await computeAllBankBalances(executor, companyId);
   const bankDetails: TrialBalanceLedgerLine[] = bankBalances.map(b => ({
     name: `Cash/Bank - ${b.bankName}`,
     debit: b.balance >= 0 ? b.balance : 0,
     credit: b.balance < 0 ? Math.abs(b.balance) : 0,
   }));
 
-  const invoicesInRange = await db.select().from(schema.invoices).where(and(
+  const invoicesInRange = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId),
     eq(schema.invoices.status, 'Active'),
     gte(schema.invoices.date, startDate),
     lte(schema.invoices.date, endDate),
   ));
-  const totalsByInvoiceId = await computeInvoiceTotalsMap(invoicesInRange);
+  const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, invoicesInRange);
 
   let totalSalesRev = 0;
   let totalVATCollected = 0;
@@ -148,7 +147,7 @@ export async function computeTrialBalance(companyId: string, startDate: string, 
     accountsReceivable = round2(accountsReceivable + totals.grandTotal * invoiceSign(inv));
   }
 
-  const expensesInRange = await db.select().from(schema.expenses).where(and(
+  const expensesInRange = await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId),
     eq(schema.expenses.status, 'Active'),
     gte(schema.expenses.date, startDate),
@@ -164,7 +163,7 @@ export async function computeTrialBalance(companyId: string, startDate: string, 
     if (exp.paymentStatus === 'Unpaid') accountsPayable = round2(accountsPayable + amount);
   }
 
-  const capitalVouchers = await db.select().from(schema.vouchers).where(and(
+  const capitalVouchers = await executor.select().from(schema.vouchers).where(and(
     eq(schema.vouchers.companyId, companyId),
     eq(schema.vouchers.referenceType, 'Equity'),
     gte(schema.vouchers.date, startDate),
@@ -206,8 +205,8 @@ export interface ProfitLossFigures {
 
 // Ports ReportViewer.tsx's getProfitLossData (~494-592) — same Accrual/Cash basis
 // branching and cash-flow breakdown, no row cap.
-export async function computeProfitLoss(companyId: string, startDate: string, endDate: string, basis: 'Accrual' | 'Cash'): Promise<ProfitLossFigures> {
-  const periodVouchers = await db.select().from(schema.vouchers).where(and(
+export async function computeProfitLoss(executor: any, companyId: string, startDate: string, endDate: string, basis: 'Accrual' | 'Cash'): Promise<ProfitLossFigures> {
+  const periodVouchers = await executor.select().from(schema.vouchers).where(and(
     eq(schema.vouchers.companyId, companyId),
     gte(schema.vouchers.date, startDate),
     lte(schema.vouchers.date, endDate),
@@ -215,13 +214,13 @@ export async function computeProfitLoss(companyId: string, startDate: string, en
 
   let totalRevenue = 0;
   if (basis === 'Accrual') {
-    const revenueInvoices = await db.select().from(schema.invoices).where(and(
+    const revenueInvoices = await executor.select().from(schema.invoices).where(and(
       eq(schema.invoices.companyId, companyId),
       eq(schema.invoices.status, 'Active'),
       gte(schema.invoices.date, startDate),
       lte(schema.invoices.date, endDate),
     ));
-    const totalsByInvoiceId = await computeInvoiceTotalsMap(revenueInvoices);
+    const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, revenueInvoices);
     for (const inv of revenueInvoices) {
       totalRevenue = round2(totalRevenue + totalsByInvoiceId.get(inv.id)!.grandTotal * invoiceSign(inv));
     }
@@ -233,7 +232,7 @@ export async function computeProfitLoss(companyId: string, startDate: string, en
 
   // Expense rows needed either way: Accrual basis sums them directly; Cash basis needs
   // each expense's own classification to tell an OpEx payment from a CapEx one.
-  const periodExpenses = await db.select().from(schema.expenses).where(and(
+  const periodExpenses: any[] = await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId),
     eq(schema.expenses.status, 'Active'),
   ));
@@ -281,7 +280,7 @@ export async function computeProfitLoss(companyId: string, startDate: string, en
     .reduce((sum, v) => sum + Number(v.amount), 0));
   const netCashFlow = round2(operatingInflows - operatingOutflows - investingOutflows + financingInflows);
 
-  const investors = await db.select().from(schema.investors).where(and(
+  const investors = await executor.select().from(schema.investors).where(and(
     eq(schema.investors.companyId, companyId),
     eq(schema.investors.isActive, true),
   ));
@@ -318,24 +317,24 @@ export interface BalanceSheetFigures {
 // row cap. Retained earnings comes from fiscalMonths.closedPnL, which after the
 // month-close fix below is itself always server-computed — no double-counting of the
 // same discount/tax-blindness bug this module fixes elsewhere.
-export async function computeBalanceSheet(companyId: string, asOfDate: string): Promise<BalanceSheetFigures> {
-  const bankBalances = await computeAllBankBalances(companyId);
+export async function computeBalanceSheet(executor: any, companyId: string, asOfDate: string): Promise<BalanceSheetFigures> {
+  const bankBalances = await computeAllBankBalances(executor, companyId);
   const bankBalance = round2(bankBalances.reduce((sum, b) => sum + b.balance, 0));
 
-  const unpaidInvoices = await db.select().from(schema.invoices).where(and(
+  const unpaidInvoices = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId),
     eq(schema.invoices.status, 'Active'),
     lte(schema.invoices.date, asOfDate),
     inArray(schema.invoices.paymentStatus, ['Unpaid', 'Partially Paid']),
   ));
-  const totalsByInvoiceId = await computeInvoiceTotalsMap(unpaidInvoices);
+  const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, unpaidInvoices);
   let accountsReceivable = 0;
   for (const inv of unpaidInvoices) {
     const total = totalsByInvoiceId.get(inv.id)!.grandTotal;
     accountsReceivable = round2(accountsReceivable + (total - Number(inv.amountPaid || 0)) * invoiceSign(inv));
   }
 
-  const unpaidExpenses = await db.select().from(schema.expenses).where(and(
+  const unpaidExpenses = await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId),
     eq(schema.expenses.status, 'Active'),
     lte(schema.expenses.date, asOfDate),
@@ -343,9 +342,9 @@ export async function computeBalanceSheet(companyId: string, asOfDate: string): 
   ));
   const accountsPayable = round2(unpaidExpenses.reduce((sum, exp) => sum + (Number(exp.amount) - Number(exp.amountPaid || 0)), 0));
 
-  const inventoryStocks = await db.select().from(schema.inventoryStocks).where(eq(schema.inventoryStocks.companyId, companyId));
-  const productIds = Array.from(new Set(inventoryStocks.map(s => s.productId)));
-  const products = productIds.length ? await db.select().from(schema.productsServices).where(inArray(schema.productsServices.id, productIds)) : [];
+  const inventoryStocks: any[] = await executor.select().from(schema.inventoryStocks).where(eq(schema.inventoryStocks.companyId, companyId));
+  const productIds = Array.from(new Set(inventoryStocks.map(s => s.productId))) as string[];
+  const products: any[] = productIds.length ? await executor.select().from(schema.productsServices).where(inArray(schema.productsServices.id, productIds)) : [];
   const productById = new Map(products.map(p => [p.id, p]));
   const inventoryValue = round2(inventoryStocks.reduce((sum, s) => {
     const cost = Number(productById.get(s.productId)?.averageCost || 0);
@@ -355,10 +354,10 @@ export async function computeBalanceSheet(companyId: string, asOfDate: string): 
   const totalAssets = round2(bankBalance + accountsReceivable + inventoryValue);
   const totalLiabilities = accountsPayable;
 
-  const investors = await db.select().from(schema.investors).where(eq(schema.investors.companyId, companyId));
+  const investors = await executor.select().from(schema.investors).where(eq(schema.investors.companyId, companyId));
   const capitalContributed = round2(investors.reduce((sum, inv) => sum + Number(inv.capitalContributed || 0), 0));
 
-  const closedMonths = await db.select().from(schema.fiscalMonths).where(and(
+  const closedMonths = await executor.select().from(schema.fiscalMonths).where(and(
     eq(schema.fiscalMonths.companyId, companyId),
     eq(schema.fiscalMonths.status, 'Closed'),
   ));
@@ -387,13 +386,13 @@ export interface MonthPnL {
 // client sent). Also fixes a real, separate bug found while porting: the client version
 // called calculateInvoiceTotals WITHOUT the invoice's own discountPercentage, silently
 // ignoring header discounts in the closed month's revenue figure — this version doesn't.
-export async function computeMonthPnL(companyId: string, monthId: string): Promise<MonthPnL> {
-  const monthInvoices = await db.select().from(schema.invoices).where(and(
+export async function computeMonthPnL(executor: any, companyId: string, monthId: string): Promise<MonthPnL> {
+  const monthInvoices = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId),
     eq(schema.invoices.status, 'Active'),
   ));
   const invoicesInMonth = monthInvoices.filter(inv => inv.date.startsWith(monthId));
-  const totalsByInvoiceId = await computeInvoiceTotalsMap(invoicesInMonth);
+  const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, invoicesInMonth);
 
   let paidRevenue = 0;
   let totalRevenue = 0;
@@ -403,7 +402,7 @@ export async function computeMonthPnL(companyId: string, monthId: string): Promi
     if (inv.paymentStatus === 'Paid') paidRevenue = round2(paidRevenue + grandTotal);
   }
 
-  const monthExpenses = await db.select().from(schema.expenses).where(and(
+  const monthExpenses = await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId),
     eq(schema.expenses.status, 'Active'),
   ));
@@ -452,7 +451,7 @@ export interface DashboardSummary {
   investorReconciliation: InvestorReconciliation[];
   // One entry per id in opts.trailingMonthIds, same order — used for the sales-target
   // trailing average. Company-wide (not branch/user restricted), matching
-  // Dashboard.tsx's own trailingMonthlySales, which reads unrestricted db.invoices.
+  // Dashboard.tsx's own trailingMonthlySales, which reads unrestricted executor.invoices.
   trailingMonthlySales: number[];
 }
 
@@ -467,6 +466,7 @@ export interface DashboardSummary {
 // sales-target trailing average — resolved by the caller (Dashboard.tsx already knows
 // which months are closed from its own /api/transactions/months fetch).
 export async function computeDashboardSummary(
+  executor: any,
   companyId: string,
   startDate: string,
   endDate: string,
@@ -474,7 +474,7 @@ export async function computeDashboardSummary(
 ): Promise<DashboardSummary> {
   const branchOk = (branchId: string | null | undefined) => opts.branchIds === null || branchId == null || (opts.branchIds || []).includes(branchId);
 
-  const allInvoicesInRange = await db.select().from(schema.invoices).where(and(
+  const allInvoicesInRange = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId),
     gte(schema.invoices.date, startDate),
     lte(schema.invoices.date, endDate),
@@ -483,7 +483,7 @@ export async function computeDashboardSummary(
     branchOk(inv.branchId) && (!opts.restrictToUserId || inv.createdById === opts.restrictToUserId)
   );
   const activeMonthInvoices = monthInvoices.filter(inv => inv.status === 'Active');
-  const totalsByInvoiceId = await computeInvoiceTotalsMap(activeMonthInvoices);
+  const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, activeMonthInvoices);
 
   let totalSales = 0;
   for (const inv of activeMonthInvoices) {
@@ -493,7 +493,7 @@ export async function computeDashboardSummary(
   // Pending Collection is company-wide (not period-filtered) — same as Dashboard.tsx's
   // own pendingInvoicesTotal/pendingCollection, which deliberately look at every
   // still-unpaid invoice regardless of when it was raised, not just this period's.
-  const allUnpaidInvoices = await db.select().from(schema.invoices).where(and(
+  const allUnpaidInvoices = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId),
     eq(schema.invoices.status, 'Active'),
     ne(schema.invoices.documentType, 'CreditNote'),
@@ -501,12 +501,12 @@ export async function computeDashboardSummary(
   const unpaidInvoices = allUnpaidInvoices.filter(inv =>
     branchOk(inv.branchId) && (!opts.restrictToUserId || inv.createdById === opts.restrictToUserId)
   );
-  const unpaidTotalsByInvoiceId = await computeInvoiceTotalsMap(unpaidInvoices);
+  const unpaidTotalsByInvoiceId = await computeInvoiceTotalsMap(executor, unpaidInvoices);
   let pendingCollection = 0;
   const today = new Date();
   const pendingInvoiceRows: PendingInvoiceRow[] = [];
   const customerIds = Array.from(new Set(unpaidInvoices.map(inv => inv.customerId).filter(Boolean))) as string[];
-  const customers = customerIds.length ? await db.select().from(schema.customers).where(inArray(schema.customers.id, customerIds)) : [];
+  const customers: any[] = customerIds.length ? await executor.select().from(schema.customers).where(inArray(schema.customers.id, customerIds)) : [];
   const customerNameById = new Map(customers.map(c => [c.id, c.name]));
   for (const inv of unpaidInvoices) {
     const totals = unpaidTotalsByInvoiceId.get(inv.id)!;
@@ -526,7 +526,7 @@ export async function computeDashboardSummary(
   const pendingInvoicesAging = pendingInvoiceRows.filter(r => r.daysOutstanding > 30 && r.daysOutstanding <= 90).length;
   const pendingInvoicesOverdue = pendingInvoiceRows.filter(r => r.daysOutstanding > 90).length;
 
-  const periodVouchers = await db.select().from(schema.vouchers).where(and(
+  const periodVouchers = await executor.select().from(schema.vouchers).where(and(
     eq(schema.vouchers.companyId, companyId),
     gte(schema.vouchers.date, startDate),
     lte(schema.vouchers.date, endDate),
@@ -537,7 +537,7 @@ export async function computeDashboardSummary(
     monthVouchers.filter(v => v.referenceType === 'Invoice' && v.type === 'Reversal').reduce((sum, v) => sum + Number(v.amount), 0)
   );
 
-  const allExpensesInRange = await db.select().from(schema.expenses).where(and(
+  const allExpensesInRange = await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId),
     gte(schema.expenses.date, startDate),
     lte(schema.expenses.date, endDate),
@@ -558,15 +558,15 @@ export async function computeDashboardSummary(
   const netProfit = round2(totalSales - totalExpenseActual);
   const netProfitMargin = totalSales > 0 ? round2((netProfit / totalSales) * 100) : 0;
 
-  const bankBalances = await computeAllBankBalances(companyId);
-  const activeBankIds = new Set((await db.select({ id: schema.bankAccounts.id })
+  const bankBalances = await computeAllBankBalances(executor, companyId);
+  const activeBankIds = new Set((await executor.select({ id: schema.bankAccounts.id })
     .from(schema.bankAccounts)
     .where(and(eq(schema.bankAccounts.companyId, companyId), eq(schema.bankAccounts.isActive, true)))
   ).map(b => b.id));
   const totalBankCapital = round2(bankBalances.filter(b => activeBankIds.has(b.bankId)).reduce((sum, b) => sum + b.balance, 0));
 
   // Pending Expenses is also company-wide, same reasoning as Pending Collection above.
-  const allUnpaidExpenses = await db.select().from(schema.expenses).where(and(
+  const allUnpaidExpenses = await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId),
     eq(schema.expenses.status, 'Active'),
     inArray(schema.expenses.paymentStatus, ['Unpaid', 'Partially Paid']),
@@ -575,7 +575,7 @@ export async function computeDashboardSummary(
     exp.type === 'Actual' && branchOk(exp.branchId) && (!opts.restrictToUserId || exp.createdById === opts.restrictToUserId)
   );
   const vendorIdsForPending = Array.from(new Set(unpaidExpensesFiltered.map(e => e.vendorId).filter(Boolean))) as string[];
-  const pendingVendorRows = vendorIdsForPending.length ? await db.select().from(schema.vendors).where(inArray(schema.vendors.id, vendorIdsForPending)) : [];
+  const pendingVendorRows: any[] = vendorIdsForPending.length ? await executor.select().from(schema.vendors).where(inArray(schema.vendors.id, vendorIdsForPending)) : [];
   const pendingVendorNameById = new Map(pendingVendorRows.map(v => [v.id, v.name]));
   const pendingExpenseRows: PendingExpenseRow[] = unpaidExpensesFiltered
     .map(exp => ({ exp, due: round2(Math.max(0, Number(exp.amount) - Number(exp.amountPaid || 0))) }))
@@ -595,7 +595,7 @@ export async function computeDashboardSummary(
     salesByCustomer.set(inv.customerId, round2((salesByCustomer.get(inv.customerId) || 0) + total));
   }
   const topCustomerIds = Array.from(new Set([...customerIds, ...salesByCustomer.keys()]));
-  const topCustomerRows = topCustomerIds.length ? await db.select().from(schema.customers).where(inArray(schema.customers.id, topCustomerIds)) : [];
+  const topCustomerRows: any[] = topCustomerIds.length ? await executor.select().from(schema.customers).where(inArray(schema.customers.id, topCustomerIds)) : [];
   const topCustomerNameById = new Map([...customerNameById, ...topCustomerRows.map(c => [c.id, c.name] as const)]);
   const topCustomersBySales: TopEntityRow[] = Array.from(salesByCustomer.entries())
     .map(([id, total]) => ({ id, name: topCustomerNameById.get(id) || 'Walk-in Customer', total }))
@@ -608,7 +608,7 @@ export async function computeDashboardSummary(
     expensesByVendor.set(exp.vendorId, round2((expensesByVendor.get(exp.vendorId) || 0) + Number(exp.amount)));
   }
   const vendorIds = Array.from(expensesByVendor.keys());
-  const vendorRows = vendorIds.length ? await db.select().from(schema.vendors).where(inArray(schema.vendors.id, vendorIds)) : [];
+  const vendorRows: any[] = vendorIds.length ? await executor.select().from(schema.vendors).where(inArray(schema.vendors.id, vendorIds)) : [];
   const vendorNameById = new Map(vendorRows.map(v => [v.id, v.name]));
   const topVendorsByExpense: TopEntityRow[] = Array.from(expensesByVendor.entries())
     .map(([id, total]) => ({ id, name: vendorNameById.get(id) || 'Vendor', total }))
@@ -619,13 +619,13 @@ export async function computeDashboardSummary(
   // Partners' Equity panel this ports (Dashboard.tsx ~275-292): sums every Equity voucher
   // ever posted for each investor against their target share of the total, not just this
   // period's vouchers.
-  const companyInvestors = await db.select().from(schema.investors).where(eq(schema.investors.companyId, companyId));
+  const companyInvestors = await executor.select().from(schema.investors).where(eq(schema.investors.companyId, companyId));
   let investorReconciliation: InvestorReconciliation[] = [];
   let investorTotalContributed = 0;
   let investorHasImbalance = false;
   if (companyInvestors.length > 0) {
     const investorIds = companyInvestors.map(i => i.id);
-    const equityVouchers = await db.select().from(schema.vouchers).where(and(
+    const equityVouchers = await executor.select().from(schema.vouchers).where(and(
       eq(schema.vouchers.companyId, companyId),
       eq(schema.vouchers.referenceType, 'Equity'),
       inArray(schema.vouchers.referenceId, investorIds),
@@ -648,14 +648,14 @@ export async function computeDashboardSummary(
   // closed month id the caller passes in, same discount-aware totals as everything above.
   const trailingMonthlySales: number[] = [];
   for (const monthId of opts.trailingMonthIds || []) {
-    const monthInvoicesAll = await db.select().from(schema.invoices).where(and(
+    const monthInvoicesAll = await executor.select().from(schema.invoices).where(and(
       eq(schema.invoices.companyId, companyId),
       eq(schema.invoices.status, 'Active'),
       gte(schema.invoices.date, `${monthId}-01`),
       lte(schema.invoices.date, `${monthId}-31`),
     ));
     const monthInvoicesFiltered = monthInvoicesAll.filter(inv => branchOk(inv.branchId));
-    const monthTotalsByInvoiceId = await computeInvoiceTotalsMap(monthInvoicesFiltered);
+    const monthTotalsByInvoiceId = await computeInvoiceTotalsMap(executor, monthInvoicesFiltered);
     let monthSales = 0;
     for (const inv of monthInvoicesFiltered) {
       monthSales = round2(monthSales + monthTotalsByInvoiceId.get(inv.id)!.grandTotal * invoiceSign(inv));
@@ -684,15 +684,15 @@ function makeBranchOk(branchIds: string[] | null) {
 
 export interface SalesRegisterRow { invoiceNumber: string; date: string; customerName: string; status: string; paymentStatus: string; zatcaStatus: string; grandTotal: number; }
 // Ports SalesReportsModule.tsx's getSalesRegisterData (~77-105).
-export async function computeSalesRegister(companyId: string, startDate: string, endDate: string, customerId: string | 'ALL', opts: ReportScopeOpts): Promise<{ rows: SalesRegisterRow[]; totalSales: number }> {
+export async function computeSalesRegister(executor: any, companyId: string, startDate: string, endDate: string, customerId: string | 'ALL', opts: ReportScopeOpts): Promise<{ rows: SalesRegisterRow[]; totalSales: number }> {
   const branchOk = makeBranchOk(opts.branchIds);
-  const invoicesInRange = await db.select().from(schema.invoices).where(and(
+  const invoicesInRange = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId), gte(schema.invoices.date, startDate), lte(schema.invoices.date, endDate),
   ));
   const filtered = invoicesInRange.filter(inv => branchOk(inv.branchId) && (customerId === 'ALL' || inv.customerId === customerId));
-  const totalsByInvoiceId = await computeInvoiceTotalsMap(filtered);
+  const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, filtered);
   const customerIds = Array.from(new Set(filtered.map(i => i.customerId).filter(Boolean))) as string[];
-  const customers = customerIds.length ? await db.select().from(schema.customers).where(inArray(schema.customers.id, customerIds)) : [];
+  const customers = customerIds.length ? await executor.select().from(schema.customers).where(inArray(schema.customers.id, customerIds)) : [];
   const customerNameById = new Map(customers.map(c => [c.id, c.name]));
   const rows: SalesRegisterRow[] = filtered.map(inv => ({
     invoiceNumber: inv.invoiceNumber, date: inv.date, customerName: customerNameById.get(inv.customerId) || 'Walk-In',
@@ -706,18 +706,18 @@ export async function computeSalesRegister(companyId: string, startDate: string,
 
 export interface ItemWiseSalesRow { productId: string; name: string; quantity: number; revenue: number; }
 // Ports getItemWiseSalesData (~110-132).
-export async function computeItemWiseSales(companyId: string, startDate: string, endDate: string, opts: ReportScopeOpts): Promise<{ rows: ItemWiseSalesRow[]; totalQuantity: number; totalRevenue: number }> {
+export async function computeItemWiseSales(executor: any, companyId: string, startDate: string, endDate: string, opts: ReportScopeOpts): Promise<{ rows: ItemWiseSalesRow[]; totalQuantity: number; totalRevenue: number }> {
   const branchOk = makeBranchOk(opts.branchIds);
-  const invoicesInRange = await db.select().from(schema.invoices).where(and(
+  const invoicesInRange = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId), eq(schema.invoices.status, 'Active'),
     gte(schema.invoices.date, startDate), lte(schema.invoices.date, endDate),
   ));
   const filtered = invoicesInRange.filter(inv => branchOk(inv.branchId));
   if (filtered.length === 0) return { rows: [], totalQuantity: 0, totalRevenue: 0 };
-  const items = await db.select().from(schema.invoiceItems).where(inArray(schema.invoiceItems.invoiceId, filtered.map(i => i.id)));
+  const items = await executor.select().from(schema.invoiceItems).where(inArray(schema.invoiceItems.invoiceId, filtered.map(i => i.id)));
   const invoiceById = new Map(filtered.map(i => [i.id, i]));
   const productIds = Array.from(new Set(items.map(it => it.productId).filter(Boolean))) as string[];
-  const products = productIds.length ? await db.select().from(schema.productsServices).where(inArray(schema.productsServices.id, productIds)) : [];
+  const products: any[] = productIds.length ? await executor.select().from(schema.productsServices).where(inArray(schema.productsServices.id, productIds)) : [];
   const productById = new Map(products.map(p => [p.id, p]));
   const byProduct = new Map<string, ItemWiseSalesRow>();
   for (const item of items) {
@@ -739,16 +739,16 @@ export interface StatementEntry { date: string; type: string; docNumber: string;
 // Ports getCustomerStatementData (~136-166) — deliberately no date-range filter, same as
 // the original: a customer's own full history, inherently bounded by "one customer's own
 // documents," but still a real unbounded query rather than a client-side scan of a capped array.
-export async function computeCustomerStatement(companyId: string, customerId: string, opts: ReportScopeOpts): Promise<{ entries: StatementEntry[]; endingBalance: number; customerName: string }> {
+export async function computeCustomerStatement(executor: any, companyId: string, customerId: string, opts: ReportScopeOpts): Promise<{ entries: StatementEntry[]; endingBalance: number; customerName: string }> {
   if (!customerId) return { entries: [], endingBalance: 0, customerName: '' };
   const branchOk = makeBranchOk(opts.branchIds);
-  const [customer] = await db.select().from(schema.customers).where(eq(schema.customers.id, customerId));
-  const custInvoices = (await db.select().from(schema.invoices).where(and(
+  const [customer] = await executor.select().from(schema.customers).where(eq(schema.customers.id, customerId));
+  const custInvoices = (await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId), eq(schema.invoices.customerId, customerId), eq(schema.invoices.status, 'Active'),
   ))).filter(inv => branchOk(inv.branchId));
-  const totalsByInvoiceId = await computeInvoiceTotalsMap(custInvoices);
+  const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, custInvoices);
   const invoiceIds = custInvoices.map(i => i.id);
-  const receipts = invoiceIds.length ? (await db.select().from(schema.vouchers).where(and(
+  const receipts = invoiceIds.length ? (await executor.select().from(schema.vouchers).where(and(
     eq(schema.vouchers.companyId, companyId), eq(schema.vouchers.type, 'Receipt'), eq(schema.vouchers.referenceType, 'Invoice'),
     inArray(schema.vouchers.referenceId, invoiceIds),
   ))).filter(v => branchOk(v.branchId)) : [];
@@ -772,9 +772,9 @@ export async function computeCustomerStatement(companyId: string, customerId: st
 
 export interface QuotationConversionRow { quotationNumber: string; date: string; customerName: string; status: string; }
 // Ports getQuotationConversionData (~169-181).
-export async function computeQuotationConversion(companyId: string, startDate: string, endDate: string, customerId: string | 'ALL', opts: ReportScopeOpts) {
+export async function computeQuotationConversion(executor: any, companyId: string, startDate: string, endDate: string, customerId: string | 'ALL', opts: ReportScopeOpts) {
   const branchOk = makeBranchOk(opts.branchIds);
-  const quotationsInRange = await db.select().from(schema.quotations).where(and(
+  const quotationsInRange = await executor.select().from(schema.quotations).where(and(
     eq(schema.quotations.companyId, companyId), gte(schema.quotations.date, startDate), lte(schema.quotations.date, endDate),
   ));
   const filtered = quotationsInRange.filter(q => branchOk(q.branchId) && (customerId === 'ALL' || q.customerId === customerId));
@@ -783,7 +783,7 @@ export async function computeQuotationConversion(companyId: string, startDate: s
   const pending = filtered.length - converted - cancelled;
   const conversionRate = filtered.length > 0 ? round2((converted / filtered.length) * 100) : 0;
   const customerIds = Array.from(new Set(filtered.map(q => q.customerId).filter(Boolean))) as string[];
-  const customers = customerIds.length ? await db.select().from(schema.customers).where(inArray(schema.customers.id, customerIds)) : [];
+  const customers = customerIds.length ? await executor.select().from(schema.customers).where(inArray(schema.customers.id, customerIds)) : [];
   const customerNameById = new Map(customers.map(c => [c.id, c.name]));
   const rows: QuotationConversionRow[] = filtered
     .map(q => ({ quotationNumber: q.quotationNumber, date: q.date, customerName: customerNameById.get(q.customerId) || '', status: q.isCancelled ? 'Cancelled' : q.status }))
@@ -793,16 +793,16 @@ export async function computeQuotationConversion(companyId: string, startDate: s
 
 export interface SalesByStaffRow { userId: string; username: string; invoiceCount: number; revenue: number; }
 // Ports getSalesByStaffData (~184-197).
-export async function computeSalesByStaff(companyId: string, startDate: string, endDate: string, opts: ReportScopeOpts): Promise<{ rows: SalesByStaffRow[]; totalRevenue: number }> {
+export async function computeSalesByStaff(executor: any, companyId: string, startDate: string, endDate: string, opts: ReportScopeOpts): Promise<{ rows: SalesByStaffRow[]; totalRevenue: number }> {
   const branchOk = makeBranchOk(opts.branchIds);
-  const invoicesInRange = await db.select().from(schema.invoices).where(and(
+  const invoicesInRange = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId), eq(schema.invoices.status, 'Active'),
     gte(schema.invoices.date, startDate), lte(schema.invoices.date, endDate),
   ));
   const filtered = invoicesInRange.filter(inv => branchOk(inv.branchId));
-  const totalsByInvoiceId = await computeInvoiceTotalsMap(filtered);
+  const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, filtered);
   const userIds = Array.from(new Set(filtered.map(i => i.createdById).filter(Boolean))) as string[];
-  const users = userIds.length ? await db.select({ id: schema.users.id, username: schema.users.username }).from(schema.users).where(inArray(schema.users.id, userIds)) : [];
+  const users: any[] = userIds.length ? await executor.select({ id: schema.users.id, username: schema.users.username }).from(schema.users).where(inArray(schema.users.id, userIds)) : [];
   const usernameById = new Map(users.map(u => [u.id, u.username]));
   const byStaff = new Map<string, SalesByStaffRow>();
   for (const inv of filtered) {
@@ -818,28 +818,28 @@ export async function computeSalesByStaff(companyId: string, startDate: string, 
 
 export interface PosShiftSummaryRow { id: string; date: string; cashier: string; status: string; startCash: number; endCash: number; expectedCash: number; variance: number; totalSales: number; saleCount: number; }
 // Ports getPosShiftSummaryData (~200-215).
-export async function computePosShiftSummary(companyId: string, startDate: string, endDate: string, opts: ReportScopeOpts): Promise<{ rows: PosShiftSummaryRow[]; totalSales: number }> {
+export async function computePosShiftSummary(executor: any, companyId: string, startDate: string, endDate: string, opts: ReportScopeOpts): Promise<{ rows: PosShiftSummaryRow[]; totalSales: number }> {
   const branchOk = makeBranchOk(opts.branchIds);
-  const allShifts = await db.select().from(schema.posShifts).where(eq(schema.posShifts.companyId, companyId));
+  const allShifts = await executor.select().from(schema.posShifts).where(eq(schema.posShifts.companyId, companyId));
   const shifts = allShifts.filter(s => {
     const d = s.startTime.toISOString().slice(0, 10);
     return d >= startDate && d <= endDate && branchOk(s.branchId);
   });
   if (shifts.length === 0) return { rows: [], totalSales: 0 };
   const shiftIds = shifts.map(s => s.id);
-  const shiftInvoices = (await db.select().from(schema.invoices).where(and(
+  const shiftInvoices = (await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId), eq(schema.invoices.isPosSale, true), eq(schema.invoices.status, 'Active'),
     inArray(schema.invoices.shiftId, shiftIds),
   )));
-  const totalsByInvoiceId = await computeInvoiceTotalsMap(shiftInvoices);
+  const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, shiftInvoices);
   const invoicesByShiftId = new Map<string, typeof shiftInvoices>();
   for (const inv of shiftInvoices) {
     if (!inv.shiftId) continue;
     if (!invoicesByShiftId.has(inv.shiftId)) invoicesByShiftId.set(inv.shiftId, []);
     invoicesByShiftId.get(inv.shiftId)!.push(inv);
   }
-  const userIds = Array.from(new Set(shifts.map(s => s.userId)));
-  const users = userIds.length ? await db.select({ id: schema.users.id, username: schema.users.username }).from(schema.users).where(inArray(schema.users.id, userIds)) : [];
+  const userIds = Array.from(new Set(shifts.map(s => s.userId))) as string[];
+  const users: any[] = userIds.length ? await executor.select({ id: schema.users.id, username: schema.users.username }).from(schema.users).where(inArray(schema.users.id, userIds)) : [];
   const usernameById = new Map(users.map(u => [u.id, u.username]));
   const rows: PosShiftSummaryRow[] = shifts.map(s => {
     const invs = invoicesByShiftId.get(s.id) || [];
@@ -857,14 +857,14 @@ export async function computePosShiftSummary(companyId: string, startDate: strin
 
 export interface PurchaseRegisterRow { expenseNumber: string; date: string; vendorName: string; status: string; paymentStatus: string; totalAmount: number; }
 // Ports PurchaseReportsModule.tsx's getPurchaseRegisterData.
-export async function computePurchaseRegister(companyId: string, startDate: string, endDate: string, vendorId: string | 'ALL', opts: ReportScopeOpts): Promise<{ rows: PurchaseRegisterRow[]; totalAmount: number }> {
+export async function computePurchaseRegister(executor: any, companyId: string, startDate: string, endDate: string, vendorId: string | 'ALL', opts: ReportScopeOpts): Promise<{ rows: PurchaseRegisterRow[]; totalAmount: number }> {
   const branchOk = makeBranchOk(opts.branchIds);
-  const expensesInRange = await db.select().from(schema.expenses).where(and(
+  const expensesInRange = await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId), gte(schema.expenses.date, startDate), lte(schema.expenses.date, endDate),
   ));
   const filtered = expensesInRange.filter(exp => branchOk(exp.branchId) && (vendorId === 'ALL' || exp.vendorId === vendorId));
   const vendorIds = Array.from(new Set(filtered.map(e => e.vendorId).filter(Boolean))) as string[];
-  const vendors = vendorIds.length ? await db.select().from(schema.vendors).where(inArray(schema.vendors.id, vendorIds)) : [];
+  const vendors = vendorIds.length ? await executor.select().from(schema.vendors).where(inArray(schema.vendors.id, vendorIds)) : [];
   const vendorNameById = new Map(vendors.map(v => [v.id, v.name]));
   const rows: PurchaseRegisterRow[] = filtered
     .map(exp => ({ expenseNumber: exp.expenseNumber, date: exp.date, vendorName: vendorNameById.get(exp.vendorId) || 'Vendor', status: exp.status, paymentStatus: exp.paymentStatus, totalAmount: Number(exp.amount) }))
@@ -879,20 +879,20 @@ export async function computePurchaseRegister(companyId: string, startDate: stri
 // 'Expense' or 'PurchaseBill'. purchaseBills is NOT one of the 5 capped tables (it was
 // always unbounded in src/db/apiState.ts), but this still moves it server-side for the
 // same no-artificial-limit consistency as everything else in this file.
-export async function computeVendorStatement(companyId: string, vendorId: string, opts: ReportScopeOpts): Promise<{ entries: StatementEntry[]; endingBalance: number; vendorName: string }> {
+export async function computeVendorStatement(executor: any, companyId: string, vendorId: string, opts: ReportScopeOpts): Promise<{ entries: StatementEntry[]; endingBalance: number; vendorName: string }> {
   if (!vendorId) return { entries: [], endingBalance: 0, vendorName: '' };
   const branchOk = makeBranchOk(opts.branchIds);
-  const [vendor] = await db.select().from(schema.vendors).where(eq(schema.vendors.id, vendorId));
-  const vendExpenses = (await db.select().from(schema.expenses).where(and(
+  const [vendor] = await executor.select().from(schema.vendors).where(eq(schema.vendors.id, vendorId));
+  const vendExpenses = (await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId), eq(schema.expenses.vendorId, vendorId), eq(schema.expenses.status, 'Active'),
   ))).filter(exp => branchOk(exp.branchId));
-  const vendBills = (await db.select().from(schema.purchaseBills).where(and(
+  const vendBills = (await executor.select().from(schema.purchaseBills).where(and(
     eq(schema.purchaseBills.companyId, companyId), eq(schema.purchaseBills.vendorId, vendorId), ne(schema.purchaseBills.status, 'Cancelled'),
   ))).filter(b => branchOk(b.branchId));
   const expenseIds = vendExpenses.map(e => e.id);
   const billIds = vendBills.map(b => b.id);
   const referenceIds = [...expenseIds, ...billIds];
-  const payments = referenceIds.length ? (await db.select().from(schema.vouchers).where(and(
+  const payments = referenceIds.length ? (await executor.select().from(schema.vouchers).where(and(
     eq(schema.vouchers.companyId, companyId), eq(schema.vouchers.type, 'Payment'),
     inArray(schema.vouchers.referenceType, ['Expense', 'PurchaseBill']), inArray(schema.vouchers.referenceId, referenceIds),
   ))).filter(v => branchOk(v.branchId)) : [];
@@ -935,12 +935,12 @@ export interface InvoiceKpiFilters {
 // dbStore.ts's getInvoiceSign comment documents as already fixed in Dashboard/
 // ReportViewer/SalesReportsModule, just missed here; (2) "Total Collected" only ever
 // used it for a Paid invoice's own believed-full amount).
-export async function computeInvoiceKpis(companyId: string, filters: InvoiceKpiFilters, opts: ReportScopeOpts): Promise<{ totalInvoiced: number; totalCollected: number }> {
+export async function computeInvoiceKpis(executor: any, companyId: string, filters: InvoiceKpiFilters, opts: ReportScopeOpts): Promise<{ totalInvoiced: number; totalCollected: number }> {
   const branchOk = makeBranchOk(opts.branchIds);
   const conditions = [eq(schema.invoices.companyId, companyId)];
   if (filters.startDate) conditions.push(gte(schema.invoices.date, filters.startDate));
   if (filters.endDate) conditions.push(lte(schema.invoices.date, filters.endDate));
-  const candidates = (await db.select().from(schema.invoices).where(and(...conditions))).filter(inv => {
+  const candidates = (await executor.select().from(schema.invoices).where(and(...conditions))).filter(inv => {
     if (!branchOk(inv.branchId)) return false;
     if (filters.restrictToUserId && inv.createdById !== filters.restrictToUserId) return false;
     if (filters.status === 'Unpaid' && (inv.paymentStatus === 'Paid' || inv.status !== 'Active')) return false;
@@ -958,7 +958,7 @@ export async function computeInvoiceKpis(companyId: string, filters: InvoiceKpiF
   });
   // KPI cards only ever count Active documents, same as activeInvoices in the original.
   const activeInvoices = candidates.filter(inv => inv.status === 'Active');
-  const totalsByInvoiceId = await computeInvoiceTotalsMap(activeInvoices);
+  const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, activeInvoices);
   let totalInvoiced = 0;
   let totalCollected = 0;
   for (const inv of activeInvoices) {
@@ -972,20 +972,20 @@ export async function computeInvoiceKpis(companyId: string, filters: InvoiceKpiF
 }
 
 // Ports QuotationModule.tsx's kpiTotalValue/kpiConvertedValue.
-export async function computeQuotationKpis(companyId: string, opts: ReportScopeOpts & { restrictToUserId?: string | null }): Promise<{ totalValue: number; convertedValue: number }> {
+export async function computeQuotationKpis(executor: any, companyId: string, opts: ReportScopeOpts & { restrictToUserId?: string | null }): Promise<{ totalValue: number; convertedValue: number }> {
   const branchOk = makeBranchOk(opts.branchIds);
-  const quotationsAll = (await db.select().from(schema.quotations).where(eq(schema.quotations.companyId, companyId)))
+  const quotationsAll = (await executor.select().from(schema.quotations).where(eq(schema.quotations.companyId, companyId)))
     .filter(q => branchOk(q.branchId) && !q.isCancelled && (!opts.restrictToUserId || q.createdById === opts.restrictToUserId));
   if (quotationsAll.length === 0) return { totalValue: 0, convertedValue: 0 };
   const quotationIds = quotationsAll.map(q => q.id);
-  const items = await db.select().from(schema.quotationItems).where(inArray(schema.quotationItems.quotationId, quotationIds));
+  const items = await executor.select().from(schema.quotationItems).where(inArray(schema.quotationItems.quotationId, quotationIds));
   const itemsByQuotationId = new Map<string, typeof items>();
   for (const item of items) {
     if (!itemsByQuotationId.has(item.quotationId)) itemsByQuotationId.set(item.quotationId, []);
     itemsByQuotationId.get(item.quotationId)!.push(item);
   }
   const taxSlabIds = Array.from(new Set(quotationsAll.map(q => q.taxSlabId).filter(Boolean))) as string[];
-  const taxSlabRows = taxSlabIds.length ? await db.select().from(schema.taxSlabs).where(inArray(schema.taxSlabs.id, taxSlabIds)) : [];
+  const taxSlabRows: any[] = taxSlabIds.length ? await executor.select().from(schema.taxSlabs).where(inArray(schema.taxSlabs.id, taxSlabIds)) : [];
   const percentageById = new Map(taxSlabRows.map(s => [s.id, Number(s.percentage)]));
   let totalValue = 0;
   let convertedValue = 0;
@@ -1001,11 +1001,11 @@ export async function computeQuotationKpis(companyId: string, opts: ReportScopeO
 
 // Ports AdminSettings.tsx's Equity tab per-investor currentTotalContributed — batched
 // (one query for every investor) rather than N+1 client-side calls per investor row.
-export async function computeInvestorContributions(companyId: string): Promise<Array<{ investorId: string; totalContributed: number }>> {
-  const investors = await db.select({ id: schema.investors.id }).from(schema.investors).where(eq(schema.investors.companyId, companyId));
+export async function computeInvestorContributions(executor: any, companyId: string): Promise<Array<{ investorId: string; totalContributed: number }>> {
+  const investors = await executor.select({ id: schema.investors.id }).from(schema.investors).where(eq(schema.investors.companyId, companyId));
   if (investors.length === 0) return [];
   const investorIds = investors.map(i => i.id);
-  const vouchers = await db.select().from(schema.vouchers).where(and(
+  const vouchers = await executor.select().from(schema.vouchers).where(and(
     eq(schema.vouchers.companyId, companyId), eq(schema.vouchers.referenceType, 'Equity'), inArray(schema.vouchers.referenceId, investorIds),
   ));
   const totalByInvestorId = new Map<string, number>();

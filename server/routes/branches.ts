@@ -5,18 +5,19 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { normalizePermissions } from '../../src/types.js';
 import { isSuperAdminUser, assertOwnsRow, branchAccessOk } from '../lib/authz.js';
 import { generateId } from '../../src/id.js';
+import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
 
 const router = express.Router();
 
 // --- Branches (physical locations) ---
-router.get('/branches', async (req: any, res) => {
+router.get('/branches', withTenantDb, async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.branches.read.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const companyId = req.targetCompanyId;
-    const branchesList = await db.select().from(schema.branches).where(eq(schema.branches.companyId, companyId));
+    const branchesList = await tenantDb().select().from(schema.branches).where(eq(schema.branches.companyId, companyId));
     res.json(branchesList);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -26,8 +27,9 @@ router.get('/branches', async (req: any, res) => {
 // Upsert route. Creation is deliberately gated to super-admin only, not a permission
 // leaf at all — mirrors POST /api/companies (masterEntities.ts:247) exactly. A company
 // admin (or anyone with branches.update) can still edit an existing branch's details.
-router.post('/branches', async (req: any, res) => {
+router.post('/branches', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     const data = { ...req.body };
     const isNewBranch = !data.id;
@@ -40,6 +42,8 @@ router.post('/branches', async (req: any, res) => {
     const autoCreateWarehouse = data.autoCreateWarehouse !== false;
     delete data.autoCreateWarehouse;
 
+    // Deliberately the superuser `db` — same hijack-detection reasoning as POST
+    // /customers in masterEntities.ts.
     let existing: typeof schema.branches.$inferSelect | undefined;
     if (data.id) {
       [existing] = await db.select().from(schema.branches).where(eq(schema.branches.id, data.id));
@@ -75,7 +79,7 @@ router.post('/branches', async (req: any, res) => {
     // belonging to this same company — see warehouses.type's comment for why 'backend'
     // is rejected here.
     if (data.defaultWarehouseId) {
-      const [warehouse] = await db.select().from(schema.warehouses)
+      const [warehouse] = await tdb.select().from(schema.warehouses)
         .where(and(eq(schema.warehouses.id, data.defaultWarehouseId), eq(schema.warehouses.companyId, data.companyId)));
       if (!warehouse) {
         return res.status(404).json({ error: 'Selected default warehouse not found for this company.' });
@@ -104,58 +108,59 @@ router.post('/branches', async (req: any, res) => {
     // taxSlabs.isDefault (server/routes/masterEntities.ts's tax-slabs route) — a partial
     // unique index alone would otherwise just throw a constraint violation on the second
     // "set default" click instead of transparently swapping which branch holds it.
-    await db.transaction(async (tx) => {
-      if (data.isDefault === true) {
-        await tx.update(schema.branches).set({ isDefault: false })
-          .where(and(eq(schema.branches.companyId, req.targetCompanyId), eq(schema.branches.isDefault, true)));
-      }
-      await tx.insert(schema.branches).values(branchDataForInsert).onConflictDoUpdate({
-        target: schema.branches.id,
-        set: branchDataForInsert
-      });
-
-      if (newWarehouseId) {
-        // Reuses the exact same "this company's very first warehouse auto-becomes its
-        // default" rule POST /api/warehouses applies (masterEntities.ts), so a branch's
-        // auto-provisioned warehouse behaves identically to a manually-created one.
-        const [anyWarehouse] = await tx.select({ id: schema.warehouses.id }).from(schema.warehouses)
-          .where(eq(schema.warehouses.companyId, data.companyId));
-        const isCompanyDefault = !anyWarehouse;
-        if (isCompanyDefault) {
-          await tx.update(schema.warehouses).set({ isCompanyDefault: false })
-            .where(and(eq(schema.warehouses.companyId, data.companyId), eq(schema.warehouses.isCompanyDefault, true)));
-        }
-        await tx.insert(schema.warehouses).values({
-          id: newWarehouseId,
-          // Mirrors the branch's own name/code — for most retail branches the selling
-          // floor genuinely IS the warehouse, so a different invented name here (e.g.
-          // "<Branch> Warehouse") would just be a second name for the same place. Also
-          // sidesteps baking an English suffix onto a possibly-Arabic/Urdu branch name.
-          name: data.name,
-          code: data.code,
-          isActive: true,
-          companyId: data.companyId,
-          branchId: data.id,
-          type: 'sales',
-          isCompanyDefault,
-        });
-        await tx.update(schema.branches).set({ defaultWarehouseId: newWarehouseId }).where(eq(schema.branches.id, data.id));
-      }
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
+    if (data.isDefault === true) {
+      await tdb.update(schema.branches).set({ isDefault: false })
+        .where(and(eq(schema.branches.companyId, req.targetCompanyId), eq(schema.branches.isDefault, true)));
+    }
+    await tdb.insert(schema.branches).values(branchDataForInsert).onConflictDoUpdate({
+      target: schema.branches.id,
+      set: branchDataForInsert
     });
+
+    if (newWarehouseId) {
+      // Reuses the exact same "this company's very first warehouse auto-becomes its
+      // default" rule POST /api/warehouses applies (masterEntities.ts), so a branch's
+      // auto-provisioned warehouse behaves identically to a manually-created one.
+      const [anyWarehouse] = await tdb.select({ id: schema.warehouses.id }).from(schema.warehouses)
+        .where(eq(schema.warehouses.companyId, data.companyId));
+      const isCompanyDefault = !anyWarehouse;
+      if (isCompanyDefault) {
+        await tdb.update(schema.warehouses).set({ isCompanyDefault: false })
+          .where(and(eq(schema.warehouses.companyId, data.companyId), eq(schema.warehouses.isCompanyDefault, true)));
+      }
+      await tdb.insert(schema.warehouses).values({
+        id: newWarehouseId,
+        // Mirrors the branch's own name/code — for most retail branches the selling
+        // floor genuinely IS the warehouse, so a different invented name here (e.g.
+        // "<Branch> Warehouse") would just be a second name for the same place. Also
+        // sidesteps baking an English suffix onto a possibly-Arabic/Urdu branch name.
+        name: data.name,
+        code: data.code,
+        isActive: true,
+        companyId: data.companyId,
+        branchId: data.id,
+        type: 'sales',
+        isCompanyDefault,
+      });
+      await tdb.update(schema.branches).set({ defaultWarehouseId: newWarehouseId }).where(eq(schema.branches.id, data.id));
+    }
     res.json({ success: true, id: data.id, warehouseId: newWarehouseId || undefined });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.patch('/branches/:id/toggle-active', async (req: any, res) => {
+router.patch('/branches/:id/toggle-active', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.branches.delete.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
-    const [existing] = await db.select().from(schema.branches)
+    const [existing] = await tdb.select().from(schema.branches)
       .where(and(eq(schema.branches.id, id), eq(schema.branches.companyId, req.targetCompanyId)));
     if (!existing) {
       return res.status(404).json({ error: 'Branch not found.' });
@@ -174,7 +179,7 @@ router.patch('/branches/:id/toggle-active', async (req: any, res) => {
     // source). Deactivating the warehouse alongside the branch would make that transfer
     // impossible. The warehouse can be deactivated separately, manually, once it's
     // actually been emptied.
-    await db.update(schema.branches).set({ isActive: nextActive }).where(eq(schema.branches.id, id));
+    await tdb.update(schema.branches).set({ isActive: nextActive }).where(eq(schema.branches.id, id));
     res.json({ success: true, isActive: nextActive });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -194,8 +199,9 @@ router.patch('/branches/:id/toggle-active', async (req: any, res) => {
 // Gated on branches.update (the same leaf that governs editing a branch's own fields) —
 // this action doesn't create/deactivate a branch, it reassigns documents to one that
 // already exists, which is an edit-adjacent authority, not a separate leaf worth adding.
-router.post('/branches/backfill-unassigned', async (req: any, res) => {
+router.post('/branches/backfill-unassigned', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.branches.update.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -214,7 +220,7 @@ router.post('/branches/backfill-unassigned', async (req: any, res) => {
     if (!branchId) {
       return res.status(400).json({ error: 'branchId is required.' });
     }
-    const [targetBranch] = await db.select().from(schema.branches)
+    const [targetBranch] = await tdb.select().from(schema.branches)
       .where(and(eq(schema.branches.id, branchId), eq(schema.branches.companyId, companyId)));
     if (!targetBranch) {
       return res.status(404).json({ error: 'Branch not found for this company.' });
@@ -223,27 +229,26 @@ router.post('/branches/backfill-unassigned', async (req: any, res) => {
       return res.status(400).json({ error: 'Cannot backfill onto a deactivated branch.' });
     }
 
-    const counts = await db.transaction(async (tx) => {
-      const tables = [
-        { key: 'quotations', table: schema.quotations },
-        { key: 'invoices', table: schema.invoices },
-        { key: 'expenses', table: schema.expenses },
-        { key: 'vouchers', table: schema.vouchers },
-        { key: 'purchaseRequisitions', table: schema.purchaseRequisitions },
-        { key: 'purchaseOrders', table: schema.purchaseOrders },
-        { key: 'purchaseBills', table: schema.purchaseBills },
-        { key: 'warehouses', table: schema.warehouses },
-      ] as const;
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
+    const tables = [
+      { key: 'quotations', table: schema.quotations },
+      { key: 'invoices', table: schema.invoices },
+      { key: 'expenses', table: schema.expenses },
+      { key: 'vouchers', table: schema.vouchers },
+      { key: 'purchaseRequisitions', table: schema.purchaseRequisitions },
+      { key: 'purchaseOrders', table: schema.purchaseOrders },
+      { key: 'purchaseBills', table: schema.purchaseBills },
+      { key: 'warehouses', table: schema.warehouses },
+    ] as const;
 
-      const result: Record<string, number> = {};
-      for (const { key, table } of tables) {
-        const updated = await tx.update(table).set({ branchId })
-          .where(and(eq((table as any).companyId, companyId), isNull((table as any).branchId)))
-          .returning({ id: (table as any).id });
-        result[key] = updated.length;
-      }
-      return result;
-    });
+    const counts: Record<string, number> = {};
+    for (const { key, table } of tables) {
+      const updated = await tdb.update(table).set({ branchId })
+        .where(and(eq((table as any).companyId, companyId), isNull((table as any).branchId)))
+        .returning({ id: (table as any).id });
+      counts[key] = updated.length;
+    }
 
     res.json({ success: true, branchId, counts });
   } catch (error: any) {

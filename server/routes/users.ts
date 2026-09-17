@@ -5,10 +5,26 @@ import { eq, and, inArray, sql } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
 import { recordAuditLog } from '../lib/audit.js';
 import { isSuperAdminUser, assertOwnsRow, hasPermission } from '../lib/authz.js';
+import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
 
 const router = express.Router();
 
 // --- Users ---
+//
+// EXEMPTED from the tenantDb/RLS rollout, permanently — every route in this file stays on
+// the superuser `db` EXCEPT PATCH /me/language (fully migrated below). User
+// administration in this app is a genuinely cross-tenant-capable admin surface, not
+// ordinary single-company master data: a super-admin may read (`?companyId=all`/another
+// company below), create/update (POST / respects an explicitly super-admin-supplied
+// companyId, not just req.targetCompanyId — see BACKLOG's "super-admin creates a user for
+// a selected company" requirement), toggle-active, and delete a user belonging to ANY
+// company, regardless of which company happens to be active for that super-admin's own
+// session. A tenantDb() connection is scoped to exactly one company (req.targetCompanyId)
+// for the whole request via RLS — routing any of these through it would either hard-reject
+// a legitimate cross-company write (RLS's WITH CHECK on an insert/update with a different
+// companyId) or silently no-op a legitimate cross-company delete/toggle (the target row
+// simply invisible under RLS), the exact silent-failure shape DELETE /:id's own comment
+// below documents having already been found and fixed once for real.
 
 // The Staff Accounts directory (AdminSettings.tsx) needs to browse a company OTHER than
 // whichever one is currently active in the top-nav selector — but GET /api/state (the
@@ -58,6 +74,9 @@ router.get('/', async (req: any, res) => {
   }
 });
 
+// EXEMPTED, permanently — see this file's header comment. Respects an explicit
+// super-admin-supplied data.companyId (line below), which can genuinely differ from
+// req.targetCompanyId; that write would violate tenantDb()'s RLS WITH CHECK.
 router.post('/', async (req: any, res) => {
   try {
     const isSuperAdmin = isSuperAdminUser(req.user);
@@ -357,19 +376,23 @@ router.post('/', async (req: any, res) => {
 // A user's own UI language preference — single-column update on the caller's own row,
 // no permission check beyond being authenticated (you can always change your own display
 // language). Deliberately not routed through the full-blob /api/migrate sync.
-router.patch('/me/language', async (req: any, res) => {
+router.patch('/me/language', withTenantDb, async (req: any, res) => {
   try {
     const { uiLanguage } = req.body;
     if (!['en', 'ar', 'ur'].includes(uiLanguage)) {
       return res.status(400).json({ error: 'Invalid language' });
     }
-    await db.update(schema.users).set({ uiLanguage }).where(eq(schema.users.id, req.user.id));
+    await tenantDb().update(schema.users).set({ uiLanguage }).where(eq(schema.users.id, req.user.id));
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
+// EXEMPTED, permanently — see this file's header comment. assertOwnsRow below is true
+// unconditionally for a super-admin regardless of the target row's actual company (by
+// design — a super-admin may toggle a user's active flag in ANY company), so the write
+// after it must stay on the same connection as the check.
 // Toggle a user's isActive flag — company admin (own company only) or super-admin.
 router.patch('/:id/active', async (req: any, res) => {
   try {
@@ -409,6 +432,9 @@ router.patch('/:id/active', async (req: any, res) => {
   }
 });
 
+// EXEMPTED, permanently — see this file's header comment and PATCH /:id/active's matching
+// comment just above; assertOwnsRow's super-admin bypass here is a real, previously-fixed
+// requirement (see the comment inline below), not an incidental edge case.
 router.delete('/:id', async (req: any, res) => {
   try {
     const isSuper = isSuperAdminUser(req.user) || req.user?.role === 'admin';

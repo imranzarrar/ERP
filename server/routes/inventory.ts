@@ -7,6 +7,7 @@ import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { hasPermission, resolveDocumentBranchId, branchAccessOk, branchAccessOkViaWarehouse } from '../lib/authz.js';
 import { toBaseQuantity, toBaseUnitCost } from '../lib/uomConversion.js';
 import { generateId } from '../../src/id.js';
+import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
 
 const router = express.Router();
 
@@ -18,8 +19,9 @@ const router = express.Router();
 // configurable) mechanism so PR/PO/GRN numbering is safe under real concurrency too.
 
 // --- Purchase Requisitions ---
-router.post('/purchase-requisitions', async (req: any, res) => {
+router.post('/purchase-requisitions', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     if (!hasPermission(req.user, 'inventory.pr')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
@@ -35,34 +37,34 @@ router.post('/purchase-requisitions', async (req: any, res) => {
       return res.status(branchErr.status || 400).json({ error: branchErr.error || 'Invalid branch.' });
     }
 
-    const created = await db.transaction(async (tx) => {
-      await assertProductsOwnedByCompany(tx, companyId, prData.items.map((it: any) => it.productId));
-      const todayIso = new Date().toISOString().slice(0, 10);
-      const prNumber = await getAndIncrementDocumentNumber(tx, companyId, 'pr', todayIso, branchId);
-      const prId = generateId();
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
+    await assertProductsOwnedByCompany(tdb, companyId, prData.items.map((it: any) => it.productId));
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const prNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'pr', todayIso, branchId);
+    const prId = generateId();
 
-      const [newPr] = await tx.insert(schema.purchaseRequisitions).values({
-        id: prId,
-        prNumber,
-        requestedBy: prData.requestedBy,
-        date: new Date(),
-        status: 'Pending',
-        notes: prData.notes || null,
-        companyId,
-        branchId,
-      }).returning();
+    const [newPr] = await tdb.insert(schema.purchaseRequisitions).values({
+      id: prId,
+      prNumber,
+      requestedBy: prData.requestedBy,
+      date: new Date(),
+      status: 'Pending',
+      notes: prData.notes || null,
+      companyId,
+      branchId,
+    }).returning();
 
-      const itemRows = prData.items.map((item: any) => ({
-        id: generateId(),
-        requisitionId: prId,
-        productId: item.productId,
-        quantity: String(item.quantity),
-        purpose: item.purpose || null,
-      }));
-      const insertedItems = await tx.insert(schema.purchaseRequisitionItems).values(itemRows).returning();
+    const itemRows = prData.items.map((item: any) => ({
+      id: generateId(),
+      requisitionId: prId,
+      productId: item.productId,
+      quantity: String(item.quantity),
+      purpose: item.purpose || null,
+    }));
+    const insertedItems = await tdb.insert(schema.purchaseRequisitionItems).values(itemRows).returning();
 
-      return { ...newPr, items: insertedItems };
-    });
+    const created = { ...newPr, items: insertedItems };
 
     res.json({ success: true, purchaseRequisition: created });
   } catch (error: any) {
@@ -73,8 +75,9 @@ router.post('/purchase-requisitions', async (req: any, res) => {
 // Edit a Pending PR's items/notes — the submitter-tier action (inventory.pr), not gated by
 // inventory.approve since editing your own not-yet-approved request isn't an approval
 // action. Only a 'Pending' PR may be edited.
-router.put('/purchase-requisitions/:id', async (req: any, res) => {
+router.put('/purchase-requisitions/:id', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     if (!hasPermission(req.user, 'inventory.pr')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
@@ -85,44 +88,44 @@ router.put('/purchase-requisitions/:id', async (req: any, res) => {
     }
     const companyId = req.targetCompanyId;
 
-    const updated = await db.transaction(async (tx) => {
-      const [pr] = await tx.select().from(schema.purchaseRequisitions)
-        .where(and(eq(schema.purchaseRequisitions.id, id), eq(schema.purchaseRequisitions.companyId, companyId)))
-        .for('update');
-      if (!pr) {
-        const err: any = new Error('Purchase requisition not found.');
-        err.status = 404;
-        throw err;
-      }
-      if (!branchAccessOk(req, pr.branchId)) {
-        const err: any = new Error('Forbidden: you are not assigned to this branch.');
-        err.status = 403;
-        throw err;
-      }
-      if (pr.status !== 'Pending') {
-        const err: any = new Error(`Cannot edit a requisition that is not Pending (current status: ${pr.status}).`);
-        err.status = 400;
-        throw err;
-      }
-      await assertProductsOwnedByCompany(tx, companyId, prData.items.map((it: any) => it.productId));
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; the row lock below still applies within it.
+    const [pr] = await tdb.select().from(schema.purchaseRequisitions)
+      .where(and(eq(schema.purchaseRequisitions.id, id), eq(schema.purchaseRequisitions.companyId, companyId)))
+      .for('update');
+    if (!pr) {
+      const err: any = new Error('Purchase requisition not found.');
+      err.status = 404;
+      throw err;
+    }
+    if (!branchAccessOk(req, pr.branchId)) {
+      const err: any = new Error('Forbidden: you are not assigned to this branch.');
+      err.status = 403;
+      throw err;
+    }
+    if (pr.status !== 'Pending') {
+      const err: any = new Error(`Cannot edit a requisition that is not Pending (current status: ${pr.status}).`);
+      err.status = 400;
+      throw err;
+    }
+    await assertProductsOwnedByCompany(tdb, companyId, prData.items.map((it: any) => it.productId));
 
-      const [newPr] = await tx.update(schema.purchaseRequisitions)
-        .set({ notes: prData.notes !== undefined ? prData.notes : pr.notes })
-        .where(eq(schema.purchaseRequisitions.id, id))
-        .returning();
+    const [newPr] = await tdb.update(schema.purchaseRequisitions)
+      .set({ notes: prData.notes !== undefined ? prData.notes : pr.notes })
+      .where(eq(schema.purchaseRequisitions.id, id))
+      .returning();
 
-      await tx.delete(schema.purchaseRequisitionItems).where(eq(schema.purchaseRequisitionItems.requisitionId, id));
-      const itemRows = prData.items.map((item: any) => ({
-        id: generateId(),
-        requisitionId: id,
-        productId: item.productId,
-        quantity: String(item.quantity),
-        purpose: item.purpose || null,
-      }));
-      const insertedItems = await tx.insert(schema.purchaseRequisitionItems).values(itemRows).returning();
+    await tdb.delete(schema.purchaseRequisitionItems).where(eq(schema.purchaseRequisitionItems.requisitionId, id));
+    const itemRows = prData.items.map((item: any) => ({
+      id: generateId(),
+      requisitionId: id,
+      productId: item.productId,
+      quantity: String(item.quantity),
+      purpose: item.purpose || null,
+    }));
+    const insertedItems = await tdb.insert(schema.purchaseRequisitionItems).values(itemRows).returning();
 
-      return { ...newPr, items: insertedItems };
-    });
+    const updated = { ...newPr, items: insertedItems };
 
     res.json({ success: true, purchaseRequisition: updated });
   } catch (error: any) {
@@ -133,39 +136,39 @@ router.put('/purchase-requisitions/:id', async (req: any, res) => {
 // Withdraw a Pending PR — the submitter's own action (inventory.pr), separate from
 // approve/reject (inventory.approve): pulling back your own not-yet-actioned request isn't
 // an approval authority. Only a 'Pending' PR may be withdrawn.
-router.patch('/purchase-requisitions/:id/withdraw', async (req: any, res) => {
+router.patch('/purchase-requisitions/:id/withdraw', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     if (!hasPermission(req.user, 'inventory.pr')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
     const companyId = req.targetCompanyId;
 
-    const updated = await db.transaction(async (tx) => {
-      const [pr] = await tx.select().from(schema.purchaseRequisitions)
-        .where(and(eq(schema.purchaseRequisitions.id, id), eq(schema.purchaseRequisitions.companyId, companyId)))
-        .for('update');
-      if (!pr) {
-        const err: any = new Error('Purchase requisition not found.');
-        err.status = 404;
-        throw err;
-      }
-      if (!branchAccessOk(req, pr.branchId)) {
-        const err: any = new Error('Forbidden: you are not assigned to this branch.');
-        err.status = 403;
-        throw err;
-      }
-      if (pr.status !== 'Pending') {
-        const err: any = new Error(`Cannot withdraw a requisition that is not Pending (current status: ${pr.status}).`);
-        err.status = 400;
-        throw err;
-      }
-      const [newPr] = await tx.update(schema.purchaseRequisitions)
-        .set({ status: 'Cancelled' })
-        .where(eq(schema.purchaseRequisitions.id, id))
-        .returning();
-      return newPr;
-    });
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; the row lock below still applies within it.
+    const [pr] = await tdb.select().from(schema.purchaseRequisitions)
+      .where(and(eq(schema.purchaseRequisitions.id, id), eq(schema.purchaseRequisitions.companyId, companyId)))
+      .for('update');
+    if (!pr) {
+      const err: any = new Error('Purchase requisition not found.');
+      err.status = 404;
+      throw err;
+    }
+    if (!branchAccessOk(req, pr.branchId)) {
+      const err: any = new Error('Forbidden: you are not assigned to this branch.');
+      err.status = 403;
+      throw err;
+    }
+    if (pr.status !== 'Pending') {
+      const err: any = new Error(`Cannot withdraw a requisition that is not Pending (current status: ${pr.status}).`);
+      err.status = 400;
+      throw err;
+    }
+    const [updated] = await tdb.update(schema.purchaseRequisitions)
+      .set({ status: 'Cancelled' })
+      .where(eq(schema.purchaseRequisitions.id, id))
+      .returning();
 
     res.json({ success: true, purchaseRequisition: updated });
   } catch (error: any) {
@@ -174,8 +177,9 @@ router.patch('/purchase-requisitions/:id/withdraw', async (req: any, res) => {
 });
 
 // --- Purchase Orders ---
-router.post('/purchase-orders', async (req: any, res) => {
+router.post('/purchase-orders', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     if (!hasPermission(req.user, 'inventory.po')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
@@ -185,7 +189,7 @@ router.post('/purchase-orders', async (req: any, res) => {
     }
     const companyId = req.targetCompanyId;
 
-    const [company] = await db.select({ inventorySettings: schema.companies.inventorySettings })
+    const [company] = await tdb.select({ inventorySettings: schema.companies.inventorySettings })
       .from(schema.companies).where(eq(schema.companies.id, companyId));
     const prOptionality = (company?.inventorySettings as any)?.prOptionality || 'OPTIONAL';
     if (prOptionality === 'MANDATORY' && !poData.requisitionId) {
@@ -205,7 +209,7 @@ router.post('/purchase-orders', async (req: any, res) => {
     try {
       let requestedBranchId = poData.branchId;
       if (!requestedBranchId && poData.requisitionId) {
-        const [linkedPr] = await db.select({ branchId: schema.purchaseRequisitions.branchId }).from(schema.purchaseRequisitions)
+        const [linkedPr] = await tdb.select({ branchId: schema.purchaseRequisitions.branchId }).from(schema.purchaseRequisitions)
           .where(and(eq(schema.purchaseRequisitions.id, poData.requisitionId), eq(schema.purchaseRequisitions.companyId, companyId)));
         requestedBranchId = linkedPr?.branchId || undefined;
       }
@@ -214,78 +218,78 @@ router.post('/purchase-orders', async (req: any, res) => {
       return res.status(branchErr.status || 400).json({ error: branchErr.error || 'Invalid branch.' });
     }
 
-    const created = await db.transaction(async (tx) => {
-      // If a requisition is referenced (regardless of prOptionality — a stale/rejected/
-      // already-closed PR is never a valid source, in any mode), row-lock and validate it
-      // before using it, same pattern as the GRN route's purchase-order lock below.
-      if (poData.requisitionId) {
-        const [pr] = await tx.select().from(schema.purchaseRequisitions)
-          .where(and(eq(schema.purchaseRequisitions.id, poData.requisitionId), eq(schema.purchaseRequisitions.companyId, companyId)))
-          .for('update');
-        if (!pr) {
-          const err: any = new Error('Linked purchase requisition not found.');
-          err.status = 404;
-          throw err;
-        }
-        if (pr.status !== 'Approved') {
-          const err: any = new Error(`Cannot raise a purchase order from a requisition that is not Approved (current status: ${pr.status}).`);
-          err.status = 400;
-          throw err;
-        }
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; the row lock below still applies within it.
+    // If a requisition is referenced (regardless of prOptionality — a stale/rejected/
+    // already-closed PR is never a valid source, in any mode), row-lock and validate it
+    // before using it, same pattern as the GRN route's purchase-order lock below.
+    if (poData.requisitionId) {
+      const [pr] = await tdb.select().from(schema.purchaseRequisitions)
+        .where(and(eq(schema.purchaseRequisitions.id, poData.requisitionId), eq(schema.purchaseRequisitions.companyId, companyId)))
+        .for('update');
+      if (!pr) {
+        const err: any = new Error('Linked purchase requisition not found.');
+        err.status = 404;
+        throw err;
       }
-
-      // vendorId/productId were previously only checked for truthiness, never that they
-      // belong to this company — same class of gap found and fixed across every other
-      // creation route in this pass.
-      const [vendor] = await tx.select({ id: schema.vendors.id }).from(schema.vendors)
-        .where(and(eq(schema.vendors.id, poData.vendorId), eq(schema.vendors.companyId, companyId)));
-      if (!vendor) {
-        const err: any = new Error('Selected vendor not found for this company.');
+      if (pr.status !== 'Approved') {
+        const err: any = new Error(`Cannot raise a purchase order from a requisition that is not Approved (current status: ${pr.status}).`);
         err.status = 400;
         throw err;
       }
-      await assertProductsOwnedByCompany(tx, companyId, poData.items.map((it: any) => it.productId));
+    }
 
-      const poNumber = await getAndIncrementDocumentNumber(tx, companyId, 'po', new Date().toISOString().slice(0, 10), poBranchId);
-      const poId = generateId();
+    // vendorId/productId were previously only checked for truthiness, never that they
+    // belong to this company — same class of gap found and fixed across every other
+    // creation route in this pass.
+    const [vendor] = await tdb.select({ id: schema.vendors.id }).from(schema.vendors)
+      .where(and(eq(schema.vendors.id, poData.vendorId), eq(schema.vendors.companyId, companyId)));
+    if (!vendor) {
+      const err: any = new Error('Selected vendor not found for this company.');
+      err.status = 400;
+      throw err;
+    }
+    await assertProductsOwnedByCompany(tdb, companyId, poData.items.map((it: any) => it.productId));
 
-      const [newPo] = await tx.insert(schema.purchaseOrders).values({
-        id: poId,
-        poNumber,
-        vendorId: poData.vendorId,
-        date: new Date(),
-        status: 'Sent',
-        requisitionId: poData.requisitionId || null,
-        deliveryDate: poData.deliveryDate ? new Date(poData.deliveryDate) : null,
-        totalAmount: String(round2(totalAmount)),
-        companyId,
-        branchId: poBranchId,
-      }).returning();
+    const poNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'po', new Date().toISOString().slice(0, 10), poBranchId);
+    const poId = generateId();
 
-      const itemRows = poData.items.map((item: any) => ({
-        id: generateId(),
-        purchaseOrderId: poId,
-        productId: item.productId,
-        quantityOrdered: String(item.quantityOrdered),
-        unitPrice: String(item.unitPrice),
-        taxRate: String(item.taxRate || 0),
-        unitOfMeasureId: item.unitOfMeasureId || null,
-      }));
-      const insertedItems = await tx.insert(schema.purchaseOrderItems).values(itemRows).returning();
+    const [newPo] = await tdb.insert(schema.purchaseOrders).values({
+      id: poId,
+      poNumber,
+      vendorId: poData.vendorId,
+      date: new Date(),
+      status: 'Sent',
+      requisitionId: poData.requisitionId || null,
+      deliveryDate: poData.deliveryDate ? new Date(poData.deliveryDate) : null,
+      totalAmount: String(round2(totalAmount)),
+      companyId,
+      branchId: poBranchId,
+    }).returning();
 
-      // Close the source PR (if any) within the same transaction so a PR never stays
-      // "Approved" after it's already been actioned into a PO.
-      if (poData.requisitionId) {
-        await tx.update(schema.purchaseRequisitions)
-          .set({ status: 'Closed' })
-          .where(and(
-            eq(schema.purchaseRequisitions.id, poData.requisitionId),
-            eq(schema.purchaseRequisitions.companyId, companyId)
-          ));
-      }
+    const itemRows = poData.items.map((item: any) => ({
+      id: generateId(),
+      purchaseOrderId: poId,
+      productId: item.productId,
+      quantityOrdered: String(item.quantityOrdered),
+      unitPrice: String(item.unitPrice),
+      taxRate: String(item.taxRate || 0),
+      unitOfMeasureId: item.unitOfMeasureId || null,
+    }));
+    const insertedItems = await tdb.insert(schema.purchaseOrderItems).values(itemRows).returning();
 
-      return { ...newPo, items: insertedItems };
-    });
+    // Close the source PR (if any) within the same transaction so a PR never stays
+    // "Approved" after it's already been actioned into a PO.
+    if (poData.requisitionId) {
+      await tdb.update(schema.purchaseRequisitions)
+        .set({ status: 'Closed' })
+        .where(and(
+          eq(schema.purchaseRequisitions.id, poData.requisitionId),
+          eq(schema.purchaseRequisitions.companyId, companyId)
+        ));
+    }
+
+    const created = { ...newPo, items: insertedItems };
 
     res.json({ success: true, purchaseOrder: created });
   } catch (error: any) {
@@ -294,7 +298,7 @@ router.post('/purchase-orders', async (req: any, res) => {
 });
 
 // --- Goods Receipt Notes ---
-router.post('/goods-receipt-notes', async (req: any, res) => {
+router.post('/goods-receipt-notes', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'inventory.grn')) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -310,9 +314,10 @@ router.post('/goods-receipt-notes', async (req: any, res) => {
       return res.status(400).json({ error: 'A vendor must be selected for a direct shop delivery.' });
     }
     const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
 
     if (grnData.isDsd) {
-      const [company] = await db.select({ inventorySettings: schema.companies.inventorySettings })
+      const [company] = await tdb.select({ inventorySettings: schema.companies.inventorySettings })
         .from(schema.companies).where(eq(schema.companies.id, companyId));
       const isDsdAllowed = (company?.inventorySettings as any)?.isDsdAllowed ?? true;
       if (!isDsdAllowed) {
@@ -322,204 +327,204 @@ router.post('/goods-receipt-notes', async (req: any, res) => {
 
     let updatedPurchaseOrder: { id: string; status: string } | null = null;
 
-    const created = await db.transaction(async (tx) => {
-      let vendorId = grnData.vendorId;
-      let linkedPo: any = null;
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; every row lock below still applies within it.
+    let vendorId = grnData.vendorId;
+    let linkedPo: any = null;
 
-      if (!grnData.isDsd && grnData.purchaseOrderId) {
-        // Row-lock the PO for the duration of this transaction: two GRNs racing against
-        // the same PO must never both read "Sent"/"Partially Received" and both compute
-        // themselves as the one that completes it.
-        const [po] = await tx.select().from(schema.purchaseOrders)
-          .where(and(eq(schema.purchaseOrders.id, grnData.purchaseOrderId), eq(schema.purchaseOrders.companyId, companyId)))
-          .for('update');
-        if (!po) {
-          const err: any = new Error('Linked purchase order not found.');
-          err.status = 404;
-          throw err;
-        }
-        linkedPo = po;
-        vendorId = po.vendorId;
-      } else if (grnData.isDsd) {
-        // Non-DSD path inherits vendorId from an already company-checked PO above — DSD
-        // takes it straight from the client and it was never validated at all.
-        const [vendor] = await tx.select({ id: schema.vendors.id }).from(schema.vendors)
-          .where(and(eq(schema.vendors.id, vendorId), eq(schema.vendors.companyId, companyId)));
-        if (!vendor) {
-          const err: any = new Error('Selected vendor not found for this company.');
-          err.status = 400;
-          throw err;
-        }
+    if (!grnData.isDsd && grnData.purchaseOrderId) {
+      // Row-lock the PO for the duration of this transaction: two GRNs racing against
+      // the same PO must never both read "Sent"/"Partially Received" and both compute
+      // themselves as the one that completes it.
+      const [po] = await tdb.select().from(schema.purchaseOrders)
+        .where(and(eq(schema.purchaseOrders.id, grnData.purchaseOrderId), eq(schema.purchaseOrders.companyId, companyId)))
+        .for('update');
+      if (!po) {
+        const err: any = new Error('Linked purchase order not found.');
+        err.status = 404;
+        throw err;
       }
-      await assertProductsOwnedByCompany(tx, companyId, grnData.items.map((it: any) => it.productId));
-
-      // goodsReceiptNotes has no branchId column of its own (schema.ts) — derived via
-      // warehouseId purely so includeBranchCode can format correctly if ever configured,
-      // same lookup pattern as server.ts's branchOkViaWarehouse read-path predicate. Also
-      // the ONLY place grnData.warehouseId is ever checked at all — previously unscoped
-      // by companyId entirely (a real cross-tenant gap: a crafted request could receive
-      // stock into another company's warehouse, with the resulting inventoryStocks/
-      // stockLedgerTransactions rows filed under THIS caller's companyId, corrupting both
-      // tenants' inventory records) and never checked against req.allowedBranchIds either.
-      const [grnWarehouse] = await tx.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses)
-        .where(and(eq(schema.warehouses.id, grnData.warehouseId), eq(schema.warehouses.companyId, companyId)));
-      if (!grnWarehouse) {
-        const err: any = new Error('Selected warehouse not found for this company.');
+      linkedPo = po;
+      vendorId = po.vendorId;
+    } else if (grnData.isDsd) {
+      // Non-DSD path inherits vendorId from an already company-checked PO above — DSD
+      // takes it straight from the client and it was never validated at all.
+      const [vendor] = await tdb.select({ id: schema.vendors.id }).from(schema.vendors)
+        .where(and(eq(schema.vendors.id, vendorId), eq(schema.vendors.companyId, companyId)));
+      if (!vendor) {
+        const err: any = new Error('Selected vendor not found for this company.');
         err.status = 400;
         throw err;
       }
-      if (!branchAccessOk(req, grnWarehouse.branchId)) {
-        const err: any = new Error('Forbidden: you are not assigned to this branch.');
-        err.status = 403;
-        throw err;
-      }
-      const grnNumber = await getAndIncrementDocumentNumber(tx, companyId, 'grn', new Date().toISOString().slice(0, 10), grnWarehouse?.branchId || null);
-      const grnId = generateId();
+    }
+    await assertProductsOwnedByCompany(tdb, companyId, grnData.items.map((it: any) => it.productId));
 
-      const [newGrn] = await tx.insert(schema.goodsReceiptNotes).values({
-        id: grnId,
-        grnNumber,
-        purchaseOrderId: grnData.isDsd ? null : (grnData.purchaseOrderId || null),
-        vendorId,
-        warehouseId: grnData.warehouseId,
-        date: new Date(),
-        isDsd: !!grnData.isDsd,
-        receivedBy: grnData.receivedBy,
-        notes: grnData.notes || null,
-        companyId,
-      }).returning();
+    // goodsReceiptNotes has no branchId column of its own (schema.ts) — derived via
+    // warehouseId purely so includeBranchCode can format correctly if ever configured,
+    // same lookup pattern as server.ts's branchOkViaWarehouse read-path predicate. Also
+    // the ONLY place grnData.warehouseId is ever checked at all — previously unscoped
+    // by companyId entirely (a real cross-tenant gap: a crafted request could receive
+    // stock into another company's warehouse, with the resulting inventoryStocks/
+    // stockLedgerTransactions rows filed under THIS caller's companyId, corrupting both
+    // tenants' inventory records) and never checked against req.allowedBranchIds either.
+    const [grnWarehouse] = await tdb.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses)
+      .where(and(eq(schema.warehouses.id, grnData.warehouseId), eq(schema.warehouses.companyId, companyId)));
+    if (!grnWarehouse) {
+      const err: any = new Error('Selected warehouse not found for this company.');
+      err.status = 400;
+      throw err;
+    }
+    if (!branchAccessOk(req, grnWarehouse.branchId)) {
+      const err: any = new Error('Forbidden: you are not assigned to this branch.');
+      err.status = 403;
+      throw err;
+    }
+    const grnNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'grn', new Date().toISOString().slice(0, 10), grnWarehouse?.branchId || null);
+    const grnId = generateId();
 
-      const itemRows = grnData.items.map((item: any) => ({
-        id: generateId(),
-        grnId,
-        productId: item.productId,
-        quantityReceived: String(item.quantityReceived),
-        unitCost: String(item.unitCost),
-        taxRate: item.taxRate !== undefined ? String(item.taxRate) : '0.00',
-        batchNumber: item.batchNumber || null,
-        expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
-        unitOfMeasureId: item.unitOfMeasureId || null,
-      }));
-      const insertedItems = await tx.insert(schema.goodsReceiptNoteItems).values(itemRows).returning();
+    const [newGrn] = await tdb.insert(schema.goodsReceiptNotes).values({
+      id: grnId,
+      grnNumber,
+      purchaseOrderId: grnData.isDsd ? null : (grnData.purchaseOrderId || null),
+      vendorId,
+      warehouseId: grnData.warehouseId,
+      date: new Date(),
+      isDsd: !!grnData.isDsd,
+      receivedBy: grnData.receivedBy,
+      notes: grnData.notes || null,
+      companyId,
+    }).returning();
 
-      // Update stock levels — lock each matching stock row before incrementing so two
-      // concurrent GRNs touching the same product/warehouse/batch never lose an update
-      // (read-then-write without a lock would let both read the same starting quantity).
-      // `quantityReceived`/`unitCost` on the item itself stay exactly as entered (whatever
-      // unit the line used, for billing/display); every inventory-quantity and averaging
-      // calculation below uses the base-unit-converted values instead.
-      for (const item of grnData.items) {
-        // Item-picker filtering (client) already restricts GRN lines to itemKind==='item'
-        // — this is defense-in-depth against a direct API call. A service line skips both
-        // the inventoryStocks write and the average-cost fold below entirely (a service
-        // has no physical stock or purchase-cost-averaging concept), same no-op-not-error
-        // convention as deductStockForSale.
-        const [product] = await tx.select({
-          itemKind: schema.productsServices.itemKind,
-          averageCost: schema.productsServices.averageCost,
-          totalQuantityPurchased: schema.productsServices.totalQuantityPurchased,
-        }).from(schema.productsServices).where(eq(schema.productsServices.id, item.productId)).for('update');
-        if (!product || product.itemKind !== 'item') continue;
+    const itemRows = grnData.items.map((item: any) => ({
+      id: generateId(),
+      grnId,
+      productId: item.productId,
+      quantityReceived: String(item.quantityReceived),
+      unitCost: String(item.unitCost),
+      taxRate: item.taxRate !== undefined ? String(item.taxRate) : '0.00',
+      batchNumber: item.batchNumber || null,
+      expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
+      unitOfMeasureId: item.unitOfMeasureId || null,
+    }));
+    const insertedItems = await tdb.insert(schema.goodsReceiptNoteItems).values(itemRows).returning();
 
-        const baseQtyReceived = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReceived));
-        const baseUnitCost = await toBaseUnitCost(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.unitCost));
+    // Update stock levels — lock each matching stock row before incrementing so two
+    // concurrent GRNs touching the same product/warehouse/batch never lose an update
+    // (read-then-write without a lock would let both read the same starting quantity).
+    // `quantityReceived`/`unitCost` on the item itself stay exactly as entered (whatever
+    // unit the line used, for billing/display); every inventory-quantity and averaging
+    // calculation below uses the base-unit-converted values instead.
+    for (const item of grnData.items) {
+      // Item-picker filtering (client) already restricts GRN lines to itemKind==='item'
+      // — this is defense-in-depth against a direct API call. A service line skips both
+      // the inventoryStocks write and the average-cost fold below entirely (a service
+      // has no physical stock or purchase-cost-averaging concept), same no-op-not-error
+      // convention as deductStockForSale.
+      const [product] = await tdb.select({
+        itemKind: schema.productsServices.itemKind,
+        averageCost: schema.productsServices.averageCost,
+        totalQuantityPurchased: schema.productsServices.totalQuantityPurchased,
+      }).from(schema.productsServices).where(eq(schema.productsServices.id, item.productId)).for('update');
+      if (!product || product.itemKind !== 'item') continue;
 
-        const batchCondition = item.batchNumber
-          ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
-          : isNull(schema.inventoryStocks.batchNumber);
+      const baseQtyReceived = await toBaseQuantity(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReceived));
+      const baseUnitCost = await toBaseUnitCost(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.unitCost));
 
-        const [existingStock] = await tx.select().from(schema.inventoryStocks)
-          .where(and(
-            eq(schema.inventoryStocks.productId, item.productId),
-            eq(schema.inventoryStocks.warehouseId, grnData.warehouseId),
-            eq(schema.inventoryStocks.companyId, companyId),
-            batchCondition
-          ))
-          .for('update');
+      const batchCondition = item.batchNumber
+        ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
+        : isNull(schema.inventoryStocks.batchNumber);
 
-        const grnEndingQty = existingStock
-          ? round2(Number(existingStock.quantity) + baseQtyReceived)
-          : round2(baseQtyReceived);
+      const [existingStock] = await tdb.select().from(schema.inventoryStocks)
+        .where(and(
+          eq(schema.inventoryStocks.productId, item.productId),
+          eq(schema.inventoryStocks.warehouseId, grnData.warehouseId),
+          eq(schema.inventoryStocks.companyId, companyId),
+          batchCondition
+        ))
+        .for('update');
 
-        if (existingStock) {
-          await tx.update(schema.inventoryStocks)
-            .set({ quantity: String(grnEndingQty) })
-            .where(eq(schema.inventoryStocks.id, existingStock.id));
-        } else {
-          await tx.insert(schema.inventoryStocks).values({
-            id: generateId(),
-            productId: item.productId,
-            warehouseId: grnData.warehouseId,
-            batchNumber: item.batchNumber || null,
-            expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
-            quantity: String(baseQtyReceived),
-            companyId,
-          });
-        }
-        await writeStockLedgerEntry(tx, {
-          productId: item.productId, warehouseId: grnData.warehouseId, companyId,
-          transactionType: 'GRN', referenceId: grnId, date: newGrn.date as Date,
-          quantityChange: baseQtyReceived, endingQuantity: grnEndingQty,
+      const grnEndingQty = existingStock
+        ? round2(Number(existingStock.quantity) + baseQtyReceived)
+        : round2(baseQtyReceived);
+
+      if (existingStock) {
+        await tdb.update(schema.inventoryStocks)
+          .set({ quantity: String(grnEndingQty) })
+          .where(eq(schema.inventoryStocks.id, existingStock.id));
+      } else {
+        await tdb.insert(schema.inventoryStocks).values({
+          id: generateId(),
+          productId: item.productId,
+          warehouseId: grnData.warehouseId,
           batchNumber: item.batchNumber || null,
+          expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
+          quantity: String(baseQtyReceived),
+          companyId,
         });
+      }
+      await writeStockLedgerEntry(tdb, {
+        productId: item.productId, warehouseId: grnData.warehouseId, companyId,
+        transactionType: 'GRN', referenceId: grnId, date: newGrn.date as Date,
+        quantityChange: baseQtyReceived, endingQuantity: grnEndingQty,
+        batchNumber: item.batchNumber || null,
+      });
 
-        // Fold this receipt into the product's weighted-average cost. Uses
-        // totalQuantityPurchased (not current on-hand quantity) as the weight so the
-        // average is unaffected by sales/adjustments that have drawn stock down since
-        // earlier receipts — a pure moving-average-cost calculation, forward-only.
-        const priorQty = Number(product.totalQuantityPurchased || 0);
-        const priorAvg = Number(product.averageCost || 0);
-        const newQty = priorQty + baseQtyReceived;
-        const newAvg = newQty > 0 ? round4((priorQty * priorAvg + baseQtyReceived * baseUnitCost) / newQty) : priorAvg;
-        await tx.update(schema.productsServices)
-          .set({ averageCost: String(newAvg), totalQuantityPurchased: String(round2(newQty)) })
-          .where(eq(schema.productsServices.id, item.productId));
+      // Fold this receipt into the product's weighted-average cost. Uses
+      // totalQuantityPurchased (not current on-hand quantity) as the weight so the
+      // average is unaffected by sales/adjustments that have drawn stock down since
+      // earlier receipts — a pure moving-average-cost calculation, forward-only.
+      const priorQty = Number(product.totalQuantityPurchased || 0);
+      const priorAvg = Number(product.averageCost || 0);
+      const newQty = priorQty + baseQtyReceived;
+      const newAvg = newQty > 0 ? round4((priorQty * priorAvg + baseQtyReceived * baseUnitCost) / newQty) : priorAvg;
+      await tdb.update(schema.productsServices)
+        .set({ averageCost: String(newAvg), totalQuantityPurchased: String(round2(newQty)) })
+        .where(eq(schema.productsServices.id, item.productId));
+    }
+
+    // Determine the linked PO's fulfillment status from actual received-vs-ordered
+    // quantities (summed across every GRN ever raised against it, including the one
+    // just inserted above, since we're still inside the same transaction) instead of
+    // unconditionally flipping it to "Received" the moment any GRN references it.
+    if (linkedPo) {
+      const poItems = await tdb.select().from(schema.purchaseOrderItems)
+        .where(eq(schema.purchaseOrderItems.purchaseOrderId, linkedPo.id));
+
+      const priorGrnItems = await tdb.select({
+        productId: schema.goodsReceiptNoteItems.productId,
+        quantityReceived: schema.goodsReceiptNoteItems.quantityReceived,
+        unitOfMeasureId: schema.goodsReceiptNoteItems.unitOfMeasureId,
+      })
+        .from(schema.goodsReceiptNoteItems)
+        .innerJoin(schema.goodsReceiptNotes, eq(schema.goodsReceiptNoteItems.grnId, schema.goodsReceiptNotes.id))
+        .where(and(eq(schema.goodsReceiptNotes.purchaseOrderId, linkedPo.id), eq(schema.goodsReceiptNotes.isReversed, false)));
+
+      // Ordered vs. received is compared in base-unit terms throughout — a PO line and
+      // its fulfilling GRN line(s) need not share the same unit (e.g. ordered in
+      // Cartons, received partly loose), so both sides are converted before comparing.
+      const receivedByProduct = new Map<string, number>();
+      for (const row of priorGrnItems) {
+        const baseQty = await toBaseQuantity(tdb, row.productId, row.unitOfMeasureId, companyId, Number(row.quantityReceived));
+        receivedByProduct.set(row.productId, (receivedByProduct.get(row.productId) || 0) + baseQty);
       }
 
-      // Determine the linked PO's fulfillment status from actual received-vs-ordered
-      // quantities (summed across every GRN ever raised against it, including the one
-      // just inserted above, since we're still inside the same transaction) instead of
-      // unconditionally flipping it to "Received" the moment any GRN references it.
-      if (linkedPo) {
-        const poItems = await tx.select().from(schema.purchaseOrderItems)
-          .where(eq(schema.purchaseOrderItems.purchaseOrderId, linkedPo.id));
-
-        const priorGrnItems = await tx.select({
-          productId: schema.goodsReceiptNoteItems.productId,
-          quantityReceived: schema.goodsReceiptNoteItems.quantityReceived,
-          unitOfMeasureId: schema.goodsReceiptNoteItems.unitOfMeasureId,
-        })
-          .from(schema.goodsReceiptNoteItems)
-          .innerJoin(schema.goodsReceiptNotes, eq(schema.goodsReceiptNoteItems.grnId, schema.goodsReceiptNotes.id))
-          .where(and(eq(schema.goodsReceiptNotes.purchaseOrderId, linkedPo.id), eq(schema.goodsReceiptNotes.isReversed, false)));
-
-        // Ordered vs. received is compared in base-unit terms throughout — a PO line and
-        // its fulfilling GRN line(s) need not share the same unit (e.g. ordered in
-        // Cartons, received partly loose), so both sides are converted before comparing.
-        const receivedByProduct = new Map<string, number>();
-        for (const row of priorGrnItems) {
-          const baseQty = await toBaseQuantity(tx, row.productId, row.unitOfMeasureId, companyId, Number(row.quantityReceived));
-          receivedByProduct.set(row.productId, (receivedByProduct.get(row.productId) || 0) + baseQty);
-        }
-
-        let fullyReceived = poItems.length > 0;
-        let anyReceived = false;
-        for (const poItem of poItems) {
-          const received = receivedByProduct.get(poItem.productId) || 0;
-          const orderedBaseQty = await toBaseQuantity(tx, poItem.productId, poItem.unitOfMeasureId, companyId, Number(poItem.quantityOrdered));
-          if (received > 0) anyReceived = true;
-          if (received < orderedBaseQty) fullyReceived = false;
-        }
-
-        const newStatus = fullyReceived ? 'Received' : (anyReceived ? 'Partially Received' : linkedPo.status);
-        if (newStatus !== linkedPo.status) {
-          await tx.update(schema.purchaseOrders).set({ status: newStatus }).where(eq(schema.purchaseOrders.id, linkedPo.id));
-        }
-        updatedPurchaseOrder = { id: linkedPo.id, status: newStatus };
+      let fullyReceived = poItems.length > 0;
+      let anyReceived = false;
+      for (const poItem of poItems) {
+        const received = receivedByProduct.get(poItem.productId) || 0;
+        const orderedBaseQty = await toBaseQuantity(tdb, poItem.productId, poItem.unitOfMeasureId, companyId, Number(poItem.quantityOrdered));
+        if (received > 0) anyReceived = true;
+        if (received < orderedBaseQty) fullyReceived = false;
       }
 
-      return { ...newGrn, items: insertedItems };
-    });
+      const newStatus = fullyReceived ? 'Received' : (anyReceived ? 'Partially Received' : linkedPo.status);
+      if (newStatus !== linkedPo.status) {
+        await tdb.update(schema.purchaseOrders).set({ status: newStatus }).where(eq(schema.purchaseOrders.id, linkedPo.id));
+      }
+      updatedPurchaseOrder = { id: linkedPo.id, status: newStatus };
+    }
+
+    const created = { ...newGrn, items: insertedItems };
 
     res.json({ success: true, goodsReceiptNote: created, updatedPurchaseOrder });
   } catch (error: any) {
@@ -536,110 +541,111 @@ router.post('/goods-receipt-notes', async (req: any, res) => {
 // history, which no real ERP does. A materially wrong average cost from a bad receipt
 // self-corrects as further receipts get folded in, or can be corrected via a manual stock
 // adjustment if urgent.
-router.post('/goods-receipt-notes/:id/reverse', async (req: any, res) => {
+router.post('/goods-receipt-notes/:id/reverse', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'inventory.grn')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
     const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
 
-    const result = await db.transaction(async (tx) => {
-      const [grn] = await tx.select().from(schema.goodsReceiptNotes)
-        .where(and(eq(schema.goodsReceiptNotes.id, id), eq(schema.goodsReceiptNotes.companyId, companyId)))
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; every row lock below still applies within it.
+    const [grn] = await tdb.select().from(schema.goodsReceiptNotes)
+      .where(and(eq(schema.goodsReceiptNotes.id, id), eq(schema.goodsReceiptNotes.companyId, companyId)))
+      .for('update');
+    if (!grn) {
+      const err: any = new Error('Goods receipt note not found.');
+      err.status = 404;
+      throw err;
+    }
+    if (!(await branchAccessOkViaWarehouse(tdb, req, grn.warehouseId))) {
+      const err: any = new Error('Forbidden: you are not assigned to this branch.');
+      err.status = 403;
+      throw err;
+    }
+    if (grn.isReversed) {
+      const err: any = new Error('This receipt has already been reversed.');
+      err.status = 400;
+      throw err;
+    }
+
+    const items = await tdb.select().from(schema.goodsReceiptNoteItems).where(eq(schema.goodsReceiptNoteItems.grnId, id));
+
+    for (const item of items) {
+      const [product] = await tdb.select({ itemKind: schema.productsServices.itemKind })
+        .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
+      if (!product || product.itemKind !== 'item') continue;
+
+      const batchCondition = item.batchNumber
+        ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
+        : isNull(schema.inventoryStocks.batchNumber);
+      const [existingStock] = await tdb.select().from(schema.inventoryStocks)
+        .where(and(
+          eq(schema.inventoryStocks.productId, item.productId),
+          eq(schema.inventoryStocks.warehouseId, grn.warehouseId),
+          eq(schema.inventoryStocks.companyId, companyId),
+          batchCondition
+        ))
         .for('update');
-      if (!grn) {
-        const err: any = new Error('Goods receipt note not found.');
-        err.status = 404;
-        throw err;
+      if (existingStock) {
+        const baseQtyReceived = await toBaseQuantity(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReceived));
+        const priorQty = Number(existingStock.quantity);
+        const newQty = Math.max(0, round2(priorQty - baseQtyReceived));
+        await tdb.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
+        await writeStockLedgerEntry(tdb, {
+          productId: item.productId, warehouseId: grn.warehouseId, companyId,
+          transactionType: 'GRN', referenceId: grn.id, date: new Date(),
+          quantityChange: newQty - priorQty, endingQuantity: newQty,
+          batchNumber: item.batchNumber || null,
+        });
       }
-      if (!(await branchAccessOkViaWarehouse(tx, req, grn.warehouseId))) {
-        const err: any = new Error('Forbidden: you are not assigned to this branch.');
-        err.status = 403;
-        throw err;
-      }
-      if (grn.isReversed) {
-        const err: any = new Error('This receipt has already been reversed.');
-        err.status = 400;
-        throw err;
-      }
+    }
 
-      const items = await tx.select().from(schema.goodsReceiptNoteItems).where(eq(schema.goodsReceiptNoteItems.grnId, id));
+    const [reversedGrn] = await tdb.update(schema.goodsReceiptNotes)
+      .set({ isReversed: true })
+      .where(eq(schema.goodsReceiptNotes.id, id))
+      .returning();
 
-      for (const item of items) {
-        const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
-          .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
-        if (!product || product.itemKind !== 'item') continue;
+    let updatedPurchaseOrder: { id: string; status: string } | null = null;
+    if (grn.purchaseOrderId) {
+      const [po] = await tdb.select().from(schema.purchaseOrders).where(eq(schema.purchaseOrders.id, grn.purchaseOrderId)).for('update');
+      if (po) {
+        const poItems = await tdb.select().from(schema.purchaseOrderItems).where(eq(schema.purchaseOrderItems.purchaseOrderId, po.id));
+        const remainingGrnItems = await tdb.select({
+          productId: schema.goodsReceiptNoteItems.productId,
+          quantityReceived: schema.goodsReceiptNoteItems.quantityReceived,
+          unitOfMeasureId: schema.goodsReceiptNoteItems.unitOfMeasureId,
+        })
+          .from(schema.goodsReceiptNoteItems)
+          .innerJoin(schema.goodsReceiptNotes, eq(schema.goodsReceiptNoteItems.grnId, schema.goodsReceiptNotes.id))
+          .where(and(eq(schema.goodsReceiptNotes.purchaseOrderId, po.id), eq(schema.goodsReceiptNotes.isReversed, false)));
 
-        const batchCondition = item.batchNumber
-          ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
-          : isNull(schema.inventoryStocks.batchNumber);
-        const [existingStock] = await tx.select().from(schema.inventoryStocks)
-          .where(and(
-            eq(schema.inventoryStocks.productId, item.productId),
-            eq(schema.inventoryStocks.warehouseId, grn.warehouseId),
-            eq(schema.inventoryStocks.companyId, companyId),
-            batchCondition
-          ))
-          .for('update');
-        if (existingStock) {
-          const baseQtyReceived = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReceived));
-          const priorQty = Number(existingStock.quantity);
-          const newQty = Math.max(0, round2(priorQty - baseQtyReceived));
-          await tx.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
-          await writeStockLedgerEntry(tx, {
-            productId: item.productId, warehouseId: grn.warehouseId, companyId,
-            transactionType: 'GRN', referenceId: grn.id, date: new Date(),
-            quantityChange: newQty - priorQty, endingQuantity: newQty,
-            batchNumber: item.batchNumber || null,
-          });
+        const receivedByProduct = new Map<string, number>();
+        for (const row of remainingGrnItems) {
+          const baseQty = await toBaseQuantity(tdb, row.productId, row.unitOfMeasureId, companyId, Number(row.quantityReceived));
+          receivedByProduct.set(row.productId, (receivedByProduct.get(row.productId) || 0) + baseQty);
         }
-      }
-
-      const [reversedGrn] = await tx.update(schema.goodsReceiptNotes)
-        .set({ isReversed: true })
-        .where(eq(schema.goodsReceiptNotes.id, id))
-        .returning();
-
-      let updatedPurchaseOrder: { id: string; status: string } | null = null;
-      if (grn.purchaseOrderId) {
-        const [po] = await tx.select().from(schema.purchaseOrders).where(eq(schema.purchaseOrders.id, grn.purchaseOrderId)).for('update');
-        if (po) {
-          const poItems = await tx.select().from(schema.purchaseOrderItems).where(eq(schema.purchaseOrderItems.purchaseOrderId, po.id));
-          const remainingGrnItems = await tx.select({
-            productId: schema.goodsReceiptNoteItems.productId,
-            quantityReceived: schema.goodsReceiptNoteItems.quantityReceived,
-            unitOfMeasureId: schema.goodsReceiptNoteItems.unitOfMeasureId,
-          })
-            .from(schema.goodsReceiptNoteItems)
-            .innerJoin(schema.goodsReceiptNotes, eq(schema.goodsReceiptNoteItems.grnId, schema.goodsReceiptNotes.id))
-            .where(and(eq(schema.goodsReceiptNotes.purchaseOrderId, po.id), eq(schema.goodsReceiptNotes.isReversed, false)));
-
-          const receivedByProduct = new Map<string, number>();
-          for (const row of remainingGrnItems) {
-            const baseQty = await toBaseQuantity(tx, row.productId, row.unitOfMeasureId, companyId, Number(row.quantityReceived));
-            receivedByProduct.set(row.productId, (receivedByProduct.get(row.productId) || 0) + baseQty);
-          }
-          let fullyReceived = poItems.length > 0;
-          let anyReceived = false;
-          for (const poItem of poItems) {
-            const received = receivedByProduct.get(poItem.productId) || 0;
-            const orderedBaseQty = await toBaseQuantity(tx, poItem.productId, poItem.unitOfMeasureId, companyId, Number(poItem.quantityOrdered));
-            if (received > 0) anyReceived = true;
-            if (received < orderedBaseQty) fullyReceived = false;
-          }
-          // Cancelled stays Cancelled regardless of receipt reversal — reversing a receipt
-          // never resurrects a PO the company deliberately called off.
-          const newStatus = po.status === 'Cancelled' ? 'Cancelled' : (fullyReceived ? 'Received' : (anyReceived ? 'Partially Received' : 'Sent'));
-          if (newStatus !== po.status) {
-            await tx.update(schema.purchaseOrders).set({ status: newStatus }).where(eq(schema.purchaseOrders.id, po.id));
-          }
-          updatedPurchaseOrder = { id: po.id, status: newStatus };
+        let fullyReceived = poItems.length > 0;
+        let anyReceived = false;
+        for (const poItem of poItems) {
+          const received = receivedByProduct.get(poItem.productId) || 0;
+          const orderedBaseQty = await toBaseQuantity(tdb, poItem.productId, poItem.unitOfMeasureId, companyId, Number(poItem.quantityOrdered));
+          if (received > 0) anyReceived = true;
+          if (received < orderedBaseQty) fullyReceived = false;
         }
+        // Cancelled stays Cancelled regardless of receipt reversal — reversing a receipt
+        // never resurrects a PO the company deliberately called off.
+        const newStatus = po.status === 'Cancelled' ? 'Cancelled' : (fullyReceived ? 'Received' : (anyReceived ? 'Partially Received' : 'Sent'));
+        if (newStatus !== po.status) {
+          await tdb.update(schema.purchaseOrders).set({ status: newStatus }).where(eq(schema.purchaseOrders.id, po.id));
+        }
+        updatedPurchaseOrder = { id: po.id, status: newStatus };
       }
+    }
 
-      return { goodsReceiptNote: reversedGrn, updatedPurchaseOrder };
-    });
+    const result = { goodsReceiptNote: reversedGrn, updatedPurchaseOrder };
 
     res.json({ success: true, ...result });
   } catch (error: any) {
@@ -651,7 +657,7 @@ router.post('/goods-receipt-notes/:id/reverse', async (req: any, res) => {
 // permission, deliberately separate from `inventory.pr` (which only covers submitting/
 // viewing requisitions) so approval authority can be delegated independently of who's
 // allowed to merely create requests. Only a 'Pending' PR may be actioned.
-router.patch('/purchase-requisitions/:id/status', async (req: any, res) => {
+router.patch('/purchase-requisitions/:id/status', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'inventory.approve')) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -662,33 +668,31 @@ router.patch('/purchase-requisitions/:id/status', async (req: any, res) => {
       return res.status(400).json({ error: "status must be 'Approved' or 'Rejected'." });
     }
     const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
 
-    const updated = await db.transaction(async (tx) => {
-      const [pr] = await tx.select().from(schema.purchaseRequisitions)
-        .where(and(eq(schema.purchaseRequisitions.id, id), eq(schema.purchaseRequisitions.companyId, companyId)))
-        .for('update');
-      if (!pr) {
-        const err: any = new Error('Purchase requisition not found.');
-        err.status = 404;
-        throw err;
-      }
-      if (!branchAccessOk(req, pr.branchId)) {
-        const err: any = new Error('Forbidden: you are not assigned to this branch.');
-        err.status = 403;
-        throw err;
-      }
-      if (pr.status !== 'Pending') {
-        const err: any = new Error(`Cannot ${status.toLowerCase()} a requisition that is not Pending (current status: ${pr.status}).`);
-        err.status = 400;
-        throw err;
-      }
+    const [pr] = await tdb.select().from(schema.purchaseRequisitions)
+      .where(and(eq(schema.purchaseRequisitions.id, id), eq(schema.purchaseRequisitions.companyId, companyId)))
+      .for('update');
+    if (!pr) {
+      const err: any = new Error('Purchase requisition not found.');
+      err.status = 404;
+      throw err;
+    }
+    if (!branchAccessOk(req, pr.branchId)) {
+      const err: any = new Error('Forbidden: you are not assigned to this branch.');
+      err.status = 403;
+      throw err;
+    }
+    if (pr.status !== 'Pending') {
+      const err: any = new Error(`Cannot ${status.toLowerCase()} a requisition that is not Pending (current status: ${pr.status}).`);
+      err.status = 400;
+      throw err;
+    }
 
-      const [newPr] = await tx.update(schema.purchaseRequisitions)
-        .set({ status })
-        .where(eq(schema.purchaseRequisitions.id, id))
-        .returning();
-      return newPr;
-    });
+    const [updated] = await tdb.update(schema.purchaseRequisitions)
+      .set({ status })
+      .where(eq(schema.purchaseRequisitions.id, id))
+      .returning();
 
     res.json({ success: true, purchaseRequisition: updated });
   } catch (error: any) {
@@ -699,40 +703,38 @@ router.patch('/purchase-requisitions/:id/status', async (req: any, res) => {
 // Cancel a Purchase Order — only a 'Sent' PO may be cancelled (matches the UI's own gate;
 // anything already Partially Received/Received/Cancelled has moved past the point a plain
 // cancel makes sense).
-router.patch('/purchase-orders/:id/cancel', async (req: any, res) => {
+router.patch('/purchase-orders/:id/cancel', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'inventory.po')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
     const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
 
-    const updated = await db.transaction(async (tx) => {
-      const [po] = await tx.select().from(schema.purchaseOrders)
-        .where(and(eq(schema.purchaseOrders.id, id), eq(schema.purchaseOrders.companyId, companyId)))
-        .for('update');
-      if (!po) {
-        const err: any = new Error('Purchase order not found.');
-        err.status = 404;
-        throw err;
-      }
-      if (!branchAccessOk(req, po.branchId)) {
-        const err: any = new Error('Forbidden: you are not assigned to this branch.');
-        err.status = 403;
-        throw err;
-      }
-      if (po.status !== 'Sent') {
-        const err: any = new Error(`Cannot cancel a purchase order that is not Sent (current status: ${po.status}).`);
-        err.status = 400;
-        throw err;
-      }
+    const [po] = await tdb.select().from(schema.purchaseOrders)
+      .where(and(eq(schema.purchaseOrders.id, id), eq(schema.purchaseOrders.companyId, companyId)))
+      .for('update');
+    if (!po) {
+      const err: any = new Error('Purchase order not found.');
+      err.status = 404;
+      throw err;
+    }
+    if (!branchAccessOk(req, po.branchId)) {
+      const err: any = new Error('Forbidden: you are not assigned to this branch.');
+      err.status = 403;
+      throw err;
+    }
+    if (po.status !== 'Sent') {
+      const err: any = new Error(`Cannot cancel a purchase order that is not Sent (current status: ${po.status}).`);
+      err.status = 400;
+      throw err;
+    }
 
-      const [newPo] = await tx.update(schema.purchaseOrders)
-        .set({ status: 'Cancelled' })
-        .where(eq(schema.purchaseOrders.id, id))
-        .returning();
-      return newPo;
-    });
+    const [updated] = await tdb.update(schema.purchaseOrders)
+      .set({ status: 'Cancelled' })
+      .where(eq(schema.purchaseOrders.id, id))
+      .returning();
 
     res.json({ success: true, purchaseOrder: updated });
   } catch (error: any) {
@@ -755,7 +757,7 @@ router.patch('/purchase-orders/:id/cancel', async (req: any, res) => {
 // via branchAccessOkViaWarehouse, which does NOT check companyId on its own — safe only
 // for acting on a warehouseId that was already company-verified elsewhere, which a fresh
 // client-supplied id here has not been).
-router.post('/warehouse-dispatches', async (req: any, res) => {
+router.post('/warehouse-dispatches', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'warehouseDispatches.create')) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -771,125 +773,126 @@ router.post('/warehouse-dispatches', async (req: any, res) => {
       return res.status(400).json({ error: 'Dispatched By is required.' });
     }
     const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
 
-    const created = await db.transaction(async (tx) => {
-      await assertProductsOwnedByCompany(tx, companyId, dispatchData.items.map((it: any) => it.productId));
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; every row lock below still applies within it.
+    await assertProductsOwnedByCompany(tdb, companyId, dispatchData.items.map((it: any) => it.productId));
 
-      const [fromWarehouse] = await tx.select({ branchId: schema.warehouses.branchId, isActive: schema.warehouses.isActive })
-        .from(schema.warehouses)
-        .where(and(eq(schema.warehouses.id, dispatchData.fromWarehouseId), eq(schema.warehouses.companyId, companyId)));
-      if (!fromWarehouse) {
-        const err: any = new Error('Source warehouse not found for this company.');
-        err.status = 404;
-        throw err;
-      }
-      if (fromWarehouse.isActive === false) {
-        const err: any = new Error('Source warehouse is deactivated and cannot dispatch stock.');
+    const [fromWarehouse] = await tdb.select({ branchId: schema.warehouses.branchId, isActive: schema.warehouses.isActive })
+      .from(schema.warehouses)
+      .where(and(eq(schema.warehouses.id, dispatchData.fromWarehouseId), eq(schema.warehouses.companyId, companyId)));
+    if (!fromWarehouse) {
+      const err: any = new Error('Source warehouse not found for this company.');
+      err.status = 404;
+      throw err;
+    }
+    if (fromWarehouse.isActive === false) {
+      const err: any = new Error('Source warehouse is deactivated and cannot dispatch stock.');
+      err.status = 400;
+      throw err;
+    }
+    if (!branchAccessOk(req, fromWarehouse.branchId)) {
+      const err: any = new Error('Forbidden: you are not assigned to the source warehouse\'s branch.');
+      err.status = 403;
+      throw err;
+    }
+
+    const [toWarehouse] = await tdb.select({ branchId: schema.warehouses.branchId, isActive: schema.warehouses.isActive })
+      .from(schema.warehouses)
+      .where(and(eq(schema.warehouses.id, dispatchData.toWarehouseId), eq(schema.warehouses.companyId, companyId)));
+    if (!toWarehouse) {
+      const err: any = new Error('Destination warehouse not found for this company.');
+      err.status = 404;
+      throw err;
+    }
+    if (toWarehouse.isActive === false) {
+      const err: any = new Error('Destination warehouse is deactivated and cannot receive stock.');
+      err.status = 400;
+      throw err;
+    }
+    // A dispatch-creating user must be authorized for the branch they're removing stock
+    // FROM and the branch they're sending it TO — stricter than GRN, which only ever
+    // checks one side, because this write genuinely touches two branches' inventory.
+    if (!branchAccessOk(req, toWarehouse.branchId)) {
+      const err: any = new Error('Forbidden: you are not assigned to the destination warehouse\'s branch.');
+      err.status = 403;
+      throw err;
+    }
+
+    const dispatchNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'dispatch', new Date().toISOString().slice(0, 10), fromWarehouse.branchId);
+    const dispatchId = generateId();
+    const dispatchDate = new Date();
+
+    const [newDispatch] = await tdb.insert(schema.warehouseDispatches).values({
+      id: dispatchId,
+      dispatchNumber,
+      fromWarehouseId: dispatchData.fromWarehouseId,
+      toWarehouseId: dispatchData.toWarehouseId,
+      date: dispatchDate,
+      vehicleNumber: dispatchData.vehicleNumber || null,
+      driverName: dispatchData.driverName || null,
+      driverContact: dispatchData.driverContact || null,
+      expectedArrivalDate: dispatchData.expectedArrivalDate ? new Date(dispatchData.expectedArrivalDate) : null,
+      dispatchedBy: dispatchData.dispatchedBy,
+      notes: dispatchData.notes || null,
+      status: 'Dispatched',
+      companyId,
+    }).returning();
+
+    const itemRows = dispatchData.items.map((item: any) => ({
+      id: generateId(),
+      dispatchId,
+      productId: item.productId,
+      quantityDispatched: String(item.quantityDispatched),
+      batchNumber: item.batchNumber || null,
+      expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
+      unitOfMeasureId: item.unitOfMeasureId || null,
+    }));
+    const insertedItems = await tdb.insert(schema.warehouseDispatchItems).values(itemRows).returning();
+
+    // Deduct from the source warehouse — lock each matching stock row first (same
+    // concurrency reasoning as GRN's own increment loop), and hard-reject (never clamp)
+    // when there isn't enough: unlike a Stock Adjustment, which is itself the correction
+    // for a wrong count, a dispatch claiming to move stock that doesn't exist is a plain
+    // data-entry error and should never silently succeed at a lower quantity.
+    for (const item of dispatchData.items) {
+      const [product] = await tdb.select({ itemKind: schema.productsServices.itemKind })
+        .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
+      if (!product || product.itemKind !== 'item') continue;
+
+      const baseQtyDispatched = await toBaseQuantity(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityDispatched));
+
+      const batchCondition = item.batchNumber
+        ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
+        : isNull(schema.inventoryStocks.batchNumber);
+
+      const [existingStock] = await tdb.select().from(schema.inventoryStocks)
+        .where(and(
+          eq(schema.inventoryStocks.productId, item.productId),
+          eq(schema.inventoryStocks.warehouseId, dispatchData.fromWarehouseId),
+          eq(schema.inventoryStocks.companyId, companyId),
+          batchCondition
+        ))
+        .for('update');
+
+      const priorQty = existingStock ? Number(existingStock.quantity) : 0;
+      if (priorQty < baseQtyDispatched) {
+        const err: any = new Error(`Insufficient stock for the selected product at the source warehouse (have ${priorQty}, dispatching ${baseQtyDispatched}).`);
         err.status = 400;
         throw err;
       }
-      if (!branchAccessOk(req, fromWarehouse.branchId)) {
-        const err: any = new Error('Forbidden: you are not assigned to the source warehouse\'s branch.');
-        err.status = 403;
-        throw err;
-      }
-
-      const [toWarehouse] = await tx.select({ branchId: schema.warehouses.branchId, isActive: schema.warehouses.isActive })
-        .from(schema.warehouses)
-        .where(and(eq(schema.warehouses.id, dispatchData.toWarehouseId), eq(schema.warehouses.companyId, companyId)));
-      if (!toWarehouse) {
-        const err: any = new Error('Destination warehouse not found for this company.');
-        err.status = 404;
-        throw err;
-      }
-      if (toWarehouse.isActive === false) {
-        const err: any = new Error('Destination warehouse is deactivated and cannot receive stock.');
-        err.status = 400;
-        throw err;
-      }
-      // A dispatch-creating user must be authorized for the branch they're removing stock
-      // FROM and the branch they're sending it TO — stricter than GRN, which only ever
-      // checks one side, because this write genuinely touches two branches' inventory.
-      if (!branchAccessOk(req, toWarehouse.branchId)) {
-        const err: any = new Error('Forbidden: you are not assigned to the destination warehouse\'s branch.');
-        err.status = 403;
-        throw err;
-      }
-
-      const dispatchNumber = await getAndIncrementDocumentNumber(tx, companyId, 'dispatch', new Date().toISOString().slice(0, 10), fromWarehouse.branchId);
-      const dispatchId = generateId();
-      const dispatchDate = new Date();
-
-      const [newDispatch] = await tx.insert(schema.warehouseDispatches).values({
-        id: dispatchId,
-        dispatchNumber,
-        fromWarehouseId: dispatchData.fromWarehouseId,
-        toWarehouseId: dispatchData.toWarehouseId,
-        date: dispatchDate,
-        vehicleNumber: dispatchData.vehicleNumber || null,
-        driverName: dispatchData.driverName || null,
-        driverContact: dispatchData.driverContact || null,
-        expectedArrivalDate: dispatchData.expectedArrivalDate ? new Date(dispatchData.expectedArrivalDate) : null,
-        dispatchedBy: dispatchData.dispatchedBy,
-        notes: dispatchData.notes || null,
-        status: 'Dispatched',
-        companyId,
-      }).returning();
-
-      const itemRows = dispatchData.items.map((item: any) => ({
-        id: generateId(),
-        dispatchId,
-        productId: item.productId,
-        quantityDispatched: String(item.quantityDispatched),
+      const newQty = round2(priorQty - baseQtyDispatched);
+      await tdb.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
+      await writeStockLedgerEntry(tdb, {
+        productId: item.productId, warehouseId: dispatchData.fromWarehouseId, companyId,
+        transactionType: 'TransferOut', referenceId: dispatchId, date: dispatchDate,
+        quantityChange: -baseQtyDispatched, endingQuantity: newQty,
         batchNumber: item.batchNumber || null,
-        expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
-        unitOfMeasureId: item.unitOfMeasureId || null,
-      }));
-      const insertedItems = await tx.insert(schema.warehouseDispatchItems).values(itemRows).returning();
+      });
+    }
 
-      // Deduct from the source warehouse — lock each matching stock row first (same
-      // concurrency reasoning as GRN's own increment loop), and hard-reject (never clamp)
-      // when there isn't enough: unlike a Stock Adjustment, which is itself the correction
-      // for a wrong count, a dispatch claiming to move stock that doesn't exist is a plain
-      // data-entry error and should never silently succeed at a lower quantity.
-      for (const item of dispatchData.items) {
-        const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
-          .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
-        if (!product || product.itemKind !== 'item') continue;
-
-        const baseQtyDispatched = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityDispatched));
-
-        const batchCondition = item.batchNumber
-          ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
-          : isNull(schema.inventoryStocks.batchNumber);
-
-        const [existingStock] = await tx.select().from(schema.inventoryStocks)
-          .where(and(
-            eq(schema.inventoryStocks.productId, item.productId),
-            eq(schema.inventoryStocks.warehouseId, dispatchData.fromWarehouseId),
-            eq(schema.inventoryStocks.companyId, companyId),
-            batchCondition
-          ))
-          .for('update');
-
-        const priorQty = existingStock ? Number(existingStock.quantity) : 0;
-        if (priorQty < baseQtyDispatched) {
-          const err: any = new Error(`Insufficient stock for the selected product at the source warehouse (have ${priorQty}, dispatching ${baseQtyDispatched}).`);
-          err.status = 400;
-          throw err;
-        }
-        const newQty = round2(priorQty - baseQtyDispatched);
-        await tx.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
-        await writeStockLedgerEntry(tx, {
-          productId: item.productId, warehouseId: dispatchData.fromWarehouseId, companyId,
-          transactionType: 'TransferOut', referenceId: dispatchId, date: dispatchDate,
-          quantityChange: -baseQtyDispatched, endingQuantity: newQty,
-          batchNumber: item.batchNumber || null,
-        });
-      }
-
-      return { ...newDispatch, items: insertedItems };
-    });
+    const created = { ...newDispatch, items: insertedItems };
 
     res.json({ success: true, dispatch: created });
   } catch (error: any) {
@@ -901,7 +904,7 @@ router.post('/warehouse-dispatches', async (req: any, res) => {
 // defaults to what was dispatched but is independently editable/short/over; a mismatch is
 // expected and recorded via discrepancyNotes, not blocked. Adds stock to the destination
 // warehouse only now, using the RECEIVED (not dispatched) quantity.
-router.post('/warehouse-receivings', async (req: any, res) => {
+router.post('/warehouse-receivings', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'warehouseReceivings.create')) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -914,153 +917,154 @@ router.post('/warehouse-receivings', async (req: any, res) => {
       return res.status(400).json({ error: 'Received By is required.' });
     }
     const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
 
-    const created = await db.transaction(async (tx) => {
-      // Row-lock the dispatch for the duration of this transaction — the exact same
-      // check-then-set concurrency pattern goodsReceiptNotes.isBilled uses for Purchase
-      // Bill's 3-way match, so two concurrent receiving requests against the same dispatch
-      // can never both succeed.
-      const [dispatch] = await tx.select().from(schema.warehouseDispatches)
-        .where(and(eq(schema.warehouseDispatches.id, receivingData.dispatchId), eq(schema.warehouseDispatches.companyId, companyId)))
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; the row lock below still applies within it.
+    // Row-lock the dispatch for the duration of this transaction — the exact same
+    // check-then-set concurrency pattern goodsReceiptNotes.isBilled uses for Purchase
+    // Bill's 3-way match, so two concurrent receiving requests against the same dispatch
+    // can never both succeed.
+    const [dispatch] = await tdb.select().from(schema.warehouseDispatches)
+      .where(and(eq(schema.warehouseDispatches.id, receivingData.dispatchId), eq(schema.warehouseDispatches.companyId, companyId)))
+      .for('update');
+    if (!dispatch) {
+      const err: any = new Error('Dispatch not found for this company.');
+      err.status = 404;
+      throw err;
+    }
+    if (dispatch.status === 'Cancelled') {
+      const err: any = new Error('This dispatch has been cancelled and cannot be received.');
+      err.status = 400;
+      throw err;
+    }
+    if (dispatch.status === 'Received') {
+      const err: any = new Error('This dispatch has already been received.');
+      err.status = 400;
+      throw err;
+    }
+
+    // toWarehouseId is DERIVED from the already company-scoped dispatch row above, never
+    // from the client — the destination was fixed at dispatch time. branchAccessOkViaWarehouse
+    // is safe here specifically because `dispatch` was just fetched with a companyId
+    // filter (unlike dispatch-creation's fresh, not-yet-verified client input).
+    // Deliberately does NOT also check the source branch — the receiving user may have
+    // no access to or knowledge of it; dispatch and receiving are legitimately done by
+    // different branch-scoped users.
+    if (!(await branchAccessOkViaWarehouse(tdb, req, dispatch.toWarehouseId))) {
+      const err: any = new Error('Forbidden: you are not assigned to the destination warehouse\'s branch.');
+      err.status = 403;
+      throw err;
+    }
+    const [toWarehouseForNumbering] = await tdb.select({ branchId: schema.warehouses.branchId })
+      .from(schema.warehouses).where(eq(schema.warehouses.id, dispatch.toWarehouseId));
+
+    const dispatchItems = await tdb.select().from(schema.warehouseDispatchItems)
+      .where(eq(schema.warehouseDispatchItems.dispatchId, receivingData.dispatchId));
+    const dispatchItemById = new Map(dispatchItems.map((di: any) => [di.id, di]));
+
+    // Every submitted dispatchItemId must actually belong to THIS dispatch — without
+    // this, a crafted request could receive against another dispatch's line while
+    // writing stock under the current dispatch's number, corrupting quantities silently.
+    // isolation-checked: dispatchItemId membership verified against the already
+    // company-scoped `dispatchItems` set fetched above, not a recognized OWNERSHIP_HELPERS
+    // call but equivalent in effect.
+    for (const item of receivingData.items) {
+      if (!dispatchItemById.has(item.dispatchItemId)) {
+        const err: any = new Error('One or more received lines do not belong to the selected dispatch.');
+        err.status = 400;
+        throw err;
+      }
+    }
+
+    const receivingNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'receiving', new Date().toISOString().slice(0, 10), toWarehouseForNumbering?.branchId || null);
+    const receivingId = generateId();
+    const receivingDate = new Date();
+
+    const [newReceiving] = await tdb.insert(schema.warehouseReceivings).values({
+      id: receivingId,
+      receivingNumber,
+      dispatchId: receivingData.dispatchId,
+      date: receivingDate,
+      receivedBy: receivingData.receivedBy,
+      condition: receivingData.condition || null,
+      discrepancyNotes: receivingData.discrepancyNotes || null,
+      notes: receivingData.notes || null,
+      status: 'Active',
+      companyId,
+    }).returning();
+
+    const itemRows = receivingData.items.map((item: any) => {
+      const dispatchItem: any = dispatchItemById.get(item.dispatchItemId);
+      const quantityReceived = item.quantityReceived !== undefined && item.quantityReceived !== null && item.quantityReceived !== ''
+        ? item.quantityReceived
+        : dispatchItem.quantityDispatched;
+      return {
+        id: generateId(),
+        receivingId,
+        dispatchItemId: item.dispatchItemId,
+        productId: dispatchItem.productId,
+        quantityReceived: String(quantityReceived),
+        batchNumber: item.batchNumber ?? dispatchItem.batchNumber ?? null,
+        expiryDate: item.expiryDate ? new Date(item.expiryDate) : (dispatchItem.expiryDate || null),
+        unitOfMeasureId: item.unitOfMeasureId ?? dispatchItem.unitOfMeasureId ?? null,
+      };
+    });
+    const insertedItems = await tdb.insert(schema.warehouseReceivingItems).values(itemRows).returning();
+
+    // Add to the destination warehouse using the ACTUAL received quantity (may be less
+    // or more than dispatched — that's exactly what discrepancyNotes is for).
+    for (const row of itemRows) {
+      const [product] = await tdb.select({ itemKind: schema.productsServices.itemKind })
+        .from(schema.productsServices).where(eq(schema.productsServices.id, row.productId));
+      if (!product || product.itemKind !== 'item') continue;
+
+      const baseQtyReceived = await toBaseQuantity(tdb, row.productId, row.unitOfMeasureId, companyId, Number(row.quantityReceived));
+
+      const batchCondition = row.batchNumber
+        ? eq(schema.inventoryStocks.batchNumber, row.batchNumber)
+        : isNull(schema.inventoryStocks.batchNumber);
+
+      const [existingStock] = await tdb.select().from(schema.inventoryStocks)
+        .where(and(
+          eq(schema.inventoryStocks.productId, row.productId),
+          eq(schema.inventoryStocks.warehouseId, dispatch.toWarehouseId),
+          eq(schema.inventoryStocks.companyId, companyId),
+          batchCondition
+        ))
         .for('update');
-      if (!dispatch) {
-        const err: any = new Error('Dispatch not found for this company.');
-        err.status = 404;
-        throw err;
-      }
-      if (dispatch.status === 'Cancelled') {
-        const err: any = new Error('This dispatch has been cancelled and cannot be received.');
-        err.status = 400;
-        throw err;
-      }
-      if (dispatch.status === 'Received') {
-        const err: any = new Error('This dispatch has already been received.');
-        err.status = 400;
-        throw err;
-      }
 
-      // toWarehouseId is DERIVED from the already company-scoped dispatch row above, never
-      // from the client — the destination was fixed at dispatch time. branchAccessOkViaWarehouse
-      // is safe here specifically because `dispatch` was just fetched with a companyId
-      // filter (unlike dispatch-creation's fresh, not-yet-verified client input).
-      // Deliberately does NOT also check the source branch — the receiving user may have
-      // no access to or knowledge of it; dispatch and receiving are legitimately done by
-      // different branch-scoped users.
-      if (!(await branchAccessOkViaWarehouse(tx, req, dispatch.toWarehouseId))) {
-        const err: any = new Error('Forbidden: you are not assigned to the destination warehouse\'s branch.');
-        err.status = 403;
-        throw err;
-      }
-      const [toWarehouseForNumbering] = await tx.select({ branchId: schema.warehouses.branchId })
-        .from(schema.warehouses).where(eq(schema.warehouses.id, dispatch.toWarehouseId));
+      const newQty = existingStock
+        ? round2(Number(existingStock.quantity) + baseQtyReceived)
+        : round2(baseQtyReceived);
 
-      const dispatchItems = await tx.select().from(schema.warehouseDispatchItems)
-        .where(eq(schema.warehouseDispatchItems.dispatchId, receivingData.dispatchId));
-      const dispatchItemById = new Map(dispatchItems.map((di: any) => [di.id, di]));
-
-      // Every submitted dispatchItemId must actually belong to THIS dispatch — without
-      // this, a crafted request could receive against another dispatch's line while
-      // writing stock under the current dispatch's number, corrupting quantities silently.
-      // isolation-checked: dispatchItemId membership verified against the already
-      // company-scoped `dispatchItems` set fetched above, not a recognized OWNERSHIP_HELPERS
-      // call but equivalent in effect.
-      for (const item of receivingData.items) {
-        if (!dispatchItemById.has(item.dispatchItemId)) {
-          const err: any = new Error('One or more received lines do not belong to the selected dispatch.');
-          err.status = 400;
-          throw err;
-        }
-      }
-
-      const receivingNumber = await getAndIncrementDocumentNumber(tx, companyId, 'receiving', new Date().toISOString().slice(0, 10), toWarehouseForNumbering?.branchId || null);
-      const receivingId = generateId();
-      const receivingDate = new Date();
-
-      const [newReceiving] = await tx.insert(schema.warehouseReceivings).values({
-        id: receivingId,
-        receivingNumber,
-        dispatchId: receivingData.dispatchId,
-        date: receivingDate,
-        receivedBy: receivingData.receivedBy,
-        condition: receivingData.condition || null,
-        discrepancyNotes: receivingData.discrepancyNotes || null,
-        notes: receivingData.notes || null,
-        status: 'Active',
-        companyId,
-      }).returning();
-
-      const itemRows = receivingData.items.map((item: any) => {
-        const dispatchItem: any = dispatchItemById.get(item.dispatchItemId);
-        const quantityReceived = item.quantityReceived !== undefined && item.quantityReceived !== null && item.quantityReceived !== ''
-          ? item.quantityReceived
-          : dispatchItem.quantityDispatched;
-        return {
+      if (existingStock) {
+        await tdb.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
+      } else {
+        await tdb.insert(schema.inventoryStocks).values({
           id: generateId(),
-          receivingId,
-          dispatchItemId: item.dispatchItemId,
-          productId: dispatchItem.productId,
-          quantityReceived: String(quantityReceived),
-          batchNumber: item.batchNumber ?? dispatchItem.batchNumber ?? null,
-          expiryDate: item.expiryDate ? new Date(item.expiryDate) : (dispatchItem.expiryDate || null),
-          unitOfMeasureId: item.unitOfMeasureId ?? dispatchItem.unitOfMeasureId ?? null,
-        };
-      });
-      const insertedItems = await tx.insert(schema.warehouseReceivingItems).values(itemRows).returning();
-
-      // Add to the destination warehouse using the ACTUAL received quantity (may be less
-      // or more than dispatched — that's exactly what discrepancyNotes is for).
-      for (const row of itemRows) {
-        const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
-          .from(schema.productsServices).where(eq(schema.productsServices.id, row.productId));
-        if (!product || product.itemKind !== 'item') continue;
-
-        const baseQtyReceived = await toBaseQuantity(tx, row.productId, row.unitOfMeasureId, companyId, Number(row.quantityReceived));
-
-        const batchCondition = row.batchNumber
-          ? eq(schema.inventoryStocks.batchNumber, row.batchNumber)
-          : isNull(schema.inventoryStocks.batchNumber);
-
-        const [existingStock] = await tx.select().from(schema.inventoryStocks)
-          .where(and(
-            eq(schema.inventoryStocks.productId, row.productId),
-            eq(schema.inventoryStocks.warehouseId, dispatch.toWarehouseId),
-            eq(schema.inventoryStocks.companyId, companyId),
-            batchCondition
-          ))
-          .for('update');
-
-        const newQty = existingStock
-          ? round2(Number(existingStock.quantity) + baseQtyReceived)
-          : round2(baseQtyReceived);
-
-        if (existingStock) {
-          await tx.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
-        } else {
-          await tx.insert(schema.inventoryStocks).values({
-            id: generateId(),
-            productId: row.productId,
-            warehouseId: dispatch.toWarehouseId,
-            batchNumber: row.batchNumber || null,
-            expiryDate: row.expiryDate || null,
-            quantity: String(baseQtyReceived),
-            companyId,
-          });
-        }
-        await writeStockLedgerEntry(tx, {
-          productId: row.productId, warehouseId: dispatch.toWarehouseId, companyId,
-          transactionType: 'TransferIn', referenceId: receivingId, date: receivingDate,
-          quantityChange: baseQtyReceived, endingQuantity: newQty,
+          productId: row.productId,
+          warehouseId: dispatch.toWarehouseId,
           batchNumber: row.batchNumber || null,
+          expiryDate: row.expiryDate || null,
+          quantity: String(baseQtyReceived),
+          companyId,
         });
       }
+      await writeStockLedgerEntry(tdb, {
+        productId: row.productId, warehouseId: dispatch.toWarehouseId, companyId,
+        transactionType: 'TransferIn', referenceId: receivingId, date: receivingDate,
+        quantityChange: baseQtyReceived, endingQuantity: newQty,
+        batchNumber: row.batchNumber || null,
+      });
+    }
 
-      // The atomic "set" half of the check-then-set — same locked row from the top of this
-      // transaction, so no concurrent request can have slipped through between the check
-      // and here.
-      await tx.update(schema.warehouseDispatches).set({ status: 'Received' }).where(eq(schema.warehouseDispatches.id, receivingData.dispatchId));
+    // The atomic "set" half of the check-then-set — same locked row from the top of this
+    // transaction, so no concurrent request can have slipped through between the check
+    // and here.
+    await tdb.update(schema.warehouseDispatches).set({ status: 'Received' }).where(eq(schema.warehouseDispatches.id, receivingData.dispatchId));
 
-      return { ...newReceiving, items: insertedItems };
-    });
+    const created = { ...newReceiving, items: insertedItems };
 
     res.json({ success: true, receiving: created });
   } catch (error: any) {
@@ -1074,84 +1078,85 @@ router.post('/warehouse-receivings', async (req: any, res) => {
 // TransferOut ledger entry (same transactionType, positive quantityChange, so the
 // reconciliation report's per-dispatch net-out math still nets to zero rather than needing
 // a third transaction type).
-router.post('/warehouse-dispatches/:id/cancel', async (req: any, res) => {
+router.post('/warehouse-dispatches/:id/cancel', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'warehouseDispatches.delete')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
     const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
 
-    const result = await db.transaction(async (tx) => {
-      const [dispatch] = await tx.select().from(schema.warehouseDispatches)
-        .where(and(eq(schema.warehouseDispatches.id, id), eq(schema.warehouseDispatches.companyId, companyId)))
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; the row lock below still applies within it.
+    const [dispatch] = await tdb.select().from(schema.warehouseDispatches)
+      .where(and(eq(schema.warehouseDispatches.id, id), eq(schema.warehouseDispatches.companyId, companyId)))
+      .for('update');
+    if (!dispatch) {
+      const err: any = new Error('Dispatch not found.');
+      err.status = 404;
+      throw err;
+    }
+    if (!(await branchAccessOkViaWarehouse(tdb, req, dispatch.fromWarehouseId))) {
+      const err: any = new Error('Forbidden: you are not assigned to the source warehouse\'s branch.');
+      err.status = 403;
+      throw err;
+    }
+    if (dispatch.status === 'Cancelled') {
+      const err: any = new Error('This dispatch has already been cancelled.');
+      err.status = 400;
+      throw err;
+    }
+    if (dispatch.status === 'Received') {
+      const err: any = new Error('This dispatch has already been received and cannot be cancelled — issue a new transfer in the opposite direction to correct it.');
+      err.status = 400;
+      throw err;
+    }
+
+    const items = await tdb.select().from(schema.warehouseDispatchItems).where(eq(schema.warehouseDispatchItems.dispatchId, id));
+    const cancelDate = new Date();
+
+    for (const item of items) {
+      const [product] = await tdb.select({ itemKind: schema.productsServices.itemKind })
+        .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
+      if (!product || product.itemKind !== 'item') continue;
+
+      const baseQtyDispatched = await toBaseQuantity(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityDispatched));
+      const batchCondition = item.batchNumber
+        ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
+        : isNull(schema.inventoryStocks.batchNumber);
+      const [existingStock] = await tdb.select().from(schema.inventoryStocks)
+        .where(and(
+          eq(schema.inventoryStocks.productId, item.productId),
+          eq(schema.inventoryStocks.warehouseId, dispatch.fromWarehouseId),
+          eq(schema.inventoryStocks.companyId, companyId),
+          batchCondition
+        ))
         .for('update');
-      if (!dispatch) {
-        const err: any = new Error('Dispatch not found.');
-        err.status = 404;
-        throw err;
-      }
-      if (!(await branchAccessOkViaWarehouse(tx, req, dispatch.fromWarehouseId))) {
-        const err: any = new Error('Forbidden: you are not assigned to the source warehouse\'s branch.');
-        err.status = 403;
-        throw err;
-      }
-      if (dispatch.status === 'Cancelled') {
-        const err: any = new Error('This dispatch has already been cancelled.');
-        err.status = 400;
-        throw err;
-      }
-      if (dispatch.status === 'Received') {
-        const err: any = new Error('This dispatch has already been received and cannot be cancelled — issue a new transfer in the opposite direction to correct it.');
-        err.status = 400;
-        throw err;
-      }
-
-      const items = await tx.select().from(schema.warehouseDispatchItems).where(eq(schema.warehouseDispatchItems.dispatchId, id));
-      const cancelDate = new Date();
-
-      for (const item of items) {
-        const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
-          .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
-        if (!product || product.itemKind !== 'item') continue;
-
-        const baseQtyDispatched = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityDispatched));
-        const batchCondition = item.batchNumber
-          ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
-          : isNull(schema.inventoryStocks.batchNumber);
-        const [existingStock] = await tx.select().from(schema.inventoryStocks)
-          .where(and(
-            eq(schema.inventoryStocks.productId, item.productId),
-            eq(schema.inventoryStocks.warehouseId, dispatch.fromWarehouseId),
-            eq(schema.inventoryStocks.companyId, companyId),
-            batchCondition
-          ))
-          .for('update');
-        const priorQty = existingStock ? Number(existingStock.quantity) : 0;
-        const newQty = round2(priorQty + baseQtyDispatched);
-        if (existingStock) {
-          await tx.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
-        } else {
-          await tx.insert(schema.inventoryStocks).values({
-            id: generateId(), productId: item.productId, warehouseId: dispatch.fromWarehouseId,
-            batchNumber: item.batchNumber || null, expiryDate: item.expiryDate || null,
-            quantity: String(newQty), companyId,
-          });
-        }
-        await writeStockLedgerEntry(tx, {
-          productId: item.productId, warehouseId: dispatch.fromWarehouseId, companyId,
-          transactionType: 'TransferOut', referenceId: dispatch.id, date: cancelDate,
-          quantityChange: baseQtyDispatched, endingQuantity: newQty,
-          batchNumber: item.batchNumber || null,
+      const priorQty = existingStock ? Number(existingStock.quantity) : 0;
+      const newQty = round2(priorQty + baseQtyDispatched);
+      if (existingStock) {
+        await tdb.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
+      } else {
+        await tdb.insert(schema.inventoryStocks).values({
+          id: generateId(), productId: item.productId, warehouseId: dispatch.fromWarehouseId,
+          batchNumber: item.batchNumber || null, expiryDate: item.expiryDate || null,
+          quantity: String(newQty), companyId,
         });
       }
+      await writeStockLedgerEntry(tdb, {
+        productId: item.productId, warehouseId: dispatch.fromWarehouseId, companyId,
+        transactionType: 'TransferOut', referenceId: dispatch.id, date: cancelDate,
+        quantityChange: baseQtyDispatched, endingQuantity: newQty,
+        batchNumber: item.batchNumber || null,
+      });
+    }
 
-      const [cancelled] = await tx.update(schema.warehouseDispatches)
-        .set({ status: 'Cancelled' })
-        .where(eq(schema.warehouseDispatches.id, id))
-        .returning();
-      return cancelled;
-    });
+    const [cancelled] = await tdb.update(schema.warehouseDispatches)
+      .set({ status: 'Cancelled' })
+      .where(eq(schema.warehouseDispatches.id, id))
+      .returning();
+    const result = cancelled;
 
     res.json({ success: true, dispatch: result });
   } catch (error: any) {
@@ -1164,7 +1169,7 @@ router.post('/warehouse-dispatches/:id/cancel', async (req: any, res) => {
 // inventoryStocks, just with a signed delta instead of an always-positive received
 // quantity. Clamped at 0 (matches the previous client-only behavior in
 // InventoryModule.tsx's handleStockAdjustment) rather than allowing negative stock.
-router.post('/stock-adjustments', async (req: any, res) => {
+router.post('/stock-adjustments', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'inventory.stock')) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -1178,71 +1183,73 @@ router.post('/stock-adjustments', async (req: any, res) => {
     }
     const companyId = req.targetCompanyId;
     const delta = Number(quantity);
+    const tdb = tenantDb();
 
-    const stock = await db.transaction(async (tx) => {
-      // warehouseId was previously never checked against companyId or the caller's
-      // allowedBranchIds at all — a crafted request could adjust stock in (or create a
-      // new stock row for) another company's warehouse, filed under this caller's own
-      // companyId. Same fix as POST /goods-receipt-notes above.
-      const [warehouse] = await tx.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses)
-        .where(and(eq(schema.warehouses.id, warehouseId), eq(schema.warehouses.companyId, companyId)));
-      if (!warehouse) {
-        const err: any = new Error('Selected warehouse not found for this company.');
-        err.status = 400;
-        throw err;
-      }
-      if (!branchAccessOk(req, warehouse.branchId)) {
-        const err: any = new Error('Forbidden: you are not assigned to this branch.');
-        err.status = 403;
-        throw err;
-      }
-      await assertProductsOwnedByCompany(tx, companyId, [productId]);
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; the row lock below still applies within it.
+    // warehouseId was previously never checked against companyId or the caller's
+    // allowedBranchIds at all — a crafted request could adjust stock in (or create a
+    // new stock row for) another company's warehouse, filed under this caller's own
+    // companyId. Same fix as POST /goods-receipt-notes above.
+    const [warehouse] = await tdb.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses)
+      .where(and(eq(schema.warehouses.id, warehouseId), eq(schema.warehouses.companyId, companyId)));
+    if (!warehouse) {
+      const err: any = new Error('Selected warehouse not found for this company.');
+      err.status = 400;
+      throw err;
+    }
+    if (!branchAccessOk(req, warehouse.branchId)) {
+      const err: any = new Error('Forbidden: you are not assigned to this branch.');
+      err.status = 403;
+      throw err;
+    }
+    await assertProductsOwnedByCompany(tdb, companyId, [productId]);
 
-      const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
-        .from(schema.productsServices).where(eq(schema.productsServices.id, productId));
-      if (!product || product.itemKind !== 'item') {
-        const err: any = new Error('Stock adjustments only apply to physical-item products, not services.');
-        err.status = 400;
-        throw err;
-      }
+    const [product] = await tdb.select({ itemKind: schema.productsServices.itemKind })
+      .from(schema.productsServices).where(eq(schema.productsServices.id, productId));
+    if (!product || product.itemKind !== 'item') {
+      const err: any = new Error('Stock adjustments only apply to physical-item products, not services.');
+      err.status = 400;
+      throw err;
+    }
 
-      const batchCondition = batchNumber
-        ? eq(schema.inventoryStocks.batchNumber, batchNumber)
-        : isNull(schema.inventoryStocks.batchNumber);
+    const batchCondition = batchNumber
+      ? eq(schema.inventoryStocks.batchNumber, batchNumber)
+      : isNull(schema.inventoryStocks.batchNumber);
 
-      const [existingStock] = await tx.select().from(schema.inventoryStocks)
-        .where(and(
-          eq(schema.inventoryStocks.productId, productId),
-          eq(schema.inventoryStocks.warehouseId, warehouseId),
-          eq(schema.inventoryStocks.companyId, companyId),
-          batchCondition
-        ))
-        .for('update');
+    const [existingStock] = await tdb.select().from(schema.inventoryStocks)
+      .where(and(
+        eq(schema.inventoryStocks.productId, productId),
+        eq(schema.inventoryStocks.warehouseId, warehouseId),
+        eq(schema.inventoryStocks.companyId, companyId),
+        batchCondition
+      ))
+      .for('update');
 
-      const adjustmentId = generateId();
+    const adjustmentId = generateId();
 
-      if (existingStock) {
-        const priorQty = Number(existingStock.quantity);
-        const newQty = Math.max(0, round2(priorQty + delta));
-        const [updatedStock] = await tx.update(schema.inventoryStocks)
-          .set({ quantity: String(newQty) })
-          .where(eq(schema.inventoryStocks.id, existingStock.id))
-          .returning();
-        await writeStockLedgerEntry(tx, {
-          productId, warehouseId, companyId,
-          transactionType: 'Adjustment', referenceId: adjustmentId, date: new Date(),
-          quantityChange: newQty - priorQty, endingQuantity: newQty, batchNumber,
-        });
-        return updatedStock;
-      }
-
+    let stock;
+    if (existingStock) {
+      const priorQty = Number(existingStock.quantity);
+      const newQty = Math.max(0, round2(priorQty + delta));
+      const [updatedStock] = await tdb.update(schema.inventoryStocks)
+        .set({ quantity: String(newQty) })
+        .where(eq(schema.inventoryStocks.id, existingStock.id))
+        .returning();
+      await writeStockLedgerEntry(tdb, {
+        productId, warehouseId, companyId,
+        transactionType: 'Adjustment', referenceId: adjustmentId, date: new Date(),
+        quantityChange: newQty - priorQty, endingQuantity: newQty, batchNumber,
+      });
+      stock = updatedStock;
+    } else {
       if (delta <= 0) {
         const err: any = new Error('No existing stock record to deduct from.');
         err.status = 400;
         throw err;
       }
 
-      const [newStock] = await tx.insert(schema.inventoryStocks).values({
+      const [newStock] = await tdb.insert(schema.inventoryStocks).values({
         id: generateId(),
         productId,
         warehouseId,
@@ -1250,13 +1257,13 @@ router.post('/stock-adjustments', async (req: any, res) => {
         quantity: String(round2(delta)),
         companyId,
       }).returning();
-      await writeStockLedgerEntry(tx, {
+      await writeStockLedgerEntry(tdb, {
         productId, warehouseId, companyId,
         transactionType: 'Adjustment', referenceId: adjustmentId, date: new Date(),
         quantityChange: round2(delta), endingQuantity: round2(delta), batchNumber,
       });
-      return newStock;
-    });
+      stock = newStock;
+    }
 
     res.json({ success: true, inventoryStock: stock });
   } catch (error: any) {
@@ -1272,7 +1279,7 @@ router.post('/stock-adjustments', async (req: any, res) => {
 // only be billed once (goodsReceiptNotes.isBilled), preventing the same delivery from
 // being billed twice; all referenced GRNs must share one vendor, matching how a real
 // vendor invoice consolidates deliveries.
-router.post('/purchase-bills', async (req: any, res) => {
+router.post('/purchase-bills', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'purchaseBills.create')) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -1282,6 +1289,7 @@ router.post('/purchase-bills', async (req: any, res) => {
       return res.status(400).json({ error: 'At least one goods receipt note must be referenced.' });
     }
     const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
 
     // If no branch was explicitly requested, inherit the first referenced GRN's own
     // branch (derived via its warehouse — GRNs have no branchId column of their own, see
@@ -1291,10 +1299,10 @@ router.post('/purchase-bills', async (req: any, res) => {
     try {
       let requestedBranchId = billData.branchId;
       if (!requestedBranchId) {
-        const [firstGrn] = await db.select({ warehouseId: schema.goodsReceiptNotes.warehouseId }).from(schema.goodsReceiptNotes)
+        const [firstGrn] = await tdb.select({ warehouseId: schema.goodsReceiptNotes.warehouseId }).from(schema.goodsReceiptNotes)
           .where(and(eq(schema.goodsReceiptNotes.id, billData.grnIds[0]), eq(schema.goodsReceiptNotes.companyId, companyId)));
         if (firstGrn?.warehouseId) {
-          const [wh] = await db.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses).where(and(eq(schema.warehouses.id, firstGrn.warehouseId), eq(schema.warehouses.companyId, companyId)));
+          const [wh] = await tdb.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses).where(and(eq(schema.warehouses.id, firstGrn.warehouseId), eq(schema.warehouses.companyId, companyId)));
           requestedBranchId = wh?.branchId || undefined;
         }
       }
@@ -1303,82 +1311,82 @@ router.post('/purchase-bills', async (req: any, res) => {
       return res.status(branchErr.status || 400).json({ error: branchErr.error || 'Invalid branch.' });
     }
 
-    const created = await db.transaction(async (tx) => {
-      // Purchase Bills always post as of today (date: new Date() below) — no client-
-      // supplied bill date exists, so this is a same-day check only, never a backdating
-      // scenario, unlike the invoice/expense sites which validate a client-chosen date.
-      await assertQuarterNotFiled(new Date().toISOString().slice(0, 10), companyId);
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; every row lock below still applies within it.
+    // Purchase Bills always post as of today (date: new Date() below) — no client-
+    // supplied bill date exists, so this is a same-day check only, never a backdating
+    // scenario, unlike the invoice/expense sites which validate a client-chosen date.
+    await assertQuarterNotFiled(new Date().toISOString().slice(0, 10), companyId);
 
-      const grns: any[] = [];
-      let vendorId: string | null = null;
-      for (const grnId of billData.grnIds) {
-        const [grn] = await tx.select().from(schema.goodsReceiptNotes)
-          .where(and(eq(schema.goodsReceiptNotes.id, grnId), eq(schema.goodsReceiptNotes.companyId, companyId)))
-          .for('update');
-        if (!grn) {
-          const err: any = new Error(`Goods receipt note ${grnId} not found.`);
-          err.status = 404;
-          throw err;
-        }
-        if (grn.isReversed) {
-          const err: any = new Error(`Goods receipt note ${grn.grnNumber} has been reversed and cannot be billed.`);
-          err.status = 400;
-          throw err;
-        }
-        if (grn.isBilled) {
-          const err: any = new Error(`Goods receipt note ${grn.grnNumber} has already been billed.`);
-          err.status = 400;
-          throw err;
-        }
-        if (vendorId === null) {
-          vendorId = grn.vendorId;
-        } else if (vendorId !== grn.vendorId) {
-          const err: any = new Error('All referenced goods receipt notes must be from the same vendor.');
-          err.status = 400;
-          throw err;
-        }
-        grns.push(grn);
+    const grns: any[] = [];
+    let vendorId: string | null = null;
+    for (const grnId of billData.grnIds) {
+      const [grn] = await tdb.select().from(schema.goodsReceiptNotes)
+        .where(and(eq(schema.goodsReceiptNotes.id, grnId), eq(schema.goodsReceiptNotes.companyId, companyId)))
+        .for('update');
+      if (!grn) {
+        const err: any = new Error(`Goods receipt note ${grnId} not found.`);
+        err.status = 404;
+        throw err;
       }
-
-      const grnItems = await tx.select().from(schema.goodsReceiptNoteItems)
-        .where(inArray(schema.goodsReceiptNoteItems.grnId, grns.map(g => g.id)));
-
-      let subTotal = 0;
-      let taxTotal = 0;
-      for (const item of grnItems) {
-        const lineSubtotal = round2(Number(item.quantityReceived) * Number(item.unitCost));
-        const lineTax = round2(lineSubtotal * (Number(item.taxRate || 0) / 100));
-        subTotal = round2(subTotal + lineSubtotal);
-        taxTotal = round2(taxTotal + lineTax);
+      if (grn.isReversed) {
+        const err: any = new Error(`Goods receipt note ${grn.grnNumber} has been reversed and cannot be billed.`);
+        err.status = 400;
+        throw err;
       }
-      const grandTotal = round2(subTotal + taxTotal);
+      if (grn.isBilled) {
+        const err: any = new Error(`Goods receipt note ${grn.grnNumber} has already been billed.`);
+        err.status = 400;
+        throw err;
+      }
+      if (vendorId === null) {
+        vendorId = grn.vendorId;
+      } else if (vendorId !== grn.vendorId) {
+        const err: any = new Error('All referenced goods receipt notes must be from the same vendor.');
+        err.status = 400;
+        throw err;
+      }
+      grns.push(grn);
+    }
 
-      const billNumber = await getAndIncrementDocumentNumber(tx, companyId, 'bill', new Date().toISOString().slice(0, 10), billBranchId);
-      const billId = generateId();
+    const grnItems = await tdb.select().from(schema.goodsReceiptNoteItems)
+      .where(inArray(schema.goodsReceiptNoteItems.grnId, grns.map(g => g.id)));
 
-      const [newBill] = await tx.insert(schema.purchaseBills).values({
-        id: billId,
-        billNumber,
-        vendorId: vendorId!,
-        date: new Date(),
-        dueDate: billData.dueDate ? new Date(billData.dueDate) : null,
-        grnIds: grns.map(g => g.id).join(','),
-        subTotal: String(subTotal),
-        taxTotal: String(taxTotal),
-        grandTotal: String(grandTotal),
-        status: 'Unpaid',
-        amountPaid: '0',
-        bankId: billData.bankId || null,
-        companyId,
-        branchId: billBranchId,
-      }).returning();
+    let subTotal = 0;
+    let taxTotal = 0;
+    for (const item of grnItems) {
+      const lineSubtotal = round2(Number(item.quantityReceived) * Number(item.unitCost));
+      const lineTax = round2(lineSubtotal * (Number(item.taxRate || 0) / 100));
+      subTotal = round2(subTotal + lineSubtotal);
+      taxTotal = round2(taxTotal + lineTax);
+    }
+    const grandTotal = round2(subTotal + taxTotal);
 
-      await tx.update(schema.goodsReceiptNotes)
-        .set({ isBilled: true })
-        .where(inArray(schema.goodsReceiptNotes.id, grns.map(g => g.id)));
+    const billNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'bill', new Date().toISOString().slice(0, 10), billBranchId);
+    const billId = generateId();
 
-      return newBill;
-    });
+    const [newBill] = await tdb.insert(schema.purchaseBills).values({
+      id: billId,
+      billNumber,
+      vendorId: vendorId!,
+      date: new Date(),
+      dueDate: billData.dueDate ? new Date(billData.dueDate) : null,
+      grnIds: grns.map(g => g.id).join(','),
+      subTotal: String(subTotal),
+      taxTotal: String(taxTotal),
+      grandTotal: String(grandTotal),
+      status: 'Unpaid',
+      amountPaid: '0',
+      bankId: billData.bankId || null,
+      companyId,
+      branchId: billBranchId,
+    }).returning();
+
+    await tdb.update(schema.goodsReceiptNotes)
+      .set({ isBilled: true })
+      .where(inArray(schema.goodsReceiptNotes.id, grns.map(g => g.id)));
+
+    const created = newBill;
 
     res.json({ success: true, purchaseBill: created });
   } catch (error: any) {
@@ -1389,7 +1397,7 @@ router.post('/purchase-bills', async (req: any, res) => {
 // Edit a Bill's due date / bank — only while Unpaid (nothing else is safe to change once
 // money may have moved against it, and the GRN linkage/totals are the 3-way-match record,
 // not something an edit should be able to quietly rewrite).
-router.put('/purchase-bills/:id', async (req: any, res) => {
+router.put('/purchase-bills/:id', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'purchaseBills.update')) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -1397,47 +1405,48 @@ router.put('/purchase-bills/:id', async (req: any, res) => {
     const { id } = req.params;
     const { billData } = req.body || {};
     const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
 
-    const updated = await db.transaction(async (tx) => {
-      const [bill] = await tx.select().from(schema.purchaseBills)
-        .where(and(eq(schema.purchaseBills.id, id), eq(schema.purchaseBills.companyId, companyId)))
-        .for('update');
-      if (!bill) {
-        const err: any = new Error('Purchase bill not found.');
-        err.status = 404;
-        throw err;
-      }
-      if (!branchAccessOk(req, bill.branchId)) {
-        const err: any = new Error('Forbidden: you are not assigned to this branch.');
-        err.status = 403;
-        throw err;
-      }
-      if (bill.status !== 'Unpaid') {
-        const err: any = new Error(`Cannot edit a bill that is not Unpaid (current status: ${bill.status}).`);
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; the row lock below still applies within it.
+    const [bill] = await tdb.select().from(schema.purchaseBills)
+      .where(and(eq(schema.purchaseBills.id, id), eq(schema.purchaseBills.companyId, companyId)))
+      .for('update');
+    if (!bill) {
+      const err: any = new Error('Purchase bill not found.');
+      err.status = 404;
+      throw err;
+    }
+    if (!branchAccessOk(req, bill.branchId)) {
+      const err: any = new Error('Forbidden: you are not assigned to this branch.');
+      err.status = 403;
+      throw err;
+    }
+    if (bill.status !== 'Unpaid') {
+      const err: any = new Error(`Cannot edit a bill that is not Unpaid (current status: ${bill.status}).`);
+      err.status = 400;
+      throw err;
+    }
+    // A client-supplied bankId must actually belong to this company — same reasoning
+    // already applied elsewhere in this app (see transactions.ts's
+    // assertDocumentRefsOwnedByCompany) but never wired into this specific route.
+    if (billData?.bankId) {
+      const [bank] = await tdb.select({ id: schema.bankAccounts.id }).from(schema.bankAccounts)
+        .where(and(eq(schema.bankAccounts.id, billData.bankId), eq(schema.bankAccounts.companyId, companyId)));
+      if (!bank) {
+        const err: any = new Error('Selected bank account was not found for this company.');
         err.status = 400;
         throw err;
       }
-      // A client-supplied bankId must actually belong to this company — same reasoning
-      // already applied elsewhere in this app (see transactions.ts's
-      // assertDocumentRefsOwnedByCompany) but never wired into this specific route.
-      if (billData?.bankId) {
-        const [bank] = await tx.select({ id: schema.bankAccounts.id }).from(schema.bankAccounts)
-          .where(and(eq(schema.bankAccounts.id, billData.bankId), eq(schema.bankAccounts.companyId, companyId)));
-        if (!bank) {
-          const err: any = new Error('Selected bank account was not found for this company.');
-          err.status = 400;
-          throw err;
-        }
-      }
-      const [newBill] = await tx.update(schema.purchaseBills)
-        .set({
-          dueDate: billData?.dueDate !== undefined ? (billData.dueDate ? new Date(billData.dueDate) : null) : bill.dueDate,
-          bankId: billData?.bankId !== undefined ? billData.bankId : bill.bankId,
-        })
-        .where(eq(schema.purchaseBills.id, id))
-        .returning();
-      return newBill;
-    });
+    }
+    const [newBill] = await tdb.update(schema.purchaseBills)
+      .set({
+        dueDate: billData?.dueDate !== undefined ? (billData.dueDate ? new Date(billData.dueDate) : null) : bill.dueDate,
+        bankId: billData?.bankId !== undefined ? billData.bankId : bill.bankId,
+      })
+      .where(eq(schema.purchaseBills.id, id))
+      .returning();
+    const updated = newBill;
 
     res.json({ success: true, purchaseBill: updated });
   } catch (error: any) {
@@ -1447,7 +1456,7 @@ router.put('/purchase-bills/:id', async (req: any, res) => {
 
 // Pay a Bill (full or partial) — same partial-payment shape as the expense/invoice payment
 // routes: caps at the remaining balance, generates a fresh Payment voucher per settlement.
-router.post('/purchase-bills/:id/pay', async (req: any, res) => {
+router.post('/purchase-bills/:id/pay', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'purchaseBills.update')) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -1455,107 +1464,108 @@ router.post('/purchase-bills/:id/pay', async (req: any, res) => {
     const { id } = req.params;
     const { date, bankId, amount } = req.body || {};
     const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
 
-    const updatedBill = await db.transaction(async (tx) => {
-      const [bill] = await tx.select().from(schema.purchaseBills)
-        .where(and(eq(schema.purchaseBills.id, id), eq(schema.purchaseBills.companyId, companyId)))
-        .for('update');
-      if (!bill) {
-        const err: any = new Error('Purchase bill not found.');
-        err.status = 404;
-        throw err;
-      }
-      if (!branchAccessOk(req, bill.branchId)) {
-        const err: any = new Error('Forbidden: you are not assigned to this branch.');
-        err.status = 403;
-        throw err;
-      }
-      if (bill.status === 'Cancelled') {
-        const err: any = new Error('Cancelled bills cannot be paid.');
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; the row lock below still applies within it.
+    const [bill] = await tdb.select().from(schema.purchaseBills)
+      .where(and(eq(schema.purchaseBills.id, id), eq(schema.purchaseBills.companyId, companyId)))
+      .for('update');
+    if (!bill) {
+      const err: any = new Error('Purchase bill not found.');
+      err.status = 404;
+      throw err;
+    }
+    if (!branchAccessOk(req, bill.branchId)) {
+      const err: any = new Error('Forbidden: you are not assigned to this branch.');
+      err.status = 403;
+      throw err;
+    }
+    if (bill.status === 'Cancelled') {
+      const err: any = new Error('Cancelled bills cannot be paid.');
+      err.status = 400;
+      throw err;
+    }
+    if (bill.status === 'Paid') {
+      const err: any = new Error('Bill is already fully paid.');
+      err.status = 400;
+      throw err;
+    }
+
+    const targetBankId = bankId || bill.bankId;
+    if (!targetBankId) {
+      const err: any = new Error('A bank account is required to record this payment.');
+      err.status = 400;
+      throw err;
+    }
+    // A client-supplied bankId must actually belong to this company — otherwise a
+    // malformed/malicious request could post a disbursement against another tenant's
+    // bank account.
+    if (bankId) {
+      const [targetBank] = await tdb.select({ id: schema.bankAccounts.id }).from(schema.bankAccounts)
+        .where(and(eq(schema.bankAccounts.id, targetBankId), eq(schema.bankAccounts.companyId, companyId)));
+      if (!targetBank) {
+        const err: any = new Error('Selected bank account was not found for this company.');
         err.status = 400;
         throw err;
       }
-      if (bill.status === 'Paid') {
-        const err: any = new Error('Bill is already fully paid.');
+    }
+    const currentPaid = round2(Number(bill.amountPaid || 0));
+    const totalAmount = round2(Number(bill.grandTotal));
+    const remaining = round2(totalAmount - currentPaid);
+
+    const paymentAmount = amount !== undefined ? Number(amount) : undefined;
+    let amountToPost = remaining;
+    if (paymentAmount !== undefined) {
+      if (isNaN(paymentAmount) || paymentAmount <= 0) {
+        const err: any = new Error('Payment amount must be greater than zero.');
         err.status = 400;
         throw err;
       }
-
-      const targetBankId = bankId || bill.bankId;
-      if (!targetBankId) {
-        const err: any = new Error('A bank account is required to record this payment.');
+      if (paymentAmount > remaining + 0.01) {
+        const err: any = new Error(`Payment amount (${paymentAmount}) exceeds the remaining balance (${remaining}).`);
         err.status = 400;
         throw err;
       }
-      // A client-supplied bankId must actually belong to this company — otherwise a
-      // malformed/malicious request could post a disbursement against another tenant's
-      // bank account.
-      if (bankId) {
-        const [targetBank] = await tx.select({ id: schema.bankAccounts.id }).from(schema.bankAccounts)
-          .where(and(eq(schema.bankAccounts.id, targetBankId), eq(schema.bankAccounts.companyId, companyId)));
-        if (!targetBank) {
-          const err: any = new Error('Selected bank account was not found for this company.');
-          err.status = 400;
-          throw err;
-        }
-      }
-      const currentPaid = round2(Number(bill.amountPaid || 0));
-      const totalAmount = round2(Number(bill.grandTotal));
-      const remaining = round2(totalAmount - currentPaid);
+      amountToPost = Math.min(paymentAmount, remaining);
+    }
+    if (amountToPost <= 0) {
+      const err: any = new Error('No remaining balance to pay.');
+      err.status = 400;
+      throw err;
+    }
 
-      const paymentAmount = amount !== undefined ? Number(amount) : undefined;
-      let amountToPost = remaining;
-      if (paymentAmount !== undefined) {
-        if (isNaN(paymentAmount) || paymentAmount <= 0) {
-          const err: any = new Error('Payment amount must be greater than zero.');
-          err.status = 400;
-          throw err;
-        }
-        if (paymentAmount > remaining + 0.01) {
-          const err: any = new Error(`Payment amount (${paymentAmount}) exceeds the remaining balance (${remaining}).`);
-          err.status = 400;
-          throw err;
-        }
-        amountToPost = Math.min(paymentAmount, remaining);
-      }
-      if (amountToPost <= 0) {
-        const err: any = new Error('No remaining balance to pay.');
-        err.status = 400;
-        throw err;
-      }
+    const newPaidAmount = round2(currentPaid + amountToPost);
+    const newStatus = newPaidAmount >= totalAmount - 0.01 ? 'Paid' : 'Partially Paid';
 
-      const newPaidAmount = round2(currentPaid + amountToPost);
-      const newStatus = newPaidAmount >= totalAmount - 0.01 ? 'Paid' : 'Partially Paid';
+    // The bill's own bankId is left as originally assigned — each installment's real
+    // disbursing bank is recorded on its own Payment voucher below instead, the same
+    // way the invoice/expense payment routes now work.
+    const [newBill] = await tdb.update(schema.purchaseBills).set({
+      amountPaid: String(newPaidAmount),
+      status: newStatus,
+    }).where(eq(schema.purchaseBills.id, id)).returning();
 
-      // The bill's own bankId is left as originally assigned — each installment's real
-      // disbursing bank is recorded on its own Payment voucher below instead, the same
-      // way the invoice/expense payment routes now work.
-      const [newBill] = await tx.update(schema.purchaseBills).set({
-        amountPaid: String(newPaidAmount),
-        status: newStatus,
-      }).where(eq(schema.purchaseBills.id, id)).returning();
+    const voucherDate = date || new Date().toISOString().split('T')[0];
+    const voucherNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'voucher', voucherDate, bill.branchId);
+    const [voucher] = await tdb.insert(schema.vouchers).values({
+      id: generateId(),
+      voucherNumber,
+      type: 'Payment',
+      date: voucherDate,
+      bankId: targetBankId,
+      amount: String(amountToPost),
+      description: `Payment voucher for purchase bill ${bill.billNumber} (${amountToPost.toFixed(2)})`,
+      referenceType: 'PurchaseBill',
+      referenceId: id,
+      createdById: req.user.id,
+      createdAt: new Date(),
+      companyId,
+      // Always the bill's own branch, never independently picked.
+      branchId: bill.branchId,
+    }).returning();
 
-      const voucherDate = date || new Date().toISOString().split('T')[0];
-      const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', voucherDate, bill.branchId);
-      const [voucher] = await tx.insert(schema.vouchers).values({
-        id: generateId(),
-        voucherNumber,
-        type: 'Payment',
-        date: voucherDate,
-        bankId: targetBankId,
-        amount: String(amountToPost),
-        description: `Payment voucher for purchase bill ${bill.billNumber} (${amountToPost.toFixed(2)})`,
-        referenceType: 'PurchaseBill',
-        referenceId: id,
-        createdById: req.user.id,
-        createdAt: new Date(),
-        companyId,
-        // Always the bill's own branch, never independently picked.
-        branchId: bill.branchId,
-      }).returning();
-
-      return { bill: newBill, voucher };
-    });
+    const updatedBill = { bill: newBill, voucher };
 
     // Same shape as create/edit's own response (`purchaseBill: <row>`, raw from
     // .returning()) — the client mirrors the server's own computed amountPaid/status
@@ -1571,51 +1581,52 @@ router.post('/purchase-bills/:id/pay', async (req: any, res) => {
 // Cancel a Bill — only while Unpaid (once any payment has posted, a Cancel would leave a
 // dangling Payment voucher with nothing to reconcile against; that's a correction, not a
 // cancellation). Releases the referenced GRNs' isBilled flag so they can be re-billed.
-router.patch('/purchase-bills/:id/cancel', async (req: any, res) => {
+router.patch('/purchase-bills/:id/cancel', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'purchaseBills.delete')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
     const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
 
-    const updated = await db.transaction(async (tx) => {
-      const [bill] = await tx.select().from(schema.purchaseBills)
-        .where(and(eq(schema.purchaseBills.id, id), eq(schema.purchaseBills.companyId, companyId)))
-        .for('update');
-      if (!bill) {
-        const err: any = new Error('Purchase bill not found.');
-        err.status = 404;
-        throw err;
-      }
-      if (!branchAccessOk(req, bill.branchId)) {
-        const err: any = new Error('Forbidden: you are not assigned to this branch.');
-        err.status = 403;
-        throw err;
-      }
-      if (bill.status !== 'Unpaid') {
-        const err: any = new Error(`Cannot cancel a bill that is not Unpaid (current status: ${bill.status}).`);
-        err.status = 400;
-        throw err;
-      }
-      // Cancelling is an edit to this bill, same as its creation already blocks once its
-      // quarter has been filed with ZATCA (a filed return's reported input VAT would
-      // otherwise silently go stale).
-      await assertQuarterNotFiled(bill.date.toISOString().slice(0, 10), companyId);
-      const [newBill] = await tx.update(schema.purchaseBills)
-        .set({ status: 'Cancelled' })
-        .where(eq(schema.purchaseBills.id, id))
-        .returning();
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; the row lock below still applies within it.
+    const [bill] = await tdb.select().from(schema.purchaseBills)
+      .where(and(eq(schema.purchaseBills.id, id), eq(schema.purchaseBills.companyId, companyId)))
+      .for('update');
+    if (!bill) {
+      const err: any = new Error('Purchase bill not found.');
+      err.status = 404;
+      throw err;
+    }
+    if (!branchAccessOk(req, bill.branchId)) {
+      const err: any = new Error('Forbidden: you are not assigned to this branch.');
+      err.status = 403;
+      throw err;
+    }
+    if (bill.status !== 'Unpaid') {
+      const err: any = new Error(`Cannot cancel a bill that is not Unpaid (current status: ${bill.status}).`);
+      err.status = 400;
+      throw err;
+    }
+    // Cancelling is an edit to this bill, same as its creation already blocks once its
+    // quarter has been filed with ZATCA (a filed return's reported input VAT would
+    // otherwise silently go stale).
+    await assertQuarterNotFiled(bill.date.toISOString().slice(0, 10), companyId);
+    const [newBill] = await tdb.update(schema.purchaseBills)
+      .set({ status: 'Cancelled' })
+      .where(eq(schema.purchaseBills.id, id))
+      .returning();
 
-      const grnIds = bill.grnIds.split(',').filter(Boolean);
-      if (grnIds.length > 0) {
-        await tx.update(schema.goodsReceiptNotes)
-          .set({ isBilled: false })
-          .where(inArray(schema.goodsReceiptNotes.id, grnIds));
-      }
+    const grnIds = bill.grnIds.split(',').filter(Boolean);
+    if (grnIds.length > 0) {
+      await tdb.update(schema.goodsReceiptNotes)
+        .set({ isBilled: false })
+        .where(inArray(schema.goodsReceiptNotes.id, grnIds));
+    }
 
-      return newBill;
-    });
+    const updated = newBill;
 
     res.json({ success: true, purchaseBill: updated });
   } catch (error: any) {
@@ -1630,7 +1641,7 @@ router.patch('/purchase-bills/:id/cancel', async (req: any, res) => {
 // the reverse flow. Decrements stock (clamped at 0, matching every other stock-mutating
 // route in this file) but deliberately does NOT unwind averageCost, same forward-only
 // philosophy as GRN reversal.
-router.post('/purchase-returns', async (req: any, res) => {
+router.post('/purchase-returns', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'purchaseReturns.create')) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -1640,134 +1651,135 @@ router.post('/purchase-returns', async (req: any, res) => {
       return res.status(400).json({ error: 'A goods receipt note and at least one returned item are required.' });
     }
     const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
 
-    const created = await db.transaction(async (tx) => {
-      const [grn] = await tx.select().from(schema.goodsReceiptNotes)
-        .where(and(eq(schema.goodsReceiptNotes.id, returnData.grnId), eq(schema.goodsReceiptNotes.companyId, companyId)))
-        .for('update');
-      if (!grn) {
-        const err: any = new Error('Goods receipt note not found.');
-        err.status = 404;
-        throw err;
-      }
-      if (!(await branchAccessOkViaWarehouse(tx, req, grn.warehouseId))) {
-        const err: any = new Error('Forbidden: you are not assigned to this branch.');
-        err.status = 403;
-        throw err;
-      }
-      if (grn.isReversed) {
-        const err: any = new Error('This receipt has been reversed and cannot be returned against.');
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; the row lock below still applies within it.
+    const [grn] = await tdb.select().from(schema.goodsReceiptNotes)
+      .where(and(eq(schema.goodsReceiptNotes.id, returnData.grnId), eq(schema.goodsReceiptNotes.companyId, companyId)))
+      .for('update');
+    if (!grn) {
+      const err: any = new Error('Goods receipt note not found.');
+      err.status = 404;
+      throw err;
+    }
+    if (!(await branchAccessOkViaWarehouse(tdb, req, grn.warehouseId))) {
+      const err: any = new Error('Forbidden: you are not assigned to this branch.');
+      err.status = 403;
+      throw err;
+    }
+    if (grn.isReversed) {
+      const err: any = new Error('This receipt has been reversed and cannot be returned against.');
+      err.status = 400;
+      throw err;
+    }
+    // Purchase Returns always post as of today (date: new Date() below), same as
+    // Purchase Bills — no client-supplied backdating, so this is a same-day check only.
+    // This route previously had neither the open-month nor the filed-quarter check at
+    // all, unlike every sibling financial-document route.
+    await validateTransactionDate(new Date().toISOString().slice(0, 10), companyId);
+    await assertQuarterNotFiled(new Date().toISOString().slice(0, 10), companyId);
+    // Belt-and-suspenders alongside the received-quantity check below (lines ~1244-1256
+    // already reject returning more than was actually received against this GRN, which
+    // in practice also rejects any productId that was never received at all — but that's
+    // an indirect consequence of the quantity math, not an explicit ownership check, and
+    // doesn't cover a zero-quantity line). Found by a static isolation check.
+    await assertProductsOwnedByCompany(tdb, companyId, returnData.items.map((it: any) => it.productId));
+
+    const grnItems = await tdb.select().from(schema.goodsReceiptNoteItems).where(eq(schema.goodsReceiptNoteItems.grnId, grn.id));
+    const priorReturns = await tdb.select({
+      productId: schema.purchaseReturnItems.productId,
+      batchNumber: schema.purchaseReturnItems.batchNumber,
+      quantityReturned: schema.purchaseReturnItems.quantityReturned,
+      unitOfMeasureId: schema.purchaseReturnItems.unitOfMeasureId,
+    })
+      .from(schema.purchaseReturnItems)
+      .innerJoin(schema.purchaseReturns, eq(schema.purchaseReturnItems.returnId, schema.purchaseReturns.id))
+      .where(and(eq(schema.purchaseReturns.grnId, grn.id), eq(schema.purchaseReturns.status, 'Active')));
+
+    // "Remaining returnable" is computed entirely in base-unit terms — the original GRN
+    // receipt, any prior returns against it, and this new return line can each use a
+    // different unit (e.g. received in Cartons, returned loose).
+    const priorReturnedByKey = new Map<string, number>();
+    for (const row of priorReturns) {
+      const key = `${row.productId}|${row.batchNumber || ''}`;
+      const baseQty = await toBaseQuantity(tdb, row.productId, row.unitOfMeasureId, companyId, Number(row.quantityReturned));
+      priorReturnedByKey.set(key, (priorReturnedByKey.get(key) || 0) + baseQty);
+    }
+
+    for (const item of returnData.items) {
+      const key = `${item.productId}|${item.batchNumber || ''}`;
+      const receivedRow = grnItems.find((gi: any) => gi.productId === item.productId && (gi.batchNumber || '') === (item.batchNumber || ''));
+      const receivedQty = receivedRow ? await toBaseQuantity(tdb, item.productId, receivedRow.unitOfMeasureId, companyId, Number(receivedRow.quantityReceived)) : 0;
+      const alreadyReturned = priorReturnedByKey.get(key) || 0;
+      const availableToReturn = round2(receivedQty - alreadyReturned);
+      const returnBaseQty = await toBaseQuantity(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReturned));
+      if (returnBaseQty > availableToReturn + 0.001) {
+        const err: any = new Error(`Cannot return ${item.quantityReturned} units of this item — only ${availableToReturn} (base unit) remain returnable from this receipt.`);
         err.status = 400;
         throw err;
       }
-      // Purchase Returns always post as of today (date: new Date() below), same as
-      // Purchase Bills — no client-supplied backdating, so this is a same-day check only.
-      // This route previously had neither the open-month nor the filed-quarter check at
-      // all, unlike every sibling financial-document route.
-      await validateTransactionDate(new Date().toISOString().slice(0, 10), companyId);
-      await assertQuarterNotFiled(new Date().toISOString().slice(0, 10), companyId);
-      // Belt-and-suspenders alongside the received-quantity check below (lines ~1244-1256
-      // already reject returning more than was actually received against this GRN, which
-      // in practice also rejects any productId that was never received at all — but that's
-      // an indirect consequence of the quantity math, not an explicit ownership check, and
-      // doesn't cover a zero-quantity line). Found by a static isolation check.
-      await assertProductsOwnedByCompany(tx, companyId, returnData.items.map((it: any) => it.productId));
+    }
 
-      const grnItems = await tx.select().from(schema.goodsReceiptNoteItems).where(eq(schema.goodsReceiptNoteItems.grnId, grn.id));
-      const priorReturns = await tx.select({
-        productId: schema.purchaseReturnItems.productId,
-        batchNumber: schema.purchaseReturnItems.batchNumber,
-        quantityReturned: schema.purchaseReturnItems.quantityReturned,
-        unitOfMeasureId: schema.purchaseReturnItems.unitOfMeasureId,
-      })
-        .from(schema.purchaseReturnItems)
-        .innerJoin(schema.purchaseReturns, eq(schema.purchaseReturnItems.returnId, schema.purchaseReturns.id))
-        .where(and(eq(schema.purchaseReturns.grnId, grn.id), eq(schema.purchaseReturns.status, 'Active')));
+    // purchaseReturns has no branchId column of its own — derived via the GRN's
+    // warehouseId, same as GRN numbering above.
+    const [returnWarehouse] = await tdb.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses).where(eq(schema.warehouses.id, grn.warehouseId));
+    const returnNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'return', new Date().toISOString().slice(0, 10), returnWarehouse?.branchId || null);
+    const returnId = generateId();
 
-      // "Remaining returnable" is computed entirely in base-unit terms — the original GRN
-      // receipt, any prior returns against it, and this new return line can each use a
-      // different unit (e.g. received in Cartons, returned loose).
-      const priorReturnedByKey = new Map<string, number>();
-      for (const row of priorReturns) {
-        const key = `${row.productId}|${row.batchNumber || ''}`;
-        const baseQty = await toBaseQuantity(tx, row.productId, row.unitOfMeasureId, companyId, Number(row.quantityReturned));
-        priorReturnedByKey.set(key, (priorReturnedByKey.get(key) || 0) + baseQty);
+    const [newReturn] = await tdb.insert(schema.purchaseReturns).values({
+      id: returnId,
+      returnNumber,
+      grnId: grn.id,
+      vendorId: grn.vendorId,
+      warehouseId: grn.warehouseId,
+      date: new Date(),
+      notes: returnData.notes || null,
+      status: 'Active',
+      companyId,
+    }).returning();
+
+    const itemRows = returnData.items.map((item: any) => ({
+      id: generateId(),
+      returnId,
+      productId: item.productId,
+      quantityReturned: String(item.quantityReturned),
+      batchNumber: item.batchNumber || null,
+      unitOfMeasureId: item.unitOfMeasureId || null,
+    }));
+    const insertedItems = await tdb.insert(schema.purchaseReturnItems).values(itemRows).returning();
+
+    for (const item of returnData.items) {
+      const [product] = await tdb.select({ itemKind: schema.productsServices.itemKind })
+        .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
+      if (!product || product.itemKind !== 'item') continue;
+
+      const baseQtyReturned = await toBaseQuantity(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReturned));
+      const batchCondition = item.batchNumber
+        ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
+        : isNull(schema.inventoryStocks.batchNumber);
+      const [existingStock] = await tdb.select().from(schema.inventoryStocks)
+        .where(and(
+          eq(schema.inventoryStocks.productId, item.productId),
+          eq(schema.inventoryStocks.warehouseId, grn.warehouseId),
+          eq(schema.inventoryStocks.companyId, companyId),
+          batchCondition
+        ))
+        .for('update');
+      if (existingStock) {
+        const priorQty = Number(existingStock.quantity);
+        const newQty = Math.max(0, round2(priorQty - baseQtyReturned));
+        await tdb.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
+        await writeStockLedgerEntry(tdb, {
+          productId: item.productId, warehouseId: grn.warehouseId, companyId,
+          transactionType: 'Return', referenceId: returnId, date: newReturn.date as Date,
+          quantityChange: newQty - priorQty, endingQuantity: newQty,
+          batchNumber: item.batchNumber || null,
+        });
       }
+    }
 
-      for (const item of returnData.items) {
-        const key = `${item.productId}|${item.batchNumber || ''}`;
-        const receivedRow = grnItems.find((gi: any) => gi.productId === item.productId && (gi.batchNumber || '') === (item.batchNumber || ''));
-        const receivedQty = receivedRow ? await toBaseQuantity(tx, item.productId, receivedRow.unitOfMeasureId, companyId, Number(receivedRow.quantityReceived)) : 0;
-        const alreadyReturned = priorReturnedByKey.get(key) || 0;
-        const availableToReturn = round2(receivedQty - alreadyReturned);
-        const returnBaseQty = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReturned));
-        if (returnBaseQty > availableToReturn + 0.001) {
-          const err: any = new Error(`Cannot return ${item.quantityReturned} units of this item — only ${availableToReturn} (base unit) remain returnable from this receipt.`);
-          err.status = 400;
-          throw err;
-        }
-      }
-
-      // purchaseReturns has no branchId column of its own — derived via the GRN's
-      // warehouseId, same as GRN numbering above.
-      const [returnWarehouse] = await tx.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses).where(eq(schema.warehouses.id, grn.warehouseId));
-      const returnNumber = await getAndIncrementDocumentNumber(tx, companyId, 'return', new Date().toISOString().slice(0, 10), returnWarehouse?.branchId || null);
-      const returnId = generateId();
-
-      const [newReturn] = await tx.insert(schema.purchaseReturns).values({
-        id: returnId,
-        returnNumber,
-        grnId: grn.id,
-        vendorId: grn.vendorId,
-        warehouseId: grn.warehouseId,
-        date: new Date(),
-        notes: returnData.notes || null,
-        status: 'Active',
-        companyId,
-      }).returning();
-
-      const itemRows = returnData.items.map((item: any) => ({
-        id: generateId(),
-        returnId,
-        productId: item.productId,
-        quantityReturned: String(item.quantityReturned),
-        batchNumber: item.batchNumber || null,
-        unitOfMeasureId: item.unitOfMeasureId || null,
-      }));
-      const insertedItems = await tx.insert(schema.purchaseReturnItems).values(itemRows).returning();
-
-      for (const item of returnData.items) {
-        const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
-          .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
-        if (!product || product.itemKind !== 'item') continue;
-
-        const baseQtyReturned = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReturned));
-        const batchCondition = item.batchNumber
-          ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
-          : isNull(schema.inventoryStocks.batchNumber);
-        const [existingStock] = await tx.select().from(schema.inventoryStocks)
-          .where(and(
-            eq(schema.inventoryStocks.productId, item.productId),
-            eq(schema.inventoryStocks.warehouseId, grn.warehouseId),
-            eq(schema.inventoryStocks.companyId, companyId),
-            batchCondition
-          ))
-          .for('update');
-        if (existingStock) {
-          const priorQty = Number(existingStock.quantity);
-          const newQty = Math.max(0, round2(priorQty - baseQtyReturned));
-          await tx.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
-          await writeStockLedgerEntry(tx, {
-            productId: item.productId, warehouseId: grn.warehouseId, companyId,
-            transactionType: 'Return', referenceId: returnId, date: newReturn.date as Date,
-            quantityChange: newQty - priorQty, endingQuantity: newQty,
-            batchNumber: item.batchNumber || null,
-          });
-        }
-      }
-
-      return { ...newReturn, items: insertedItems };
-    });
+    const created = { ...newReturn, items: insertedItems };
 
     res.json({ success: true, purchaseReturn: created });
   } catch (error: any) {
@@ -1780,87 +1792,88 @@ router.post('/purchase-returns', async (req: any, res) => {
 // correction path is cancel-and-repost, not silently rewriting history. purchaseReturns.
 // update stays defined in the permission registry for shape-consistency with every other
 // CRUD module even though no route currently checks it.
-router.patch('/purchase-returns/:id/cancel', async (req: any, res) => {
+router.patch('/purchase-returns/:id/cancel', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'purchaseReturns.delete')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
     const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
 
-    const updated = await db.transaction(async (tx) => {
-      const [ret] = await tx.select().from(schema.purchaseReturns)
-        .where(and(eq(schema.purchaseReturns.id, id), eq(schema.purchaseReturns.companyId, companyId)))
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; the row lock below still applies within it.
+    const [ret] = await tdb.select().from(schema.purchaseReturns)
+      .where(and(eq(schema.purchaseReturns.id, id), eq(schema.purchaseReturns.companyId, companyId)))
+      .for('update');
+    if (!ret) {
+      const err: any = new Error('Purchase return not found.');
+      err.status = 404;
+      throw err;
+    }
+    if (!(await branchAccessOkViaWarehouse(tdb, req, ret.warehouseId))) {
+      const err: any = new Error('Forbidden: you are not assigned to this branch.');
+      err.status = 403;
+      throw err;
+    }
+    if (ret.status === 'Cancelled') {
+      const err: any = new Error('This return has already been cancelled.');
+      err.status = 400;
+      throw err;
+    }
+    // Cancelling is an edit to this return, same as its creation now blocks once its
+    // quarter has been filed with ZATCA.
+    await assertQuarterNotFiled(ret.date.toISOString().slice(0, 10), companyId);
+
+    const items = await tdb.select().from(schema.purchaseReturnItems).where(eq(schema.purchaseReturnItems.returnId, id));
+    for (const item of items) {
+      const [product] = await tdb.select({ itemKind: schema.productsServices.itemKind })
+        .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
+      if (!product || product.itemKind !== 'item') continue;
+
+      const baseQtyReturned = await toBaseQuantity(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReturned));
+      const batchCondition = item.batchNumber
+        ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
+        : isNull(schema.inventoryStocks.batchNumber);
+      const [existingStock] = await tdb.select().from(schema.inventoryStocks)
+        .where(and(
+          eq(schema.inventoryStocks.productId, item.productId),
+          eq(schema.inventoryStocks.warehouseId, ret.warehouseId),
+          eq(schema.inventoryStocks.companyId, companyId),
+          batchCondition
+        ))
         .for('update');
-      if (!ret) {
-        const err: any = new Error('Purchase return not found.');
-        err.status = 404;
-        throw err;
-      }
-      if (!(await branchAccessOkViaWarehouse(tx, req, ret.warehouseId))) {
-        const err: any = new Error('Forbidden: you are not assigned to this branch.');
-        err.status = 403;
-        throw err;
-      }
-      if (ret.status === 'Cancelled') {
-        const err: any = new Error('This return has already been cancelled.');
-        err.status = 400;
-        throw err;
-      }
-      // Cancelling is an edit to this return, same as its creation now blocks once its
-      // quarter has been filed with ZATCA.
-      await assertQuarterNotFiled(ret.date.toISOString().slice(0, 10), companyId);
+      const cancelEndingQty = existingStock
+        ? round2(Number(existingStock.quantity) + baseQtyReturned)
+        : round2(baseQtyReturned);
 
-      const items = await tx.select().from(schema.purchaseReturnItems).where(eq(schema.purchaseReturnItems.returnId, id));
-      for (const item of items) {
-        const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
-          .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
-        if (!product || product.itemKind !== 'item') continue;
-
-        const baseQtyReturned = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReturned));
-        const batchCondition = item.batchNumber
-          ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
-          : isNull(schema.inventoryStocks.batchNumber);
-        const [existingStock] = await tx.select().from(schema.inventoryStocks)
-          .where(and(
-            eq(schema.inventoryStocks.productId, item.productId),
-            eq(schema.inventoryStocks.warehouseId, ret.warehouseId),
-            eq(schema.inventoryStocks.companyId, companyId),
-            batchCondition
-          ))
-          .for('update');
-        const cancelEndingQty = existingStock
-          ? round2(Number(existingStock.quantity) + baseQtyReturned)
-          : round2(baseQtyReturned);
-
-        if (existingStock) {
-          await tx.update(schema.inventoryStocks)
-            .set({ quantity: String(cancelEndingQty) })
-            .where(eq(schema.inventoryStocks.id, existingStock.id));
-        } else {
-          await tx.insert(schema.inventoryStocks).values({
-            id: generateId(),
-            productId: item.productId,
-            warehouseId: ret.warehouseId,
-            batchNumber: item.batchNumber || null,
-            quantity: String(baseQtyReturned),
-            companyId,
-          });
-        }
-        await writeStockLedgerEntry(tx, {
-          productId: item.productId, warehouseId: ret.warehouseId, companyId,
-          transactionType: 'Return', referenceId: ret.id, date: new Date(),
-          quantityChange: baseQtyReturned, endingQuantity: cancelEndingQty,
+      if (existingStock) {
+        await tdb.update(schema.inventoryStocks)
+          .set({ quantity: String(cancelEndingQty) })
+          .where(eq(schema.inventoryStocks.id, existingStock.id));
+      } else {
+        await tdb.insert(schema.inventoryStocks).values({
+          id: generateId(),
+          productId: item.productId,
+          warehouseId: ret.warehouseId,
           batchNumber: item.batchNumber || null,
+          quantity: String(baseQtyReturned),
+          companyId,
         });
       }
+      await writeStockLedgerEntry(tdb, {
+        productId: item.productId, warehouseId: ret.warehouseId, companyId,
+        transactionType: 'Return', referenceId: ret.id, date: new Date(),
+        quantityChange: baseQtyReturned, endingQuantity: cancelEndingQty,
+        batchNumber: item.batchNumber || null,
+      });
+    }
 
-      const [newReturn] = await tx.update(schema.purchaseReturns)
-        .set({ status: 'Cancelled' })
-        .where(eq(schema.purchaseReturns.id, id))
-        .returning();
-      return newReturn;
-    });
+    const [newReturn] = await tdb.update(schema.purchaseReturns)
+      .set({ status: 'Cancelled' })
+      .where(eq(schema.purchaseReturns.id, id))
+      .returning();
+    const updated = newReturn;
 
     res.json({ success: true, purchaseReturn: updated });
   } catch (error: any) {
@@ -1875,7 +1888,7 @@ router.patch('/purchase-returns/:id/cancel', async (req: any, res) => {
 // variance adjustment per line through the exact same clamped increment/insert path
 // stock-adjustments already uses, so a stock take is never a second, diverging way to
 // move stock.
-router.post('/stock-takes', async (req: any, res) => {
+router.post('/stock-takes', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'stockTakes.create')) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -1885,72 +1898,73 @@ router.post('/stock-takes', async (req: any, res) => {
       return res.status(400).json({ error: 'A warehouse and at least one counted item are required.' });
     }
     const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
 
-    const created = await db.transaction(async (tx) => {
-      // physicalStockTakes has no branchId column of its own — derived via warehouseId,
-      // same pattern as GRN/Purchase Return numbering above. Also the only ownership check
-      // on stockTakeData.warehouseId anywhere in this route — previously unscoped by
-      // companyId entirely, same class of gap as GRN/stock-adjustments above.
-      const [stWarehouse] = await tx.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses)
-        .where(and(eq(schema.warehouses.id, stockTakeData.warehouseId), eq(schema.warehouses.companyId, companyId)));
-      if (!stWarehouse) {
-        const err: any = new Error('Selected warehouse not found for this company.');
-        err.status = 400;
-        throw err;
-      }
-      if (!branchAccessOk(req, stWarehouse.branchId)) {
-        const err: any = new Error('Forbidden: you are not assigned to this branch.');
-        err.status = 403;
-        throw err;
-      }
-      await assertProductsOwnedByCompany(tx, companyId, stockTakeData.items.map((it: any) => it.productId));
-      const referenceNumber = await getAndIncrementDocumentNumber(tx, companyId, 'stockTake', new Date().toISOString().slice(0, 10), stWarehouse?.branchId || null);
-      const stockTakeId = generateId();
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
+    // physicalStockTakes has no branchId column of its own — derived via warehouseId,
+    // same pattern as GRN/Purchase Return numbering above. Also the only ownership check
+    // on stockTakeData.warehouseId anywhere in this route — previously unscoped by
+    // companyId entirely, same class of gap as GRN/stock-adjustments above.
+    const [stWarehouse] = await tdb.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses)
+      .where(and(eq(schema.warehouses.id, stockTakeData.warehouseId), eq(schema.warehouses.companyId, companyId)));
+    if (!stWarehouse) {
+      const err: any = new Error('Selected warehouse not found for this company.');
+      err.status = 400;
+      throw err;
+    }
+    if (!branchAccessOk(req, stWarehouse.branchId)) {
+      const err: any = new Error('Forbidden: you are not assigned to this branch.');
+      err.status = 403;
+      throw err;
+    }
+    await assertProductsOwnedByCompany(tdb, companyId, stockTakeData.items.map((it: any) => it.productId));
+    const referenceNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'stockTake', new Date().toISOString().slice(0, 10), stWarehouse?.branchId || null);
+    const stockTakeId = generateId();
 
-      const [newStockTake] = await tx.insert(schema.physicalStockTakes).values({
-        id: stockTakeId,
-        referenceNumber,
-        warehouseId: stockTakeData.warehouseId,
-        date: new Date(),
-        status: 'Draft',
-        performedBy: stockTakeData.performedBy,
-        notes: stockTakeData.notes || null,
-        companyId,
-      }).returning();
+    const [newStockTake] = await tdb.insert(schema.physicalStockTakes).values({
+      id: stockTakeId,
+      referenceNumber,
+      warehouseId: stockTakeData.warehouseId,
+      date: new Date(),
+      status: 'Draft',
+      performedBy: stockTakeData.performedBy,
+      notes: stockTakeData.notes || null,
+      companyId,
+    }).returning();
 
-      const itemRows = [];
-      for (const item of stockTakeData.items) {
-        const batchCondition = item.batchNumber
-          ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
-          : isNull(schema.inventoryStocks.batchNumber);
-        const [existingStock] = await tx.select().from(schema.inventoryStocks)
-          .where(and(
-            eq(schema.inventoryStocks.productId, item.productId),
-            eq(schema.inventoryStocks.warehouseId, stockTakeData.warehouseId),
-            eq(schema.inventoryStocks.companyId, companyId),
-            batchCondition
-          ));
-        const systemQuantity = existingStock ? Number(existingStock.quantity) : 0;
-        const physicalQuantity = Number(item.physicalQuantity);
-        // `physicalQuantity` is stored exactly as counted (e.g. "3" when counting 3
-        // cartons, for display) — `variance` is computed against the base-unit-converted
-        // count, since `systemQuantity` above is always in base-unit terms.
-        const basePhysicalQuantity = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, physicalQuantity);
-        itemRows.push({
-          id: generateId(),
-          stockTakeId,
-          productId: item.productId,
-          batchNumber: item.batchNumber || null,
-          systemQuantity: String(systemQuantity),
-          physicalQuantity: String(physicalQuantity),
-          variance: String(round2(basePhysicalQuantity - systemQuantity)),
-          unitOfMeasureId: item.unitOfMeasureId || null,
-        });
-      }
-      const insertedItems = await tx.insert(schema.physicalStockTakeItems).values(itemRows).returning();
+    const itemRows = [];
+    for (const item of stockTakeData.items) {
+      const batchCondition = item.batchNumber
+        ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
+        : isNull(schema.inventoryStocks.batchNumber);
+      const [existingStock] = await tdb.select().from(schema.inventoryStocks)
+        .where(and(
+          eq(schema.inventoryStocks.productId, item.productId),
+          eq(schema.inventoryStocks.warehouseId, stockTakeData.warehouseId),
+          eq(schema.inventoryStocks.companyId, companyId),
+          batchCondition
+        ));
+      const systemQuantity = existingStock ? Number(existingStock.quantity) : 0;
+      const physicalQuantity = Number(item.physicalQuantity);
+      // `physicalQuantity` is stored exactly as counted (e.g. "3" when counting 3
+      // cartons, for display) — `variance` is computed against the base-unit-converted
+      // count, since `systemQuantity` above is always in base-unit terms.
+      const basePhysicalQuantity = await toBaseQuantity(tdb, item.productId, item.unitOfMeasureId, companyId, physicalQuantity);
+      itemRows.push({
+        id: generateId(),
+        stockTakeId,
+        productId: item.productId,
+        batchNumber: item.batchNumber || null,
+        systemQuantity: String(systemQuantity),
+        physicalQuantity: String(physicalQuantity),
+        variance: String(round2(basePhysicalQuantity - systemQuantity)),
+        unitOfMeasureId: item.unitOfMeasureId || null,
+      });
+    }
+    const insertedItems = await tdb.insert(schema.physicalStockTakeItems).values(itemRows).returning();
 
-      return { ...newStockTake, items: insertedItems };
-    });
+    const created = { ...newStockTake, items: insertedItems };
 
     res.json({ success: true, stockTake: created });
   } catch (error: any) {
@@ -1963,90 +1977,91 @@ router.post('/stock-takes', async (req: any, res) => {
 // against the CURRENT stock quantity at finalize time (not the quantity snapshotted at
 // count time) and posts that as the adjustment, so a GRN/sale/another stock take that
 // happened between counting and finalizing is respected rather than silently overwritten.
-router.post('/stock-takes/:id/finalize', async (req: any, res) => {
+router.post('/stock-takes/:id/finalize', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'stockTakes.update')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
     const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
 
-    const result = await db.transaction(async (tx) => {
-      const [stockTake] = await tx.select().from(schema.physicalStockTakes)
-        .where(and(eq(schema.physicalStockTakes.id, id), eq(schema.physicalStockTakes.companyId, companyId)))
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; the row lock below still applies within it.
+    const [stockTake] = await tdb.select().from(schema.physicalStockTakes)
+      .where(and(eq(schema.physicalStockTakes.id, id), eq(schema.physicalStockTakes.companyId, companyId)))
+      .for('update');
+    if (!stockTake) {
+      const err: any = new Error('Stock take not found.');
+      err.status = 404;
+      throw err;
+    }
+    if (!(await branchAccessOkViaWarehouse(tdb, req, stockTake.warehouseId))) {
+      const err: any = new Error('Forbidden: you are not assigned to this branch.');
+      err.status = 403;
+      throw err;
+    }
+    if (stockTake.status !== 'Draft') {
+      const err: any = new Error(`Cannot finalize a stock take that is not Draft (current status: ${stockTake.status}).`);
+      err.status = 400;
+      throw err;
+    }
+
+    const items = await tdb.select().from(schema.physicalStockTakeItems).where(eq(schema.physicalStockTakeItems.stockTakeId, id));
+
+    for (const item of items) {
+      const [product] = await tdb.select({ itemKind: schema.productsServices.itemKind })
+        .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
+      if (!product || product.itemKind !== 'item') continue;
+
+      const batchCondition = item.batchNumber
+        ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
+        : isNull(schema.inventoryStocks.batchNumber);
+      const [existingStock] = await tdb.select().from(schema.inventoryStocks)
+        .where(and(
+          eq(schema.inventoryStocks.productId, item.productId),
+          eq(schema.inventoryStocks.warehouseId, stockTake.warehouseId),
+          eq(schema.inventoryStocks.companyId, companyId),
+          batchCondition
+        ))
         .for('update');
-      if (!stockTake) {
-        const err: any = new Error('Stock take not found.');
-        err.status = 404;
-        throw err;
-      }
-      if (!(await branchAccessOkViaWarehouse(tx, req, stockTake.warehouseId))) {
-        const err: any = new Error('Forbidden: you are not assigned to this branch.');
-        err.status = 403;
-        throw err;
-      }
-      if (stockTake.status !== 'Draft') {
-        const err: any = new Error(`Cannot finalize a stock take that is not Draft (current status: ${stockTake.status}).`);
-        err.status = 400;
-        throw err;
-      }
+      const currentQty = existingStock ? Number(existingStock.quantity) : 0;
+      // `physicalQuantity` is stored exactly as counted (whatever unit the line used);
+      // converted to base-unit terms here since that's the only quantity
+      // inventoryStocks ever holds.
+      const targetQty = await toBaseQuantity(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.physicalQuantity));
+      if (round2(targetQty - currentQty) === 0) continue;
 
-      const items = await tx.select().from(schema.physicalStockTakeItems).where(eq(schema.physicalStockTakeItems.stockTakeId, id));
-
-      for (const item of items) {
-        const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
-          .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
-        if (!product || product.itemKind !== 'item') continue;
-
-        const batchCondition = item.batchNumber
-          ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
-          : isNull(schema.inventoryStocks.batchNumber);
-        const [existingStock] = await tx.select().from(schema.inventoryStocks)
-          .where(and(
-            eq(schema.inventoryStocks.productId, item.productId),
-            eq(schema.inventoryStocks.warehouseId, stockTake.warehouseId),
-            eq(schema.inventoryStocks.companyId, companyId),
-            batchCondition
-          ))
-          .for('update');
-        const currentQty = existingStock ? Number(existingStock.quantity) : 0;
-        // `physicalQuantity` is stored exactly as counted (whatever unit the line used);
-        // converted to base-unit terms here since that's the only quantity
-        // inventoryStocks ever holds.
-        const targetQty = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.physicalQuantity));
-        if (round2(targetQty - currentQty) === 0) continue;
-
-        const finalizedQty = Math.max(0, round2(targetQty));
-        if (existingStock) {
-          await tx.update(schema.inventoryStocks)
-            .set({ quantity: String(finalizedQty) })
-            .where(eq(schema.inventoryStocks.id, existingStock.id));
-        } else if (targetQty > 0) {
-          await tx.insert(schema.inventoryStocks).values({
-            id: generateId(),
-            productId: item.productId,
-            warehouseId: stockTake.warehouseId,
-            batchNumber: item.batchNumber || null,
-            quantity: String(round2(targetQty)),
-            companyId,
-          });
-        } else {
-          continue;
-        }
-        await writeStockLedgerEntry(tx, {
-          productId: item.productId, warehouseId: stockTake.warehouseId, companyId,
-          transactionType: 'StockTake', referenceId: stockTake.id, date: new Date(),
-          quantityChange: round2(finalizedQty - currentQty), endingQuantity: finalizedQty,
+      const finalizedQty = Math.max(0, round2(targetQty));
+      if (existingStock) {
+        await tdb.update(schema.inventoryStocks)
+          .set({ quantity: String(finalizedQty) })
+          .where(eq(schema.inventoryStocks.id, existingStock.id));
+      } else if (targetQty > 0) {
+        await tdb.insert(schema.inventoryStocks).values({
+          id: generateId(),
+          productId: item.productId,
+          warehouseId: stockTake.warehouseId,
           batchNumber: item.batchNumber || null,
+          quantity: String(round2(targetQty)),
+          companyId,
         });
+      } else {
+        continue;
       }
+      await writeStockLedgerEntry(tdb, {
+        productId: item.productId, warehouseId: stockTake.warehouseId, companyId,
+        transactionType: 'StockTake', referenceId: stockTake.id, date: new Date(),
+        quantityChange: round2(finalizedQty - currentQty), endingQuantity: finalizedQty,
+        batchNumber: item.batchNumber || null,
+      });
+    }
 
-      const [updated] = await tx.update(schema.physicalStockTakes)
-        .set({ status: 'Completed' })
-        .where(eq(schema.physicalStockTakes.id, id))
-        .returning();
-      return updated;
-    });
+    const [updatedStockTake] = await tdb.update(schema.physicalStockTakes)
+      .set({ status: 'Completed' })
+      .where(eq(schema.physicalStockTakes.id, id))
+      .returning();
+    const result = updatedStockTake;
 
     res.json({ success: true, stockTake: result });
   } catch (error: any) {
@@ -2057,39 +2072,40 @@ router.post('/stock-takes/:id/finalize', async (req: any, res) => {
 // Cancel a Draft stock take — a Completed one can't be cancelled (its adjustments already
 // posted; correcting that needs a fresh stock take or manual adjustment, same reasoning as
 // Purchase Bills refusing to cancel once paid).
-router.patch('/stock-takes/:id/cancel', async (req: any, res) => {
+router.patch('/stock-takes/:id/cancel', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'stockTakes.delete')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
     const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
 
-    const updated = await db.transaction(async (tx) => {
-      const [stockTake] = await tx.select().from(schema.physicalStockTakes)
-        .where(and(eq(schema.physicalStockTakes.id, id), eq(schema.physicalStockTakes.companyId, companyId)))
-        .for('update');
-      if (!stockTake) {
-        const err: any = new Error('Stock take not found.');
-        err.status = 404;
-        throw err;
-      }
-      if (!(await branchAccessOkViaWarehouse(tx, req, stockTake.warehouseId))) {
-        const err: any = new Error('Forbidden: you are not assigned to this branch.');
-        err.status = 403;
-        throw err;
-      }
-      if (stockTake.status !== 'Draft') {
-        const err: any = new Error(`Cannot cancel a stock take that is not Draft (current status: ${stockTake.status}).`);
-        err.status = 400;
-        throw err;
-      }
-      const [newStockTake] = await tx.update(schema.physicalStockTakes)
-        .set({ status: 'Cancelled' })
-        .where(eq(schema.physicalStockTakes.id, id))
-        .returning();
-      return newStockTake;
-    });
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; the row lock below still applies within it.
+    const [stockTake] = await tdb.select().from(schema.physicalStockTakes)
+      .where(and(eq(schema.physicalStockTakes.id, id), eq(schema.physicalStockTakes.companyId, companyId)))
+      .for('update');
+    if (!stockTake) {
+      const err: any = new Error('Stock take not found.');
+      err.status = 404;
+      throw err;
+    }
+    if (!(await branchAccessOkViaWarehouse(tdb, req, stockTake.warehouseId))) {
+      const err: any = new Error('Forbidden: you are not assigned to this branch.');
+      err.status = 403;
+      throw err;
+    }
+    if (stockTake.status !== 'Draft') {
+      const err: any = new Error(`Cannot cancel a stock take that is not Draft (current status: ${stockTake.status}).`);
+      err.status = 400;
+      throw err;
+    }
+    const [newStockTake] = await tdb.update(schema.physicalStockTakes)
+      .set({ status: 'Cancelled' })
+      .where(eq(schema.physicalStockTakes.id, id))
+      .returning();
+    const updated = newStockTake;
 
     res.json({ success: true, stockTake: updated });
   } catch (error: any) {

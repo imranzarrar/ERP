@@ -1,4 +1,3 @@
-import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, and, gte, lte, ne, inArray } from 'drizzle-orm';
 import { round2, computeInvoiceServerTotals } from './businessLogic.js';
@@ -53,11 +52,11 @@ export interface VatReturnFigures {
 // replace, ReportViewer.tsx's existing ad-hoc getSalesVATData/getPurchaseVATData/
 // getVatReturnSummaryData — those stay exactly as they are, this is an additive path
 // that happens to compute the same underlying figures for a persisted filing record.
-export async function computeVatReturnFigures(companyId: string, year: number, quarter: number): Promise<VatReturnFigures> {
+export async function computeVatReturnFigures(executor: any, companyId: string, year: number, quarter: number): Promise<VatReturnFigures> {
   const { startDate, endDate } = getQuarterDateRange(year, quarter as 1 | 2 | 3 | 4);
 
   // --- Sales side: Active invoices (incl. Credit/Debit Notes) in the quarter ---
-  const invoicesInRange = await db.select().from(schema.invoices).where(and(
+  const invoicesInRange = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId),
     eq(schema.invoices.status, 'Active'),
     gte(schema.invoices.date, startDate),
@@ -68,7 +67,7 @@ export async function computeVatReturnFigures(companyId: string, year: number, q
   let outputVat = 0;
   if (invoicesInRange.length > 0) {
     const invoiceIds = invoicesInRange.map(inv => inv.id);
-    const allItems = await db.select().from(schema.invoiceItems).where(inArray(schema.invoiceItems.invoiceId, invoiceIds));
+    const allItems = await executor.select().from(schema.invoiceItems).where(inArray(schema.invoiceItems.invoiceId, invoiceIds));
     const itemsByInvoiceId = new Map<string, typeof allItems>();
     for (const item of allItems) {
       if (!itemsByInvoiceId.has(item.invoiceId)) itemsByInvoiceId.set(item.invoiceId, []);
@@ -78,7 +77,7 @@ export async function computeVatReturnFigures(companyId: string, year: number, q
       ...invoicesInRange.map(inv => inv.taxSlabId).filter(Boolean),
       ...allItems.map(it => it.taxSlabId).filter(Boolean),
     ])) as string[];
-    const taxSlabRows = taxSlabIds.length > 0 ? await db.select().from(schema.taxSlabs).where(inArray(schema.taxSlabs.id, taxSlabIds)) : [];
+    const taxSlabRows: any[] = taxSlabIds.length > 0 ? await executor.select().from(schema.taxSlabs).where(inArray(schema.taxSlabs.id, taxSlabIds)) : [];
     const percentageById = new Map(taxSlabRows.map(s => [s.id, Number(s.percentage)]));
 
     for (const inv of invoicesInRange) {
@@ -97,14 +96,14 @@ export async function computeVatReturnFigures(companyId: string, year: number, q
   }
 
   // --- Purchases side, part 1: Active expenses in the quarter (header-only tax, back-calculated from a tax-inclusive amount) ---
-  const expensesInRange = await db.select().from(schema.expenses).where(and(
+  const expensesInRange = await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId),
     eq(schema.expenses.status, 'Active'),
     gte(schema.expenses.date, startDate),
     lte(schema.expenses.date, endDate)
   ));
   const expenseTaxSlabIds = Array.from(new Set(expensesInRange.map(e => e.taxSlabId).filter(Boolean))) as string[];
-  const expenseTaxSlabRows = expenseTaxSlabIds.length > 0 ? await db.select().from(schema.taxSlabs).where(inArray(schema.taxSlabs.id, expenseTaxSlabIds)) : [];
+  const expenseTaxSlabRows: any[] = expenseTaxSlabIds.length > 0 ? await executor.select().from(schema.taxSlabs).where(inArray(schema.taxSlabs.id, expenseTaxSlabIds)) : [];
   const expensePercentageById = new Map(expenseTaxSlabRows.map(s => [s.id, Number(s.percentage)]));
 
   let expenseSubtotal = 0;
@@ -122,7 +121,7 @@ export async function computeVatReturnFigures(companyId: string, year: number, q
   // purchaseBills.date is a timestamp column (unlike invoices/expenses' text 'YYYY-MM-DD'
   // dates), and bill creation always sets date: new Date() — no client-supplied bill date
   // exists today (server/routes/inventory.ts). Query with Date-object bounds accordingly.
-  const billsInRange = await db.select().from(schema.purchaseBills).where(and(
+  const billsInRange = await executor.select().from(schema.purchaseBills).where(and(
     eq(schema.purchaseBills.companyId, companyId),
     ne(schema.purchaseBills.status, 'Cancelled'),
     gte(schema.purchaseBills.date, new Date(startDate + 'T00:00:00.000Z')),

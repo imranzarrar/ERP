@@ -4,6 +4,7 @@ import * as schema from '../../src/db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { isAdminUser, isSuperAdminUser, assertOwnsRow, hasPermission } from '../lib/authz.js';
 import { generateId } from '../../src/id.js';
+import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
 
 const router = express.Router();
 
@@ -13,17 +14,17 @@ const router = express.Router();
 // submission data, safe to hand to e.g. an IT/design-focused role).
 const TEMPLATE_FIELDS = ['name', 'language', 'pageSize', 'isActive', 'printHeader', 'printFooter', 'printLogo', 'printQrCode', 'layoutJson', 'gridGapY', 'globalFontFamily'];
 
-router.get('/templates', async (req: any, res) => {
+router.get('/templates', withTenantDb, async (req: any, res) => {
   try {
     if (!isAdminUser(req.user) && !hasPermission(req.user, 'templates.read')) return res.status(403).json({ error: 'Forbidden' });
-    const templates = await db.select().from(schema.documentTemplates).where(eq(schema.documentTemplates.companyId, req.targetCompanyId));
+    const templates = await tenantDb().select().from(schema.documentTemplates).where(eq(schema.documentTemplates.companyId, req.targetCompanyId));
     res.json(templates);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.post('/templates', async (req: any, res) => {
+router.post('/templates', withTenantDb, async (req: any, res) => {
   try {
     const data0: any = req.body;
     const isEdit = Boolean(data0?.id);
@@ -34,6 +35,9 @@ router.post('/templates', async (req: any, res) => {
       return res.status(400).json({ error: 'Template name is required.' });
     }
 
+    // Deliberately queries via the superuser `db`, NOT tenantDb — this check needs to see
+    // a row EVEN IF IT BELONGS TO ANOTHER COMPANY, precisely to catch and reject that case
+    // (assertOwnsRow below) with the correct 403 rather than a tenantDb-invisible 404.
     if (data.id) {
       const [existing] = await db.select().from(schema.documentTemplates).where(eq(schema.documentTemplates.id, data.id));
       if (!assertOwnsRow(existing, req)) {
@@ -46,7 +50,7 @@ router.post('/templates', async (req: any, res) => {
     const insertData: any = { id: data.id, companyId: req.targetCompanyId };
     for (const f of TEMPLATE_FIELDS) if (data[f] !== undefined) insertData[f] = data[f];
 
-    await db.insert(schema.documentTemplates).values(insertData).onConflictDoUpdate({
+    await tenantDb().insert(schema.documentTemplates).values(insertData).onConflictDoUpdate({
       target: schema.documentTemplates.id,
       set: insertData
     });
@@ -61,10 +65,12 @@ router.post('/templates', async (req: any, res) => {
 // transaction that first deactivates same-company/language siblings — mirrors taxSlabs's
 // isDefault handling in masterEntities.ts, same partial-unique-index shape as this table's
 // own `unique_active_template` (companyId, language) WHERE is_active = true.
-router.patch('/templates/:id', async (req: any, res) => {
+router.patch('/templates/:id', withTenantDb, async (req: any, res) => {
   try {
     if (!isAdminUser(req.user) && !hasPermission(req.user, 'templates.update')) return res.status(403).json({ error: 'Forbidden' });
     const { id } = req.params;
+    // Deliberately queries via the superuser `db`, NOT tenantDb — see POST /templates'
+    // matching comment.
     const [existing] = await db.select().from(schema.documentTemplates).where(eq(schema.documentTemplates.id, id));
     if (!existing) return res.status(404).json({ error: 'Template not found.' });
     if (!assertOwnsRow(existing, req)) {
@@ -75,19 +81,20 @@ router.patch('/templates/:id', async (req: any, res) => {
     for (const f of TEMPLATE_FIELDS) if (req.body[f] !== undefined) updates[f] = req.body[f];
     if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'No fields to update.' });
 
+    const tdb = tenantDb();
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
     if (updates.isActive === true) {
-      await db.transaction(async (tx) => {
-        await tx.update(schema.documentTemplates)
-          .set({ isActive: false })
-          .where(and(
-            eq(schema.documentTemplates.companyId, existing.companyId),
-            eq(schema.documentTemplates.language, existing.language),
-            eq(schema.documentTemplates.isActive, true)
-          ));
-        await tx.update(schema.documentTemplates).set(updates).where(eq(schema.documentTemplates.id, id));
-      });
+      await tdb.update(schema.documentTemplates)
+        .set({ isActive: false })
+        .where(and(
+          eq(schema.documentTemplates.companyId, existing.companyId),
+          eq(schema.documentTemplates.language, existing.language),
+          eq(schema.documentTemplates.isActive, true)
+        ));
+      await tdb.update(schema.documentTemplates).set(updates).where(eq(schema.documentTemplates.id, id));
     } else {
-      await db.update(schema.documentTemplates).set(updates).where(eq(schema.documentTemplates.id, id));
+      await tdb.update(schema.documentTemplates).set(updates).where(eq(schema.documentTemplates.id, id));
     }
     res.json({ success: true });
   } catch (error: any) {
@@ -95,7 +102,8 @@ router.patch('/templates/:id', async (req: any, res) => {
   }
 });
 
-// Cross-company by design (a super-admin platform-management action, not a normal
+// EXEMPTED from the tenantDb/RLS rollout, permanently — stays on the superuser `db` in
+// full. Cross-company by design (a super-admin platform-management action, not a normal
 // tenant operation) — lets a super-admin reuse a template built for one company as the
 // starting point for another, instead of rebuilding an identical layout by hand in the
 // Canvas Designer. Deliberately super-admin-only (not the templates.create/update
@@ -103,7 +111,9 @@ router.patch('/templates/:id', async (req: any, res) => {
 // what every other cross-company read/write in this file already relies on, but this
 // route explicitly re-checks it up front since its whole point is reading ONE company's
 // row and writing into a DIFFERENT one — the one place in this file where "super-admin
-// bypasses company scoping" is the actual intent, not an incidental side effect.
+// bypasses company scoping" is the actual intent, not an incidental side effect. A
+// tenantDb() connection is scoped to exactly one company for the whole request, so it
+// cannot serve a route whose entire job is reading company A and writing company B.
 router.post('/templates/:id/copy', async (req: any, res) => {
   try {
     if (!isSuperAdminUser(req.user)) return res.status(403).json({ error: 'Forbidden: only a super-admin can copy a template to another company.' });
@@ -143,16 +153,18 @@ router.post('/templates/:id/copy', async (req: any, res) => {
   }
 });
 
-router.delete('/templates/:id', async (req: any, res) => {
+router.delete('/templates/:id', withTenantDb, async (req: any, res) => {
   try {
     if (!isAdminUser(req.user) && !hasPermission(req.user, 'templates.delete')) return res.status(403).json({ error: 'Forbidden' });
     const { id } = req.params;
+    // Deliberately queries via the superuser `db`, NOT tenantDb — see POST /templates'
+    // matching comment.
     const [existing] = await db.select().from(schema.documentTemplates).where(eq(schema.documentTemplates.id, id));
     if (!existing) return res.status(404).json({ error: 'Template not found.' });
     if (!assertOwnsRow(existing, req)) {
       return res.status(403).json({ error: 'Forbidden: this template belongs to another company' });
     }
-    await db.delete(schema.documentTemplates).where(eq(schema.documentTemplates.id, id));
+    await tenantDb().delete(schema.documentTemplates).where(eq(schema.documentTemplates.id, id));
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -161,7 +173,14 @@ router.delete('/templates/:id', async (req: any, res) => {
 
 // --- Translations (global UX dictionary — schema.ts's `translations` table has no
 // companyId, deliberately shared across every tenant). AdminSettings.tsx already gates its
-// Translations sub-tab to super-admins only (`superAdminOnly: true`); mirrored here. ---
+// Translations sub-tab to super-admins only (`superAdminOnly: true`); mirrored here.
+//
+// EXEMPTED from the tenantDb/RLS rollout, permanently — all 4 routes below stay on the
+// superuser `db`. `translations` is schema.ts's Category C "genuinely cross-tenant" table
+// (RLS is still enabled on it, with an explicit `using: sql\`true\`` allow-all policy —
+// see schema.ts's own comment): there is no companyId to scope a tenantDb() connection to
+// at all, and every route here is already super-admin-only, matching the same permanent-
+// exemption treatment already given to roleTemplates.ts's shared-library routes. ---
 router.get('/translations', async (req: any, res) => {
   try {
     if (!isSuperAdminUser(req.user)) return res.status(403).json({ error: 'Forbidden' });

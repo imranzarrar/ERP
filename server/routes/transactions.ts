@@ -14,6 +14,7 @@ import { parseLimitOffset } from '../lib/pagination.js';
 import { generateId } from '../../src/id.js';
 import { normalizeZatcaUnitCode } from '../../src/zatcaUnitCodes.js';
 import { recordAuditLog } from '../lib/audit.js';
+import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
 
 const router = express.Router();
 
@@ -58,8 +59,9 @@ async function assertDocumentRefsOwnedByCompany(dbOrTx: any, companyId: string, 
   return null;
 }
 
-router.get('/quotations', async (req: any, res) => {
+router.get('/quotations', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.quotation.read.enabled) return res.status(403).json({ error: 'Forbidden' });
 
@@ -68,11 +70,11 @@ router.get('/quotations', async (req: any, res) => {
       conditions.push(eq(schema.quotations.createdById, req.user.id));
     }
     const { limit, offset } = parseLimitOffset(req);
-    const quotations = await db.select().from(schema.quotations).where(and(...conditions))
+    const quotations = await tdb.select().from(schema.quotations).where(and(...conditions))
       .orderBy(desc(schema.quotations.createdAt)).limit(limit).offset(offset);
 
     const quotIds = quotations.map(q => q.id);
-    const items = quotIds.length > 0 ? await db.select().from(schema.quotationItems).where(inArray(schema.quotationItems.quotationId, quotIds)) : [];
+    const items = quotIds.length > 0 ? await tdb.select().from(schema.quotationItems).where(inArray(schema.quotationItems.quotationId, quotIds)) : [];
 
     res.json(quotations.map(q => ({
       ...q,
@@ -84,8 +86,9 @@ router.get('/quotations', async (req: any, res) => {
 });
 
 // --- Quotations ---
-router.post('/quotations', async (req: any, res) => {
+router.post('/quotations', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     const { quotationData } = req.body;
 
@@ -94,6 +97,9 @@ router.post('/quotations', async (req: any, res) => {
     // upsert route in this app (expenses/products/units/customers/vendors). A converted
     // or cancelled quotation is terminal for edits regardless of permission, matching the
     // dedicated PUT /quotations/:id route's own rule.
+    //
+    // Deliberately the superuser `db` — same hijack-detection reasoning as POST
+    // /customers in masterEntities.ts.
     let existing: typeof schema.quotations.$inferSelect | undefined;
     if (quotationData.id) {
       [existing] = await db.select().from(schema.quotations).where(eq(schema.quotations.id, quotationData.id));
@@ -130,57 +136,53 @@ router.post('/quotations', async (req: any, res) => {
 
     const { items, ...qData } = quotationData;
 
-    const refError = await assertDocumentRefsOwnedByCompany(db, req.targetCompanyId, {
+    const refError = await assertDocumentRefsOwnedByCompany(tdb, req.targetCompanyId, {
       customerId: qData.customerId,
       bankId: qData.bankId,
       taxSlabIds: [qData.taxSlabId, ...(items || []).map((it: any) => it.taxSlabId)],
     });
     if (refError) return res.status(400).json({ error: refError });
 
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
     let savedQuotationId = '';
     let savedQuotationNumber = '';
-    await db.transaction(async (tx) => {
-      // 1. Business logic
-      const companyId = req.targetCompanyId;
-      await validateTransactionDate(qData.date, companyId);
-      await assertProductsOwnedByCompany(tx, companyId, (items || []).map((it: any) => it.productId));
+    const companyId = req.targetCompanyId;
+    await validateTransactionDate(qData.date, companyId);
+    await assertProductsOwnedByCompany(tdb, companyId, (items || []).map((it: any) => it.productId));
 
-      // 2. Increment Counter if new
-      let qNumber = qData.quotationNumber;
-      if (!qData.quotationNumber) {
-        qNumber = await getAndIncrementDocumentNumber(tx, companyId, 'quotation', qData.date, resolvedBranchId);
-      }
+    let qNumber = qData.quotationNumber;
+    if (!qData.quotationNumber) {
+      qNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'quotation', qData.date, resolvedBranchId);
+    }
 
-      // 3. Insert/Update Quotation
-      const [newQuotation] = await tx.insert(schema.quotations).values({
+    const [newQuotation] = await tdb.insert(schema.quotations).values({
+      ...qData,
+      id: qData.id || generateId(),
+      quotationNumber: qNumber,
+      createdAt: qData.createdAt ? new Date(qData.createdAt) : new Date(),
+    }).onConflictDoUpdate({
+      target: schema.quotations.id,
+      set: {
         ...qData,
-        id: qData.id || generateId(),
         quotationNumber: qNumber,
         createdAt: qData.createdAt ? new Date(qData.createdAt) : new Date(),
-      }).onConflictDoUpdate({
-        target: schema.quotations.id,
-        set: {
-          ...qData,
-          quotationNumber: qNumber,
-          createdAt: qData.createdAt ? new Date(qData.createdAt) : new Date(),
-        }
-      }).returning();
-      savedQuotationId = newQuotation.id;
-      savedQuotationNumber = newQuotation.quotationNumber;
-
-      // 4. Insert/Update Items
-      if (items && items.length > 0) {
-        await tx.delete(schema.quotationItems).where(eq(schema.quotationItems.quotationId, newQuotation.id));
-        await tx.insert(schema.quotationItems).values(items.map((item: any) => ({
-          ...item,
-          quotationId: newQuotation.id,
-          unitCost: String(round2(Number(item.unitCost))),
-          quantity: String(item.quantity),
-          discountAmount: item.discountAmount ? String(round2(Number(item.discountAmount))) : '0',
-          unit: normalizeZatcaUnitCode(item.unit),
-        })));
       }
-    });
+    }).returning();
+    savedQuotationId = newQuotation.id;
+    savedQuotationNumber = newQuotation.quotationNumber;
+
+    if (items && items.length > 0) {
+      await tdb.delete(schema.quotationItems).where(eq(schema.quotationItems.quotationId, newQuotation.id));
+      await tdb.insert(schema.quotationItems).values(items.map((item: any) => ({
+        ...item,
+        quotationId: newQuotation.id,
+        unitCost: String(round2(Number(item.unitCost))),
+        quantity: String(item.quantity),
+        discountAmount: item.discountAmount ? String(round2(Number(item.discountAmount))) : '0',
+        unit: normalizeZatcaUnitCode(item.unit),
+      })));
+    }
 
     recordAuditLog(req, existing ? 'UPDATE_QUOTATION' : 'CREATE_QUOTATION', 'quotation', savedQuotationId, {
       quotationNumber: savedQuotationNumber,
@@ -192,8 +194,9 @@ router.post('/quotations', async (req: any, res) => {
   }
 });
 
-router.put('/quotations/:id', async (req: any, res) => {
+router.put('/quotations/:id', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.quotation.update.enabled) return res.status(403).json({ error: 'Forbidden' });
 
@@ -201,51 +204,51 @@ router.put('/quotations/:id', async (req: any, res) => {
     const { quotationData } = req.body;
     const { items, ...qData } = quotationData;
 
-    await db.transaction(async (tx) => {
-      const [existing] = await tx.select().from(schema.quotations).where(and(eq(schema.quotations.id, id), eq(schema.quotations.companyId, req.targetCompanyId)));
-      if (!existing) throw new Error('Quotation not found.');
-      if (!branchAccessOk(req, existing.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
-      if (existing.status === 'Converted') throw new Error('Converted quotations cannot be modified.');
-      if (existing.isCancelled) throw new Error('Cancelled quotations cannot be modified.');
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
+    const [existing] = await tdb.select().from(schema.quotations).where(and(eq(schema.quotations.id, id), eq(schema.quotations.companyId, req.targetCompanyId)));
+    if (!existing) { const err: any = new Error('Quotation not found.'); err.status = 404; throw err; }
+    if (!branchAccessOk(req, existing.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
+    if (existing.status === 'Converted') { const err: any = new Error('Converted quotations cannot be modified.'); err.status = 400; throw err; }
+    if (existing.isCancelled) { const err: any = new Error('Cancelled quotations cannot be modified.'); err.status = 400; throw err; }
 
-      const companyId = req.targetCompanyId;
-      qData.companyId = companyId;
-      // Branch is immutable after creation everywhere else in this file (see POST
-      // /quotations' own comment) — this dedicated PUT route spreads the client's qData
-      // straight into the update set, so pin it back to the existing value rather than
-      // letting an edit silently move a quotation to a different branch.
-      qData.branchId = existing.branchId;
+    const companyId = req.targetCompanyId;
+    qData.companyId = companyId;
+    // Branch is immutable after creation everywhere else in this file (see POST
+    // /quotations' own comment) — this dedicated PUT route spreads the client's qData
+    // straight into the update set, so pin it back to the existing value rather than
+    // letting an edit silently move a quotation to a different branch.
+    qData.branchId = existing.branchId;
 
-      if (qData.date) {
-        await validateTransactionDate(qData.date, companyId);
-      }
+    if (qData.date) {
+      await validateTransactionDate(qData.date, companyId);
+    }
 
-      await assertProductsOwnedByCompany(tx, companyId, (items || []).map((it: any) => it.productId));
+    await assertProductsOwnedByCompany(tdb, companyId, (items || []).map((it: any) => it.productId));
 
-      const refError = await assertDocumentRefsOwnedByCompany(tx, companyId, {
-        customerId: qData.customerId,
-        bankId: qData.bankId,
-        taxSlabIds: [qData.taxSlabId, ...(items || []).map((it: any) => it.taxSlabId)],
-      });
-      if (refError) { const err: any = new Error(refError); err.status = 400; throw err; }
-
-      await tx.update(schema.quotations).set({
-        ...qData,
-        createdAt: qData.createdAt ? new Date(qData.createdAt) : existing.createdAt
-      }).where(eq(schema.quotations.id, id));
-
-      if (items) {
-        await tx.delete(schema.quotationItems).where(eq(schema.quotationItems.quotationId, id));
-        await tx.insert(schema.quotationItems).values(items.map((item: any) => ({
-          ...item,
-          quotationId: id,
-          unitCost: String(round2(Number(item.unitCost))),
-          quantity: String(item.quantity),
-          discountAmount: item.discountAmount ? String(round2(Number(item.discountAmount))) : '0',
-          unit: normalizeZatcaUnitCode(item.unit),
-        })));
-      }
+    const refError = await assertDocumentRefsOwnedByCompany(tdb, companyId, {
+      customerId: qData.customerId,
+      bankId: qData.bankId,
+      taxSlabIds: [qData.taxSlabId, ...(items || []).map((it: any) => it.taxSlabId)],
     });
+    if (refError) { const err: any = new Error(refError); err.status = 400; throw err; }
+
+    await tdb.update(schema.quotations).set({
+      ...qData,
+      createdAt: qData.createdAt ? new Date(qData.createdAt) : existing.createdAt
+    }).where(eq(schema.quotations.id, id));
+
+    if (items) {
+      await tdb.delete(schema.quotationItems).where(eq(schema.quotationItems.quotationId, id));
+      await tdb.insert(schema.quotationItems).values(items.map((item: any) => ({
+        ...item,
+        quotationId: id,
+        unitCost: String(round2(Number(item.unitCost))),
+        quantity: String(item.quantity),
+        discountAmount: item.discountAmount ? String(round2(Number(item.discountAmount))) : '0',
+        unit: normalizeZatcaUnitCode(item.unit),
+      })));
+    }
 
     res.json({ success: true });
   } catch (error: any) {
@@ -258,13 +261,14 @@ router.put('/quotations/:id', async (req: any, res) => {
 // displays as "Cancelled" whenever isCancelled is true, regardless of what phase it was
 // in when cancelled. Converted quotations are terminal in the other direction (already
 // fulfilled into an invoice) and can't be cancelled from here.
-router.post('/quotations/:id/cancel', async (req: any, res) => {
+router.post('/quotations/:id/cancel', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.quotation.delete.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     const { id } = req.params;
-    const [existing] = await db.select().from(schema.quotations)
+    const [existing] = await tdb.select().from(schema.quotations)
       .where(and(eq(schema.quotations.id, id), eq(schema.quotations.companyId, req.targetCompanyId)));
     if (!existing) return res.status(404).json({ error: 'Quotation not found.' });
     if (!branchAccessOk(req, existing.branchId)) return res.status(403).json({ error: 'Forbidden: you are not assigned to this branch.' });
@@ -275,7 +279,7 @@ router.post('/quotations/:id/cancel', async (req: any, res) => {
       return res.status(400).json({ error: 'Quotation is already cancelled.' });
     }
 
-    await db.update(schema.quotations).set({ isCancelled: true }).where(eq(schema.quotations.id, id));
+    await tdb.update(schema.quotations).set({ isCancelled: true }).where(eq(schema.quotations.id, id));
     recordAuditLog(req, 'CANCEL_QUOTATION', 'quotation', id, { quotationNumber: existing.quotationNumber });
     res.json({ success: true });
   } catch (error: any) {
@@ -283,8 +287,9 @@ router.post('/quotations/:id/cancel', async (req: any, res) => {
   }
 });
 
-router.post('/quotations/:id/convert', async (req: any, res) => {
+router.post('/quotations/:id/convert', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.invoice.create.enabled) return res.status(403).json({ error: 'Forbidden' });
 
@@ -301,155 +306,155 @@ router.post('/quotations/:id/convert', async (req: any, res) => {
     let convertedInvoiceId = '';
     let convertedInvoiceNumber = '';
     let convertedQuotationNumber = '';
-    await db.transaction(async (tx) => {
-      // 1. Fetch quotation
-      const [quotation] = await tx.select().from(schema.quotations).where(and(eq(schema.quotations.id, id), eq(schema.quotations.companyId, req.targetCompanyId)));
-      if (!quotation) throw new Error('Quotation not found.');
-      if (!branchAccessOk(req, quotation.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
-      if (quotation.isCancelled) throw new Error('Cancelled quotations cannot be converted.');
-      if (quotation.status !== 'Accepted') throw new Error(`Only accepted quotations can be converted. Current status: ${quotation.status}`);
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
+    // 1. Fetch quotation
+    const [quotation] = await tdb.select().from(schema.quotations).where(and(eq(schema.quotations.id, id), eq(schema.quotations.companyId, req.targetCompanyId)));
+    if (!quotation) throw new Error('Quotation not found.');
+    if (!branchAccessOk(req, quotation.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
+    if (quotation.isCancelled) throw new Error('Cancelled quotations cannot be converted.');
+    if (quotation.status !== 'Accepted') throw new Error(`Only accepted quotations can be converted. Current status: ${quotation.status}`);
 
-      const companyId = req.targetCompanyId;
-      await validateTransactionDate(invoiceDate, companyId);
-      // This creates a brand-new invoice, same as POST /invoices — must be blocked the
-      // same way if invoiceDate falls in an already-filed quarter. This route reimplements
-      // invoice creation as its own parallel path and had never picked up this check.
-      await assertQuarterNotFiled(invoiceDate, companyId);
+    const companyId = req.targetCompanyId;
+    await validateTransactionDate(invoiceDate, companyId);
+    // This creates a brand-new invoice, same as POST /invoices — must be blocked the
+    // same way if invoiceDate falls in an already-filed quarter. This route reimplements
+    // invoice creation as its own parallel path and had never picked up this check.
+    await assertQuarterNotFiled(invoiceDate, companyId);
 
-      const refError = await assertDocumentRefsOwnedByCompany(tx, companyId, {
-        customerId: customCustomerId,
-        bankId: bankId,
-        taxSlabIds: [customTaxSlabId],
-      });
-      if (refError) { const err: any = new Error(refError); err.status = 400; throw err; }
-
-      // 2. Fetch tax slab for calculations
-      const targetTaxSlabId = customTaxSlabId || quotation.taxSlabId;
-      const [taxSlab] = await tx.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, targetTaxSlabId));
-      const percentage = taxSlab ? Number(taxSlab.percentage) : 0;
-
-      // 3. Increment Invoice Counter
-      const invNumber = await getAndIncrementDocumentNumber(tx, companyId, 'invoice', invoiceDate, quotation.branchId);
-      const invoiceId = generateId();
-
-      // 4. Fetch / calculate Items
-      const itemsToInsert = customItems || await tx.select().from(schema.quotationItems).where(eq(schema.quotationItems.quotationId, id));
-      // Only customItems needs checking — the fallback (the quotation's own persisted
-      // items) was already validated when the quotation itself was created/edited.
-      if (customItems) {
-        await assertProductsOwnedByCompany(tx, companyId, customItems.map((it: any) => it.productId));
-      }
-
-      // Resolve the sales warehouse this new invoice's stock lines will deduct from —
-      // required only if the quotation actually carries a stock item, same rule as the
-      // direct /invoices route below.
-      const resolvedWarehouseId = await resolveSaleWarehouse(tx, companyId, quotation.branchId, itemsToInsert, undefined, req.allowedBranchIds);
-      await assertStockAvailable(tx, companyId, resolvedWarehouseId, itemsToInsert.map((it: any) => ({ productId: it.productId, quantity: Number(it.quantity), unitOfMeasureId: it.unitOfMeasureId })));
-
-      const subtotal = round2(itemsToInsert.reduce((acc: number, item: any) => {
-        const cost = round2(Math.max(0, round2(Number(item.unitCost)) - round2(Number(item.discountAmount || 0))));
-        return acc + round2(cost * Number(item.quantity));
-      }, 0));
-      const discountPct = customDiscountPercentage !== undefined ? Number(customDiscountPercentage) : Number(quotation.discountPercentage || 0);
-      const headerDiscount = round2(subtotal * (discountPct / 100));
-      const discountedSubtotal = round2(Math.max(0, subtotal - headerDiscount));
-      const taxAmount = round2(discountedSubtotal * (percentage / 100));
-      const grandTotal = round2(discountedSubtotal + taxAmount);
-
-      const discountPctStr = String(discountPct);
-      const amountPaidNum = paymentStatus === 'Paid' ? grandTotal : 0;
-      const amountPaidStr = String(amountPaidNum);
-      // paymentStatus is a derived fact of amountPaid vs. the total, not a client-asserted
-      // string — recomputing it here closes the door on an arbitrary/typo'd status value
-      // being written (the DB column is unconstrained text).
-      const computedPaymentStatus = computePaymentStatus(amountPaidNum, grandTotal);
-
-      // 5. Insert Invoice with computed financial totals
-      const [newInvoice] = await tx.insert(schema.invoices).values({
-        id: invoiceId,
-        invoiceNumber: invNumber,
-        date: invoiceDate,
-        companyId: companyId,
-        customerId: customCustomerId || quotation.customerId,
-        taxSlabId: targetTaxSlabId,
-        notes: customNotes || quotation.notes,
-        paymentStatus: computedPaymentStatus,
-        paymentDate: computedPaymentStatus === 'Paid' ? new Date(invoiceDate) : null,
-        bankId: bankId,
-        createdById: createdById,
-        originQuotationId: id,
-        status: 'Active',
-        createdAt: new Date(),
-        discountPercentage: discountPctStr,
-        amountPaid: amountPaidStr,
-        // Inherited from the source quotation — a converted invoice belongs to whichever
-        // branch its quotation was created under, same as every other document type's
-        // branch is immutable-from-creation. Pre-existing gap fixed alongside this feature:
-        // previously this insert carried no branchId at all.
-        branchId: quotation.branchId,
-        warehouseId: resolvedWarehouseId,
-      }).returning();
-
-      // 6. Insert Items
-      const convertZatcaCodeById = await loadZatcaCodesByUnitId(tx, itemsToInsert);
-      await tx.insert(schema.invoiceItems).values(itemsToInsert.map((item: any) => ({
-        id: generateId(),
-        invoiceId: invoiceId,
-        description: item.description,
-        unitCost: String(round2(Number(item.unitCost))),
-        quantity: String(item.quantity),
-        discountAmount: item.discountAmount ? String(round2(Number(item.discountAmount))) : '0',
-        unit: normalizeZatcaUnitCode(item.unitOfMeasureId ? convertZatcaCodeById.get(item.unitOfMeasureId) : item.unit),
-        productId: item.productId || null,
-        unitOfMeasureId: item.unitOfMeasureId || null,
-      })));
-
-      // Fold each catalog-linked line into the product's weighted-average sale price —
-      // this conversion always represents a genuinely new sale (a fresh invoice row, never
-      // an edit), so unlike the main /invoices route there's no isNewInvoice branch needed.
-      for (const item of itemsToInsert) {
-        if (!item.productId) continue;
-        const [product] = await tx.select({
-          averageSalePrice: schema.productsServices.averageSalePrice,
-          totalQuantitySold: schema.productsServices.totalQuantitySold,
-        }).from(schema.productsServices).where(eq(schema.productsServices.id, item.productId)).for('update');
-        if (product) {
-          const priorQty = Number(product.totalQuantitySold || 0);
-          const priorAvg = Number(product.averageSalePrice || 0);
-          // Converted to base-unit quantity/cost before folding — a carton sold at 120
-          // SAR must fold into averageSalePrice at 10 SAR/piece, not 120 SAR/piece.
-          const soldQty = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantity));
-          const baseUnitCost = await toBaseUnitCost(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.unitCost));
-          const newQty = priorQty + soldQty;
-          const newAvg = newQty > 0 ? round4((priorQty * priorAvg + soldQty * baseUnitCost) / newQty) : priorAvg;
-          await tx.update(schema.productsServices)
-            .set({ averageSalePrice: String(newAvg), totalQuantitySold: String(round2(newQty)) })
-            .where(eq(schema.productsServices.id, item.productId));
-        }
-        await deductStockForSale(tx, companyId, item.productId, Number(item.quantity), invoiceId, newInvoice.createdAt as Date, resolvedWarehouseId, item.unitOfMeasureId);
-      }
-
-      // 7. Update Quotation Status
-      await tx.update(schema.quotations).set({ status: 'Converted' }).where(eq(schema.quotations.id, id));
-      convertedInvoiceId = invoiceId;
-      convertedInvoiceNumber = invNumber;
-      convertedQuotationNumber = quotation.quotationNumber;
-
-      // 8. Generate Receipt Voucher if status is Paid
-      if (computedPaymentStatus === 'Paid') {
-        await syncVoucherForInvoice(tx, invoiceId, companyId, {
-          paymentStatus: 'Paid',
-          status: 'Active',
-          paymentDate: invoiceDate,
-          date: invoiceDate,
-          bankId: bankId,
-          amountPaid: amountPaidStr,
-          amount: String(grandTotal),
-          invoiceNumber: invNumber,
-          branchId: quotation.branchId,
-        }, req.user.id);
-      }
+    const refError = await assertDocumentRefsOwnedByCompany(tdb, companyId, {
+      customerId: customCustomerId,
+      bankId: bankId,
+      taxSlabIds: [customTaxSlabId],
     });
+    if (refError) { const err: any = new Error(refError); err.status = 400; throw err; }
+
+    // 2. Fetch tax slab for calculations
+    const targetTaxSlabId = customTaxSlabId || quotation.taxSlabId;
+    const [taxSlab] = await tdb.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, targetTaxSlabId));
+    const percentage = taxSlab ? Number(taxSlab.percentage) : 0;
+
+    // 3. Increment Invoice Counter
+    const invNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'invoice', invoiceDate, quotation.branchId);
+    const invoiceId = generateId();
+
+    // 4. Fetch / calculate Items
+    const itemsToInsert = customItems || await tdb.select().from(schema.quotationItems).where(eq(schema.quotationItems.quotationId, id));
+    // Only customItems needs checking — the fallback (the quotation's own persisted
+    // items) was already validated when the quotation itself was created/edited.
+    if (customItems) {
+      await assertProductsOwnedByCompany(tdb, companyId, customItems.map((it: any) => it.productId));
+    }
+
+    // Resolve the sales warehouse this new invoice's stock lines will deduct from —
+    // required only if the quotation actually carries a stock item, same rule as the
+    // direct /invoices route below.
+    const resolvedWarehouseId = await resolveSaleWarehouse(tdb, companyId, quotation.branchId, itemsToInsert, undefined, req.allowedBranchIds);
+    await assertStockAvailable(tdb, companyId, resolvedWarehouseId, itemsToInsert.map((it: any) => ({ productId: it.productId, quantity: Number(it.quantity), unitOfMeasureId: it.unitOfMeasureId })));
+
+    const subtotal = round2(itemsToInsert.reduce((acc: number, item: any) => {
+      const cost = round2(Math.max(0, round2(Number(item.unitCost)) - round2(Number(item.discountAmount || 0))));
+      return acc + round2(cost * Number(item.quantity));
+    }, 0));
+    const discountPct = customDiscountPercentage !== undefined ? Number(customDiscountPercentage) : Number(quotation.discountPercentage || 0);
+    const headerDiscount = round2(subtotal * (discountPct / 100));
+    const discountedSubtotal = round2(Math.max(0, subtotal - headerDiscount));
+    const taxAmount = round2(discountedSubtotal * (percentage / 100));
+    const grandTotal = round2(discountedSubtotal + taxAmount);
+
+    const discountPctStr = String(discountPct);
+    const amountPaidNum = paymentStatus === 'Paid' ? grandTotal : 0;
+    const amountPaidStr = String(amountPaidNum);
+    // paymentStatus is a derived fact of amountPaid vs. the total, not a client-asserted
+    // string — recomputing it here closes the door on an arbitrary/typo'd status value
+    // being written (the DB column is unconstrained text).
+    const computedPaymentStatus = computePaymentStatus(amountPaidNum, grandTotal);
+
+    // 5. Insert Invoice with computed financial totals
+    const [newInvoice] = await tdb.insert(schema.invoices).values({
+      id: invoiceId,
+      invoiceNumber: invNumber,
+      date: invoiceDate,
+      companyId: companyId,
+      customerId: customCustomerId || quotation.customerId,
+      taxSlabId: targetTaxSlabId,
+      notes: customNotes || quotation.notes,
+      paymentStatus: computedPaymentStatus,
+      paymentDate: computedPaymentStatus === 'Paid' ? new Date(invoiceDate) : null,
+      bankId: bankId,
+      createdById: createdById,
+      originQuotationId: id,
+      status: 'Active',
+      createdAt: new Date(),
+      discountPercentage: discountPctStr,
+      amountPaid: amountPaidStr,
+      // Inherited from the source quotation — a converted invoice belongs to whichever
+      // branch its quotation was created under, same as every other document type's
+      // branch is immutable-from-creation. Pre-existing gap fixed alongside this feature:
+      // previously this insert carried no branchId at all.
+      branchId: quotation.branchId,
+      warehouseId: resolvedWarehouseId,
+    }).returning();
+
+    // 6. Insert Items
+    const convertZatcaCodeById = await loadZatcaCodesByUnitId(tdb, itemsToInsert);
+    await tdb.insert(schema.invoiceItems).values(itemsToInsert.map((item: any) => ({
+      id: generateId(),
+      invoiceId: invoiceId,
+      description: item.description,
+      unitCost: String(round2(Number(item.unitCost))),
+      quantity: String(item.quantity),
+      discountAmount: item.discountAmount ? String(round2(Number(item.discountAmount))) : '0',
+      unit: normalizeZatcaUnitCode(item.unitOfMeasureId ? convertZatcaCodeById.get(item.unitOfMeasureId) : item.unit),
+      productId: item.productId || null,
+      unitOfMeasureId: item.unitOfMeasureId || null,
+    })));
+
+    // Fold each catalog-linked line into the product's weighted-average sale price —
+    // this conversion always represents a genuinely new sale (a fresh invoice row, never
+    // an edit), so unlike the main /invoices route there's no isNewInvoice branch needed.
+    for (const item of itemsToInsert) {
+      if (!item.productId) continue;
+      const [product] = await tdb.select({
+        averageSalePrice: schema.productsServices.averageSalePrice,
+        totalQuantitySold: schema.productsServices.totalQuantitySold,
+      }).from(schema.productsServices).where(eq(schema.productsServices.id, item.productId)).for('update');
+      if (product) {
+        const priorQty = Number(product.totalQuantitySold || 0);
+        const priorAvg = Number(product.averageSalePrice || 0);
+        // Converted to base-unit quantity/cost before folding — a carton sold at 120
+        // SAR must fold into averageSalePrice at 10 SAR/piece, not 120 SAR/piece.
+        const soldQty = await toBaseQuantity(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.quantity));
+        const baseUnitCost = await toBaseUnitCost(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.unitCost));
+        const newQty = priorQty + soldQty;
+        const newAvg = newQty > 0 ? round4((priorQty * priorAvg + soldQty * baseUnitCost) / newQty) : priorAvg;
+        await tdb.update(schema.productsServices)
+          .set({ averageSalePrice: String(newAvg), totalQuantitySold: String(round2(newQty)) })
+          .where(eq(schema.productsServices.id, item.productId));
+      }
+      await deductStockForSale(tdb, companyId, item.productId, Number(item.quantity), invoiceId, newInvoice.createdAt as Date, resolvedWarehouseId, item.unitOfMeasureId);
+    }
+
+    // 7. Update Quotation Status
+    await tdb.update(schema.quotations).set({ status: 'Converted' }).where(eq(schema.quotations.id, id));
+    convertedInvoiceId = invoiceId;
+    convertedInvoiceNumber = invNumber;
+    convertedQuotationNumber = quotation.quotationNumber;
+
+    // 8. Generate Receipt Voucher if status is Paid
+    if (computedPaymentStatus === 'Paid') {
+      await syncVoucherForInvoice(tdb, invoiceId, companyId, {
+        paymentStatus: 'Paid',
+        status: 'Active',
+        paymentDate: invoiceDate,
+        date: invoiceDate,
+        bankId: bankId,
+        amountPaid: amountPaidStr,
+        amount: String(grandTotal),
+        invoiceNumber: invNumber,
+        branchId: quotation.branchId,
+      }, req.user.id);
+    }
 
     recordAuditLog(req, 'CONVERT_QUOTATION', 'quotation', id, {
       quotationNumber: convertedQuotationNumber,
@@ -463,7 +468,7 @@ router.post('/quotations/:id/convert', async (req: any, res) => {
 });
 
 // --- Invoices ---
-router.get('/invoices', async (req: any, res) => {
+router.get('/invoices', withTenantDb, async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.invoice.read.enabled) return res.status(403).json({ error: 'Forbidden' });
@@ -474,7 +479,7 @@ router.get('/invoices', async (req: any, res) => {
       conditions.push(eq(schema.invoices.createdById, req.user.id));
     }
     const { limit, offset } = parseLimitOffset(req);
-    const invoices = await db.select().from(schema.invoices).where(and(...conditions))
+    const invoices = await tenantDb().select().from(schema.invoices).where(and(...conditions))
       .orderBy(desc(schema.invoices.createdAt)).limit(limit).offset(offset);
     res.json(invoices);
   } catch (error: any) {
@@ -487,13 +492,13 @@ router.get('/invoices', async (req: any, res) => {
 // as GET /invoices above; the actual rendering happens via a headless browser hitting
 // this same server's own /print/invoice/:id route, authenticated by reusing this
 // request's own already-valid session id (req.sessionID), not a new token mechanism.
-router.get('/invoices/:id/pdf', async (req: any, res) => {
+router.get('/invoices/:id/pdf', withTenantDb, async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.invoice.read.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     const { id } = req.params;
-    const [invoice] = await db.select({ id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber })
+    const [invoice] = await tenantDb().select({ id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber })
       .from(schema.invoices).where(and(eq(schema.invoices.id, id), eq(schema.invoices.companyId, req.targetCompanyId)));
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
 
@@ -509,6 +514,20 @@ router.get('/invoices/:id/pdf', async (req: any, res) => {
   }
 });
 
+// DEFERRED from the tenantDb RLS rollout (stays on the superuser `db`) — same category
+// as server/routes/zatca.ts's own deferral, see .claude/skills/rls-tenant-isolation.
+// This route fires processInvoiceZatca(savedInvoiceId) as fire-and-forget immediately
+// after its transaction commits; processInvoiceZatca does its own database queries via a
+// SEPARATE connection and depends on the invoice already being durably committed and
+// visible there. Under tenantDb's commit-at-response-time model (server/lib/tenantDb.ts),
+// migrating this naively would fire that side effect BEFORE the real COMMIT — a
+// runAfterTenantCommit() mechanism now exists specifically to fix this class of problem,
+// but wiring it into this invoice-creation path (and the Credit/Debit Note route and the
+// cancel route's own hash-chain-tip rollback below) needs the same dual-gate ZATCA
+// verification rigor as any other change to this pipeline, not a change bundled into a
+// 140-handler rollout pass. `invoices` itself still gets a real RLS policy from this
+// rollout (protecting it via every other route, e.g. GET /invoices above) — only this
+// specific write path's own connection stays on the superuser db for now.
 router.post('/invoices', async (req: any, res) => {
   try {
     const user = req.user;
@@ -826,6 +845,9 @@ router.post('/invoices', async (req: any, res) => {
 // verbatim) — a partial/line-selectable credit note is a larger feature, tracked for
 // later. No automatic refund/reversal voucher is generated here either; the accounting
 // treatment of the credit is a separate, explicitly deferred piece of work.
+//
+// DEFERRED from the tenantDb RLS rollout — see POST /invoices' own comment above; this
+// route fires the exact same fire-and-forget processInvoiceZatca(savedNoteId) pattern.
 router.post('/invoices/:id/note', async (req: any, res) => {
   try {
     const user = req.user;
@@ -996,8 +1018,9 @@ router.post('/invoices/:id/note', async (req: any, res) => {
 // settlement gets its own real voucher row, matching src/dbStore.ts's markInvoicePaid
 // (the legacy path this route replaces) so migrating InvoiceModule.tsx's "Receive
 // Payment" modal onto this route doesn't change what a customer's payment history shows.
-router.post('/invoices/:id/paid', async (req: any, res) => {
+router.post('/invoices/:id/paid', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.invoice.update.enabled) return res.status(403).json({ error: 'Forbidden' });
 
@@ -1009,120 +1032,118 @@ router.post('/invoices/:id/paid', async (req: any, res) => {
 
     let createdVoucher: any;
     let paidInvoiceNumber = '';
-    await db.transaction(async (tx) => {
-      // FOR UPDATE — without this, two payments landing close together (e.g. cash recorded
-      // by a cashier immediately followed by a bank transfer entered by an accountant) both
-      // read the same currentPaid/remaining and the second write silently clobbers the
-      // first's amountPaid, even though both Receipt vouchers were correctly inserted —
-      // the invoice's own denormalized amountPaid/paymentStatus would then understate what
-      // was actually collected. Purchase Bills' own /pay route already locks this way.
-      const [invoice] = await tx.select().from(schema.invoices).where(and(eq(schema.invoices.id, id), eq(schema.invoices.companyId, req.targetCompanyId))).for('update');
-      if (!invoice) { const err: any = new Error('Invoice not found'); err.status = 404; throw err; }
-      if (!branchAccessOk(req, invoice.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
-      if (invoice.status === 'Cancelled') {
-        const err: any = new Error('Cancelled invoices cannot be paid.');
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; the row lock below still applies within it.
+    // FOR UPDATE — without this, two payments landing close together (e.g. cash recorded
+    // by a cashier immediately followed by a bank transfer entered by an accountant) both
+    // read the same currentPaid/remaining and the second write silently clobbers the
+    // first's amountPaid, even though both Receipt vouchers were correctly inserted —
+    // the invoice's own denormalized amountPaid/paymentStatus would then understate what
+    // was actually collected. Purchase Bills' own /pay route already locks this way.
+    const [invoice] = await tdb.select().from(schema.invoices).where(and(eq(schema.invoices.id, id), eq(schema.invoices.companyId, req.targetCompanyId))).for('update');
+    if (!invoice) { const err: any = new Error('Invoice not found'); err.status = 404; throw err; }
+    if (!branchAccessOk(req, invoice.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
+    if (invoice.status === 'Cancelled') {
+      const err: any = new Error('Cancelled invoices cannot be paid.');
+      err.status = 400;
+      throw err;
+    }
+    if (invoice.paymentStatus === 'Paid') {
+      const err: any = new Error('Invoice is already fully paid.');
+      err.status = 400;
+      throw err;
+    }
+    // A Credit Note reduces what the customer owes on the original invoice — it is not
+    // itself a receivable, so it can never be "paid". (A Debit Note, by contrast,
+    // represents genuine additional charges and is legitimately payable — this check is
+    // deliberately scoped to CreditNote only.)
+    if (invoice.documentType === 'CreditNote') {
+      const err: any = new Error('A Credit Note cannot be paid — it reduces the original invoice\'s balance, it does not create one of its own.');
+      err.status = 400;
+      throw err;
+    }
+
+    const paymentDate = req.body?.paymentDate ? String(req.body.paymentDate) : new Date().toISOString().split('T')[0];
+    await validateTransactionDate(paymentDate, invoice.companyId);
+
+    const invItems = await tdb.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, id));
+    const [taxSlab] = invoice.taxSlabId ? await tdb.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, invoice.taxSlabId)) : [undefined];
+    const percentage = taxSlab ? Number(taxSlab.percentage) : 0;
+    const itemsSubtotal = round2(invItems.reduce((acc, item) => {
+      const cost = round2(Math.max(0, round2(Number(item.unitCost)) - round2(Number(item.discountAmount || 0))));
+      return acc + round2(cost * Number(item.quantity));
+    }, 0));
+    const headerDiscount = round2(itemsSubtotal * (Number(invoice.discountPercentage || 0) / 100));
+    const discountedSubtotal = round2(Math.max(0, itemsSubtotal - headerDiscount));
+    const taxAmount = round2(discountedSubtotal * (percentage / 100));
+    const grandTotal = round2(discountedSubtotal + taxAmount);
+
+    const currentPaid = round2(Number(invoice.amountPaid || 0));
+    const remaining = round2(grandTotal - currentPaid);
+    if (remaining <= 0) {
+      const err: any = new Error('No remaining balance to pay.');
+      err.status = 400;
+      throw err;
+    }
+
+    let amountToPost = remaining;
+    if (requestedAmount !== undefined) {
+      if (requestedAmount > remaining + 0.01) {
+        const err: any = new Error(`Payment amount (${requestedAmount}) exceeds the remaining balance (${remaining}).`);
         err.status = 400;
         throw err;
       }
-      if (invoice.paymentStatus === 'Paid') {
-        const err: any = new Error('Invoice is already fully paid.');
+      amountToPost = Math.min(requestedAmount, remaining);
+    }
+
+    const newPaidAmount = round2(currentPaid + amountToPost);
+    const newPaymentStatus = computePaymentStatus(newPaidAmount, grandTotal);
+    const targetBankId = req.body?.bankId || invoice.bankId;
+    // A client-supplied bankId must actually belong to this company — otherwise a
+    // malformed/malicious request could post a receipt (and misattribute real cash)
+    // against another tenant's bank account.
+    if (req.body?.bankId) {
+      const [bank] = await tdb.select({ id: schema.bankAccounts.id }).from(schema.bankAccounts)
+        .where(and(eq(schema.bankAccounts.id, targetBankId), eq(schema.bankAccounts.companyId, invoice.companyId)));
+      if (!bank) {
+        const err: any = new Error('Selected bank account was not found for this company.');
         err.status = 400;
         throw err;
       }
-      // A Credit Note reduces what the customer owes on the original invoice — it is not
-      // itself a receivable, so it can never be "paid". (A Debit Note, by contrast,
-      // represents genuine additional charges and is legitimately payable — this check is
-      // deliberately scoped to CreditNote only.)
-      if (invoice.documentType === 'CreditNote') {
-        const err: any = new Error('A Credit Note cannot be paid — it reduces the original invoice\'s balance, it does not create one of its own.');
-        err.status = 400;
-        throw err;
-      }
+    }
 
-      const paymentDate = req.body?.paymentDate ? String(req.body.paymentDate) : new Date().toISOString().split('T')[0];
-      // Throws (with .status set) rather than returning a validity object — propagates
-      // straight up through this transaction callback to the outer catch below.
-      await validateTransactionDate(paymentDate, invoice.companyId);
+    // The invoice's own bankId is the bank it was issued expecting payment to (shown on
+    // the printed document) — it must stay stable across however many separate,
+    // possibly different-bank installments actually settle it. Each installment's real
+    // bank is recorded on its own Receipt voucher below, not on the invoice row.
+    await tdb.update(schema.invoices)
+      .set({
+        paymentStatus: newPaymentStatus,
+        amountPaid: String(newPaidAmount),
+        paymentDate: new Date(paymentDate),
+      })
+      .where(eq(schema.invoices.id, id));
 
-      const invItems = await tx.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, id));
-      const [taxSlab] = invoice.taxSlabId ? await tx.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, invoice.taxSlabId)) : [undefined];
-      const percentage = taxSlab ? Number(taxSlab.percentage) : 0;
-      const itemsSubtotal = round2(invItems.reduce((acc, item) => {
-        const cost = round2(Math.max(0, round2(Number(item.unitCost)) - round2(Number(item.discountAmount || 0))));
-        return acc + round2(cost * Number(item.quantity));
-      }, 0));
-      const headerDiscount = round2(itemsSubtotal * (Number(invoice.discountPercentage || 0) / 100));
-      const discountedSubtotal = round2(Math.max(0, itemsSubtotal - headerDiscount));
-      const taxAmount = round2(discountedSubtotal * (percentage / 100));
-      const grandTotal = round2(discountedSubtotal + taxAmount);
-
-      const currentPaid = round2(Number(invoice.amountPaid || 0));
-      const remaining = round2(grandTotal - currentPaid);
-      if (remaining <= 0) {
-        const err: any = new Error('No remaining balance to pay.');
-        err.status = 400;
-        throw err;
-      }
-
-      let amountToPost = remaining;
-      if (requestedAmount !== undefined) {
-        if (requestedAmount > remaining + 0.01) {
-          const err: any = new Error(`Payment amount (${requestedAmount}) exceeds the remaining balance (${remaining}).`);
-          err.status = 400;
-          throw err;
-        }
-        amountToPost = Math.min(requestedAmount, remaining);
-      }
-
-      const newPaidAmount = round2(currentPaid + amountToPost);
-      const newPaymentStatus = computePaymentStatus(newPaidAmount, grandTotal);
-      const targetBankId = req.body?.bankId || invoice.bankId;
-      // A client-supplied bankId must actually belong to this company — otherwise a
-      // malformed/malicious request could post a receipt (and misattribute real cash)
-      // against another tenant's bank account.
-      if (req.body?.bankId) {
-        const [bank] = await tx.select({ id: schema.bankAccounts.id }).from(schema.bankAccounts)
-          .where(and(eq(schema.bankAccounts.id, targetBankId), eq(schema.bankAccounts.companyId, invoice.companyId)));
-        if (!bank) {
-          const err: any = new Error('Selected bank account was not found for this company.');
-          err.status = 400;
-          throw err;
-        }
-      }
-
-      // The invoice's own bankId is the bank it was issued expecting payment to (shown on
-      // the printed document) — it must stay stable across however many separate,
-      // possibly different-bank installments actually settle it. Each installment's real
-      // bank is recorded on its own Receipt voucher below, not on the invoice row.
-      await tx.update(schema.invoices)
-        .set({
-          paymentStatus: newPaymentStatus,
-          amountPaid: String(newPaidAmount),
-          paymentDate: new Date(paymentDate),
-        })
-        .where(eq(schema.invoices.id, id));
-
-      const voucherNumber = await getAndIncrementDocumentNumber(tx, invoice.companyId, 'voucher', paymentDate, invoice.branchId);
-      const [voucher] = await tx.insert(schema.vouchers).values({
-        id: generateId(),
-        voucherNumber,
-        type: 'Receipt',
-        date: paymentDate,
-        bankId: targetBankId,
-        amount: String(amountToPost),
-        description: `Receipt voucher generated for invoice ${invoice.invoiceNumber} payment of ${amountToPost}`,
-        referenceType: 'Invoice',
-        referenceId: id,
-        companyId: invoice.companyId,
-        // Always the invoice's own branch, never independently picked — see
-        // schema.ts's vouchers.branchId comment.
-        branchId: invoice.branchId,
-        createdById: req.user.id,
-        createdAt: new Date(),
-      }).returning();
-      createdVoucher = voucher;
-      paidInvoiceNumber = invoice.invoiceNumber;
-    });
+    const voucherNumber = await getAndIncrementDocumentNumber(tdb, invoice.companyId, 'voucher', paymentDate, invoice.branchId);
+    const [voucher] = await tdb.insert(schema.vouchers).values({
+      id: generateId(),
+      voucherNumber,
+      type: 'Receipt',
+      date: paymentDate,
+      bankId: targetBankId,
+      amount: String(amountToPost),
+      description: `Receipt voucher generated for invoice ${invoice.invoiceNumber} payment of ${amountToPost}`,
+      referenceType: 'Invoice',
+      referenceId: id,
+      companyId: invoice.companyId,
+      // Always the invoice's own branch, never independently picked — see
+      // schema.ts's vouchers.branchId comment.
+      branchId: invoice.branchId,
+      createdById: req.user.id,
+      createdAt: new Date(),
+    }).returning();
+    createdVoucher = voucher;
+    paidInvoiceNumber = invoice.invoiceNumber;
 
     recordAuditLog(req, 'RECORD_INVOICE_PAYMENT', 'invoice', id, {
       invoiceNumber: paidInvoiceNumber,
@@ -1138,6 +1159,11 @@ router.post('/invoices/:id/paid', async (req: any, res) => {
   }
 });
 
+// DEFERRED from the tenantDb RLS rollout — see POST /invoices' own comment above. This
+// route additionally rolls back the ZATCA hash-chain tip (isStillChainTip/
+// setHashChainState) under a row lock on `companies`, a mechanism explicitly documented
+// in CLAUDE.md as needing more care than the rest of the codebase — not something to
+// migrate as one line item among 140+ others.
 router.post('/invoices/:id/cancel', async (req: any, res) => {
   try {
     const { id } = req.params;
@@ -1255,8 +1281,9 @@ router.post('/invoices/:id/cancel', async (req: any, res) => {
 // /api/transactions/expenses — removed rather than fixed in place.
 
 // --- Investors ---
-router.post('/investors', async (req: any, res) => {
+router.post('/investors', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     if (!hasPermission(req.user, 'investors.access')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
@@ -1264,12 +1291,8 @@ router.post('/investors', async (req: any, res) => {
     const data = req.body;
     const iData = { ...data };
 
-    // Unlike every other upsert route in this app, this one had no ownership check at
-    // all before the update branch of onConflictDoUpdate could fire — investors.id is a
-    // client-supplied primary key with no server-side default, so a Company B caller
-    // could target Company A's real investor id and have its name/equity/capital fields
-    // (and companyId itself) silently overwritten. Same assertOwnsRow + generateId
-    // pattern as every other upsert route in this file.
+    // Deliberately the superuser `db` — same hijack-detection reasoning as POST
+    // /customers in masterEntities.ts.
     let existing: typeof schema.investors.$inferSelect | undefined;
     if (iData.id) {
       [existing] = await db.select().from(schema.investors).where(eq(schema.investors.id, iData.id));
@@ -1287,7 +1310,7 @@ router.post('/investors', async (req: any, res) => {
     if (iData.profitPercentage !== undefined) iData.profitPercentage = String(iData.profitPercentage);
     iData.capitalContributed = String(iData.capitalContributed);
 
-    await db.insert(schema.investors).values(iData).onConflictDoUpdate({
+    await tdb.insert(schema.investors).values(iData).onConflictDoUpdate({
       target: schema.investors.id,
       set: iData
     });
@@ -1302,8 +1325,9 @@ router.post('/investors', async (req: any, res) => {
 // from src/dbStore.ts faithfully (same validation order, same voucher shape). Creates a
 // Receipt voucher (referenceType 'Equity') and bumps the investor's running
 // capitalContributed total.
-router.post('/investors/:id/investment', async (req: any, res) => {
+router.post('/investors/:id/investment', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     if (!hasPermission(req.user, 'investors.access')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
@@ -1313,44 +1337,44 @@ router.post('/investors/:id/investment', async (req: any, res) => {
     const companyId = req.targetCompanyId;
     const amountNum = Number(amount);
 
-    await db.transaction(async (tx) => {
-      const [investor] = await tx.select().from(schema.investors)
-        .where(and(eq(schema.investors.id, investorId), eq(schema.investors.companyId, companyId)));
-      if (!investor) throw new Error('Selected investor not found.');
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
+    const [investor] = await tdb.select().from(schema.investors)
+      .where(and(eq(schema.investors.id, investorId), eq(schema.investors.companyId, companyId)));
+    if (!investor) throw new Error('Selected investor not found.');
 
-      await validateTransactionDate(date, companyId);
+    await validateTransactionDate(date, companyId);
 
-      if (!(amountNum > 0)) {
-        const err: any = new Error('Investment amount must be greater than zero.');
-        err.status = 400;
-        throw err;
-      }
+    if (!(amountNum > 0)) {
+      const err: any = new Error('Investment amount must be greater than zero.');
+      err.status = 400;
+      throw err;
+    }
 
-      const [bank] = await tx.select().from(schema.bankAccounts)
-        .where(and(eq(schema.bankAccounts.id, bankId), eq(schema.bankAccounts.isActive, true), eq(schema.bankAccounts.companyId, companyId)));
-      if (!bank) throw new Error('Active bank account not found.');
+    const [bank] = await tdb.select().from(schema.bankAccounts)
+      .where(and(eq(schema.bankAccounts.id, bankId), eq(schema.bankAccounts.isActive, true), eq(schema.bankAccounts.companyId, companyId)));
+    if (!bank) throw new Error('Active bank account not found.');
 
-      const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', date, null);
+    const voucherNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'voucher', date, null);
 
-      await tx.insert(schema.vouchers).values({
-        id: generateId(),
-        voucherNumber,
-        type: 'Receipt',
-        date,
-        bankId,
-        amount: String(amountNum),
-        description: `Equity Capital contribution from investor ${investor.name}: ${description}`,
-        referenceType: 'Equity',
-        referenceId: investorId,
-        createdById: req.user.id,
-        createdAt: new Date(),
-        companyId,
-      });
-
-      await tx.update(schema.investors)
-        .set({ capitalContributed: String(round2(Number(investor.capitalContributed || 0) + amountNum)) })
-        .where(eq(schema.investors.id, investorId));
+    await tdb.insert(schema.vouchers).values({
+      id: generateId(),
+      voucherNumber,
+      type: 'Receipt',
+      date,
+      bankId,
+      amount: String(amountNum),
+      description: `Equity Capital contribution from investor ${investor.name}: ${description}`,
+      referenceType: 'Equity',
+      referenceId: investorId,
+      createdById: req.user.id,
+      createdAt: new Date(),
+      companyId,
     });
+
+    await tdb.update(schema.investors)
+      .set({ capitalContributed: String(round2(Number(investor.capitalContributed || 0) + amountNum)) })
+      .where(eq(schema.investors.id, investorId));
 
     res.json({ success: true });
   } catch (error: any) {
@@ -1359,14 +1383,14 @@ router.post('/investors/:id/investment', async (req: any, res) => {
 });
 
 // --- Fiscal Months ---
-router.get('/months', async (req: any, res) => {
+router.get('/months', withTenantDb, async (req: any, res) => {
   try {
     // Deliberately no permission gate here — every authenticated user in a company needs
     // to see the current fiscal period (Dashboard, POS, etc. all depend on this basic
     // read). Only *closing/opening* a month (POST below) is gated behind
     // fiscalMonths.access, matching the original design intent.
     const companyId = req.targetCompanyId;
-    const months = await db.select().from(schema.fiscalMonths).where(eq(schema.fiscalMonths.companyId, companyId));
+    const months = await tenantDb().select().from(schema.fiscalMonths).where(eq(schema.fiscalMonths.companyId, companyId));
     // Normalize status to Title Case ('Open' | 'Closed')
     const normalizedMonths = months.map(m => {
       let status = m.status;
@@ -1390,8 +1414,9 @@ router.get('/months', async (req: any, res) => {
 // fast UX feedback and are bypassable by any direct API call (see BACKLOG.md items 21 and 35).
 const MAX_OPEN_FISCAL_MONTHS = 3;
 
-router.post('/months', async (req: any, res) => {
+router.post('/months', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const data = req.body;
     const mData = { ...data };
     mData.companyId = req.targetCompanyId;
@@ -1414,7 +1439,7 @@ router.post('/months', async (req: any, res) => {
 
     // Fetch all fiscal months for this company to evaluate the cap / close-ordering rules
     // against the actual persisted state, not whatever the client's in-memory copy claims.
-    const existingMonthsForCompany = await db.select()
+    const existingMonthsForCompany = await tdb.select()
       .from(schema.fiscalMonths)
       .where(eq(schema.fiscalMonths.companyId, mData.companyId));
     const existingRow = existingMonthsForCompany.find(m => m.id === mData.id);
@@ -1454,7 +1479,7 @@ router.post('/months', async (req: any, res) => {
       }
 
       // 1. Fetch active templates for the company
-      const activeTemplates = await db.select()
+      const activeTemplates = await tdb.select()
         .from(schema.recurringExpenseTemplates)
         .where(
           and(
@@ -1462,9 +1487,9 @@ router.post('/months', async (req: any, res) => {
             eq(schema.recurringExpenseTemplates.isActive, true)
           )
         );
-      
+
       // 2. Fetch postings for this month
-      const postings = await db.select()
+      const postings = await tdb.select()
         .from(schema.recurringPostings)
         .where(eq(schema.recurringPostings.monthId, mData.id));
 
@@ -1487,13 +1512,16 @@ router.post('/months', async (req: any, res) => {
     // and once this row is inserted the value is effectively permanent (it later feeds
     // the Balance Sheet's retained-earnings figure via computeBalanceSheet). Recompute it
     // authoritatively server-side, overwriting whatever mData.closedPnL held.
+    // computeMonthPnL now takes an executor as its first argument and runs through this
+    // request's own tenantDb transaction (tdb) rather than the module-level superuser
+    // `db` — fixed as part of threading tenantDb through server/lib/financialReports.ts.
     if (mData.status === 'Closed') {
-      const pnl = await computeMonthPnL(mData.companyId, mData.id);
+      const pnl = await computeMonthPnL(tdb, mData.companyId, mData.id);
       const chosen = mData.closedOption === 'including_pending' ? pnl.includingPending : pnl.paid;
       mData.closedPnL = { totalRevenue: chosen.revenue, totalExpenses: chosen.expenses, netProfit: chosen.net };
     }
 
-    await db.insert(schema.fiscalMonths).values(mData).onConflictDoUpdate({
+    await tdb.insert(schema.fiscalMonths).values(mData).onConflictDoUpdate({
       target: [schema.fiscalMonths.id, schema.fiscalMonths.companyId],
       set: mData
     });
@@ -1512,83 +1540,84 @@ router.post('/months', async (req: any, res) => {
   }
 });
 
-router.post('/recurring-postings', async (req: any, res) => {
+router.post('/recurring-postings', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.expense.create.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     const { templateId, monthId, postType, amount, dateStr, paymentStatus, bankId } = req.body;
     const companyId = req.targetCompanyId;
 
-    const refError = await assertDocumentRefsOwnedByCompany(db, companyId, { bankId });
+    const refError = await assertDocumentRefsOwnedByCompany(tdb, companyId, { bankId });
     if (refError) return res.status(400).json({ error: refError });
 
-    await db.transaction(async (tx) => {
-      // 1. Validation
-      await validateTransactionDate(dateStr, companyId);
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
+    // 1. Validation
+    await validateTransactionDate(dateStr, companyId);
 
-      const [existingPosting] = await tx.select().from(schema.recurringPostings).where(and(eq(schema.recurringPostings.templateId, templateId), eq(schema.recurringPostings.monthId, monthId), eq(schema.recurringPostings.companyId, companyId)));
-      if (existingPosting && existingPosting.status !== 'Unposted') {
-        throw new Error('This recurring template is already posted for this month.');
-      }
+    const [existingPosting] = await tdb.select().from(schema.recurringPostings).where(and(eq(schema.recurringPostings.templateId, templateId), eq(schema.recurringPostings.monthId, monthId), eq(schema.recurringPostings.companyId, companyId)));
+    if (existingPosting && existingPosting.status !== 'Unposted') {
+      throw new Error('This recurring template is already posted for this month.');
+    }
 
-      // 2. Create Expense
-      const [template] = await tx.select().from(schema.recurringExpenseTemplates).where(and(eq(schema.recurringExpenseTemplates.id, templateId), eq(schema.recurringExpenseTemplates.companyId, companyId)));
-      if (!template) throw new Error('Recurring template not found');
+    // 2. Create Expense
+    const [template] = await tdb.select().from(schema.recurringExpenseTemplates).where(and(eq(schema.recurringExpenseTemplates.id, templateId), eq(schema.recurringExpenseTemplates.companyId, companyId)));
+    if (!template) throw new Error('Recurring template not found');
 
-      const expNumber = await getAndIncrementDocumentNumber(tx, companyId, 'expense', dateStr, null);
-      const expenseId = generateId();
+    const expNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'expense', dateStr, null);
+    const expenseId = generateId();
 
-      await tx.insert(schema.expenses).values({
-        id: expenseId,
-        expenseNumber: expNumber,
+    await tdb.insert(schema.expenses).values({
+      id: expenseId,
+      expenseNumber: expNumber,
+      date: dateStr,
+      vendorId: template.vendorId,
+      taxSlabId: template.taxSlabId,
+      bankId,
+      paymentStatus: postType === 'Accrual' ? 'Unpaid' : paymentStatus,
+      paymentDate: (postType === 'Actual' && paymentStatus === 'Paid') ? new Date(dateStr) : null,
+      description: `Posted for ${monthId}`, // Simplified
+      amount: String(amount),
+      status: 'Active',
+      type: postType,
+      companyId,
+      createdById: req.user.id,
+      createdAt: new Date(),
+    });
+
+    // 3. Save Posting
+    await tdb.insert(schema.recurringPostings).values({
+      id: existingPosting ? existingPosting.id : generateId(),
+      templateId,
+      monthId,
+      status: postType === 'Actual' ? 'Posted as Actual' : 'Posted as Accrual',
+      expenseId,
+      companyId
+    }).onConflictDoUpdate({
+      target: [schema.recurringPostings.templateId, schema.recurringPostings.monthId, schema.recurringPostings.companyId],
+      set: { status: postType === 'Actual' ? 'Posted as Actual' : 'Posted as Accrual', expenseId }
+    });
+
+    // 4. Generate Voucher if Actual & Paid
+    if (postType === 'Actual' && paymentStatus === 'Paid') {
+      const voucherNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'voucher', dateStr, null);
+      await tdb.insert(schema.vouchers).values({
+        id: generateId(),
+        voucherNumber,
+        type: 'Payment',
         date: dateStr,
-        vendorId: template.vendorId,
-        taxSlabId: template.taxSlabId,
         bankId,
-        paymentStatus: postType === 'Accrual' ? 'Unpaid' : paymentStatus,
-        paymentDate: (postType === 'Actual' && paymentStatus === 'Paid') ? new Date(dateStr) : null,
-        description: `Posted for ${monthId}`, // Simplified
         amount: String(amount),
-        status: 'Active',
-        type: postType,
-        companyId,
+        description: `Payment voucher for ${expNumber}`,
+        referenceType: 'Expense',
+        referenceId: expenseId,
+        companyId: companyId,
         createdById: req.user.id,
         createdAt: new Date(),
       });
-
-      // 3. Save Posting
-      await tx.insert(schema.recurringPostings).values({
-        id: existingPosting ? existingPosting.id : generateId(),
-        templateId,
-        monthId,
-        status: postType === 'Actual' ? 'Posted as Actual' : 'Posted as Accrual',
-        expenseId,
-        companyId
-      }).onConflictDoUpdate({
-        target: [schema.recurringPostings.templateId, schema.recurringPostings.monthId, schema.recurringPostings.companyId],
-        set: { status: postType === 'Actual' ? 'Posted as Actual' : 'Posted as Accrual', expenseId }
-      });
-
-      // 4. Generate Voucher if Actual & Paid
-      if (postType === 'Actual' && paymentStatus === 'Paid') {
-        const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', dateStr, null);
-        await tx.insert(schema.vouchers).values({
-          id: generateId(),
-          voucherNumber,
-          type: 'Payment',
-          date: dateStr,
-          bankId,
-          amount: String(amount),
-          description: `Payment voucher for ${expNumber}`,
-          referenceType: 'Expense',
-          referenceId: expenseId,
-          companyId: companyId,
-          createdById: req.user.id,
-          createdAt: new Date(),
-        });
-      }
-    });
+    }
 
     res.json({ success: true });
   } catch (error: any) {
@@ -1596,84 +1625,85 @@ router.post('/recurring-postings', async (req: any, res) => {
   }
 });
 
-router.post('/settle-accrual', async (req: any, res) => {
+router.post('/settle-accrual', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.expense.create.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     const { accrualExpenseId, actualAmount, actualDate, paymentStatus, bankId } = req.body;
     const companyId = req.targetCompanyId;
 
-    const refError = await assertDocumentRefsOwnedByCompany(db, companyId, { bankId });
+    const refError = await assertDocumentRefsOwnedByCompany(tdb, companyId, { bankId });
     if (refError) return res.status(400).json({ error: refError });
 
-    await db.transaction(async (tx) => {
-      // 1. Fetch accrual expense
-      const [accrualExpense] = await tx.select()
-        .from(schema.expenses)
-        .where(and(eq(schema.expenses.id, accrualExpenseId), eq(schema.expenses.type, 'Accrual'), eq(schema.expenses.companyId, companyId)));
-      if (!accrualExpense) throw new Error('Accrual expense not found.');
-      if (accrualExpense.accrualSettled) throw new Error('Accrual is already settled.');
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
+    // 1. Fetch accrual expense
+    const [accrualExpense] = await tdb.select()
+      .from(schema.expenses)
+      .where(and(eq(schema.expenses.id, accrualExpenseId), eq(schema.expenses.type, 'Accrual'), eq(schema.expenses.companyId, companyId)));
+    if (!accrualExpense) throw new Error('Accrual expense not found.');
+    if (accrualExpense.accrualSettled) throw new Error('Accrual is already settled.');
 
-      // 2. Validate transaction date
-      await validateTransactionDate(actualDate, companyId);
+    // 2. Validate transaction date
+    await validateTransactionDate(actualDate, companyId);
 
-      // 3. Increment expense counter
-      const expNumber = await getAndIncrementDocumentNumber(tx, companyId, 'expense', actualDate, null);
-      const actualExpenseId = generateId();
+    // 3. Increment expense counter
+    const expNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'expense', actualDate, null);
+    const actualExpenseId = generateId();
 
-      // 4. Create standard Actual Expense
-      await tx.insert(schema.expenses).values({
-        id: actualExpenseId,
-        expenseNumber: expNumber,
+    // 4. Create standard Actual Expense
+    await tdb.insert(schema.expenses).values({
+      id: actualExpenseId,
+      expenseNumber: expNumber,
+      date: actualDate,
+      vendorId: accrualExpense.vendorId,
+      taxSlabId: accrualExpense.taxSlabId,
+      bankId,
+      paymentStatus,
+      paymentDate: paymentStatus === 'Paid' ? new Date(actualDate) : null,
+      description: `Accrual Settlement: Actual payment for "${accrualExpense.description}"`,
+      amount: String(actualAmount),
+      status: 'Active',
+      type: 'Actual',
+      originAccrualId: accrualExpenseId,
+      createdById: req.user.id,
+      createdAt: new Date(),
+      companyId,
+    });
+
+    // 5. Mark Accrual as Settled
+    await tdb.update(schema.expenses)
+      .set({
+        accrualSettled: true,
+        settledExpenseId: actualExpenseId,
+      })
+      .where(eq(schema.expenses.id, accrualExpenseId));
+
+    // 6. Update corresponding posting status to 'Accrual Settled'
+    await tdb.update(schema.recurringPostings)
+      .set({ status: 'Accrual Settled' })
+      .where(eq(schema.recurringPostings.expenseId, accrualExpenseId));
+
+    // 7. Generate Voucher if Paid
+    if (paymentStatus === 'Paid') {
+      const voucherNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'voucher', actualDate, null);
+      await tdb.insert(schema.vouchers).values({
+        id: generateId(),
+        voucherNumber,
+        type: 'Payment',
         date: actualDate,
-        vendorId: accrualExpense.vendorId,
-        taxSlabId: accrualExpense.taxSlabId,
         bankId,
-        paymentStatus,
-        paymentDate: paymentStatus === 'Paid' ? new Date(actualDate) : null,
-        description: `Accrual Settlement: Actual payment for "${accrualExpense.description}"`,
         amount: String(actualAmount),
-        status: 'Active',
-        type: 'Actual',
-        originAccrualId: accrualExpenseId,
+        description: `Payment voucher for actual settlement of accrual ${accrualExpense.expenseNumber}`,
+        referenceType: 'Expense',
+        referenceId: actualExpenseId,
         createdById: req.user.id,
         createdAt: new Date(),
         companyId,
       });
-
-      // 5. Mark Accrual as Settled
-      await tx.update(schema.expenses)
-        .set({
-          accrualSettled: true,
-          settledExpenseId: actualExpenseId,
-        })
-        .where(eq(schema.expenses.id, accrualExpenseId));
-
-      // 6. Update corresponding posting status to 'Accrual Settled'
-      await tx.update(schema.recurringPostings)
-        .set({ status: 'Accrual Settled' })
-        .where(eq(schema.recurringPostings.expenseId, accrualExpenseId));
-
-      // 7. Generate Voucher if Paid
-      if (paymentStatus === 'Paid') {
-        const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', actualDate, null);
-        await tx.insert(schema.vouchers).values({
-          id: generateId(),
-          voucherNumber,
-          type: 'Payment',
-          date: actualDate,
-          bankId,
-          amount: String(actualAmount),
-          description: `Payment voucher for actual settlement of accrual ${accrualExpense.expenseNumber}`,
-          referenceType: 'Expense',
-          referenceId: actualExpenseId,
-          createdById: req.user.id,
-          createdAt: new Date(),
-          companyId,
-        });
-      }
-    });
+    }
 
     res.json({ success: true });
   } catch (error: any) {
@@ -1684,8 +1714,9 @@ router.post('/settle-accrual', async (req: any, res) => {
 // --- Recurring Expense Templates (CRUD) — ports src/dbStore.ts's in-memory template
 // management from RecurringExpenses.tsx onto real per-record routes, sibling to the
 // recurring-postings/settle-accrual routes above which already own this domain. ---
-router.post('/recurring-templates', async (req: any, res) => {
+router.post('/recurring-templates', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.expense.create.enabled) return res.status(403).json({ error: 'Forbidden' });
 
@@ -1696,12 +1727,12 @@ router.post('/recurring-templates', async (req: any, res) => {
     }
     const companyId = req.targetCompanyId;
 
-    const refError = await assertDocumentRefsOwnedByCompany(db, companyId, { bankId, vendorId, taxSlabIds: [taxSlabId] });
+    const refError = await assertDocumentRefsOwnedByCompany(tdb, companyId, { bankId, vendorId, taxSlabIds: [taxSlabId] });
     if (refError) return res.status(400).json({ error: refError });
 
     const id = generateId();
 
-    await db.insert(schema.recurringExpenseTemplates).values({
+    await tdb.insert(schema.recurringExpenseTemplates).values({
       id,
       description,
       defaultAmount: String(round2(amountNum)),
@@ -1719,8 +1750,9 @@ router.post('/recurring-templates', async (req: any, res) => {
   }
 });
 
-router.put('/recurring-templates/:id', async (req: any, res) => {
+router.put('/recurring-templates/:id', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.expense.update.enabled) return res.status(403).json({ error: 'Forbidden' });
 
@@ -1732,14 +1764,14 @@ router.put('/recurring-templates/:id', async (req: any, res) => {
     }
     const companyId = req.targetCompanyId;
 
-    const [existing] = await db.select().from(schema.recurringExpenseTemplates)
+    const [existing] = await tdb.select().from(schema.recurringExpenseTemplates)
       .where(and(eq(schema.recurringExpenseTemplates.id, id), eq(schema.recurringExpenseTemplates.companyId, companyId)));
     if (!existing) return res.status(404).json({ error: 'Recurring template not found.' });
 
-    const refError = await assertDocumentRefsOwnedByCompany(db, companyId, { bankId, vendorId, taxSlabIds: [taxSlabId] });
+    const refError = await assertDocumentRefsOwnedByCompany(tdb, companyId, { bankId, vendorId, taxSlabIds: [taxSlabId] });
     if (refError) return res.status(400).json({ error: refError });
 
-    await db.update(schema.recurringExpenseTemplates).set({
+    await tdb.update(schema.recurringExpenseTemplates).set({
       description,
       defaultAmount: String(round2(amountNum)),
       bankId,
@@ -1755,20 +1787,21 @@ router.put('/recurring-templates/:id', async (req: any, res) => {
   }
 });
 
-router.patch('/recurring-templates/:id/toggle', async (req: any, res) => {
+router.patch('/recurring-templates/:id/toggle', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.expense.delete.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     const { id } = req.params;
     const companyId = req.targetCompanyId;
 
-    const [existing] = await db.select().from(schema.recurringExpenseTemplates)
+    const [existing] = await tdb.select().from(schema.recurringExpenseTemplates)
       .where(and(eq(schema.recurringExpenseTemplates.id, id), eq(schema.recurringExpenseTemplates.companyId, companyId)));
     if (!existing) return res.status(404).json({ error: 'Recurring template not found.' });
 
     const newActive = !existing.isActive;
-    await db.update(schema.recurringExpenseTemplates).set({ isActive: newActive }).where(eq(schema.recurringExpenseTemplates.id, id));
+    await tdb.update(schema.recurringExpenseTemplates).set({ isActive: newActive }).where(eq(schema.recurringExpenseTemplates.id, id));
 
     recordAuditLog(req, newActive ? 'ACTIVATE_RECURRING_TEMPLATE' : 'DEACTIVATE_RECURRING_TEMPLATE', 'recurring_expense_template', id, { description: existing.description });
     res.json({ success: true, isActive: newActive });
@@ -1777,15 +1810,16 @@ router.patch('/recurring-templates/:id/toggle', async (req: any, res) => {
   }
 });
 
-router.delete('/recurring-templates/:id', async (req: any, res) => {
+router.delete('/recurring-templates/:id', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.expense.delete.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     const { id } = req.params;
     const companyId = req.targetCompanyId;
 
-    const [existing] = await db.select().from(schema.recurringExpenseTemplates)
+    const [existing] = await tdb.select().from(schema.recurringExpenseTemplates)
       .where(and(eq(schema.recurringExpenseTemplates.id, id), eq(schema.recurringExpenseTemplates.companyId, companyId)));
     if (!existing) return res.status(404).json({ error: 'Recurring template not found.' });
 
@@ -1795,7 +1829,7 @@ router.delete('/recurring-templates/:id', async (req: any, res) => {
     // history and hit recurringPostings.templateId's FK constraint the moment any posting
     // had ever been generated from it; deactivating instead has neither problem and keeps
     // every past posting's reference intact.
-    await db.update(schema.recurringExpenseTemplates).set({ isActive: false }).where(eq(schema.recurringExpenseTemplates.id, id));
+    await tdb.update(schema.recurringExpenseTemplates).set({ isActive: false }).where(eq(schema.recurringExpenseTemplates.id, id));
 
     recordAuditLog(req, 'DEACTIVATE_RECURRING_TEMPLATE', 'recurring_expense_template', id, { description: existing.description });
     res.json({ success: true });
@@ -1806,8 +1840,9 @@ router.delete('/recurring-templates/:id', async (req: any, res) => {
 
 // --- Accrual entry management (edit / delete) — ports src/dbStore.ts's in-memory
 // handleSaveAccrual/handleDeleteAccrual from RecurringExpenses.tsx. ---
-router.put('/accruals/:id', async (req: any, res) => {
+router.put('/accruals/:id', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.expense.update.enabled) return res.status(403).json({ error: 'Forbidden' });
 
@@ -1817,14 +1852,14 @@ router.put('/accruals/:id', async (req: any, res) => {
     if (isNaN(amountNum) || amountNum <= 0) return res.status(400).json({ error: 'Please enter a valid amount.' });
 
     const companyId = req.targetCompanyId;
-    const [existing] = await db.select().from(schema.expenses)
+    const [existing] = await tdb.select().from(schema.expenses)
       .where(and(eq(schema.expenses.id, id), eq(schema.expenses.companyId, companyId)));
     if (!existing) return res.status(404).json({ error: 'Accrual entry not found.' });
 
-    const refError = await assertDocumentRefsOwnedByCompany(db, companyId, { bankId, vendorId, taxSlabIds: [taxSlabId] });
+    const refError = await assertDocumentRefsOwnedByCompany(tdb, companyId, { bankId, vendorId, taxSlabIds: [taxSlabId] });
     if (refError) return res.status(400).json({ error: refError });
 
-    await db.update(schema.expenses).set({
+    await tdb.update(schema.expenses).set({
       description,
       amount: String(round2(amountNum)),
       vendorId,
@@ -1840,28 +1875,28 @@ router.put('/accruals/:id', async (req: any, res) => {
   }
 });
 
-router.delete('/accruals/:id', async (req: any, res) => {
+router.delete('/accruals/:id', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.expense.delete.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     const { id } = req.params;
     const companyId = req.targetCompanyId;
 
-    let cancelledAccrualNumber = '';
-    await db.transaction(async (tx) => {
-      // Soft-cancel, not a real delete — reuses the exact same logic POST
-      // /expenses/:id/cancel already applies to every other expense (status:'Cancelled',
-      // requires an open fiscal month, unlinks the accrual<->settlement pointers, posts a
-      // Reversal voucher if one was ever paid). The expense row and its line items are
-      // left in place, same as every other cancelled document in this app keeps its own
-      // content. Only the linked recurringPostings join row is still removed — it's a
-      // workflow marker, not a financial document, and removing it frees that template's
-      // month slot to be posted again (recurringPostings has a unique
-      // (templateId, monthId, companyId) constraint).
-      await tx.delete(schema.recurringPostings).where(eq(schema.recurringPostings.expenseId, id));
-      cancelledAccrualNumber = (await cancelExpense(tx, req, id, companyId)).expenseNumber;
-    });
+    // Soft-cancel, not a real delete — reuses the exact same logic POST
+    // /expenses/:id/cancel already applies to every other expense (status:'Cancelled',
+    // requires an open fiscal month, unlinks the accrual<->settlement pointers, posts a
+    // Reversal voucher if one was ever paid). The expense row and its line items are
+    // left in place, same as every other cancelled document in this app keeps its own
+    // content. Only the linked recurringPostings join row is still removed — it's a
+    // workflow marker, not a financial document, and removing it frees that template's
+    // month slot to be posted again (recurringPostings has a unique
+    // (templateId, monthId, companyId) constraint).
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
+    await tdb.delete(schema.recurringPostings).where(eq(schema.recurringPostings.expenseId, id));
+    const cancelledAccrualNumber = (await cancelExpense(tdb, req, id, companyId)).expenseNumber;
 
     recordAuditLog(req, 'CANCEL_ACCRUAL', 'expense', id, { expenseNumber: cancelledAccrualNumber });
     res.json({ success: true });
@@ -1870,8 +1905,9 @@ router.delete('/accruals/:id', async (req: any, res) => {
   }
 });
 
-router.post('/interbank-transfer', async (req: any, res) => {
+router.post('/interbank-transfer', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     if (!hasPermission(req.user, 'banks.transfer')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
@@ -1879,54 +1915,54 @@ router.post('/interbank-transfer', async (req: any, res) => {
     const { sourceBankId, destBankId, amount, description, dateStr } = req.body;
     const companyId = req.targetCompanyId;
 
-    await db.transaction(async (tx) => {
-      // 1. Fetch banks (scoped to the caller's company — a cross-tenant bank id must not resolve)
-      const [sourceBank] = await tx.select().from(schema.bankAccounts).where(and(eq(schema.bankAccounts.id, sourceBankId), eq(schema.bankAccounts.isActive, true), eq(schema.bankAccounts.companyId, companyId)));
-      const [destBank] = await tx.select().from(schema.bankAccounts).where(and(eq(schema.bankAccounts.id, destBankId), eq(schema.bankAccounts.isActive, true), eq(schema.bankAccounts.companyId, companyId)));
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
+    // 1. Fetch banks (scoped to the caller's company — a cross-tenant bank id must not resolve)
+    const [sourceBank] = await tdb.select().from(schema.bankAccounts).where(and(eq(schema.bankAccounts.id, sourceBankId), eq(schema.bankAccounts.isActive, true), eq(schema.bankAccounts.companyId, companyId)));
+    const [destBank] = await tdb.select().from(schema.bankAccounts).where(and(eq(schema.bankAccounts.id, destBankId), eq(schema.bankAccounts.isActive, true), eq(schema.bankAccounts.companyId, companyId)));
 
-      if (!sourceBank) throw new Error('Active source bank account not found.');
-      if (!destBank) throw new Error('Active destination bank account not found.');
-      if (sourceBankId === destBankId) throw new Error('Source and destination bank accounts must be different.');
-      if (amount <= 0) throw new Error('Transfer amount must be greater than zero.');
+    if (!sourceBank) throw new Error('Active source bank account not found.');
+    if (!destBank) throw new Error('Active destination bank account not found.');
+    if (sourceBankId === destBankId) throw new Error('Source and destination bank accounts must be different.');
+    if (amount <= 0) throw new Error('Transfer amount must be greater than zero.');
 
-      // 2. Validate transaction date
-      await validateTransactionDate(dateStr, companyId);
+    // 2. Validate transaction date
+    await validateTransactionDate(dateStr, companyId);
 
-      const transferId = generateId();
+    const transferId = generateId();
 
-      // 3. Create TransferOut Voucher
-      const voucherNumOut = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', dateStr, null);
-      await tx.insert(schema.vouchers).values({
-        id: generateId(),
-        voucherNumber: voucherNumOut,
-        type: 'TransferOut',
-        date: dateStr,
-        bankId: sourceBankId,
-        amount: String(amount),
-        description: `Inter-bank Transfer Out to ${destBank.bankName}: ${description || 'Inter-bank fund transfer'}`,
-        referenceType: 'Transfer',
-        referenceId: transferId,
-        createdById: req.user.id,
-        createdAt: new Date(),
-        companyId,
-      });
+    // 3. Create TransferOut Voucher
+    const voucherNumOut = await getAndIncrementDocumentNumber(tdb, companyId, 'voucher', dateStr, null);
+    await tdb.insert(schema.vouchers).values({
+      id: generateId(),
+      voucherNumber: voucherNumOut,
+      type: 'TransferOut',
+      date: dateStr,
+      bankId: sourceBankId,
+      amount: String(amount),
+      description: `Inter-bank Transfer Out to ${destBank.bankName}: ${description || 'Inter-bank fund transfer'}`,
+      referenceType: 'Transfer',
+      referenceId: transferId,
+      createdById: req.user.id,
+      createdAt: new Date(),
+      companyId,
+    });
 
-      // 4. Create TransferIn Voucher
-      const voucherNumIn = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', dateStr, null);
-      await tx.insert(schema.vouchers).values({
-        id: generateId(),
-        voucherNumber: voucherNumIn,
-        type: 'TransferIn',
-        date: dateStr,
-        bankId: destBankId,
-        amount: String(amount),
-        description: `Inter-bank Transfer In from ${sourceBank.bankName}: ${description || 'Inter-bank fund transfer'}`,
-        referenceType: 'Transfer',
-        referenceId: transferId,
-        createdById: req.user.id,
-        createdAt: new Date(),
-        companyId,
-      });
+    // 4. Create TransferIn Voucher
+    const voucherNumIn = await getAndIncrementDocumentNumber(tdb, companyId, 'voucher', dateStr, null);
+    await tdb.insert(schema.vouchers).values({
+      id: generateId(),
+      voucherNumber: voucherNumIn,
+      type: 'TransferIn',
+      date: dateStr,
+      bankId: destBankId,
+      amount: String(amount),
+      description: `Inter-bank Transfer In from ${sourceBank.bankName}: ${description || 'Inter-bank fund transfer'}`,
+      referenceType: 'Transfer',
+      referenceId: transferId,
+      createdById: req.user.id,
+      createdAt: new Date(),
+      companyId,
     });
 
     res.json({ success: true });

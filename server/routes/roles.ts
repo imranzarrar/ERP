@@ -4,6 +4,7 @@ import * as schema from '../../src/db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { isAdminUser, isSuperAdminUser, assertOwnsRow } from '../lib/authz.js';
 import { generateId } from '../../src/id.js';
+import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
 
 const router = express.Router();
 
@@ -11,18 +12,24 @@ const router = express.Router();
 // separate granular permission node (a user can't grant themselves broader access by
 // editing the role that grants it).
 
-router.get('/', async (req: any, res) => {
+router.get('/', withTenantDb, async (req: any, res) => {
   try {
     if (!isAdminUser(req.user)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
-    const roles = await db.select().from(schema.roles).where(eq(schema.roles.companyId, req.targetCompanyId));
+    const roles = await tenantDb().select().from(schema.roles).where(eq(schema.roles.companyId, req.targetCompanyId));
     res.json(roles);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
+// Deliberately stays on the superuser `db` in full, never migrated to tenantDb() — a
+// super-admin may create/edit a role under an EXPLICITLY DIFFERENT company than their own
+// currently active one (data.companyId below, mirroring users.ts's POST / route). A write
+// like that would violate tenantDb's RLS WITH CHECK (scoped to req.targetCompanyId) and
+// fail outright, breaking that legitimate cross-company path — same reasoning as
+// masterEntities.ts's POST /companies exemption.
 router.post('/', async (req: any, res) => {
   try {
     if (!isAdminUser(req.user)) {
@@ -66,12 +73,15 @@ router.post('/', async (req: any, res) => {
   }
 });
 
-router.delete('/:id', async (req: any, res) => {
+router.delete('/:id', withTenantDb, async (req: any, res) => {
   try {
     if (!isAdminUser(req.user)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
+    // Deliberately queries via the superuser `db`, NOT tenantDb — this check needs to see
+    // a row EVEN IF IT BELONGS TO ANOTHER COMPANY, precisely to catch and reject that case
+    // (assertOwnsRow below) with the correct 403 rather than a tenantDb-invisible 404.
     const [existing] = await db.select().from(schema.roles).where(eq(schema.roles.id, id));
     if (!existing) {
       return res.status(404).json({ error: 'Role not found.' });
@@ -79,13 +89,14 @@ router.delete('/:id', async (req: any, res) => {
     if (!assertOwnsRow(existing, req)) {
       return res.status(403).json({ error: 'Forbidden: this role belongs to another company' });
     }
+    const tdb = tenantDb();
 
-    const assignedUsers = await db.select().from(schema.userRoles).where(eq(schema.userRoles.roleId, id)).limit(1);
+    const assignedUsers = await tdb.select().from(schema.userRoles).where(eq(schema.userRoles.roleId, id)).limit(1);
     if (assignedUsers.length > 0) {
       return res.status(400).json({ error: 'Cannot delete this role because it is still assigned to at least one user. Unassign it first.' });
     }
 
-    await db.delete(schema.roles).where(and(eq(schema.roles.id, id), eq(schema.roles.companyId, existing.companyId)));
+    await tdb.delete(schema.roles).where(and(eq(schema.roles.id, id), eq(schema.roles.companyId, existing.companyId)));
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

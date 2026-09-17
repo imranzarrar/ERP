@@ -152,25 +152,29 @@ router.patch('/customers/:id/toggle-active', withTenantDb, async (req: any, res)
 });
 
 // --- Vendors ---
-router.get('/vendors', async (req: any, res) => {
+router.get('/vendors', withTenantDb, async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.vendors.read.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const companyId = req.targetCompanyId;
-    const vendors = await db.select().from(schema.vendors).where(eq(schema.vendors.companyId, companyId));
+    const vendors = await tenantDb().select().from(schema.vendors).where(eq(schema.vendors.companyId, companyId));
     res.json(vendors);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.post('/vendors', async (req: any, res) => {
+router.post('/vendors', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     const data = { ...req.body };
 
+    // Deliberately the superuser `db`, not tenantDb — see the matching comment on
+    // POST /customers above for why this specific hijack-detection lookup must see a
+    // cross-company row to reject it with a clean 403, instead of RLS hiding it.
     let existing: typeof schema.vendors.$inferSelect | undefined;
     if (data.id) {
       [existing] = await db.select().from(schema.vendors).where(eq(schema.vendors.id, data.id));
@@ -200,15 +204,15 @@ router.post('/vendors', async (req: any, res) => {
       data.address = composeAddressFromZatcaFields(data) || data.address;
     }
 
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
     const todayIso = new Date().toISOString().slice(0, 10);
-    await db.transaction(async (tx) => {
-      if (!existing) {
-        data.vendorCode = await getAndIncrementDocumentNumber(tx, data.companyId, 'vendorCode', todayIso);
-      }
-      await tx.insert(schema.vendors).values(data).onConflictDoUpdate({
-        target: schema.vendors.id,
-        set: data
-      });
+    if (!existing) {
+      data.vendorCode = await getAndIncrementDocumentNumber(tdb, data.companyId, 'vendorCode', todayIso);
+    }
+    await tdb.insert(schema.vendors).values(data).onConflictDoUpdate({
+      target: schema.vendors.id,
+      set: data
     });
     res.json({ success: true });
   } catch (error: any) {
@@ -216,20 +220,21 @@ router.post('/vendors', async (req: any, res) => {
   }
 });
 
-router.patch('/vendors/:id/toggle-active', async (req: any, res) => {
+router.patch('/vendors/:id/toggle-active', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.vendors.delete.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
-    const [existing] = await db.select().from(schema.vendors)
+    const [existing] = await tdb.select().from(schema.vendors)
       .where(and(eq(schema.vendors.id, id), eq(schema.vendors.companyId, req.targetCompanyId)));
     if (!existing) {
       return res.status(404).json({ error: 'Vendor not found.' });
     }
     const nextActive = existing.isActive === false;
-    await db.update(schema.vendors).set({ isActive: nextActive }).where(eq(schema.vendors.id, id));
+    await tdb.update(schema.vendors).set({ isActive: nextActive }).where(eq(schema.vendors.id, id));
     res.json({ success: true, isActive: nextActive });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -237,17 +242,18 @@ router.patch('/vendors/:id/toggle-active', async (req: any, res) => {
 });
 
 // --- Products ---
-router.get('/products', async (req: any, res) => {
+router.get('/products', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.products.read.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const companyId = req.targetCompanyId;
-    const products = await db.select().from(schema.productsServices).where(eq(schema.productsServices.companyId, companyId));
+    const products = await tdb.select().from(schema.productsServices).where(eq(schema.productsServices.companyId, companyId));
     const productIds = products.map(p => p.id);
     const links = productIds.length
-      ? await db.select().from(schema.productModifierGroups).where(inArray(schema.productModifierGroups.productId, productIds))
+      ? await tdb.select().from(schema.productModifierGroups).where(inArray(schema.productModifierGroups.productId, productIds))
       : [];
     const groupIdsByProduct = new Map<string, string[]>();
     for (const l of links.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))) {
@@ -260,8 +266,9 @@ router.get('/products', async (req: any, res) => {
   }
 });
 
-router.post('/products', async (req: any, res) => {
+router.post('/products', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     const data = { ...req.body };
     // Not a column on products_services — pulled off before the insert/update below and
@@ -273,6 +280,8 @@ router.post('/products', async (req: any, res) => {
     const modifierGroupIds: string[] | undefined = Array.isArray(data.modifierGroupIds) ? data.modifierGroupIds : undefined;
     delete data.modifierGroupIds;
 
+    // Deliberately the superuser `db`, not tenantDb — same hijack-detection reasoning as
+    // POST /customers above.
     let existing: typeof schema.productsServices.$inferSelect | undefined;
     if (data.id) {
       [existing] = await db.select().from(schema.productsServices).where(eq(schema.productsServices.id, data.id));
@@ -325,7 +334,7 @@ router.post('/products', async (req: any, res) => {
     // entirely, same "don't re-validate what wasn't sent" convention as other upsert
     // routes in this file.
     if (typeof data.base64Image === 'string' && data.base64Image) {
-      const [company] = await db.select({ posSettings: schema.companies.posSettings }).from(schema.companies).where(eq(schema.companies.id, data.companyId));
+      const [company] = await tdb.select({ posSettings: schema.companies.posSettings }).from(schema.companies).where(eq(schema.companies.id, data.companyId));
       const posSettings = (company?.posSettings as any) || {};
       const maxSizeKB = posSettings.maxImageSizeKB || 150;
       const maxDim = posSettings.maxImageDimensions || 600;
@@ -350,7 +359,7 @@ router.post('/products', async (req: any, res) => {
     }
 
     if (modifierGroupIds !== undefined) {
-      await assertModifierGroupsOwnedByCompany(db, data.companyId, modifierGroupIds);
+      await assertModifierGroupsOwnedByCompany(tdb, data.companyId, modifierGroupIds);
     }
 
     // sku is auto-generated on create and immutable afterward — never let an edit payload
@@ -359,54 +368,55 @@ router.post('/products', async (req: any, res) => {
       delete data.sku;
     }
 
-    await db.transaction(async (tx) => {
-      if (!existing) {
-        data.sku = await getAndIncrementDocumentNumber(tx, data.companyId, 'sku', new Date().toISOString().slice(0, 10));
-      }
-      await tx.insert(schema.productsServices).values(data).onConflictDoUpdate({
-        target: schema.productsServices.id,
-        set: data
-      });
-      if (modifierGroupIds !== undefined) {
-        // Replace-the-whole-set on every save, same convention as quotation/invoice
-        // items on edit — simpler and safer than diffing add/remove, and this list is
-        // always small (a handful of modifier groups per product).
-        await tx.delete(schema.productModifierGroups).where(eq(schema.productModifierGroups.productId, data.id));
-        if (modifierGroupIds.length > 0) {
-          // isolation-ok: every id in modifierGroupIds was already verified to belong to
-          // this company by assertModifierGroupsOwnedByCompany, called earlier in this
-          // same handler before the transaction started.
-          await tx.insert(schema.productModifierGroups).values(
-            modifierGroupIds.map((modifierGroupId, idx) => ({
-              id: generateId(),
-              productId: data.id,
-              modifierGroupId,
-              sortOrder: idx,
-            }))
-          );
-        }
-      }
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
+    if (!existing) {
+      data.sku = await getAndIncrementDocumentNumber(tdb, data.companyId, 'sku', new Date().toISOString().slice(0, 10));
+    }
+    await tdb.insert(schema.productsServices).values(data).onConflictDoUpdate({
+      target: schema.productsServices.id,
+      set: data
     });
+    if (modifierGroupIds !== undefined) {
+      // Replace-the-whole-set on every save, same convention as quotation/invoice
+      // items on edit — simpler and safer than diffing add/remove, and this list is
+      // always small (a handful of modifier groups per product).
+      await tdb.delete(schema.productModifierGroups).where(eq(schema.productModifierGroups.productId, data.id));
+      if (modifierGroupIds.length > 0) {
+        // isolation-ok: every id in modifierGroupIds was already verified to belong to
+        // this company by assertModifierGroupsOwnedByCompany, called earlier in this
+        // same handler.
+        await tdb.insert(schema.productModifierGroups).values(
+          modifierGroupIds.map((modifierGroupId, idx) => ({
+            id: generateId(),
+            productId: data.id,
+            modifierGroupId,
+            sortOrder: idx,
+          }))
+        );
+      }
+    }
     res.json({ success: true, id: data.id });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
   }
 });
 
-router.patch('/products/:id/toggle-active', async (req: any, res) => {
+router.patch('/products/:id/toggle-active', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.products.delete.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
-    const [existing] = await db.select().from(schema.productsServices)
+    const [existing] = await tdb.select().from(schema.productsServices)
       .where(and(eq(schema.productsServices.id, id), eq(schema.productsServices.companyId, req.targetCompanyId)));
     if (!existing) {
       return res.status(404).json({ error: 'Product not found.' });
     }
     const nextActive = existing.isActive === false;
-    await db.update(schema.productsServices).set({ isActive: nextActive }).where(eq(schema.productsServices.id, id));
+    await tdb.update(schema.productsServices).set({ isActive: nextActive }).where(eq(schema.productsServices.id, id));
     res.json({ success: true, isActive: nextActive });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -414,6 +424,15 @@ router.patch('/products/:id/toggle-active', async (req: any, res) => {
 });
 
 // --- Companies ---
+// EXEMPT from the tenantDb RLS rollout (stays on the superuser `db`), same category as
+// server/routes/companies.ts's own exemptions — see .claude/skills/rls-tenant-isolation.
+// All 4 routes below let a super-admin explicitly target a DIFFERENT company than their
+// own req.targetCompanyId (via the `id` route param + an isSuperAdminUser bypass check),
+// including creating one that doesn't exist yet — structurally incompatible with
+// tenantDb's one-company-per-request model (its RLS policy on `companies` scopes a
+// tenant connection to exactly `id = app.company_id`, which would block a super-admin
+// from touching any OTHER company's row through it).
+//
 // Creating/overwriting a company row is a platform-owner action, not a delegable
 // business permission — true super-admin only (previously any company `admin` could
 // pass an arbitrary company id here and overwrite another tenant's row entirely).
@@ -568,25 +587,27 @@ router.get('/companies/:id/numbering-preview', async (req: any, res) => {
 });
 
 // --- Banks ---
-router.get('/banks', async (req: any, res) => {
+router.get('/banks', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'banks.read')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
-    const banks = await db.select().from(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, req.targetCompanyId));
+    const banks = await tenantDb().select().from(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, req.targetCompanyId));
     res.json(banks);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.post('/banks', async (req: any, res) => {
+router.post('/banks', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     if (!hasPermission(req.user, 'banks.create')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const data = { ...req.body };
 
+    // Deliberately the superuser `db` — same hijack-detection reasoning as POST /customers.
     if (data.id) {
       const [existing] = await db.select().from(schema.bankAccounts).where(eq(schema.bankAccounts.id, data.id));
       if (!assertOwnsRow(existing, req)) {
@@ -598,26 +619,17 @@ router.post('/banks', async (req: any, res) => {
 
     // At most one default bank per company (unique_default_bank partial index) — clear
     // any existing default for this company first, atomically with the insert, same
-    // pattern as tax-slabs below. This route was previously unreachable from the UI (the
-    // create-bank form went through the generic /api/migrate blob sync instead, which
-    // could send the whole, already-corrected banks array in one payload); now that it's
-    // wired up as a real single-row insert, it needs to enforce the invariant itself.
+    // pattern as tax-slabs below. No separate db.transaction() wrapper needed — withTenantDb
+    // already wraps the whole request in one transaction.
     if (data.isDefault === true) {
-      await db.transaction(async (tx) => {
-        await tx.update(schema.bankAccounts)
-          .set({ isDefault: false })
-          .where(eq(schema.bankAccounts.companyId, req.targetCompanyId));
-        await tx.insert(schema.bankAccounts).values(data).onConflictDoUpdate({
-          target: schema.bankAccounts.id,
-          set: data
-        });
-      });
-    } else {
-      await db.insert(schema.bankAccounts).values(data).onConflictDoUpdate({
-        target: schema.bankAccounts.id,
-        set: data
-      });
+      await tdb.update(schema.bankAccounts)
+        .set({ isDefault: false })
+        .where(eq(schema.bankAccounts.companyId, req.targetCompanyId));
     }
+    await tdb.insert(schema.bankAccounts).values(data).onConflictDoUpdate({
+      target: schema.bankAccounts.id,
+      set: data
+    });
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -626,12 +638,15 @@ router.post('/banks', async (req: any, res) => {
 
 // Edit branch of AdminSettings' bank form (as opposed to the create branch above, which
 // goes through POST /banks). Only the fields the edit form actually exposes.
-router.patch('/banks/:id', async (req: any, res) => {
+router.patch('/banks/:id', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     if (!hasPermission(req.user, 'banks.update')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
+    // Deliberately the superuser `db` for this existence/ownership check — same reasoning
+    // as POST /customers above.
     const [existing] = await db.select().from(schema.bankAccounts).where(eq(schema.bankAccounts.id, id));
     if (!existing) return res.status(404).json({ error: 'Bank not found.' });
     if (!assertOwnsRow(existing, req)) {
@@ -649,15 +664,11 @@ router.patch('/banks/:id', async (req: any, res) => {
     if (update.isDefault === true) {
       // Same "at most one default per company" invariant as tax slabs below — clear
       // every other default for this company atomically with the update itself.
-      await db.transaction(async (tx) => {
-        await tx.update(schema.bankAccounts)
-          .set({ isDefault: false })
-          .where(and(eq(schema.bankAccounts.companyId, existing.companyId), ne(schema.bankAccounts.id, id)));
-        await tx.update(schema.bankAccounts).set(update).where(eq(schema.bankAccounts.id, id));
-      });
-    } else {
-      await db.update(schema.bankAccounts).set(update).where(eq(schema.bankAccounts.id, id));
+      await tdb.update(schema.bankAccounts)
+        .set({ isDefault: false })
+        .where(and(eq(schema.bankAccounts.companyId, existing.companyId), ne(schema.bankAccounts.id, id)));
     }
+    await tdb.update(schema.bankAccounts).set(update).where(eq(schema.bankAccounts.id, id));
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -666,8 +677,9 @@ router.patch('/banks/:id', async (req: any, res) => {
 
 // handleSetDefaultBank — flips which single bank is default for the company, clearing
 // any other default first (unique_default_bank allows only one at a time).
-router.patch('/banks/:id/set-default', async (req: any, res) => {
+router.patch('/banks/:id/set-default', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     if (!hasPermission(req.user, 'banks.update')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
@@ -678,12 +690,10 @@ router.patch('/banks/:id/set-default', async (req: any, res) => {
       return res.status(403).json({ error: 'Forbidden: this bank account belongs to another company' });
     }
 
-    await db.transaction(async (tx) => {
-      await tx.update(schema.bankAccounts)
-        .set({ isDefault: false })
-        .where(and(eq(schema.bankAccounts.companyId, existing.companyId), ne(schema.bankAccounts.id, id)));
-      await tx.update(schema.bankAccounts).set({ isDefault: true }).where(eq(schema.bankAccounts.id, id));
-    });
+    await tdb.update(schema.bankAccounts)
+      .set({ isDefault: false })
+      .where(and(eq(schema.bankAccounts.companyId, existing.companyId), ne(schema.bankAccounts.id, id)));
+    await tdb.update(schema.bankAccounts).set({ isDefault: true }).where(eq(schema.bankAccounts.id, id));
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -693,8 +703,9 @@ router.patch('/banks/:id/set-default', async (req: any, res) => {
 // handleToggleBankActive — mirrors the client-side guard: the current default bank
 // can't be deactivated (must set another default first), enforced here too since the
 // client check alone is bypassable by any direct API call.
-router.patch('/banks/:id/toggle-active', async (req: any, res) => {
+router.patch('/banks/:id/toggle-active', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     if (!hasPermission(req.user, 'banks.delete')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
@@ -708,7 +719,7 @@ router.patch('/banks/:id/toggle-active', async (req: any, res) => {
       return res.status(400).json({ error: 'Cannot deactivate the Default Bank. Set another bank as default first.' });
     }
 
-    await db.update(schema.bankAccounts).set({ isActive: !existing.isActive }).where(eq(schema.bankAccounts.id, id));
+    await tdb.update(schema.bankAccounts).set({ isActive: !existing.isActive }).where(eq(schema.bankAccounts.id, id));
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -718,20 +729,21 @@ router.patch('/banks/:id/toggle-active', async (req: any, res) => {
 // --- Tax Slabs ---
 // Legacy rows with companyId = NULL are shared defaults visible to every company;
 // new tax slabs created going forward are scoped to the creating company.
-router.get('/tax-slabs', async (req: any, res) => {
+router.get('/tax-slabs', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'taxSlabs.read')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
-    const slabs = await db.select().from(schema.taxSlabs).where(or(eq(schema.taxSlabs.companyId, req.targetCompanyId), isNull(schema.taxSlabs.companyId)));
+    const slabs = await tenantDb().select().from(schema.taxSlabs).where(or(eq(schema.taxSlabs.companyId, req.targetCompanyId), isNull(schema.taxSlabs.companyId)));
     res.json(slabs);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.post('/tax-slabs', async (req: any, res) => {
+router.post('/tax-slabs', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const data = { ...req.body };
 
     // Upsert route: branch create-vs-update by whether the row exists, same pattern as
@@ -739,6 +751,9 @@ router.post('/tax-slabs', async (req: any, res) => {
     // a single hasPermission('taxSlabs.update') check covering both, which made
     // taxSlabs.create a dead no-op leaf in the Roles editor (checking it granted nothing,
     // since this route never looked at it).
+    //
+    // Deliberately the superuser `db` for this lookup — same hijack-detection reasoning
+    // as POST /customers above.
     let existing: typeof schema.taxSlabs.$inferSelect | undefined;
     if (data.id) {
       [existing] = await db.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, data.id));
@@ -758,26 +773,17 @@ router.post('/tax-slabs', async (req: any, res) => {
 
     // At most one default tax slab per company (enforced by a partial unique index —
     // see schema.ts) — clear any existing default for this company first so setting a
-    // new one doesn't hit a raw constraint-violation error. Scoped inside a
-    // transaction with the upsert so the two writes are atomic (never a window where
-    // two rows are momentarily both true, or where an old default silently disappears
-    // if the new insert then fails).
+    // new one doesn't hit a raw constraint-violation error. No separate db.transaction()
+    // wrapper — withTenantDb already wraps the whole request in one transaction.
     if (data.isDefault === true) {
-      await db.transaction(async (tx) => {
-        await tx.update(schema.taxSlabs)
-          .set({ isDefault: false })
-          .where(and(eq(schema.taxSlabs.companyId, req.targetCompanyId), eq(schema.taxSlabs.isDefault, true)));
-        await tx.insert(schema.taxSlabs).values(data).onConflictDoUpdate({
-          target: schema.taxSlabs.id,
-          set: data
-        });
-      });
-    } else {
-      await db.insert(schema.taxSlabs).values(data).onConflictDoUpdate({
-        target: schema.taxSlabs.id,
-        set: data
-      });
+      await tdb.update(schema.taxSlabs)
+        .set({ isDefault: false })
+        .where(and(eq(schema.taxSlabs.companyId, req.targetCompanyId), eq(schema.taxSlabs.isDefault, true)));
     }
+    await tdb.insert(schema.taxSlabs).values(data).onConflictDoUpdate({
+      target: schema.taxSlabs.id,
+      set: data
+    });
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -791,13 +797,17 @@ router.post('/tax-slabs', async (req: any, res) => {
 // otherwise it would become "the default" for every other company that also falls back
 // to that same shared row. Mirrors the exact logic previously duplicated client-side in
 // src/dbStore.ts.
-router.patch('/tax-slabs/:id/set-default', async (req: any, res) => {
+router.patch('/tax-slabs/:id/set-default', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     if (!hasPermission(req.user, 'taxSlabs.update')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
     const companyId = req.targetCompanyId;
+    // Deliberately the superuser `db` — this lookup must see a shared (companyId=NULL) or
+    // cross-company row to correctly classify it below, same reasoning as the
+    // hijack-detection checks elsewhere in this file.
     const [target] = await db.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, id));
     if (!target) return res.status(404).json({ error: 'Tax slab not found.' });
 
@@ -806,24 +816,20 @@ router.patch('/tax-slabs/:id/set-default', async (req: any, res) => {
     }
 
     if (target.companyId === companyId) {
-      await db.transaction(async (tx) => {
-        await tx.update(schema.taxSlabs)
-          .set({ isDefault: false })
-          .where(and(eq(schema.taxSlabs.companyId, companyId), ne(schema.taxSlabs.id, id)));
-        await tx.update(schema.taxSlabs).set({ isDefault: true }).where(eq(schema.taxSlabs.id, id));
-      });
+      await tdb.update(schema.taxSlabs)
+        .set({ isDefault: false })
+        .where(and(eq(schema.taxSlabs.companyId, companyId), ne(schema.taxSlabs.id, id)));
+      await tdb.update(schema.taxSlabs).set({ isDefault: true }).where(eq(schema.taxSlabs.id, id));
     } else {
-      await db.transaction(async (tx) => {
-        await tx.update(schema.taxSlabs)
-          .set({ isDefault: false })
-          .where(and(eq(schema.taxSlabs.companyId, companyId), eq(schema.taxSlabs.isDefault, true)));
-        await tx.insert(schema.taxSlabs).values({
-          id: generateId(),
-          name: target.name,
-          percentage: target.percentage,
-          companyId,
-          isDefault: true,
-        });
+      await tdb.update(schema.taxSlabs)
+        .set({ isDefault: false })
+        .where(and(eq(schema.taxSlabs.companyId, companyId), eq(schema.taxSlabs.isDefault, true)));
+      await tdb.insert(schema.taxSlabs).values({
+        id: generateId(),
+        name: target.name,
+        percentage: target.percentage,
+        companyId,
+        isDefault: true,
       });
     }
     res.json({ success: true });
@@ -833,25 +839,27 @@ router.patch('/tax-slabs/:id/set-default', async (req: any, res) => {
 });
 
 // --- Product Categories ---
-router.get('/product-categories', async (req: any, res) => {
+router.get('/product-categories', withTenantDb, async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.categories.read.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const companyId = req.targetCompanyId;
-    const categories = await db.select().from(schema.productCategories).where(eq(schema.productCategories.companyId, companyId));
+    const categories = await tenantDb().select().from(schema.productCategories).where(eq(schema.productCategories.companyId, companyId));
     res.json(categories);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.post('/product-categories', async (req: any, res) => {
+router.post('/product-categories', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     const data = { ...req.body };
 
+    // Deliberately the superuser `db` — same hijack-detection reasoning as POST /customers.
     let existing: typeof schema.productCategories.$inferSelect | undefined;
     if (data.id) {
       [existing] = await db.select().from(schema.productCategories).where(eq(schema.productCategories.id, data.id));
@@ -871,7 +879,7 @@ router.post('/product-categories', async (req: any, res) => {
     }
 
     data.companyId = req.targetCompanyId;
-    await db.insert(schema.productCategories).values(data).onConflictDoUpdate({
+    await tdb.insert(schema.productCategories).values(data).onConflictDoUpdate({
       target: schema.productCategories.id,
       set: data
     });
@@ -881,20 +889,21 @@ router.post('/product-categories', async (req: any, res) => {
   }
 });
 
-router.patch('/product-categories/:id/toggle-active', async (req: any, res) => {
+router.patch('/product-categories/:id/toggle-active', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.categories.delete.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
-    const [existing] = await db.select().from(schema.productCategories)
+    const [existing] = await tdb.select().from(schema.productCategories)
       .where(and(eq(schema.productCategories.id, id), eq(schema.productCategories.companyId, req.targetCompanyId)));
     if (!existing) {
       return res.status(404).json({ error: 'Category not found.' });
     }
     const nextActive = existing.isActive === false;
-    await db.update(schema.productCategories).set({ isActive: nextActive }).where(eq(schema.productCategories.id, id));
+    await tdb.update(schema.productCategories).set({ isActive: nextActive }).where(eq(schema.productCategories.id, id));
     res.json({ success: true, isActive: nextActive });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -905,16 +914,17 @@ router.patch('/product-categories/:id/toggle-active', async (req: any, res) => {
 // comment) --- Mirrors the Units-of-Measure CRUD shape immediately below: company-scoped
 // list, create-or-update via data.id presence with assertOwnsRow on edits, companyId
 // always forced server-side, toggle-active re-checking companyId in its own WHERE clause.
-router.get('/modifier-groups', async (req: any, res) => {
+router.get('/modifier-groups', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     if (!hasPermission(req.user, 'modifierGroups.read')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const companyId = req.targetCompanyId;
-    const groups = await db.select().from(schema.modifierGroups).where(eq(schema.modifierGroups.companyId, companyId));
+    const groups = await tdb.select().from(schema.modifierGroups).where(eq(schema.modifierGroups.companyId, companyId));
     const groupIds = groups.map(g => g.id);
     const choices = groupIds.length
-      ? await db.select().from(schema.modifierChoices).where(inArray(schema.modifierChoices.modifierGroupId, groupIds))
+      ? await tdb.select().from(schema.modifierChoices).where(inArray(schema.modifierChoices.modifierGroupId, groupIds))
       : [];
     const choicesByGroup = new Map<string, any[]>();
     for (const c of choices) {
@@ -927,12 +937,14 @@ router.get('/modifier-groups', async (req: any, res) => {
   }
 });
 
-router.post('/modifier-groups', async (req: any, res) => {
+router.post('/modifier-groups', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const data = { ...req.body };
     const choices: Array<{ id?: string; label: string; priceDelta: number }> = Array.isArray(data.choices) ? data.choices : [];
     delete data.choices;
 
+    // Deliberately the superuser `db` — same hijack-detection reasoning as POST /customers.
     let existing: typeof schema.modifierGroups.$inferSelect | undefined;
     if (data.id) {
       [existing] = await db.select().from(schema.modifierGroups).where(eq(schema.modifierGroups.id, data.id));
@@ -950,46 +962,47 @@ router.post('/modifier-groups', async (req: any, res) => {
     }
 
     data.companyId = req.targetCompanyId;
-    await db.transaction(async (tx) => {
-      await tx.insert(schema.modifierGroups).values(data).onConflictDoUpdate({
-        target: schema.modifierGroups.id,
-        set: data
-      });
-      // Replace the whole choice set on every save — same convention used for the
-      // product's modifierGroupIds attachment above and for quotation/invoice items on
-      // edit. This list is always small, so diffing add/remove buys nothing.
-      await tx.delete(schema.modifierChoices).where(eq(schema.modifierChoices.modifierGroupId, data.id));
-      if (choices.length > 0) {
-        await tx.insert(schema.modifierChoices).values(
-          choices.map((c, idx) => ({
-            id: generateId(),
-            modifierGroupId: data.id,
-            label: c.label,
-            priceDelta: String(c.priceDelta ?? 0),
-            sortOrder: idx,
-          }))
-        );
-      }
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
+    await tdb.insert(schema.modifierGroups).values(data).onConflictDoUpdate({
+      target: schema.modifierGroups.id,
+      set: data
     });
+    // Replace the whole choice set on every save — same convention used for the
+    // product's modifierGroupIds attachment above and for quotation/invoice items on
+    // edit. This list is always small, so diffing add/remove buys nothing.
+    await tdb.delete(schema.modifierChoices).where(eq(schema.modifierChoices.modifierGroupId, data.id));
+    if (choices.length > 0) {
+      await tdb.insert(schema.modifierChoices).values(
+        choices.map((c, idx) => ({
+          id: generateId(),
+          modifierGroupId: data.id,
+          label: c.label,
+          priceDelta: String(c.priceDelta ?? 0),
+          sortOrder: idx,
+        }))
+      );
+    }
     res.json({ success: true, id: data.id });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
   }
 });
 
-router.patch('/modifier-groups/:id/toggle-active', async (req: any, res) => {
+router.patch('/modifier-groups/:id/toggle-active', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     if (!hasPermission(req.user, 'modifierGroups.delete')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
-    const [existing] = await db.select().from(schema.modifierGroups)
+    const [existing] = await tdb.select().from(schema.modifierGroups)
       .where(and(eq(schema.modifierGroups.id, id), eq(schema.modifierGroups.companyId, req.targetCompanyId)));
     if (!existing) {
       return res.status(404).json({ error: 'Modifier group not found.' });
     }
     const nextActive = existing.isActive === false;
-    await db.update(schema.modifierGroups).set({ isActive: nextActive }).where(eq(schema.modifierGroups.id, id));
+    await tdb.update(schema.modifierGroups).set({ isActive: nextActive }).where(eq(schema.modifierGroups.id, id));
     res.json({ success: true, isActive: nextActive });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -997,22 +1010,23 @@ router.patch('/modifier-groups/:id/toggle-active', async (req: any, res) => {
 });
 
 // --- Units of Measure ---
-router.get('/units-of-measure', async (req: any, res) => {
+router.get('/units-of-measure', withTenantDb, async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.units.read.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const companyId = req.targetCompanyId;
-    const units = await db.select().from(schema.unitsOfMeasure).where(eq(schema.unitsOfMeasure.companyId, companyId));
+    const units = await tenantDb().select().from(schema.unitsOfMeasure).where(eq(schema.unitsOfMeasure.companyId, companyId));
     res.json(units);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.post('/units-of-measure', async (req: any, res) => {
+router.post('/units-of-measure', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     const data = { ...req.body };
 
@@ -1024,6 +1038,7 @@ router.post('/units-of-measure', async (req: any, res) => {
       return res.status(400).json({ error: `'${data.code}' is not a recognized ZATCA unit code. Choose one from the allowed list.` });
     }
 
+    // Deliberately the superuser `db` — same hijack-detection reasoning as POST /customers.
     let existing: typeof schema.unitsOfMeasure.$inferSelect | undefined;
     if (data.id) {
       [existing] = await db.select().from(schema.unitsOfMeasure).where(eq(schema.unitsOfMeasure.id, data.id));
@@ -1045,7 +1060,7 @@ router.post('/units-of-measure', async (req: any, res) => {
     }
 
     data.companyId = req.targetCompanyId;
-    await db.insert(schema.unitsOfMeasure).values(data).onConflictDoUpdate({
+    await tdb.insert(schema.unitsOfMeasure).values(data).onConflictDoUpdate({
       target: schema.unitsOfMeasure.id,
       set: data
     });
@@ -1055,20 +1070,21 @@ router.post('/units-of-measure', async (req: any, res) => {
   }
 });
 
-router.patch('/units-of-measure/:id/toggle-active', async (req: any, res) => {
+router.patch('/units-of-measure/:id/toggle-active', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.units.delete.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
-    const [existing] = await db.select().from(schema.unitsOfMeasure)
+    const [existing] = await tdb.select().from(schema.unitsOfMeasure)
       .where(and(eq(schema.unitsOfMeasure.id, id), eq(schema.unitsOfMeasure.companyId, req.targetCompanyId)));
     if (!existing) {
       return res.status(404).json({ error: 'Unit not found.' });
     }
     const nextActive = existing.isActive === false;
-    await db.update(schema.unitsOfMeasure).set({ isActive: nextActive }).where(eq(schema.unitsOfMeasure.id, id));
+    await tdb.update(schema.unitsOfMeasure).set({ isActive: nextActive }).where(eq(schema.unitsOfMeasure.id, id));
     res.json({ success: true, isActive: nextActive });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1077,28 +1093,30 @@ router.patch('/units-of-measure/:id/toggle-active', async (req: any, res) => {
 
 // --- Job Titles (HR) — e.g. "Sales Associate", "Cashier". Deliberately distinct from
 // the `roles` table (RBAC permission bundles) — see jobTitles's schema comment. ---
-router.get('/job-titles', async (req: any, res) => {
+router.get('/job-titles', withTenantDb, async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.jobTitles.read.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const companyId = req.targetCompanyId;
-    const titles = await db.select().from(schema.jobTitles).where(eq(schema.jobTitles.companyId, companyId));
+    const titles = await tenantDb().select().from(schema.jobTitles).where(eq(schema.jobTitles.companyId, companyId));
     res.json(titles);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.post('/job-titles', async (req: any, res) => {
+router.post('/job-titles', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     const data = { ...req.body };
     if (!data.title || !String(data.title).trim()) {
       return res.status(400).json({ error: 'A job title is required.' });
     }
 
+    // Deliberately the superuser `db` — same hijack-detection reasoning as POST /customers.
     let existing: typeof schema.jobTitles.$inferSelect | undefined;
     if (data.id) {
       [existing] = await db.select().from(schema.jobTitles).where(eq(schema.jobTitles.id, data.id));
@@ -1123,7 +1141,7 @@ router.post('/job-titles', async (req: any, res) => {
     data.title = String(data.title).trim();
     data.description = data.description ? String(data.description).trim() || null : null;
     try {
-      await db.insert(schema.jobTitles).values(data).onConflictDoUpdate({
+      await tdb.insert(schema.jobTitles).values(data).onConflictDoUpdate({
         target: schema.jobTitles.id,
         set: data
       });
@@ -1139,20 +1157,21 @@ router.post('/job-titles', async (req: any, res) => {
   }
 });
 
-router.patch('/job-titles/:id/toggle-active', async (req: any, res) => {
+router.patch('/job-titles/:id/toggle-active', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.jobTitles.delete.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
-    const [existing] = await db.select().from(schema.jobTitles)
+    const [existing] = await tdb.select().from(schema.jobTitles)
       .where(and(eq(schema.jobTitles.id, id), eq(schema.jobTitles.companyId, req.targetCompanyId)));
     if (!existing) {
       return res.status(404).json({ error: 'Job title not found.' });
     }
     const nextActive = existing.isActive === false;
-    await db.update(schema.jobTitles).set({ isActive: nextActive }).where(eq(schema.jobTitles.id, id));
+    await tdb.update(schema.jobTitles).set({ isActive: nextActive }).where(eq(schema.jobTitles.id, id));
     res.json({ success: true, isActive: nextActive });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1163,22 +1182,23 @@ router.patch('/job-titles/:id/toggle-active', async (req: any, res) => {
 // Gated on the existing products.create/.update leaves, not a new permission leaf — this
 // is product-master data, the same authority as editing the product itself. See
 // productUnitConversions's schema comment for the full model.
-router.get('/product-unit-conversions', async (req: any, res) => {
+router.get('/product-unit-conversions', withTenantDb, async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.products.read.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const companyId = req.targetCompanyId;
-    const conversions = await db.select().from(schema.productUnitConversions).where(eq(schema.productUnitConversions.companyId, companyId));
+    const conversions = await tenantDb().select().from(schema.productUnitConversions).where(eq(schema.productUnitConversions.companyId, companyId));
     res.json(conversions);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.post('/product-unit-conversions', async (req: any, res) => {
+router.post('/product-unit-conversions', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     const data = { ...req.body };
 
@@ -1190,6 +1210,7 @@ router.post('/product-unit-conversions', async (req: any, res) => {
       return res.status(400).json({ error: 'Conversion factor must be a positive number.' });
     }
 
+    // Deliberately the superuser `db` — same hijack-detection reasoning as POST /customers.
     let existing: typeof schema.productUnitConversions.$inferSelect | undefined;
     if (data.id) {
       [existing] = await db.select().from(schema.productUnitConversions).where(eq(schema.productUnitConversions.id, data.id));
@@ -1210,13 +1231,13 @@ router.post('/product-unit-conversions', async (req: any, res) => {
     data.companyId = req.targetCompanyId;
     // A product's own base unit can never also be one of its packaging/alternate units —
     // that would make "1 Carton = 1 Piece" a nonsensical second identity for the same unit.
-    const [product] = await db.select({ unit: schema.productsServices.unit }).from(schema.productsServices)
+    const [product] = await tdb.select({ unit: schema.productsServices.unit }).from(schema.productsServices)
       .where(and(eq(schema.productsServices.id, data.productId), eq(schema.productsServices.companyId, data.companyId)));
     if (!product) {
       return res.status(404).json({ error: 'Product not found for this company.' });
     }
 
-    await db.insert(schema.productUnitConversions).values(data).onConflictDoUpdate({
+    await tdb.insert(schema.productUnitConversions).values(data).onConflictDoUpdate({
       target: schema.productUnitConversions.id,
       set: data
     });
@@ -1232,20 +1253,21 @@ router.post('/product-unit-conversions', async (req: any, res) => {
   }
 });
 
-router.patch('/product-unit-conversions/:id/toggle-active', async (req: any, res) => {
+router.patch('/product-unit-conversions/:id/toggle-active', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.products.update.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
-    const [existing] = await db.select().from(schema.productUnitConversions)
+    const [existing] = await tdb.select().from(schema.productUnitConversions)
       .where(and(eq(schema.productUnitConversions.id, id), eq(schema.productUnitConversions.companyId, req.targetCompanyId)));
     if (!existing) {
       return res.status(404).json({ error: 'Packaging unit not found.' });
     }
     const nextActive = existing.isActive === false;
-    await db.update(schema.productUnitConversions).set({ isActive: nextActive }).where(eq(schema.productUnitConversions.id, id));
+    await tdb.update(schema.productUnitConversions).set({ isActive: nextActive }).where(eq(schema.productUnitConversions.id, id));
     res.json({ success: true, isActive: nextActive });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1253,7 +1275,7 @@ router.patch('/product-unit-conversions/:id/toggle-active', async (req: any, res
 });
 
 // --- Warehouses ---
-router.get('/warehouses', async (req: any, res) => {
+router.get('/warehouses', withTenantDb, async (req: any, res) => {
   try {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.warehouses.read.enabled) {
@@ -1265,18 +1287,20 @@ router.get('/warehouses', async (req: any, res) => {
       if (req.allowedBranchIds.length === 0) return res.json([]);
       conditions.push(inArray(schema.warehouses.branchId, req.allowedBranchIds));
     }
-    const warehousesList = await db.select().from(schema.warehouses).where(and(...conditions));
+    const warehousesList = await tenantDb().select().from(schema.warehouses).where(and(...conditions));
     res.json(warehousesList);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-router.post('/warehouses', async (req: any, res) => {
+router.post('/warehouses', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     const data = { ...req.body };
 
+    // Deliberately the superuser `db` — same hijack-detection reasoning as POST /customers.
     let existing: typeof schema.warehouses.$inferSelect | undefined;
     if (data.id) {
       [existing] = await db.select().from(schema.warehouses).where(eq(schema.warehouses.id, data.id));
@@ -1308,7 +1332,7 @@ router.post('/warehouses', async (req: any, res) => {
     // (or even, before the companyId check below, potentially a branch id copied from a
     // completely different company) they have no business touching.
     if (data.branchId) {
-      const [targetBranch] = await db.select({ id: schema.branches.id }).from(schema.branches)
+      const [targetBranch] = await tdb.select({ id: schema.branches.id }).from(schema.branches)
         .where(and(eq(schema.branches.id, data.branchId), eq(schema.branches.companyId, data.companyId)));
       if (!targetBranch) {
         return res.status(404).json({ error: 'Selected branch not found for this company.' });
@@ -1325,7 +1349,7 @@ router.post('/warehouses', async (req: any, res) => {
     // once the company actually has an active branch — a company that has never adopted
     // branches at all keeps today's exact behavior (branchId stays optional).
     if (!existing && !data.branchId) {
-      const [anyBranch] = await db.select({ id: schema.branches.id }).from(schema.branches)
+      const [anyBranch] = await tdb.select({ id: schema.branches.id }).from(schema.branches)
         .where(and(eq(schema.branches.companyId, data.companyId), eq(schema.branches.isActive, true)));
       if (anyBranch) {
         return res.status(400).json({ error: 'This company uses branches — select a branch for the new warehouse.' });
@@ -1349,7 +1373,7 @@ router.post('/warehouses', async (req: any, res) => {
     } else {
       becomingDefault = false;
       if (effectiveType === 'sales') {
-        const [anyWarehouse] = await db.select({ id: schema.warehouses.id }).from(schema.warehouses)
+        const [anyWarehouse] = await tdb.select({ id: schema.warehouses.id }).from(schema.warehouses)
           .where(eq(schema.warehouses.companyId, data.companyId));
         if (!anyWarehouse) becomingDefault = true;
       }
@@ -1359,24 +1383,19 @@ router.post('/warehouses', async (req: any, res) => {
     }
     data.isCompanyDefault = becomingDefault;
 
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
     if (becomingDefault) {
       // Swap pattern — same as branches.ts's isDefault handling: atomically un-default
       // any other warehouse this company currently has flagged before setting this one,
       // so the partial unique index never sees two "true" rows at once.
-      await db.transaction(async (tx) => {
-        await tx.update(schema.warehouses).set({ isCompanyDefault: false })
-          .where(and(eq(schema.warehouses.companyId, data.companyId), eq(schema.warehouses.isCompanyDefault, true)));
-        await tx.insert(schema.warehouses).values(data).onConflictDoUpdate({
-          target: schema.warehouses.id,
-          set: data
-        });
-      });
-    } else {
-      await db.insert(schema.warehouses).values(data).onConflictDoUpdate({
-        target: schema.warehouses.id,
-        set: data
-      });
+      await tdb.update(schema.warehouses).set({ isCompanyDefault: false })
+        .where(and(eq(schema.warehouses.companyId, data.companyId), eq(schema.warehouses.isCompanyDefault, true)));
     }
+    await tdb.insert(schema.warehouses).values(data).onConflictDoUpdate({
+      target: schema.warehouses.id,
+      set: data
+    });
     res.json({ success: true, id: data.id });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1386,20 +1405,21 @@ router.post('/warehouses', async (req: any, res) => {
 // Was a hard DELETE guarded against product-default/stock references — replaced with the
 // toggle this table's own isActive column already existed for but was never wired to
 // (an existing inconsistency: warehouses had the column, still hard-deleted anyway).
-router.patch('/warehouses/:id/toggle-active', async (req: any, res) => {
+router.patch('/warehouses/:id/toggle-active', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.warehouses.delete.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
-    const [existing] = await db.select().from(schema.warehouses)
+    const [existing] = await tdb.select().from(schema.warehouses)
       .where(and(eq(schema.warehouses.id, id), eq(schema.warehouses.companyId, req.targetCompanyId)));
     if (!existing) {
       return res.status(404).json({ error: 'Warehouse not found.' });
     }
     const nextActive = existing.isActive === false;
-    await db.update(schema.warehouses).set({ isActive: nextActive }).where(eq(schema.warehouses.id, id));
+    await tdb.update(schema.warehouses).set({ isActive: nextActive }).where(eq(schema.warehouses.id, id));
     res.json({ success: true, isActive: nextActive });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1407,20 +1427,21 @@ router.patch('/warehouses/:id/toggle-active', async (req: any, res) => {
 });
 
 // --- Product Warehouses (Junction) ---
-router.get('/product-warehouses', async (req: any, res) => {
+router.get('/product-warehouses', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.products.read.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const companyId = req.targetCompanyId;
-    let mappings = await db.select().from(schema.productWarehouses).where(eq(schema.productWarehouses.companyId, companyId));
+    let mappings = await tdb.select().from(schema.productWarehouses).where(eq(schema.productWarehouses.companyId, companyId));
     // productWarehouses has no branchId of its own — derived via warehouseId, same
     // pattern as GET /api/state's own branchOkViaWarehouse scoping for this exact table
     // (server.ts), which this standalone REST endpoint had no equivalent of until now.
     if (Array.isArray(req.allowedBranchIds)) {
       const allowedWarehouses = req.allowedBranchIds.length
-        ? await db.select({ id: schema.warehouses.id }).from(schema.warehouses)
+        ? await tdb.select({ id: schema.warehouses.id }).from(schema.warehouses)
             .where(and(eq(schema.warehouses.companyId, companyId), inArray(schema.warehouses.branchId, req.allowedBranchIds)))
         : [];
       const allowedWarehouseIds = new Set(allowedWarehouses.map(w => w.id));
@@ -1432,14 +1453,16 @@ router.get('/product-warehouses', async (req: any, res) => {
   }
 });
 
-router.post('/product-warehouses', async (req: any, res) => {
+router.post('/product-warehouses', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.products.update.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const data = { ...req.body };
 
+    // Deliberately the superuser `db` — same hijack-detection reasoning as POST /customers.
     if (data.id) {
       const [existing] = await db.select().from(schema.productWarehouses).where(eq(schema.productWarehouses.id, data.id));
       if (!assertOwnsRow(existing, req)) {
@@ -1456,12 +1479,12 @@ router.post('/product-warehouses', async (req: any, res) => {
     // in this pass. A crafted request could set stock policy (min/max, bin location) for
     // another company's warehouse, or reference another company's product.
     if (data.productId) {
-      const [product] = await db.select({ id: schema.productsServices.id }).from(schema.productsServices)
+      const [product] = await tdb.select({ id: schema.productsServices.id }).from(schema.productsServices)
         .where(and(eq(schema.productsServices.id, data.productId), eq(schema.productsServices.companyId, data.companyId)));
       if (!product) return res.status(404).json({ error: 'Selected product not found for this company.' });
     }
     if (data.warehouseId) {
-      const [warehouse] = await db.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses)
+      const [warehouse] = await tdb.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses)
         .where(and(eq(schema.warehouses.id, data.warehouseId), eq(schema.warehouses.companyId, data.companyId)));
       if (!warehouse) return res.status(404).json({ error: 'Selected warehouse not found for this company.' });
       if (!branchAccessOk(req, warehouse.branchId)) {
@@ -1469,7 +1492,7 @@ router.post('/product-warehouses', async (req: any, res) => {
       }
     }
 
-    await db.insert(schema.productWarehouses).values(data).onConflictDoUpdate({
+    await tdb.insert(schema.productWarehouses).values(data).onConflictDoUpdate({
       target: schema.productWarehouses.id,
       set: data
     });
@@ -1479,14 +1502,15 @@ router.post('/product-warehouses', async (req: any, res) => {
   }
 });
 
-router.delete('/product-warehouses/:id', async (req: any, res) => {
+router.delete('/product-warehouses/:id', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.products.delete.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
-    await db.delete(schema.productWarehouses).where(and(eq(schema.productWarehouses.id, id), eq(schema.productWarehouses.companyId, req.targetCompanyId)));
+    await tdb.delete(schema.productWarehouses).where(and(eq(schema.productWarehouses.id, id), eq(schema.productWarehouses.companyId, req.targetCompanyId)));
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
