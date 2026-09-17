@@ -14,7 +14,7 @@ import { parseLimitOffset } from '../lib/pagination.js';
 import { generateId } from '../../src/id.js';
 import { normalizeZatcaUnitCode } from '../../src/zatcaUnitCodes.js';
 import { recordAuditLog } from '../lib/audit.js';
-import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
+import { withTenantDb, tenantDb, runAfterTenantCommit } from '../lib/tenantDb.js';
 
 const router = express.Router();
 
@@ -514,28 +514,29 @@ router.get('/invoices/:id/pdf', withTenantDb, async (req: any, res) => {
   }
 });
 
-// DEFERRED from the tenantDb RLS rollout (stays on the superuser `db`) — same category
-// as server/routes/zatca.ts's own deferral, see .claude/skills/rls-tenant-isolation.
 // This route fires processInvoiceZatca(savedInvoiceId) as fire-and-forget immediately
-// after its transaction commits; processInvoiceZatca does its own database queries via a
-// SEPARATE connection and depends on the invoice already being durably committed and
-// visible there. Under tenantDb's commit-at-response-time model (server/lib/tenantDb.ts),
-// migrating this naively would fire that side effect BEFORE the real COMMIT — a
-// runAfterTenantCommit() mechanism now exists specifically to fix this class of problem,
-// but wiring it into this invoice-creation path (and the Credit/Debit Note route and the
-// cancel route's own hash-chain-tip rollback below) needs the same dual-gate ZATCA
-// verification rigor as any other change to this pipeline, not a change bundled into a
-// 140-handler rollout pass. `invoices` itself still gets a real RLS policy from this
-// rollout (protecting it via every other route, e.g. GET /invoices above) — only this
-// specific write path's own connection stays on the superuser db for now.
-router.post('/invoices', async (req: any, res) => {
+// after its own write commits — processInvoiceZatca does its own database queries via a
+// SEPARATE, independent connection (it's a background job, potentially still running
+// well after this request's transaction has closed, so it cannot share this request's
+// tenantDb() connection) and depends on the invoice already being durably committed and
+// visible there. Wired through runAfterTenantCommit() (server/lib/tenantDb.ts), which only
+// fires its callback after this request's transaction has genuinely committed — the same
+// fix already applied to the Credit/Debit Note route and the cancel route's hash-chain
+// rollback below. processInvoiceZatca itself is untouched and stays on the superuser `db`
+// permanently, by design — it's an independent background job, not a request-scoped
+// connection.
+router.post('/invoices', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const user = req.user;
     const permissions = normalizePermissions(user.permissions, user.role, user.isSuperAdmin);
 
     const { invoiceData } = req.body;
     const { items, ...invData } = invoiceData;
 
+    // Deliberately queries via the superuser `db`, NOT tenantDb — this check needs to see
+    // a row EVEN IF IT BELONGS TO ANOTHER COMPANY, precisely to catch and reject that case
+    // (assertOwnsRow below) with the correct 403 rather than a tenantDb-invisible 404.
     let existingInvoice: typeof schema.invoices.$inferSelect | undefined;
     if (invData.id) {
       [existingInvoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invData.id));
@@ -672,7 +673,7 @@ router.post('/invoices', async (req: any, res) => {
     if (existingInvoice) {
       invData.salesAssociateId = existingInvoice.salesAssociateId;
     } else if (invData.salesAssociateId) {
-      const [employee] = await db.select().from(schema.employees)
+      const [employee] = await tdb.select().from(schema.employees)
         .where(and(eq(schema.employees.id, invData.salesAssociateId), eq(schema.employees.companyId, invData.companyId)));
       if (!employee) {
         return res.status(404).json({ error: 'Selected sales associate not found for this company.' });
@@ -682,7 +683,7 @@ router.post('/invoices', async (req: any, res) => {
       }
     }
 
-    const refError = await assertDocumentRefsOwnedByCompany(db, invData.companyId, {
+    const refError = await assertDocumentRefsOwnedByCompany(tdb, invData.companyId, {
       customerId: invData.customerId,
       bankId: invData.bankId,
       taxSlabIds: [invData.taxSlabId, ...(items || []).map((it: any) => it.taxSlabId)],
@@ -695,133 +696,137 @@ router.post('/invoices', async (req: any, res) => {
     const isNewInvoice = !invData.id;
     invData.id = invData.id || generateId();
 
-    let savedInvoiceId = '';
-    await db.transaction(async (tx) => {
-      // 1. Business logic
-      const companyId = req.targetCompanyId;
-      await validateTransactionDate(invData.date, companyId);
-      await assertQuarterNotFiled(invData.date, companyId);
-      await assertProductsOwnedByCompany(tx, companyId, (items || []).map((it: any) => it.productId));
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; the row lock below still applies within it.
+    // 1. Business logic
+    const companyId = req.targetCompanyId;
+    await validateTransactionDate(invData.date, companyId);
+    await assertQuarterNotFiled(invData.date, companyId);
+    await assertProductsOwnedByCompany(tdb, companyId, (items || []).map((it: any) => it.productId));
 
-      // 2. Increment Counter if new
-      if (isNewInvoice) {
-        invData.invoiceNumber = await getAndIncrementDocumentNumber(tx, companyId, 'invoice', invData.date, invData.branchId);
-      }
+    // 2. Increment Counter if new
+    if (isNewInvoice) {
+      invData.invoiceNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'invoice', invData.date, invData.branchId);
+    }
 
-      // 2b. Compute grand total server-side from items + tax slab so paymentStatus can be
-      // derived from amountPaid vs. an actual total, instead of trusting whatever string
-      // the client sent for paymentStatus directly. Each line can carry its own
-      // taxSlabId (falls back to the header slab when a line doesn't set one) — mirrors
-      // dbStore.ts's calculateInvoiceTotals exactly, so the client-side preview a user
-      // sees while building the invoice matches what the server actually persists.
-      const [headerTaxSlab] = invData.taxSlabId ? await tx.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, invData.taxSlabId)) : [undefined];
-      const headerPercentage = headerTaxSlab ? Number(headerTaxSlab.percentage) : 0;
-      const lineSlabIds = Array.from(new Set((items || []).map((it: any) => it.taxSlabId).filter(Boolean)));
-      const lineSlabRows = lineSlabIds.length > 0 ? await tx.select().from(schema.taxSlabs).where(inArray(schema.taxSlabs.id, lineSlabIds as string[])) : [];
-      const lineSlabPercentageById = new Map(lineSlabRows.map((s: any) => [s.id, Number(s.percentage)]));
+    // 2b. Compute grand total server-side from items + tax slab so paymentStatus can be
+    // derived from amountPaid vs. an actual total, instead of trusting whatever string
+    // the client sent for paymentStatus directly. Each line can carry its own
+    // taxSlabId (falls back to the header slab when a line doesn't set one) — mirrors
+    // dbStore.ts's calculateInvoiceTotals exactly, so the client-side preview a user
+    // sees while building the invoice matches what the server actually persists.
+    const [headerTaxSlab] = invData.taxSlabId ? await tdb.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, invData.taxSlabId)) : [undefined];
+    const headerPercentage = headerTaxSlab ? Number(headerTaxSlab.percentage) : 0;
+    const lineSlabIds = Array.from(new Set((items || []).map((it: any) => it.taxSlabId).filter(Boolean)));
+    const lineSlabRows = lineSlabIds.length > 0 ? await tdb.select().from(schema.taxSlabs).where(inArray(schema.taxSlabs.id, lineSlabIds as string[])) : [];
+    const lineSlabPercentageById = new Map(lineSlabRows.map((s: any) => [s.id, Number(s.percentage)]));
 
-      const { grandTotal } = computeInvoiceServerTotals(items || [], headerPercentage, Number(invData.discountPercentage || 0), lineSlabPercentageById);
-      if (grandTotal <= 0) {
-        const err: any = new Error('The invoice net total must be greater than 0.');
-        err.status = 400;
-        throw err;
-      }
+    const { grandTotal } = computeInvoiceServerTotals(items || [], headerPercentage, Number(invData.discountPercentage || 0), lineSlabPercentageById);
+    if (grandTotal <= 0) {
+      const err: any = new Error('The invoice net total must be greater than 0.');
+      err.status = 400;
+      throw err;
+    }
 
-      invData.paymentStatus = computePaymentStatus(Number(invData.amountPaid || 0), grandTotal);
-      invData.amountPaid = String(round2(Number(invData.amountPaid || 0)));
+    invData.paymentStatus = computePaymentStatus(Number(invData.amountPaid || 0), grandTotal);
+    invData.amountPaid = String(round2(Number(invData.amountPaid || 0)));
 
-      // Warehouse is resolved/validated once at creation and then immutable, same pattern
-      // as branchId above — an edit keeps whatever warehouse the original sale deducted
-      // stock from (deduction itself is only ever applied on true new-invoice creation,
-      // see the isNewInvoice branch below, so there is nothing to re-resolve on an edit).
-      invData.warehouseId = existingInvoice
-        ? existingInvoice.warehouseId
-        : await resolveSaleWarehouse(tx, companyId, invData.branchId, items || [], invData.warehouseId, req.allowedBranchIds);
-      if (isNewInvoice) {
-        await assertStockAvailable(tx, companyId, invData.warehouseId, (items || []).map((it: any) => ({ productId: it.productId, quantity: Number(it.quantity), unitOfMeasureId: it.unitOfMeasureId })));
-      }
+    // Warehouse is resolved/validated once at creation and then immutable, same pattern
+    // as branchId above — an edit keeps whatever warehouse the original sale deducted
+    // stock from (deduction itself is only ever applied on true new-invoice creation,
+    // see the isNewInvoice branch below, so there is nothing to re-resolve on an edit).
+    invData.warehouseId = existingInvoice
+      ? existingInvoice.warehouseId
+      : await resolveSaleWarehouse(tdb, companyId, invData.branchId, items || [], invData.warehouseId, req.allowedBranchIds);
+    if (isNewInvoice) {
+      await assertStockAvailable(tdb, companyId, invData.warehouseId, (items || []).map((it: any) => ({ productId: it.productId, quantity: Number(it.quantity), unitOfMeasureId: it.unitOfMeasureId })));
+    }
 
-      // 3. Insert/Update Invoice
-      // createdAt/paymentDate are `timestamp` (Date-mode) columns — the driver serializes
-      // every bound parameter for the whole statement up front (Postgres, not drizzle,
-      // decides at execute time whether the INSERT or the ON CONFLICT...SET branch actually
-      // applies), so the SET clause's values need the same Date conversion as VALUES, not
-      // the raw invData (which still has string dates straight from the request body).
-      // Passing the raw string there broke every invoice creation carrying a paymentDate
-      // (e.g. any invoice saved as Paid) with a raw driver error: "value.toISOString is
-      // not a function" — reproduced live against the "UX test company" invoice-create flow.
-      const invoiceValues = {
-        ...invData,
-        createdAt: invData.createdAt ? new Date(invData.createdAt) : new Date(),
-        paymentDate: invData.paymentDate ? new Date(invData.paymentDate) : null,
-      };
-      const [newInvoice] = await tx.insert(schema.invoices).values(invoiceValues).onConflictDoUpdate({
-        target: schema.invoices.id,
-        set: invoiceValues
-      }).returning();
-      
-      savedInvoiceId = newInvoice.id;
+    // 3. Insert/Update Invoice
+    // createdAt/paymentDate are `timestamp` (Date-mode) columns — the driver serializes
+    // every bound parameter for the whole statement up front (Postgres, not drizzle,
+    // decides at execute time whether the INSERT or the ON CONFLICT...SET branch actually
+    // applies), so the SET clause's values need the same Date conversion as VALUES, not
+    // the raw invData (which still has string dates straight from the request body).
+    // Passing the raw string there broke every invoice creation carrying a paymentDate
+    // (e.g. any invoice saved as Paid) with a raw driver error: "value.toISOString is
+    // not a function" — reproduced live against the "UX test company" invoice-create flow.
+    const invoiceValues = {
+      ...invData,
+      createdAt: invData.createdAt ? new Date(invData.createdAt) : new Date(),
+      paymentDate: invData.paymentDate ? new Date(invData.paymentDate) : null,
+    };
+    const [newInvoice] = await tdb.insert(schema.invoices).values(invoiceValues).onConflictDoUpdate({
+      target: schema.invoices.id,
+      set: invoiceValues
+    }).returning();
 
-      // 4. Insert/Update Items
-      if (items && items.length > 0) {
-        const invoiceZatcaCodeById = await loadZatcaCodesByUnitId(tx, items);
-        for (const item of items) {
-          // Same object used for both branches (values and set) — see invoiceValues
-          // above for why: Postgres serializes both branches' parameters up front
-          // regardless of which one actually executes, so a raw/unvalidated value in
-          // either one reaches the driver either way.
-          const itemValues = {
-            ...item,
-            invoiceId: newInvoice.id,
-            unitCost: String(round2(Number(item.unitCost))),
-            quantity: String(item.quantity),
-            discountAmount: item.discountAmount ? String(round2(Number(item.discountAmount))) : '0',
-            unit: normalizeZatcaUnitCode(item.unitOfMeasureId ? invoiceZatcaCodeById.get(item.unitOfMeasureId) : item.unit),
-            unitOfMeasureId: item.unitOfMeasureId || null,
-          };
-          await tx.insert(schema.invoiceItems).values(itemValues).onConflictDoUpdate({
-            target: schema.invoiceItems.id,
-            set: itemValues
-          });
+    const savedInvoiceId = newInvoice.id;
 
-          // Fold into the product's weighted-average sale price — only on true new-invoice
-          // creation (not an edit of an existing one, and not a Credit/Debit Note, which
-          // goes through the separate /invoices/:id/note route below and deliberately
-          // doesn't touch this average — same forward-only philosophy as GRN reversal not
-          // unwinding averageCost). Only lines actually picked from the catalog carry a
-          // productId; a free-typed line simply doesn't contribute.
-          if (isNewInvoice && item.productId) {
-            const [product] = await tx.select({
-              averageSalePrice: schema.productsServices.averageSalePrice,
-              totalQuantitySold: schema.productsServices.totalQuantitySold,
-            }).from(schema.productsServices).where(eq(schema.productsServices.id, item.productId)).for('update');
-            if (product) {
-              const priorQty = Number(product.totalQuantitySold || 0);
-              const priorAvg = Number(product.averageSalePrice || 0);
-              const soldQty = await toBaseQuantity(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.quantity));
-              const baseUnitCost = await toBaseUnitCost(tx, item.productId, item.unitOfMeasureId, companyId, Number(item.unitCost));
-              const newQty = priorQty + soldQty;
-              const newAvg = newQty > 0 ? round4((priorQty * priorAvg + soldQty * baseUnitCost) / newQty) : priorAvg;
-              await tx.update(schema.productsServices)
-                .set({ averageSalePrice: String(newAvg), totalQuantitySold: String(round2(newQty)) })
-                .where(eq(schema.productsServices.id, item.productId));
-            }
-            await deductStockForSale(tx, companyId, item.productId, Number(item.quantity), newInvoice.id, invoiceValues.createdAt as Date, invData.warehouseId, item.unitOfMeasureId);
+    // 4. Insert/Update Items
+    if (items && items.length > 0) {
+      const invoiceZatcaCodeById = await loadZatcaCodesByUnitId(tdb, items);
+      for (const item of items) {
+        // Same object used for both branches (values and set) — see invoiceValues
+        // above for why: Postgres serializes both branches' parameters up front
+        // regardless of which one actually executes, so a raw/unvalidated value in
+        // either one reaches the driver either way.
+        const itemValues = {
+          ...item,
+          invoiceId: newInvoice.id,
+          unitCost: String(round2(Number(item.unitCost))),
+          quantity: String(item.quantity),
+          discountAmount: item.discountAmount ? String(round2(Number(item.discountAmount))) : '0',
+          unit: normalizeZatcaUnitCode(item.unitOfMeasureId ? invoiceZatcaCodeById.get(item.unitOfMeasureId) : item.unit),
+          unitOfMeasureId: item.unitOfMeasureId || null,
+        };
+        await tdb.insert(schema.invoiceItems).values(itemValues).onConflictDoUpdate({
+          target: schema.invoiceItems.id,
+          set: itemValues
+        });
+
+        // Fold into the product's weighted-average sale price — only on true new-invoice
+        // creation (not an edit of an existing one, and not a Credit/Debit Note, which
+        // goes through the separate /invoices/:id/note route below and deliberately
+        // doesn't touch this average — same forward-only philosophy as GRN reversal not
+        // unwinding averageCost). Only lines actually picked from the catalog carry a
+        // productId; a free-typed line simply doesn't contribute.
+        if (isNewInvoice && item.productId) {
+          const [product] = await tdb.select({
+            averageSalePrice: schema.productsServices.averageSalePrice,
+            totalQuantitySold: schema.productsServices.totalQuantitySold,
+          }).from(schema.productsServices).where(eq(schema.productsServices.id, item.productId)).for('update');
+          if (product) {
+            const priorQty = Number(product.totalQuantitySold || 0);
+            const priorAvg = Number(product.averageSalePrice || 0);
+            const soldQty = await toBaseQuantity(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.quantity));
+            const baseUnitCost = await toBaseUnitCost(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.unitCost));
+            const newQty = priorQty + soldQty;
+            const newAvg = newQty > 0 ? round4((priorQty * priorAvg + soldQty * baseUnitCost) / newQty) : priorAvg;
+            await tdb.update(schema.productsServices)
+              .set({ averageSalePrice: String(newAvg), totalQuantitySold: String(round2(newQty)) })
+              .where(eq(schema.productsServices.id, item.productId));
           }
+          await deductStockForSale(tdb, companyId, item.productId, Number(item.quantity), newInvoice.id, invoiceValues.createdAt as Date, invData.warehouseId, item.unitOfMeasureId);
         }
       }
+    }
 
-      // 5. Generate Receipt Voucher if status is Paid
-      await syncVoucherForInvoice(tx, newInvoice.id, companyId, {
-        ...invData,
-        invoiceNumber: newInvoice.invoiceNumber,
-      }, user.id);
-    });
+    // 5. Generate Receipt Voucher if status is Paid
+    await syncVoucherForInvoice(tdb, newInvoice.id, companyId, {
+      ...invData,
+      invoiceNumber: newInvoice.invoiceNumber,
+    }, user.id);
 
-    // Auto-process ZATCA Phase 2 E-Invoicing clearance/reporting
+    // Auto-process ZATCA Phase 2 E-Invoicing clearance/reporting — deferred until this
+    // request's transaction has genuinely committed (runAfterTenantCommit), since
+    // processInvoiceZatca reads this invoice back via its own separate connection and
+    // would see nothing if fired before the commit.
     if (savedInvoiceId) {
-      processInvoiceZatca(savedInvoiceId).catch(err => {
-        console.error('[Auto ZATCA Error]:', err);
+      runAfterTenantCommit(() => {
+        processInvoiceZatca(savedInvoiceId).catch(err => {
+          console.error('[Auto ZATCA Error]:', err);
+        });
       });
     }
 
@@ -846,10 +851,12 @@ router.post('/invoices', async (req: any, res) => {
 // later. No automatic refund/reversal voucher is generated here either; the accounting
 // treatment of the credit is a separate, explicitly deferred piece of work.
 //
-// DEFERRED from the tenantDb RLS rollout — see POST /invoices' own comment above; this
-// route fires the exact same fire-and-forget processInvoiceZatca(savedNoteId) pattern.
-router.post('/invoices/:id/note', async (req: any, res) => {
+// This route fires processInvoiceZatca(savedNoteId) as fire-and-forget immediately after
+// its own write commits, deferred via runAfterTenantCommit() — see POST /invoices' own
+// comment above for the full reasoning.
+router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const user = req.user;
     const permissions = normalizePermissions(user.permissions, user.role, user.isSuperAdmin);
     if (!permissions.invoice.create.enabled) return res.status(403).json({ error: 'Forbidden' });
@@ -861,7 +868,7 @@ router.post('/invoices/:id/note', async (req: any, res) => {
     }
 
     const companyId = req.targetCompanyId;
-    const [original] = await db.select().from(schema.invoices)
+    const [original] = await tdb.select().from(schema.invoices)
       .where(and(eq(schema.invoices.id, originalInvoiceId), eq(schema.invoices.companyId, companyId)));
     if (!original) return res.status(404).json({ error: 'Original invoice not found' });
     if (!branchAccessOk(req, original.branchId)) return res.status(403).json({ error: 'Forbidden: you are not assigned to this branch.' });
@@ -882,7 +889,7 @@ router.post('/invoices/:id/note', async (req: any, res) => {
     // additional charges, not a reversal, so more than one against the same invoice isn't
     // inherently wrong the way a duplicate Credit Note is.
     if (type === 'CreditNote') {
-      const [existingCreditNote] = await db.select().from(schema.invoices)
+      const [existingCreditNote] = await tdb.select().from(schema.invoices)
         .where(and(
           eq(schema.invoices.originalInvoiceId, originalInvoiceId),
           eq(schema.invoices.documentType, 'CreditNote'),
@@ -893,102 +900,102 @@ router.post('/invoices/:id/note', async (req: any, res) => {
       }
     }
 
-    const originalItems = await db.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, originalInvoiceId));
+    const originalItems = await tdb.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, originalInvoiceId));
     if (originalItems.length === 0) {
       return res.status(400).json({ error: 'Original invoice has no line items to reference' });
     }
 
-    let savedNoteId = '';
-    let savedNoteNumber = '';
-    await db.transaction(async (tx) => {
-      await validateTransactionDate(original.date, companyId);
-      await assertQuarterNotFiled(original.date, companyId);
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
+    await validateTransactionDate(original.date, companyId);
+    await assertQuarterNotFiled(original.date, companyId);
 
-      const counterType = type === 'CreditNote' ? 'creditNote' : 'debitNote';
-      const noteNumber = await getAndIncrementDocumentNumber(tx, companyId, counterType, original.date, original.branchId);
-      savedNoteNumber = noteNumber;
-      const noteId = generateId();
+    const counterType = type === 'CreditNote' ? 'creditNote' : 'debitNote';
+    const noteNumber = await getAndIncrementDocumentNumber(tdb, companyId, counterType, original.date, original.branchId);
+    const savedNoteNumber = noteNumber;
+    const noteId = generateId();
 
-      const [newNote] = await tx.insert(schema.invoices).values({
-        id: noteId,
-        invoiceNumber: noteNumber,
-        date: original.date,
-        customerId: original.customerId,
-        taxSlabId: original.taxSlabId,
-        bankId: original.bankId,
-        paymentStatus: 'Unpaid',
-        notes: reason || '',
-        status: 'Active',
-        createdById: user.id,
-        createdAt: new Date(),
-        discountPercentage: original.discountPercentage,
-        amountPaid: '0',
-        companyId,
-        // Always inherited from the original, never independently picked — a reversal's
-        // ZATCA seller address must match the document it's reversing, and the branch
-        // itself is not something a Credit/Debit Note has its own concept of.
-        branchId: original.branchId,
-        // Same inheritance reasoning as branchId — for display/reporting only today,
-        // since a Credit/Debit Note doesn't restock inventory at all (a pre-existing,
-        // separate gap: deductStockForSale is never called from this route).
-        warehouseId: original.warehouseId,
-        documentType: type,
-        originalInvoiceId,
-        creditNoteReason: reason || null,
-      }).returning();
+    const [newNote] = await tdb.insert(schema.invoices).values({
+      id: noteId,
+      invoiceNumber: noteNumber,
+      date: original.date,
+      customerId: original.customerId,
+      taxSlabId: original.taxSlabId,
+      bankId: original.bankId,
+      paymentStatus: 'Unpaid',
+      notes: reason || '',
+      status: 'Active',
+      createdById: user.id,
+      createdAt: new Date(),
+      discountPercentage: original.discountPercentage,
+      amountPaid: '0',
+      companyId,
+      // Always inherited from the original, never independently picked — a reversal's
+      // ZATCA seller address must match the document it's reversing, and the branch
+      // itself is not something a Credit/Debit Note has its own concept of.
+      branchId: original.branchId,
+      // Same inheritance reasoning as branchId — for display/reporting only today,
+      // since a Credit/Debit Note doesn't restock inventory at all (a pre-existing,
+      // separate gap: deductStockForSale is never called from this route).
+      warehouseId: original.warehouseId,
+      documentType: type,
+      originalInvoiceId,
+      creditNoteReason: reason || null,
+    }).returning();
 
-      savedNoteId = newNote.id;
+    const savedNoteId = newNote.id;
 
-      for (const item of originalItems) {
-        await tx.insert(schema.invoiceItems).values({
-          id: generateId(),
-          invoiceId: newNote.id,
-          description: item.description,
-          unitCost: item.unitCost,
-          quantity: item.quantity,
-          discountAmount: item.discountAmount,
-          taxSlabId: item.taxSlabId,
-          // A Credit/Debit Note must reverse the original invoice's units exactly — a
-          // line originally sold in KGM being reversed as PCE would misrepresent what's
-          // actually being credited/debited.
-          unit: item.unit,
-          // Carried through for display/reporting only — deliberately does NOT fold back
-          // into averageSalePrice. Same forward-only philosophy as GRN reversal not
-          // unwinding averageCost: a moving weighted average can't be precisely reversed
-          // without replaying full history, so credits/debits are excluded from the
-          // average rather than approximated.
-          productId: item.productId,
-          unitOfMeasureId: item.unitOfMeasureId,
-        });
+    for (const item of originalItems) {
+      await tdb.insert(schema.invoiceItems).values({
+        id: generateId(),
+        invoiceId: newNote.id,
+        description: item.description,
+        unitCost: item.unitCost,
+        quantity: item.quantity,
+        discountAmount: item.discountAmount,
+        taxSlabId: item.taxSlabId,
+        // A Credit/Debit Note must reverse the original invoice's units exactly — a
+        // line originally sold in KGM being reversed as PCE would misrepresent what's
+        // actually being credited/debited.
+        unit: item.unit,
+        // Carried through for display/reporting only — deliberately does NOT fold back
+        // into averageSalePrice. Same forward-only philosophy as GRN reversal not
+        // unwinding averageCost: a moving weighted average can't be precisely reversed
+        // without replaying full history, so credits/debits are excluded from the
+        // average rather than approximated.
+        productId: item.productId,
+        unitOfMeasureId: item.unitOfMeasureId,
+      });
 
-        // Restock — a Credit Note structurally reverses the original sale, so any stock
-        // deducted at the time should come back. Debit Notes represent new, additional
-        // unpaid charges rather than a reversal (see the comment on the voucher-reversal
-        // call below), so they deliberately never restock. Uses the original invoice's own
-        // warehouseId (already inherited onto the note itself, see `warehouseId` above) —
-        // the same warehouse the stock was actually deducted from at sale time, not the
-        // note's own (nonexistent) concept of a warehouse.
-        if (type === 'CreditNote' && item.productId) {
-          await restockForSaleReversal(tx, companyId, item.productId, Number(item.quantity), newNote.id, new Date(), original.warehouseId, item.unitOfMeasureId);
-        }
+      // Restock — a Credit Note structurally reverses the original sale, so any stock
+      // deducted at the time should come back. Debit Notes represent new, additional
+      // unpaid charges rather than a reversal (see the comment on the voucher-reversal
+      // call below), so they deliberately never restock. Uses the original invoice's own
+      // warehouseId (already inherited onto the note itself, see `warehouseId` above) —
+      // the same warehouse the stock was actually deducted from at sale time, not the
+      // note's own (nonexistent) concept of a warehouse.
+      if (type === 'CreditNote' && item.productId) {
+        await restockForSaleReversal(tdb, companyId, item.productId, Number(item.quantity), newNote.id, new Date(), original.warehouseId, item.unitOfMeasureId);
       }
+    }
 
-      // A Credit Note structurally reverses the original invoice — if any of it was
-      // actually paid, reverse that receipt too. Unlike Cancel, the original invoice's own
-      // status/paymentStatus is deliberately left untouched (see the note above this
-      // route), so the money-out side must be recorded as a genuine Reversal voucher
-      // rather than deleted — see postCreditNoteReversalVoucher's own comment for why
-      // reusing syncVoucherForInvoice's Cancel-branch here silently erased the Bank
-      // Statement Ledger's record of the original receipt. Debit Notes represent new
-      // unpaid charges, not a reversal, so they never reach here.
-      if (type === 'CreditNote' && Number(original.amountPaid) > 0) {
-        await postCreditNoteReversalVoucher(tx, originalInvoiceId, companyId, original.date, user.id);
-      }
-    });
+    // A Credit Note structurally reverses the original invoice — if any of it was
+    // actually paid, reverse that receipt too. Unlike Cancel, the original invoice's own
+    // status/paymentStatus is deliberately left untouched (see the note above this
+    // route), so the money-out side must be recorded as a genuine Reversal voucher
+    // rather than deleted — see postCreditNoteReversalVoucher's own comment for why
+    // reusing syncVoucherForInvoice's Cancel-branch here silently erased the Bank
+    // Statement Ledger's record of the original receipt. Debit Notes represent new
+    // unpaid charges, not a reversal, so they never reach here.
+    if (type === 'CreditNote' && Number(original.amountPaid) > 0) {
+      await postCreditNoteReversalVoucher(tdb, originalInvoiceId, companyId, original.date, user.id);
+    }
 
     if (savedNoteId) {
-      processInvoiceZatca(savedNoteId).catch(err => {
-        console.error('[Auto ZATCA Error - Credit/Debit Note]:', err);
+      runAfterTenantCommit(() => {
+        processInvoiceZatca(savedNoteId).catch(err => {
+          console.error('[Auto ZATCA Error - Credit/Debit Note]:', err);
+        });
       });
     }
 
@@ -1159,13 +1166,14 @@ router.post('/invoices/:id/paid', withTenantDb, async (req: any, res) => {
   }
 });
 
-// DEFERRED from the tenantDb RLS rollout — see POST /invoices' own comment above. This
-// route additionally rolls back the ZATCA hash-chain tip (isStillChainTip/
-// setHashChainState) under a row lock on `companies`, a mechanism explicitly documented
-// in CLAUDE.md as needing more care than the rest of the codebase — not something to
-// migrate as one line item among 140+ others.
-router.post('/invoices/:id/cancel', async (req: any, res) => {
+// This route rolls back the ZATCA hash-chain tip (isStillChainTip/setHashChainState)
+// under a row lock on `companies` when applicable — both already accept a generic
+// executor (server/lib/zatca/hashChain.ts), so this migrates the same way as any other
+// db.transaction()-wrapped route: swap tx for tdb throughout. No processInvoiceZatca call
+// here, so there's no fire-and-forget commit-ordering concern in this route specifically.
+router.post('/invoices/:id/cancel', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const { id } = req.params;
     // A POS-sold invoice is gated by pos.cancel, everything else by invoice.delete.
     // pos.cancel existed in permissionSchema.ts (the Roles editor already showed it as a
@@ -1176,93 +1184,91 @@ router.post('/invoices/:id/cancel', async (req: any, res) => {
     // long as the role (or any other role assigned to the user) still had invoice.delete.
     // Looked up before the real transactional fetch below purely to pick which permission
     // applies — isPosSale is immutable once set at creation, so there's no race to worry
-    // about between this read and the row lock the transaction takes further down.
-    const [preCheck] = await db.select({ isPosSale: schema.invoices.isPosSale })
+    // about between this read and the row lock taken further down.
+    const [preCheck] = await tdb.select({ isPosSale: schema.invoices.isPosSale })
       .from(schema.invoices).where(and(eq(schema.invoices.id, id), eq(schema.invoices.companyId, req.targetCompanyId)));
     const requiredLeaf = preCheck?.isPosSale ? 'pos.cancel' : 'invoice.delete';
     if (!hasPermission(req.user, requiredLeaf)) return res.status(403).json({ error: 'Forbidden' });
 
-    let cancelledInvoiceNumber = '';
-    let cancelledDocType = '';
-    await db.transaction(async (tx) => {
-      // FOR UPDATE — processInvoiceZatca's fire-and-forget SUBMITTING transition (see
-      // processInvoice.ts) runs as a plain UPDATE, which itself takes an implicit
-      // Postgres row lock for its duration; locking the row here too means this read
-      // genuinely waits out any in-flight submission instead of racing a stale copy of
-      // zatcaStatus, whichever of the two happens to reach the row first.
-      const [invoice] = await tx.select().from(schema.invoices).where(and(eq(schema.invoices.id, id), eq(schema.invoices.companyId, req.targetCompanyId))).for('update');
-      if (!invoice) { const err: any = new Error('Invoice not found'); err.status = 404; throw err; }
-      if (!branchAccessOk(req, invoice.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction; every row lock below still applies within it.
+    // FOR UPDATE — processInvoiceZatca's fire-and-forget SUBMITTING transition (see
+    // processInvoice.ts) runs as a plain UPDATE, which itself takes an implicit
+    // Postgres row lock for its duration; locking the row here too means this read
+    // genuinely waits out any in-flight submission instead of racing a stale copy of
+    // zatcaStatus, whichever of the two happens to reach the row first.
+    const [invoice] = await tdb.select().from(schema.invoices).where(and(eq(schema.invoices.id, id), eq(schema.invoices.companyId, req.targetCompanyId))).for('update');
+    if (!invoice) { const err: any = new Error('Invoice not found'); err.status = 404; throw err; }
+    if (!branchAccessOk(req, invoice.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
 
-      // A cancel is an edit to this invoice's status — it must be blocked exactly like a
-      // real edit once the invoice's own quarter has been filed with ZATCA, or a filed
-      // return's reported sales/VAT figures could silently go stale (cancelling drops it
-      // out of every report's totals — see SalesReportsModule.tsx). POST /invoices and
-      // /invoices/:id/note already enforce this; this route never did.
-      await assertQuarterNotFiled(invoice.date, req.targetCompanyId);
+    // A cancel is an edit to this invoice's status — it must be blocked exactly like a
+    // real edit once the invoice's own quarter has been filed with ZATCA, or a filed
+    // return's reported sales/VAT figures could silently go stale (cancelling drops it
+    // out of every report's totals — see SalesReportsModule.tsx). POST /invoices and
+    // /invoices/:id/note already enforce this; this route never did.
+    await assertQuarterNotFiled(invoice.date, req.targetCompanyId);
 
-      if (['SUBMITTING', 'CLEARED', 'REPORTED'].includes(invoice.zatcaStatus as string)) {
-        const err: any = new Error('This invoice has already been submitted to ZATCA and cannot be cancelled. Issue a Credit Note instead.');
-        err.status = 400;
-        throw err;
+    if (['SUBMITTING', 'CLEARED', 'REPORTED'].includes(invoice.zatcaStatus as string)) {
+      const err: any = new Error('This invoice has already been submitted to ZATCA and cannot be cancelled. Issue a Credit Note instead.');
+      err.status = 400;
+      throw err;
+    }
+
+    await tdb.update(schema.invoices).set({ status: 'Cancelled' }).where(eq(schema.invoices.id, id));
+
+    // Restock — a pre-existing gap: this route never touched inventoryStocks at all, so
+    // cancelling a sale never gave the stock back. Scoped to plain Invoices only — a
+    // Credit Note already restocks at its own creation (see the CreditNote branch
+    // above), so cancelling a Credit Note through this same generic route is a separate,
+    // not-yet-handled edge case (would need to re-deduct, the opposite direction) rather
+    // than something this fix should guess at; a Debit Note was never a stock reversal
+    // to begin with.
+    if (invoice.documentType !== 'CreditNote' && invoice.documentType !== 'DebitNote') {
+      const cancelledItems = await tdb.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, id));
+      for (const item of cancelledItems) {
+        if (!item.productId) continue;
+        await restockForSaleReversal(tdb, invoice.companyId, item.productId, Number(item.quantity), id, new Date(), invoice.warehouseId, item.unitOfMeasureId);
       }
+    }
 
-      await tx.update(schema.invoices).set({ status: 'Cancelled' }).where(eq(schema.invoices.id, id));
+    // This invoice may already have reserved a real ZATCA chain position (icv/
+    // previousInvoiceHash) even though it's being cancelled here — processInvoiceZatca
+    // runs fire-and-forget immediately at creation, well before a user has a realistic
+    // window to cancel. The guard above already guarantees zatcaStatus can only be
+    // NOT_SUBMITTED/ERROR/REJECTED/DISABLED at this point (never SUBMITTING/CLEARED/
+    // REPORTED), so only the never-reached-ZATCA case is even reachable here — but it
+    // still needs isStillChainTip to be true, or something else has already chained off
+    // this invoice's hash and the position is permanently structural regardless of
+    // cancellation (same conservative rule as processInvoiceZatca's resubmission logic;
+    // see hashChain.ts). When both hold, roll the chain tip back to what it was before
+    // this invoice claimed it, so the next real invoice legitimately gets this ICV back
+    // instead of it being wasted forever.
+    if (invoice.icv) {
+      const neverReachedZatca = invoice.zatcaStatus === 'NOT_SUBMITTED'
+        && Array.isArray(invoice.zatcaValidationResults)
+        && (invoice.zatcaValidationResults as any[]).some((r: any) => r?.code === 'ONBOARDING_INCOMPLETE');
 
-      // Restock — a pre-existing gap: this route never touched inventoryStocks at all, so
-      // cancelling a sale never gave the stock back. Scoped to plain Invoices only — a
-      // Credit Note already restocks at its own creation (see the CreditNote branch
-      // above), so cancelling a Credit Note through this same generic route is a separate,
-      // not-yet-handled edge case (would need to re-deduct, the opposite direction) rather
-      // than something this fix should guess at; a Debit Note was never a stock reversal
-      // to begin with.
-      if (invoice.documentType !== 'CreditNote' && invoice.documentType !== 'DebitNote') {
-        const cancelledItems = await tx.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, id));
-        for (const item of cancelledItems) {
-          if (!item.productId) continue;
-          await restockForSaleReversal(tx, invoice.companyId, item.productId, Number(item.quantity), id, new Date(), invoice.warehouseId, item.unitOfMeasureId);
+      if (neverReachedZatca) {
+        // Same company-row lock processInvoiceZatca holds for the duration of any
+        // zatcaChainState read/write — without it, this rollback could race a concurrent
+        // reservation for a different invoice of the same company.
+        const [company] = await tdb.select({ zatcaEnvironment: schema.companies.zatcaEnvironment })
+          .from(schema.companies).where(eq(schema.companies.id, invoice.companyId)).for('update');
+        const environment = (company?.zatcaEnvironment as ZatcaEnvironment) || 'sandbox';
+
+        if (await isStillChainTip(invoice.companyId, environment, invoice.icv, tdb)) {
+          await setHashChainState(invoice.companyId, environment, invoice.icv - 1, invoice.previousInvoiceHash, tdb);
         }
       }
+    }
 
-      // This invoice may already have reserved a real ZATCA chain position (icv/
-      // previousInvoiceHash) even though it's being cancelled here — processInvoiceZatca
-      // runs fire-and-forget immediately at creation, well before a user has a realistic
-      // window to cancel. The guard above already guarantees zatcaStatus can only be
-      // NOT_SUBMITTED/ERROR/REJECTED/DISABLED at this point (never SUBMITTING/CLEARED/
-      // REPORTED), so only the never-reached-ZATCA case is even reachable here — but it
-      // still needs isStillChainTip to be true, or something else has already chained off
-      // this invoice's hash and the position is permanently structural regardless of
-      // cancellation (same conservative rule as processInvoiceZatca's resubmission logic;
-      // see hashChain.ts). When both hold, roll the chain tip back to what it was before
-      // this invoice claimed it, so the next real invoice legitimately gets this ICV back
-      // instead of it being wasted forever.
-      if (invoice.icv) {
-        const neverReachedZatca = invoice.zatcaStatus === 'NOT_SUBMITTED'
-          && Array.isArray(invoice.zatcaValidationResults)
-          && (invoice.zatcaValidationResults as any[]).some((r: any) => r?.code === 'ONBOARDING_INCOMPLETE');
+    await syncVoucherForInvoice(tdb, id, invoice.companyId, {
+      ...invoice,
+      status: 'Cancelled',
+    }, req.user.id);
 
-        if (neverReachedZatca) {
-          // Same company-row lock processInvoiceZatca holds for the duration of any
-          // zatcaChainState read/write — without it, this rollback could race a concurrent
-          // reservation for a different invoice of the same company.
-          const [company] = await tx.select({ zatcaEnvironment: schema.companies.zatcaEnvironment })
-            .from(schema.companies).where(eq(schema.companies.id, invoice.companyId)).for('update');
-          const environment = (company?.zatcaEnvironment as ZatcaEnvironment) || 'sandbox';
-
-          if (await isStillChainTip(invoice.companyId, environment, invoice.icv, tx)) {
-            await setHashChainState(invoice.companyId, environment, invoice.icv - 1, invoice.previousInvoiceHash, tx);
-          }
-        }
-      }
-
-      await syncVoucherForInvoice(tx, id, invoice.companyId, {
-        ...invoice,
-        status: 'Cancelled',
-      }, req.user.id);
-
-      cancelledInvoiceNumber = invoice.invoiceNumber;
-      cancelledDocType = invoice.documentType;
-    });
+    const cancelledInvoiceNumber = invoice.invoiceNumber;
+    const cancelledDocType = invoice.documentType;
 
     recordAuditLog(req, 'CANCEL_INVOICE', 'invoice', id, {
       invoiceNumber: cancelledInvoiceNumber,

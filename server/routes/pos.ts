@@ -10,7 +10,7 @@ import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { restockForSaleReversal, validateTransactionDate, assertQuarterNotFiled, postCreditNoteReversalVoucher, computeInvoiceServerTotals } from '../lib/businessLogic.js';
 import { processInvoiceZatca } from '../lib/zatca/processInvoice.js';
 import { recordAuditLog } from '../lib/audit.js';
-import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
+import { withTenantDb, tenantDb, runAfterTenantCommit } from '../lib/tenantDb.js';
 
 const router = express.Router();
 
@@ -283,14 +283,12 @@ router.get('/returnable-invoices', withTenantDb, async (req: any, res) => {
   }
 });
 
-// DEFERRED from the tenantDb RLS rollout (stays on the superuser `db`) — same category
-// as server/routes/transactions.ts's POST /invoices and /invoices/:id/note (see those
-// routes' own comments). This route fires processInvoiceZatca(savedNoteId) as
-// fire-and-forget immediately after its transaction commits, which needs the same
-// dual-gate ZATCA verification rigor before migrating as any other change to this
-// pipeline. `invoices` itself still gets a real RLS policy from this rollout.
-router.post('/returns', async (req: any, res) => {
+// This route fires processInvoiceZatca(savedNoteId) as fire-and-forget immediately after
+// its own write commits, deferred via runAfterTenantCommit() — see
+// server/routes/transactions.ts's POST /invoices for the full reasoning.
+router.post('/returns', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.pos.access.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
@@ -311,6 +309,10 @@ router.post('/returns', async (req: any, res) => {
       if (!overrideUsername || !overridePassword) {
         return res.status(403).json({ error: 'You do not have permission to process returns. Ask a manager to authorize this return.', requiresOverride: true });
       }
+      // Deliberately the superuser `db` — this lookup must see the user regardless of
+      // company (a manager override may be a super-admin) before the explicit
+      // isSuperAdmin/companyId check just below decides whether they're actually allowed
+      // to authorize for THIS company.
       const [overrideUser] = await db.select().from(schema.users)
         .where(sql`LOWER(${schema.users.username}) = ${String(overrideUsername).trim().toLowerCase()}`);
       const overrideUserOk = overrideUser
@@ -331,7 +333,7 @@ router.post('/returns', async (req: any, res) => {
     }
 
     const companyId = req.targetCompanyId;
-    const [original] = await db.select().from(schema.invoices)
+    const [original] = await tdb.select().from(schema.invoices)
       .where(and(eq(schema.invoices.id, invoiceId), eq(schema.invoices.companyId, companyId)));
     if (!original) return res.status(404).json({ error: 'Original invoice not found.' });
     if (!original.isPosSale || original.documentType !== 'Invoice') {
@@ -347,7 +349,7 @@ router.post('/returns', async (req: any, res) => {
     // Return-window re-check, server-side — never trust that the client only shows
     // invoices the search endpoint already filtered; the window (or the invoice's status)
     // could have changed between the cashier searching and confirming.
-    const [company] = await db.select({ posSettings: schema.companies.posSettings })
+    const [company] = await tdb.select({ posSettings: schema.companies.posSettings })
       .from(schema.companies).where(eq(schema.companies.id, companyId));
     const windowDays = getReturnWindowDays(company?.posSettings);
     const cutoffDate = new Date();
@@ -356,7 +358,7 @@ router.post('/returns', async (req: any, res) => {
       return res.status(400).json({ error: `This sale is outside the ${windowDays}-day return window.` });
     }
 
-    const originalItems = await db.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, invoiceId));
+    const originalItems = await tdb.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, invoiceId));
     const originalItemById = new Map(originalItems.map(i => [i.id, i]));
 
     // Cumulative-quantity validation per line — this is what makes MULTIPLE partial
@@ -372,7 +374,7 @@ router.post('/returns', async (req: any, res) => {
       requestedByItemId.set(reqItem.invoiceItemId, (requestedByItemId.get(reqItem.invoiceItemId) || 0) + qty);
     }
     const requestedItemIds = [...requestedByItemId.keys()];
-    const priorReturnItems = await db.select({ originalInvoiceItemId: schema.invoiceItems.originalInvoiceItemId, quantity: schema.invoiceItems.quantity })
+    const priorReturnItems = await tdb.select({ originalInvoiceItemId: schema.invoiceItems.originalInvoiceItemId, quantity: schema.invoiceItems.quantity })
       .from(schema.invoiceItems).where(inArray(schema.invoiceItems.originalInvoiceItemId, requestedItemIds));
     const alreadyReturnedByItemId = new Map<string, number>();
     for (const r of priorReturnItems) {
@@ -414,10 +416,10 @@ router.post('/returns', async (req: any, res) => {
     // not the pre-discount line prices.
     const taxSlabIds = [...new Set(originalItems.map(i => i.taxSlabId).filter(Boolean))] as string[];
     const taxSlabs = taxSlabIds.length
-      ? await db.select().from(schema.taxSlabs).where(inArray(schema.taxSlabs.id, taxSlabIds))
+      ? await tdb.select().from(schema.taxSlabs).where(inArray(schema.taxSlabs.id, taxSlabIds))
       : [];
     const lineSlabPercentageById = new Map(taxSlabs.map(t => [t.id, Number(t.percentage)]));
-    const [headerTaxSlab] = original.taxSlabId ? await db.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, original.taxSlabId)) : [undefined];
+    const [headerTaxSlab] = original.taxSlabId ? await tdb.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, original.taxSlabId)) : [undefined];
     const headerPercentage = headerTaxSlab ? Number(headerTaxSlab.percentage) : 0;
     const originalDiscountPercentage = Number(original.discountPercentage || 0);
 
@@ -435,75 +437,75 @@ router.post('/returns', async (req: any, res) => {
     // into some other open month.
     const todayStr = new Date().toISOString().slice(0, 10);
 
-    let savedNoteId = '';
-    let savedNoteNumber = '';
-    await db.transaction(async (tx) => {
-      await validateTransactionDate(todayStr, companyId);
-      await assertQuarterNotFiled(todayStr, companyId);
+    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
+    // request in one transaction.
+    await validateTransactionDate(todayStr, companyId);
+    await assertQuarterNotFiled(todayStr, companyId);
 
-      const noteNumber = await getAndIncrementDocumentNumber(tx, companyId, 'creditNote', todayStr, original.branchId);
-      savedNoteNumber = noteNumber;
-      const noteId = generateId();
+    const noteNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'creditNote', todayStr, original.branchId);
+    const savedNoteNumber = noteNumber;
+    const noteId = generateId();
 
-      await tx.insert(schema.invoices).values({
-        id: noteId,
-        invoiceNumber: noteNumber,
-        date: todayStr,
-        customerId: original.customerId,
-        taxSlabId: original.taxSlabId,
-        bankId: original.bankId,
-        paymentStatus: 'Unpaid',
-        notes: reason || 'POS Return',
-        status: 'Active',
-        createdById: req.user.id,
-        createdAt: new Date(),
-        // Inherited from the original sale so this document's own computed total (the
-        // receipt, the Sales Invoices list, its ZATCA XML) matches the actual refund
-        // amount above — see this block's own comment for why.
-        discountPercentage: original.discountPercentage,
-        amountPaid: '0',
-        companyId,
-        branchId: original.branchId,
-        warehouseId: original.warehouseId,
-        isPosSale: true,
-        documentType: 'CreditNote',
-        originalInvoiceId: invoiceId,
-        creditNoteReason: reason || 'POS Return',
-      });
-      savedNoteId = noteId;
-
-      for (const [itemId, qty] of requestedByItemId.entries()) {
-        const originalItem = originalItemById.get(itemId)!;
-        await tx.insert(schema.invoiceItems).values({
-          id: generateId(),
-          invoiceId: noteId,
-          description: originalItem.description,
-          unitCost: originalItem.unitCost,
-          quantity: String(qty),
-          discountAmount: null,
-          taxSlabId: originalItem.taxSlabId,
-          unit: originalItem.unit,
-          productId: originalItem.productId,
-          unitOfMeasureId: originalItem.unitOfMeasureId,
-          originalInvoiceItemId: itemId,
-        });
-
-        if (originalItem.productId) {
-          await restockForSaleReversal(tx, companyId, originalItem.productId, qty, noteId, new Date(), original.warehouseId, originalItem.unitOfMeasureId);
-        }
-      }
-
-      if (Number(original.amountPaid) > 0 && refundAmount > 0) {
-        await postCreditNoteReversalVoucher(tx, invoiceId, companyId, todayStr, req.user.id, {
-          amount: refundAmount,
-          creditNoteNumber: noteNumber,
-        });
-      }
+    await tdb.insert(schema.invoices).values({
+      id: noteId,
+      invoiceNumber: noteNumber,
+      date: todayStr,
+      customerId: original.customerId,
+      taxSlabId: original.taxSlabId,
+      bankId: original.bankId,
+      paymentStatus: 'Unpaid',
+      notes: reason || 'POS Return',
+      status: 'Active',
+      createdById: req.user.id,
+      createdAt: new Date(),
+      // Inherited from the original sale so this document's own computed total (the
+      // receipt, the Sales Invoices list, its ZATCA XML) matches the actual refund
+      // amount above — see this block's own comment for why.
+      discountPercentage: original.discountPercentage,
+      amountPaid: '0',
+      companyId,
+      branchId: original.branchId,
+      warehouseId: original.warehouseId,
+      isPosSale: true,
+      documentType: 'CreditNote',
+      originalInvoiceId: invoiceId,
+      creditNoteReason: reason || 'POS Return',
     });
+    const savedNoteId = noteId;
+
+    for (const [itemId, qty] of requestedByItemId.entries()) {
+      const originalItem = originalItemById.get(itemId)!;
+      await tdb.insert(schema.invoiceItems).values({
+        id: generateId(),
+        invoiceId: noteId,
+        description: originalItem.description,
+        unitCost: originalItem.unitCost,
+        quantity: String(qty),
+        discountAmount: null,
+        taxSlabId: originalItem.taxSlabId,
+        unit: originalItem.unit,
+        productId: originalItem.productId,
+        unitOfMeasureId: originalItem.unitOfMeasureId,
+        originalInvoiceItemId: itemId,
+      });
+
+      if (originalItem.productId) {
+        await restockForSaleReversal(tdb, companyId, originalItem.productId, qty, noteId, new Date(), original.warehouseId, originalItem.unitOfMeasureId);
+      }
+    }
+
+    if (Number(original.amountPaid) > 0 && refundAmount > 0) {
+      await postCreditNoteReversalVoucher(tdb, invoiceId, companyId, todayStr, req.user.id, {
+        amount: refundAmount,
+        creditNoteNumber: noteNumber,
+      });
+    }
 
     if (savedNoteId) {
-      processInvoiceZatca(savedNoteId).catch(err => {
-        console.error('[Auto ZATCA Error - POS Return]:', err);
+      runAfterTenantCommit(() => {
+        processInvoiceZatca(savedNoteId).catch(err => {
+          console.error('[Auto ZATCA Error - POS Return]:', err);
+        });
       });
     }
 

@@ -17,6 +17,24 @@ import { certificateMatchesPrivateKey, extractZatcaCertificateTaxpayerIdentity }
 import { getZatcaSandboxSampleBinarySecurityToken, getZatcaSandboxSamplePrivateKeyPem, ZATCA_SANDBOX_SAMPLE_VAT_NUMBER, ZATCA_SANDBOX_SAMPLE_CR_NUMBER } from '../lib/zatca/sandboxSampleIdentity.js';
 import { encryptPrivateKey, decryptPrivateKey } from '../lib/zatca/keyEncryption.js';
 
+// EXEMPTED from the tenantDb/RLS rollout, permanently — every route in this file stays
+// on the superuser `db`. Not a caution-only deferral: the router.use() gate below
+// unconditionally calls next() for a super-admin with NO company-match check at all,
+// meaning every route below it (company-config, set-active-environment,
+// generate-keypair-csr, request-compliance-csid, run-compliance-suite,
+// request-production-csid) can legitimately configure/onboard ZATCA for ANY company via
+// an explicit companyId in the request body — the same "genuinely cross-tenant admin
+// surface" shape as users.ts's admin routes. A tenantDb() connection is scoped to
+// exactly one company (req.targetCompanyId) for the whole request; it cannot serve a
+// write that deliberately targets a different one, and GET /company-status/:companyId
+// has the identical shape for its own super-admin-viewable-cross-company read.
+// `zatcaEnvironmentConfigs`/`zatcaChainState` still get real RLS policies from this
+// rollout — protected via every OTHER route that touches them (e.g.
+// server/lib/zatca/processInvoice.ts's own reads, though that too stays on `db`
+// permanently as an independent background job, not a request-scoped connection) —
+// only this file's own routes keep using the superuser `db`. POST /submit-invoice's own
+// comment covers why that one route specifically stays as-is despite having no
+// cross-company write of its own.
 const router = Router();
 
 type ZatcaEnvironment = 'sandbox' | 'simulation' | 'production';
@@ -32,7 +50,8 @@ function assertValidEnvironment(environment: any): asserts environment is ZatcaE
 
 // Sandbox/simulation/production hold fully independent credentials and onboarding
 // state (BACKLOG.md ZATCA finding #2) — this fetches (or upserts) exactly one
-// environment's row, never the whole company.
+// environment's row, never the whole company. Deliberately always the superuser `db` —
+// see this file's own top-of-file comment for why every route here stays on it.
 async function getEnvConfig(companyId: string, environment: ZatcaEnvironment) {
   const [config] = await db.select().from(schema.zatcaEnvironmentConfigs)
     .where(and(eq(schema.zatcaEnvironmentConfigs.companyId, companyId), eq(schema.zatcaEnvironmentConfigs.environment, environment)));
@@ -94,6 +113,16 @@ async function logZatcaApiError(req: any, companyId: string, environment: string
  * work — anyone whose Role grants invoice.create or invoice.update (the same leaves
  * that already let them create the invoice or record its payment) can trigger it too,
  * not just admins.
+ *
+ * Not migrated to tenantDb() — deliberately so, not an oversight. This route has no
+ * write of its own to migrate: it does one ownership-check read (kept on the superuser
+ * `db`, same hijack-detection reasoning as every other such check in this rollout — it
+ * must see a cross-company invoice to reject it with a clean 403 instead of a
+ * tenantDb-invisible 404) and then AWAITS processInvoiceZatca(invoiceId) directly. That
+ * function is an independent background job with its own connection by design (see its
+ * own file) and stays on the superuser `db` permanently, regardless of which route calls
+ * it — there is no fire-and-forget ordering concern here either, since this call is
+ * awaited synchronously rather than fired after a commit.
  */
 router.post('/submit-invoice/:invoiceId', async (req: any, res) => {
   try {
@@ -178,6 +207,12 @@ router.use(async (req: any, res: any, next: any) => {
   * GET ZATCA onboarding status for all three environments, plus the taxpayer profile
   * and which environment is currently active for live invoice processing.
   */
+// EXEMPTED from tenantDb, permanently — a super-admin may target ANY companyId here
+// (see the explicit `!isSuperAdminUser(req.user) && companyId !== req.targetCompanyId`
+// check just below), which a tenantDb() connection — scoped to exactly
+// req.targetCompanyId — cannot serve: the target company's rows would simply be
+// invisible under RLS whenever companyId differs from the super-admin's own active
+// company, silently breaking the cross-company status view this route exists for.
 router.get('/company-status/:companyId', async (req: any, res) => {
   try {
     const { companyId } = req.params;
