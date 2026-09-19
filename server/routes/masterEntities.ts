@@ -11,6 +11,7 @@ import { previewNextDocumentNumbers, DOCUMENT_TYPE_REGISTRY, getAndIncrementDocu
 import { assertModifierGroupsOwnedByCompany } from '../lib/businessLogic.js';
 import { imageSize } from 'image-size';
 import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
+import { isLogoPlaceholder } from '../lib/companyLogo.js';
 
 const router = express.Router();
 
@@ -506,7 +507,8 @@ router.patch('/companies/:id/settings', async (req: any, res) => {
     if (body.address !== undefined) update.address = body.address;
     if (body.phone !== undefined) update.phone = body.phone;
     if (body.email !== undefined) update.email = body.email;
-    if (body.logoUrl !== undefined) update.logoUrl = body.logoUrl;
+    // A logo address handed back from /api/state means "unchanged" — never overwrite the stored image with it.
+    if (body.logoUrl !== undefined && !isLogoPlaceholder(body.logoUrl)) update.logoUrl = body.logoUrl;
     if (body.customHeader !== undefined) update.customHeader = body.customHeader;
     if (body.customFooter !== undefined) update.customFooter = body.customFooter;
     if (body.vatNumber !== undefined) {

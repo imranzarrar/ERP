@@ -131,8 +131,8 @@ export function convertBmpToPng(base64Str: string): string | null {
 export function ensureCompatibleImage(logoUrl: string): string {
   if (!logoUrl) return '';
   const trimmed = logoUrl.trim();
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    return trimmed;
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('/')) {
+    return trimmed; // an address (external, or the app's own cached logo URL), not image data
   }
 
   // Check if it is BMP (starts with Qk) or contains a bmp mime type
@@ -157,4 +157,40 @@ export function ensureCompatibleImage(logoUrl: string): string {
   }
 
   return trimmed;
+}
+
+/**
+ * Shrinks an uploaded image (data URL) so it can be embedded in the company record without
+ * bloating every /api/state response: the longest side is capped at maxDim (512px is far more
+ * than a document header or the app bar ever draws) and it is re-encoded as PNG (keeps
+ * transparency, prints reliably). Images that are already small are returned untouched. Never
+ * returns something larger than its input, and falls back to the original if the browser cannot
+ * decode/encode it. A 1 MB logo in production made every state load and post-save refresh ship
+ * a megabyte of already-compressed bytes.
+ */
+export function downscaleImageDataUrl(dataUrl: string, maxDim = 512, keepIfSmallerThanChars = 120_000): Promise<string> {
+  return new Promise((resolve) => {
+    if (!dataUrl || !dataUrl.startsWith('data:image/')) return resolve(dataUrl);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const { naturalWidth: w, naturalHeight: h } = img;
+        if (!w || !h) return resolve(dataUrl);
+        if (Math.max(w, h) <= maxDim && dataUrl.length <= keepIfSmallerThanChars) return resolve(dataUrl);
+        const scale = Math.min(1, maxDim / Math.max(w, h));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(w * scale));
+        canvas.height = Math.max(1, Math.round(h * scale));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve(dataUrl);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const out = canvas.toDataURL('image/png');
+        resolve(out.length < dataUrl.length ? out : dataUrl);
+      } catch {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
 }

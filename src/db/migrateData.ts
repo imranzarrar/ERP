@@ -2,6 +2,7 @@ import { db } from './index.js';
 import * as schema from './schema.js';
 import bcrypt from 'bcrypt';
 import { eq, and, inArray, ne } from 'drizzle-orm';
+import { isLogoPlaceholder } from '../../server/lib/companyLogo.js';
 import { isSuperAdminUser, hasPermission } from '../../server/lib/authz.js';
 
 export interface MigrateContext {
@@ -114,13 +115,22 @@ export async function migrateDataToPostgres(data: any, ctx: MigrateContext = {})
         skipped.companies = (skipped.companies ? skipped.companies + '; ' : '') + 'rows with no existing match dropped (this path never creates new companies)';
       }
 
+      // A logo that is still the short address /api/state handed out means "unchanged": keep the stored
+      // image instead of overwriting it with that address (see server/lib/companyLogo.ts).
+      const placeholderIds = companiesInput.filter((c: any) => isLogoPlaceholder(c.logoUrl)).map((c: any) => c.id);
+      const storedLogoById = new Map<string, string>();
+      if (placeholderIds.length) {
+        for (const r of await db.select({ id: schema.companies.id, logoUrl: schema.companies.logoUrl }).from(schema.companies).where(inArray(schema.companies.id, placeholderIds))) {
+          storedLogoById.set(r.id, r.logoUrl || '');
+        }
+      }
       const records = companiesInput.map((c: any) => ({
         id: c.id,
         name: c.name || '',
         address: c.address || '',
         phone: c.phone || '',
         email: c.email || '',
-        logoUrl: c.logoUrl || '',
+        logoUrl: isLogoPlaceholder(c.logoUrl) ? (storedLogoById.get(c.id) ?? '') : (c.logoUrl || ''),
         customHeader: c.customHeader || '',
         customFooter: c.customFooter || '',
         vatNumber: c.vatNumber,

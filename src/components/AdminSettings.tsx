@@ -40,7 +40,7 @@ import {
  ShoppingCart,
  ShieldCheck,
  Shield, MapPin, Hash, FileCheck, Monitor, LogOut, Inbox, Layers} from 'lucide-react';
-import { ensureCompatibleImage } from '../imageUtils';
+import { ensureCompatibleImage, downscaleImageDataUrl } from '../imageUtils';
 import { DEFAULT_DOCUMENT_LAYOUT, DETAILED_TAX_INVOICE_LAYOUT, buildCompactA4Layout, COL_SPAN_MD, COL_SPAN_PRINT } from '../documentTemplateDefaults';
 import { XMLParser } from 'fast-xml-parser';
 import DocumentRenderer from './DocumentRenderer';
@@ -994,10 +994,10 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  return;
  }
  const reader = new FileReader();
- reader.onload = (e) => {
+ reader.onload = async (e) => {
  const rawBase64 = e.target?.result as string;
  if (rawBase64) {
- const converted = ensureCompatibleImage(rawBase64);
+ const converted = await downscaleImageDataUrl(ensureCompatibleImage(rawBase64));
  setNewCompany(prev => ({ ...prev, logoUrl: converted }));
  triggerSuccess('New organization logo uploaded and optimized successfully!');
  }
@@ -1392,11 +1392,12 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  }
 
  const reader = new FileReader();
- reader.onload = (e) => {
+ reader.onload = async (e) => {
  const rawBase64 = e.target?.result as string;
  if (rawBase64) {
- // Convert to highly compatible PNG base64 to prevent rendering issues with BMP in standard browsers or iframes
- const converted = ensureCompatibleImage(rawBase64);
+ // Convert to highly compatible PNG base64 to prevent rendering issues with BMP in standard browsers or iframes,
+ // then shrink it: the logo is embedded in the company record that every state load sends.
+ const converted = await downscaleImageDataUrl(ensureCompatibleImage(rawBase64));
  setCompanyForm(prev => ({ ...prev, logoUrl: converted }));
  triggerSuccess('Logo file uploaded and optimized successfully!');
  }

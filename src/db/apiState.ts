@@ -1,13 +1,19 @@
 import { db } from './index.js';
 import * as schema from './schema.js';
-import { desc, eq, inArray } from 'drizzle-orm';
+import { desc, eq, inArray, sql } from 'drizzle-orm';
+import { logoPlaceholderUrl } from '../../server/lib/companyLogo.js';
 import fs from 'fs';
 import path from 'path';
 import { DEFAULT_LIST_LIMIT } from '../../server/lib/pagination.js';
 
 export async function getFullState(companyId?: string | null) {
   try {
-    const companies = await db.select().from(schema.companies);
+    const companyRows = await db.select().from(schema.companies);
+    // Inline logo images (data: URLs, ~1 MB in production) are replaced by a short versioned address —
+    // see server/lib/companyLogo.ts. The browser then fetches the bytes once and caches them.
+    const logoHashRows: any = await db.execute(sql`select id, md5(logo_url) as h from companies where logo_url like 'data:%'`);
+    const logoHashById = new Map<string, string>(((logoHashRows as any).rows ?? logoHashRows).map((r: any) => [r.id, r.h]));
+    const companies = companyRows.map(c => logoHashById.has(c.id) ? { ...c, logoUrl: logoPlaceholderUrl(c.id, logoHashById.get(c.id)!.slice(0, 12)) } : c);
     const roleTemplates = await db.select().from(schema.roleTemplates);
     const companyOnboardingRequests = await db.select().from(schema.companyOnboardingRequests).orderBy(desc(schema.companyOnboardingRequests.createdAt));
     const deletedCompanyLog = await db.select().from(schema.deletedCompanyLog).orderBy(desc(schema.deletedCompanyLog.deletedAt));

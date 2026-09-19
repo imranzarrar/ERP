@@ -37,6 +37,7 @@ import employeesRouter from './server/routes/employees.js';
 import sessionsRouter from './server/routes/sessions.js';
 import roleTemplatesRouter from './server/routes/roleTemplates.js';
 import companiesRouter from './server/routes/companies.js';
+import { parseImageDataUrl } from './server/lib/companyLogo.js';
 import { publicRouter as onboardingPublicRouter, adminRouter as onboardingAdminRouter } from './server/routes/onboarding.js';
 
 async function startServer() {
@@ -625,6 +626,29 @@ async function startServer() {
   // with no session at all besides login/password-reset. See server/routes/onboarding.ts
   // for its own input validation/honeypot/rate-limit hardening.
   app.use('/api', onboardingPublicRouter);
+
+  // Company logo bytes, served from their own cacheable address (see server/lib/companyLogo.ts).
+  // Public on purpose and registered BEFORE the auth gate: the address must work for <img> tags,
+  // which cannot send the x-session-id header, and for the headless browser that renders PDFs. It only
+  // ever exposes the branding image already printed on every invoice a company sends out, and needs the
+  // company's UUID. The version in the query string makes the cache safe to keep for a year.
+  app.get('/api/public/company-logo/:id', async (req: any, res: any) => {
+    try {
+      const id = String(req.params.id || '');
+      if (!/^[0-9a-f-]{36}$/i.test(id)) return res.status(404).end();
+      const [row] = await db.select({ logoUrl: schema.companies.logoUrl }).from(schema.companies).where(eq(schema.companies.id, id));
+      const img = parseImageDataUrl(row?.logoUrl);
+      if (!img) return res.status(404).end();
+      res.setHeader('Content-Type', img.mime);
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      // An SVG opened directly (not via <img>) must not be able to run script.
+      res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+      res.end(img.bytes);
+    } catch {
+      res.status(500).end();
+    }
+  });
 
   // Protect remaining routes
   app.use('/api', isAuthenticated);
