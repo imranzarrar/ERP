@@ -626,20 +626,6 @@ async function startServer() {
   // for its own input validation/honeypot/rate-limit hardening.
   app.use('/api', onboardingPublicRouter);
 
-  // Slow-request log: any API call that takes longer than SLOW_REQUEST_MS (default 750) is written
-  // to the log with its route and total server time, so "the app feels slow" can be answered from
-  // the server's own numbers instead of guessing. Measures from here (before auth) to the moment
-  // the response finished.
-  const SLOW_REQUEST_MS = Number(process.env.SLOW_REQUEST_MS) || 750;
-  app.use('/api', (req: any, res: any, next: any) => {
-    const started = process.hrtime.bigint();
-    res.on('finish', () => {
-      const ms = Number(process.hrtime.bigint() - started) / 1e6;
-      if (ms >= SLOW_REQUEST_MS) console.warn(`[SLOW] ${req.method} ${(req.originalUrl || '').split('?')[0]} -> ${res.statusCode} in ${Math.round(ms)}ms`);
-    });
-    next();
-  });
-
   // Protect remaining routes
   app.use('/api', isAuthenticated);
 
