@@ -82,7 +82,9 @@ export async function getFullState(companyId?: string | null) {
       ? await db.select().from(schema.vouchers).where(eq(schema.vouchers.companyId, companyId)).orderBy(desc(schema.vouchers.createdAt)).limit(DEFAULT_LIST_LIMIT)
       : [];
     const investors = await db.select().from(schema.investors);
-    const translations = await db.select().from(schema.translations);
+    // Translations are no longer part of this response: the whole dictionary used to ride along on
+    // every load. The client fetches it separately (GET /api/translation-bundle, ETag-revalidated).
+    const translations: (typeof schema.translations.$inferSelect)[] = [];
     const posShifts = await db.select().from(schema.posShifts);
     const posHeldInvoices = await db.select().from(schema.posHeldInvoices);
 

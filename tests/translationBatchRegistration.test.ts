@@ -72,3 +72,44 @@ describe('POST /api/register-missing-keys (batched)', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('GET /api/translation-bundle (language-filtered, ETag-revalidated)', () => {
+  const KEY = `${PREFIX}bundle`;
+  let rowId: string;
+  const getBundle = (lang: string, inm?: string) => fetch(`${BASE_URL}/api/translation-bundle?lang=${lang}`, { headers: { 'x-session-id': session, ...(inm ? { 'if-none-match': inm } : {}) } });
+
+  beforeAll(async () => {
+    rowId = generateId();
+    await db.insert(schema.translations).values({ id: rowId, key: KEY, en: KEY, ar: 'عربي', ur: 'اردو' });
+  });
+
+  it('returns only the requested language (English source always present)', async () => {
+    const ar = await (await getBundle('ar')).json();
+    const rowAr = ar.find((r: any) => r.key === KEY);
+    expect(rowAr.en).toBe(KEY); expect(rowAr.ar).toBe('عربي'); expect(rowAr.ur).toBe('');
+    const ur = (await (await getBundle('ur')).json()).find((r: any) => r.key === KEY);
+    expect(ur.ur).toBe('اردو'); expect(ur.ar).toBe('');
+    const all = (await (await getBundle('all')).json()).find((r: any) => r.key === KEY);
+    expect(all.ar).toBe('عربي'); expect(all.ur).toBe('اردو');
+  });
+
+  it('answers 304 when nothing changed, and a new ETag after an edit', async () => {
+    const first = await getBundle('ar');
+    const etag = first.headers.get('etag')!;
+    expect(etag).toBeTruthy();
+    expect((await getBundle('ar', etag)).status).toBe(304);
+    await db.update(schema.translations).set({ ar: 'عربي٢' }).where(eq(schema.translations.id, rowId));
+    const after = await getBundle('ar', etag);
+    expect(after.status).toBe(200);
+    expect(after.headers.get('etag')).not.toBe(etag);
+  });
+
+  it('requires a logged-in session', async () => {
+    expect((await fetch(`${BASE_URL}/api/translation-bundle?lang=ar`)).status).toBe(401);
+  });
+
+  it('/api/state no longer carries the dictionary', async () => {
+    const state = await (await fetch(`${BASE_URL}/api/state`, { headers: { 'x-session-id': session } })).json();
+    expect(state.translations).toEqual([]);
+  });
+});

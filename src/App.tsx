@@ -164,7 +164,7 @@ export default function App() {
       banks: data.banks || [],
       months: data.months || [],
       templates: data.templates || [],
-      translations: data.translations || [],
+      translations: prev.translations || [],
       posShifts: data.posShifts || [],
       posHeldInvoices: data.posHeldInvoices || [],
       // Inventory & Procurement — previously absent from this merge entirely, so this
@@ -233,8 +233,25 @@ export default function App() {
 
 
 
+  // The UI dictionary no longer rides along in /api/state — it is fetched on its own, in the
+  // user's language only (all three for a super-admin, who edits them), and revalidated by ETag,
+  // so an unchanged dictionary costs a tiny 304. trVersion is bumped by every state refresh so an
+  // edit in the Translations tab is picked up straight away.
+  const [trVersion, setTrVersion] = React.useState(0);
+  const translationLang = db.currentUser?.isSuperAdmin ? 'all' : (db.currentUser?.uiLanguage || localStorage.getItem('erp_pre_login_lang') || 'en');
+  React.useEffect(() => {
+    if (!sessionUserId) return;
+    let cancelled = false;
+    fetch(`/api/translation-bundle?lang=${translationLang}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(rows => { if (!cancelled && Array.isArray(rows)) setDb(prev => ({ ...prev, translations: rows })); })
+      .catch(() => { /* keep whatever dictionary is already loaded */ });
+    return () => { cancelled = true; };
+  }, [sessionUserId, translationLang, trVersion]);
+
   const triggerDbRefresh = async () => {
     if (!sessionUserId) return;
+    setTrVersion(v => v + 1);
     try {
       // Deliberately no ?companyId= here. `db` in this closure can be stale relative to
       // the caller's own just-applied setDb() (e.g. the company switcher calls
@@ -277,7 +294,7 @@ export default function App() {
               banks: data.banks || [],
               months: data.months || [],
               templates: data.templates || [],
-              translations: data.translations || [],
+              translations: prev.translations || [],
               posShifts: data.posShifts || [],
               posHeldInvoices: data.posHeldInvoices || [],
               // See the matching comment in the initial-load effect above — same gap,

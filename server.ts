@@ -1263,6 +1263,29 @@ async function startServer() {
   const translationAutoRegisterEnabled = () =>
     process.env.NODE_ENV !== 'production' || process.env.ALLOW_TRANSLATION_AUTOREGISTER === 'true';
 
+  // The UI dictionary, delivered separately from /api/state (which used to carry the whole table
+  // to every user on every load). Cross-tenant by design (no companyId), so this is the same
+  // for everyone in a given language. ?lang=ar|ur returns only that language's text (plus the
+  // English source, which every lookup falls back to); ?lang=all is for the translation editor.
+  // The ETag is a digest of the table's actual content, so the browser revalidates on every load
+  // (cheap 304 when nothing changed) yet can never serve a stale dictionary after an edit.
+  app.get("/api/translation-bundle", async (req: any, res: any) => {
+    try {
+      const lang = req.query.lang === 'ar' || req.query.lang === 'ur' || req.query.lang === 'all' ? req.query.lang : 'en';
+      const digest = await db.execute(sql`select md5(coalesce(string_agg(id::text || key || en || ar || ur, '|' order by id), '')) as d, count(*)::int as n from translations`);
+      const row: any = (digest as any).rows?.[0] ?? (digest as any)[0];
+      const etag = `"tr-${lang}-${row.d}"`;
+      res.setHeader('ETag', etag);
+      res.setHeader('Cache-Control', 'private, no-cache');
+      if (req.headers['if-none-match'] === etag) return res.status(304).end();
+      const rows = await db.select().from(schema.translations);
+      res.json(rows.map((r: any) => lang === 'all' ? r
+        : { id: r.id, key: r.key, en: r.en, ar: lang === 'ar' ? r.ar : '', ur: lang === 'ur' ? r.ur : '' }));
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Batched form the client actually uses: one request carries every key that was missing.
   app.post("/api/register-missing-keys", async (req: any, res: any) => {
     try {
