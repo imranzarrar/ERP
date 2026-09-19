@@ -1,5 +1,5 @@
 import * as schema from '../../src/db/schema.js';
-import { eq, and, gte, lte, ne, inArray } from 'drizzle-orm';
+import { eq, and, gte, lte, lt, ne, inArray, asc, sql } from 'drizzle-orm';
 import { round2, computeInvoiceServerTotals } from './businessLogic.js';
 
 // Real, server-side financial-report calculations — one function per report, each scoped
@@ -1011,4 +1011,439 @@ export async function computeInvestorContributions(executor: any, companyId: str
   const totalByInvestorId = new Map<string, number>();
   for (const v of vouchers) totalByInvestorId.set(v.referenceId, round2((totalByInvestorId.get(v.referenceId) || 0) + Number(v.amount)));
   return investors.map(i => ({ investorId: i.id, totalContributed: totalByInvestorId.get(i.id) || 0 }));
+}
+
+// --- Inventory reports (InventoryReportsModule.tsx) ---------------------------
+// Ported from InventoryReportsModule.tsx's own getXxxData functions, which computed all
+// six of these entirely client-side from /api/state (db.inventoryStocks/
+// stockLedgerTransactions/etc) — the exact violation this file's own top comment warns
+// about, compounded here by /api/state's own row caps and by several Inventory write
+// paths (see InventoryModule.tsx's handleCreateGrn) never refreshing client state after a
+// write, so the report could silently disagree with the real ledger. All six queries below
+// are company-scoped with no row cap, same convention as every other function in this file.
+// Quantities throughout are always base-unit terms (inventoryStocks/stockLedgerTransactions
+// never store anything else) — a negative on-hand quantity is a legitimate oversold/timing
+// state (see businessLogic.ts's deductStockForSale) and is deliberately NOT filtered out
+// here, only an exact-zero quantity is, since zero carries no information for a valuation
+// or movement report.
+
+export interface StockValuationRow { productName: string; warehouseName: string; quantity: number; unitCost: number; value: number; }
+export async function computeStockValuation(executor: any, companyId: string, warehouseId: string | 'ALL', opts: ReportScopeOpts): Promise<{ rows: StockValuationRow[]; totalValue: number }> {
+  const branchOk = makeBranchOk(opts.branchIds);
+  const warehouseRows = await executor.select().from(schema.warehouses).where(eq(schema.warehouses.companyId, companyId));
+  const warehouseById = new Map<string, any>(warehouseRows.map((w: any) => [w.id, w]));
+  const stocks = (await executor.select().from(schema.inventoryStocks).where(eq(schema.inventoryStocks.companyId, companyId)))
+    .filter(s => Number(s.quantity) !== 0 && warehouseById.has(s.warehouseId) && branchOk(warehouseById.get(s.warehouseId).branchId)
+      && (warehouseId === 'ALL' || s.warehouseId === warehouseId));
+  if (stocks.length === 0) return { rows: [], totalValue: 0 };
+  const productIds = Array.from(new Set(stocks.map((s: any) => s.productId))) as string[];
+  const productRows = await executor.select().from(schema.productsServices).where(inArray(schema.productsServices.id, productIds));
+  const productById = new Map<string, any>(productRows.map((p: any) => [p.id, p]));
+  const rows: StockValuationRow[] = stocks.map((s: any) => {
+    const product = productById.get(s.productId);
+    const warehouse = warehouseById.get(s.warehouseId);
+    const cost = product ? Number(product.averageCost || 0) : 0;
+    const quantity = Number(s.quantity);
+    return { productName: product?.name || '', warehouseName: warehouse?.name || '', quantity, unitCost: cost, value: round2(quantity * cost) };
+  }).sort((a, b) => b.value - a.value);
+  return { rows, totalValue: round2(rows.reduce((sum, r) => sum + r.value, 0)) };
+}
+
+export interface ItemProfitabilityRow { productName: string; totalQuantitySold: number; averageCost: number; averageSalePrice: number; marginAmount: number; marginPct: number; }
+export async function computeItemProfitability(executor: any, companyId: string): Promise<{ rows: ItemProfitabilityRow[] }> {
+  // Company-wide only — averageCost/averageSalePrice are tracked per-product company-wide,
+  // not per-warehouse/branch, same reasoning InventoryReportsModule.tsx's own comment gave
+  // for hiding the branch filter on this one report.
+  const products = (await executor.select().from(schema.productsServices).where(eq(schema.productsServices.companyId, companyId)))
+    .filter((p: any) => Number(p.totalQuantitySold || 0) > 0);
+  const rows: ItemProfitabilityRow[] = products.map((p: any) => {
+    const avgCost = Number(p.averageCost || 0);
+    const avgSale = Number(p.averageSalePrice || 0);
+    const marginAmount = round2(avgSale - avgCost);
+    const marginPct = avgSale > 0 ? round2((marginAmount / avgSale) * 100) : 0;
+    return { productName: p.name, totalQuantitySold: Number(p.totalQuantitySold || 0), averageCost: avgCost, averageSalePrice: avgSale, marginAmount, marginPct };
+  }).sort((a, b) => b.marginAmount - a.marginAmount);
+  return { rows };
+}
+
+export interface LowStockRow { productName: string; warehouseName: string; onHand: number; minLevel: number; shortfall: number; }
+export async function computeLowStock(executor: any, companyId: string, warehouseId: string | 'ALL', opts: ReportScopeOpts): Promise<{ rows: LowStockRow[] }> {
+  const branchOk = makeBranchOk(opts.branchIds);
+  const warehouseRows = await executor.select().from(schema.warehouses).where(eq(schema.warehouses.companyId, companyId));
+  const warehouseById = new Map<string, any>(warehouseRows.map((w: any) => [w.id, w]));
+  const links = (await executor.select().from(schema.productWarehouses).where(eq(schema.productWarehouses.companyId, companyId)))
+    .filter((pw: any) => warehouseById.has(pw.warehouseId) && branchOk(warehouseById.get(pw.warehouseId).branchId)
+      && (warehouseId === 'ALL' || pw.warehouseId === warehouseId) && Number(pw.minLevel || 0) > 0);
+  if (links.length === 0) return { rows: [] };
+  const productIds = Array.from(new Set(links.map((l: any) => l.productId))) as string[];
+  const productRows = await executor.select().from(schema.productsServices).where(inArray(schema.productsServices.id, productIds));
+  const productById = new Map<string, any>(productRows.map((p: any) => [p.id, p]));
+  const stocks = await executor.select().from(schema.inventoryStocks).where(and(eq(schema.inventoryStocks.companyId, companyId), inArray(schema.inventoryStocks.productId, productIds)));
+  const rows: LowStockRow[] = links.map((pw: any) => {
+    const stock = stocks.find((s: any) => s.productId === pw.productId && s.warehouseId === pw.warehouseId);
+    const onHand = stock ? Number(stock.quantity) : 0;
+    const product = productById.get(pw.productId);
+    const warehouse = warehouseById.get(pw.warehouseId);
+    return { productName: product?.name || '', warehouseName: warehouse?.name || '', onHand, minLevel: Number(pw.minLevel), shortfall: round2(Number(pw.minLevel) - onHand) };
+  }).filter(r => r.shortfall > 0).sort((a, b) => b.shortfall - a.shortfall);
+  return { rows };
+}
+
+export interface StockTakeVarianceRow { referenceNumber: string; date: string; warehouseName: string; productName: string; systemQuantity: number; physicalQuantity: number; variance: number; }
+export async function computeStockTakeVarianceHistory(executor: any, companyId: string, startDate: string, endDate: string, warehouseId: string | 'ALL', opts: ReportScopeOpts): Promise<{ rows: StockTakeVarianceRow[] }> {
+  const branchOk = makeBranchOk(opts.branchIds);
+  const warehouseRows = await executor.select().from(schema.warehouses).where(eq(schema.warehouses.companyId, companyId));
+  const warehouseById = new Map<string, any>(warehouseRows.map((w: any) => [w.id, w]));
+  const rangeStart = new Date(startDate + 'T00:00:00.000Z');
+  const rangeEndExclusive = new Date(new Date(endDate + 'T00:00:00.000Z').getTime() + 86400000);
+  const takes = (await executor.select().from(schema.physicalStockTakes).where(and(
+    eq(schema.physicalStockTakes.companyId, companyId), eq(schema.physicalStockTakes.status, 'Completed'),
+    gte(schema.physicalStockTakes.date, rangeStart), lt(schema.physicalStockTakes.date, rangeEndExclusive),
+  ))).filter((st: any) => warehouseById.has(st.warehouseId) && branchOk(warehouseById.get(st.warehouseId).branchId)
+    && (warehouseId === 'ALL' || st.warehouseId === warehouseId));
+  if (takes.length === 0) return { rows: [] };
+  const takeIds = takes.map((st: any) => st.id);
+  const items = await executor.select().from(schema.physicalStockTakeItems).where(inArray(schema.physicalStockTakeItems.stockTakeId, takeIds));
+  const productIds = Array.from(new Set(items.map((i: any) => i.productId))) as string[];
+  const productRows = productIds.length ? await executor.select().from(schema.productsServices).where(inArray(schema.productsServices.id, productIds)) : [];
+  const productById = new Map<string, any>(productRows.map((p: any) => [p.id, p]));
+  const takeById = new Map<string, any>(takes.map((st: any) => [st.id, st]));
+  const rows: StockTakeVarianceRow[] = [];
+  for (const item of items) {
+    if (Number(item.variance) === 0) continue;
+    const take = takeById.get(item.stockTakeId);
+    if (!take) continue;
+    const warehouse = warehouseById.get(take.warehouseId);
+    const product = productById.get(item.productId);
+    rows.push({
+      referenceNumber: take.referenceNumber, date: take.date.toISOString().slice(0, 10), warehouseName: warehouse?.name || '',
+      productName: product?.name || '', systemQuantity: Number(item.systemQuantity), physicalQuantity: Number(item.physicalQuantity), variance: Number(item.variance),
+    });
+  }
+  return { rows: rows.sort((a, b) => a.date.localeCompare(b.date)) };
+}
+
+export interface StockMovementLedgerRow { date: string; productName: string; warehouseName: string; transactionType: string; quantityChange: number; endingQuantity: number; batchNumber: string; referenceNumber: string; }
+// referenceId is polymorphic (see stockLedgerTransactions' own schema comment) — which
+// table it points into depends entirely on transactionType. 'Sale' covers both a real
+// invoice/POS deduction AND a Credit-Note/cancellation reversal (see
+// restockForSaleReversal's comment in businessLogic.ts) — both are rows in `invoices`, so
+// one lookup covers both; the invoice's own documentType ('Invoice' vs 'CreditNote') is
+// what actually distinguishes them for the reader, not a different referenceId table.
+// 'Adjustment' has no backing document at all (stock-adjustments route never persists its
+// own record, just this ledger row) — referenceNumber stays blank for it, not a bug.
+async function resolveStockLedgerReferenceNumbers(executor: any, rows0: any[]): Promise<Map<string, string>> {
+  const idsByType = new Map<string, Set<string>>();
+  for (const r of rows0) {
+    if (!idsByType.has(r.transactionType)) idsByType.set(r.transactionType, new Set());
+    idsByType.get(r.transactionType)!.add(r.referenceId);
+  }
+  const numberById = new Map<string, string>();
+  const salesIds = Array.from(idsByType.get('Sale') || []);
+  if (salesIds.length) {
+    const invs = await executor.select({ id: schema.invoices.id, invoiceNumber: schema.invoices.invoiceNumber }).from(schema.invoices).where(inArray(schema.invoices.id, salesIds));
+    for (const inv of invs) numberById.set(inv.id, inv.invoiceNumber);
+  }
+  const grnIds = Array.from(idsByType.get('GRN') || []);
+  if (grnIds.length) {
+    const grns = await executor.select({ id: schema.goodsReceiptNotes.id, grnNumber: schema.goodsReceiptNotes.grnNumber }).from(schema.goodsReceiptNotes).where(inArray(schema.goodsReceiptNotes.id, grnIds));
+    for (const g of grns) numberById.set(g.id, g.grnNumber);
+  }
+  const returnIds = Array.from(idsByType.get('Return') || []);
+  if (returnIds.length) {
+    const rets = await executor.select({ id: schema.purchaseReturns.id, returnNumber: schema.purchaseReturns.returnNumber }).from(schema.purchaseReturns).where(inArray(schema.purchaseReturns.id, returnIds));
+    for (const r of rets) numberById.set(r.id, r.returnNumber);
+  }
+  const stockTakeIds = Array.from(idsByType.get('StockTake') || []);
+  if (stockTakeIds.length) {
+    const takes = await executor.select({ id: schema.physicalStockTakes.id, referenceNumber: schema.physicalStockTakes.referenceNumber }).from(schema.physicalStockTakes).where(inArray(schema.physicalStockTakes.id, stockTakeIds));
+    for (const st of takes) numberById.set(st.id, st.referenceNumber);
+  }
+  const dispatchIds = Array.from(idsByType.get('TransferOut') || []);
+  if (dispatchIds.length) {
+    const dispatches = await executor.select({ id: schema.warehouseDispatches.id, dispatchNumber: schema.warehouseDispatches.dispatchNumber }).from(schema.warehouseDispatches).where(inArray(schema.warehouseDispatches.id, dispatchIds));
+    for (const d of dispatches) numberById.set(d.id, d.dispatchNumber);
+  }
+  const receivingIds = Array.from(idsByType.get('TransferIn') || []);
+  if (receivingIds.length) {
+    const receivings = await executor.select({ id: schema.warehouseReceivings.id, receivingNumber: schema.warehouseReceivings.receivingNumber }).from(schema.warehouseReceivings).where(inArray(schema.warehouseReceivings.id, receivingIds));
+    for (const rcv of receivings) numberById.set(rcv.id, rcv.receivingNumber);
+  }
+  return numberById;
+}
+
+// The one report that reads a raw, ever-growing table (every stock movement ever posted), so
+// unlike the other reports it filters AND pages in SQL: only the requested page's rows are
+// ever loaded. `page` omitted = every row (print/export), refused above maxRows so a single
+// request can never try to materialise an unbounded ledger.
+export async function computeStockMovementLedger(
+  executor: any, companyId: string, startDate: string, endDate: string, warehouseId: string | 'ALL', productId: string | 'ALL', opts: ReportScopeOpts,
+  page?: { page: number; pageSize: number }, maxRows = 50000,
+): Promise<{ rows: StockMovementLedgerRow[]; pagination?: { page: number; pageSize: number; totalRows: number; totalPages: number } }> {
+  const branchOk = makeBranchOk(opts.branchIds);
+  const start = new Date(startDate + 'T00:00:00.000Z');
+  const endExclusive = new Date(new Date(endDate + 'T00:00:00.000Z').getTime() + 86400000);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(endExclusive.getTime())) {
+    const err: any = new Error('startDate and endDate must be valid dates (YYYY-MM-DD).');
+    err.status = 400;
+    throw err;
+  }
+  const warehouseRows = await executor.select().from(schema.warehouses).where(eq(schema.warehouses.companyId, companyId));
+  const warehouseById = new Map<string, any>(warehouseRows.map((w: any) => [w.id, w]));
+  const allowedWarehouseIds = warehouseRows.filter((w: any) => branchOk(w.branchId)).map((w: any) => w.id) as string[];
+  const scopedWarehouseIds = warehouseId === 'ALL' ? allowedWarehouseIds : allowedWarehouseIds.filter(id => id === warehouseId);
+  if (scopedWarehouseIds.length === 0) return { rows: [], ...(page ? { pagination: { page: 1, pageSize: page.pageSize, totalRows: 0, totalPages: 1 } } : {}) };
+
+  const conditions = [
+    eq(schema.stockLedgerTransactions.companyId, companyId),
+    inArray(schema.stockLedgerTransactions.warehouseId, scopedWarehouseIds),
+    gte(schema.stockLedgerTransactions.date, start),
+    lt(schema.stockLedgerTransactions.date, endExclusive),
+    ...(productId !== 'ALL' ? [eq(schema.stockLedgerTransactions.productId, productId)] : []),
+  ];
+  const [{ count }] = await executor.select({ count: sql<number>`count(*)::int` }).from(schema.stockLedgerTransactions).where(and(...conditions));
+  const totalRows = Number(count) || 0;
+  if (!page && totalRows > maxRows) {
+    const err: any = new Error(`This ledger has ${totalRows} movements — too many to print at once. Narrow the dates, warehouse or product and try again.`);
+    err.status = 413;
+    throw err;
+  }
+  const totalPages = page ? Math.max(1, Math.ceil(totalRows / page.pageSize)) : 1;
+  const safePage = page ? Math.min(page.page, totalPages) : 1;
+  let query = executor.select().from(schema.stockLedgerTransactions).where(and(...conditions))
+    .orderBy(asc(schema.stockLedgerTransactions.date), asc(schema.stockLedgerTransactions.id));
+  if (page) query = query.limit(page.pageSize).offset((safePage - 1) * page.pageSize);
+  const rows0: any[] = await query;
+  const pagination = page ? { page: safePage, pageSize: page.pageSize, totalRows, totalPages } : undefined;
+  if (rows0.length === 0) return { rows: [], ...(pagination ? { pagination } : {}) };
+
+  const productIds = Array.from(new Set(rows0.map((r: any) => r.productId))) as string[];
+  const productRows = await executor.select().from(schema.productsServices).where(inArray(schema.productsServices.id, productIds));
+  const productById = new Map<string, any>(productRows.map((p: any) => [p.id, p]));
+  const referenceNumberById = await resolveStockLedgerReferenceNumbers(executor, rows0);
+  const rows: StockMovementLedgerRow[] = rows0.map((slt: any) => {
+    const product = productById.get(slt.productId);
+    const warehouse = warehouseById.get(slt.warehouseId);
+    return {
+      date: slt.date.toISOString(), productName: product?.name || '', warehouseName: warehouse?.name || '',
+      transactionType: slt.transactionType, quantityChange: Number(slt.quantityChange), endingQuantity: Number(slt.endingQuantity), batchNumber: slt.batchNumber || '',
+      referenceNumber: referenceNumberById.get(slt.referenceId) || '',
+    };
+  });
+  return { rows, ...(pagination ? { pagination } : {}) };
+}
+
+export interface WarehouseTransferReconciliationRow {
+  dispatchNumber: string; date: string; fromWarehouseName: string; toWarehouseName: string; productName: string; batchNumber: string;
+  quantityDispatched: number; receivingNumber: string | null; quantityReceived: number | null; variance: number | null;
+  status: 'Pending' | 'Matched' | 'Short' | 'Over' | 'Cancelled'; daysInTransit: number | null;
+}
+export async function computeWarehouseTransferReconciliation(executor: any, companyId: string, startDate: string, endDate: string, warehouseId: string | 'ALL', pendingOnly: boolean, opts: ReportScopeOpts): Promise<{ rows: WarehouseTransferReconciliationRow[] }> {
+  const branchOk = makeBranchOk(opts.branchIds);
+  const allWarehouses = await executor.select().from(schema.warehouses).where(eq(schema.warehouses.companyId, companyId));
+  const branchOkWarehouseIds = new Set(allWarehouses.filter((w: any) => branchOk(w.branchId)).map((w: any) => w.id));
+  const warehouseById = new Map<string, any>(allWarehouses.map((w: any) => [w.id, w]));
+  const dispatchRangeStart = new Date(startDate + 'T00:00:00.000Z');
+  const dispatchRangeEndExclusive = new Date(new Date(endDate + 'T00:00:00.000Z').getTime() + 86400000);
+  const dispatches = (await executor.select().from(schema.warehouseDispatches).where(and(
+    eq(schema.warehouseDispatches.companyId, companyId),
+    gte(schema.warehouseDispatches.date, dispatchRangeStart), lt(schema.warehouseDispatches.date, dispatchRangeEndExclusive),
+  ))).filter((d: any) => (warehouseId === 'ALL' || d.fromWarehouseId === warehouseId || d.toWarehouseId === warehouseId)
+    && (branchOkWarehouseIds.has(d.fromWarehouseId) || branchOkWarehouseIds.has(d.toWarehouseId)));
+  if (dispatches.length === 0) return { rows: [] };
+  const dispatchIds = dispatches.map((d: any) => d.id);
+  const dispatchItems = await executor.select().from(schema.warehouseDispatchItems).where(inArray(schema.warehouseDispatchItems.dispatchId, dispatchIds));
+  const receivings = await executor.select().from(schema.warehouseReceivings).where(inArray(schema.warehouseReceivings.dispatchId, dispatchIds));
+  const receivingIds = receivings.map((r: any) => r.id);
+  const receivingItems = receivingIds.length ? await executor.select().from(schema.warehouseReceivingItems).where(inArray(schema.warehouseReceivingItems.receivingId, receivingIds)) : [];
+  const productIds = Array.from(new Set(dispatchItems.map((i: any) => i.productId))) as string[];
+  const productRows = productIds.length ? await executor.select().from(schema.productsServices).where(inArray(schema.productsServices.id, productIds)) : [];
+  const productById = new Map<string, any>(productRows.map((p: any) => [p.id, p]));
+  const receivingByDispatchId = new Map<string, any>(receivings.map((r: any) => [r.dispatchId, r]));
+  const rows: WarehouseTransferReconciliationRow[] = [];
+  for (const d of dispatches) {
+    const fromWh = warehouseById.get(d.fromWarehouseId);
+    const toWh = warehouseById.get(d.toWarehouseId);
+    const receiving = receivingByDispatchId.get(d.id);
+    const itemsForDispatch = dispatchItems.filter((i: any) => i.dispatchId === d.id);
+    for (const item of itemsForDispatch) {
+      const product = productById.get(item.productId);
+      const receivingItem = receiving ? receivingItems.find((ri: any) => ri.dispatchItemId === item.id) : undefined;
+      const qtyDispatched = Number(item.quantityDispatched);
+      const qtyReceived = receivingItem ? Number(receivingItem.quantityReceived) : null;
+      const variance = qtyReceived !== null ? round2(qtyReceived - qtyDispatched) : null;
+      let status: WarehouseTransferReconciliationRow['status'];
+      if (d.status === 'Cancelled') status = 'Cancelled';
+      else if (qtyReceived === null) status = 'Pending';
+      else if (variance === 0) status = 'Matched';
+      else if ((variance as number) < 0) status = 'Short';
+      else status = 'Over';
+      if (pendingOnly && status !== 'Pending') continue;
+      const daysInTransit = status === 'Pending' ? Math.floor((Date.now() - new Date(d.date).getTime()) / (1000 * 60 * 60 * 24)) : null;
+      rows.push({
+        dispatchNumber: d.dispatchNumber, date: d.date.toISOString().slice(0, 10), fromWarehouseName: fromWh?.name || '', toWarehouseName: toWh?.name || '',
+        productName: product?.name || '', batchNumber: item.batchNumber || '', quantityDispatched: qtyDispatched,
+        receivingNumber: receiving?.receivingNumber || null, quantityReceived: qtyReceived, variance, status, daysInTransit,
+      });
+    }
+  }
+  return { rows: rows.sort((a, b) => a.date.localeCompare(b.date)) };
+}
+
+// --- Financial reports moved off the browser (ReportViewer.tsx) ---------------
+// Sales VAT / Purchase VAT / Bank Ledger / Outstanding / VAT Return Summary / Investor
+// Profit Share / Fiscal Month Closing History. All were computed client-side from
+// /api/state's capped arrays; each is now company-scoped, uncapped, and branch-scoped via
+// opts.branchIds. Row-listing ones return `rows` so the route can page them, with totals
+// always over the FULL set.
+
+export interface VatRegisterRow { documentNumber: string; date: string; partyName: string; vatNumber: string; subtotal: number; taxAmount: number; grandTotal: number; }
+export interface VatRegisterResult { rows: VatRegisterRow[]; totals: { subtotal: number; taxAmount: number; grandTotal: number }; count: number; }
+
+function sumVat(rows: VatRegisterRow[]) {
+  let subtotal = 0, taxAmount = 0, grandTotal = 0;
+  for (const r of rows) { subtotal = round2(subtotal + r.subtotal); taxAmount = round2(taxAmount + r.taxAmount); grandTotal = round2(grandTotal + r.grandTotal); }
+  return { subtotal, taxAmount, grandTotal };
+}
+
+// A Credit Note is a signed (negative) line — a genuine reduction to output VAT.
+export async function computeSalesVatRegister(executor: any, companyId: string, startDate: string, endDate: string, customerId: string | 'ALL', opts: ReportScopeOpts): Promise<VatRegisterResult> {
+  const branchOk = makeBranchOk(opts.branchIds);
+  const invs: any[] = await executor.select().from(schema.invoices).where(and(
+    eq(schema.invoices.companyId, companyId), eq(schema.invoices.status, 'Active'),
+    gte(schema.invoices.date, startDate), lte(schema.invoices.date, endDate),
+  ));
+  const filtered = invs.filter(inv => branchOk(inv.branchId) && (customerId === 'ALL' || inv.customerId === customerId));
+  const totals = await computeInvoiceTotalsMap(executor, filtered);
+  const custIds = Array.from(new Set(filtered.map(i => i.customerId).filter(Boolean))) as string[];
+  const custs: any[] = custIds.length ? await executor.select().from(schema.customers).where(inArray(schema.customers.id, custIds)) : [];
+  const custById = new Map<string, any>(custs.map(c => [c.id, c]));
+  const rows: VatRegisterRow[] = filtered.map(inv => {
+    const c = custById.get(inv.customerId); const t = totals.get(inv.id)!; const sign = invoiceSign(inv);
+    return { documentNumber: inv.invoiceNumber, date: inv.date, partyName: c?.name || 'Walk-In', vatNumber: c?.vatNumber || 'N/A',
+      subtotal: round2(t.discountedSubtotal * sign), taxAmount: round2(t.taxAmount * sign), grandTotal: round2(t.grandTotal * sign) };
+  }).sort((a, b) => a.date.localeCompare(b.date) || a.documentNumber.localeCompare(b.documentNumber));
+  return { rows, totals: sumVat(rows), count: rows.length };
+}
+
+// Direct expenses don't carry a tax breakdown, so VAT is back-calculated from the slab.
+export async function computePurchaseVatRegister(executor: any, companyId: string, startDate: string, endDate: string, vendorId: string | 'ALL', opts: ReportScopeOpts): Promise<VatRegisterResult> {
+  const branchOk = makeBranchOk(opts.branchIds);
+  const exps: any[] = await executor.select().from(schema.expenses).where(and(
+    eq(schema.expenses.companyId, companyId), eq(schema.expenses.status, 'Active'),
+    gte(schema.expenses.date, startDate), lte(schema.expenses.date, endDate),
+  ));
+  const filtered = exps.filter(e => branchOk(e.branchId) && (vendorId === 'ALL' || e.vendorId === vendorId));
+  const slabs: any[] = await executor.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.companyId, companyId));
+  const rateBySlab = new Map<string, number>(slabs.map(s => [s.id, Number(s.percentage)]));
+  const vIds = Array.from(new Set(filtered.map(e => e.vendorId).filter(Boolean))) as string[];
+  const vends: any[] = vIds.length ? await executor.select().from(schema.vendors).where(inArray(schema.vendors.id, vIds)) : [];
+  const vendById = new Map<string, any>(vends.map(v => [v.id, v]));
+  const rows: VatRegisterRow[] = filtered.map(e => {
+    const rate = rateBySlab.get(e.taxSlabId) || 0; const amount = Number(e.amount);
+    const subtotal = round2(amount / (1 + rate / 100)); const v = vendById.get(e.vendorId);
+    return { documentNumber: e.expenseNumber, date: e.date, partyName: v?.name || 'Cash Vendor', vatNumber: v?.vatNumber || 'N/A',
+      subtotal, taxAmount: round2(amount - subtotal), grandTotal: round2(amount) };
+  }).sort((a, b) => a.date.localeCompare(b.date) || a.documentNumber.localeCompare(b.documentNumber));
+  return { rows, totals: sumVat(rows), count: rows.length };
+}
+
+export async function computeVatReturnSummary(executor: any, companyId: string, startDate: string, endDate: string, opts: ReportScopeOpts) {
+  const sales = await computeSalesVatRegister(executor, companyId, startDate, endDate, 'ALL', opts);
+  const purchases = await computePurchaseVatRegister(executor, companyId, startDate, endDate, 'ALL', opts);
+  return { startDate, endDate, outputVat: sales.totals.taxAmount, inputVat: purchases.totals.taxAmount,
+    netVatPayable: round2(sales.totals.taxAmount - purchases.totals.taxAmount), salesCount: sales.count, purchaseCount: purchases.count };
+}
+
+export interface BankLedgerRow { id: string; date: string; type: string; voucherNumber: string; description: string; debit: number; credit: number; runningBalance: number; bankId: string; bankName: string; sourceDoc: string; refType: 'Invoice' | 'Expense' | null; referenceId: string; }
+function voucherEffect(v: { type: string; referenceType: string; amount: any }) {
+  const amount = Number(v.amount);
+  if (v.type === 'Receipt' || v.type === 'TransferIn') return { debit: amount, credit: 0 };
+  if (v.type === 'Payment' || v.type === 'TransferOut') return { debit: 0, credit: amount };
+  if (v.type === 'Reversal') return v.referenceType === 'Invoice' ? { debit: 0, credit: amount } : { debit: amount, credit: 0 };
+  return { debit: 0, credit: 0 };
+}
+// Opening balance = bank opening balance + everything posted BEFORE startDate (the old
+// in-browser version ignored earlier movements, so the running balance started wrong for
+// any period after the first).
+export async function computeBankLedger(executor: any, companyId: string, bankId: string | 'ALL', startDate: string, endDate: string, opts: ReportScopeOpts): Promise<{ rows: BankLedgerRow[]; bankName: string; openingBalance: number; endingBalance: number; totalDebit: number; totalCredit: number }> {
+  const branchOk = makeBranchOk(opts.branchIds);
+  const banks: any[] = await executor.select().from(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, companyId));
+  const bankById = new Map<string, any>(banks.map(b => [b.id, b]));
+  let bankName = 'All Banks Combined'; let opening = 0;
+  if (bankId === 'ALL') opening = banks.reduce((s, b) => s + Number(b.openingBalance), 0);
+  else {
+    const b = bankById.get(bankId);
+    if (!b) return { rows: [], bankName: '', openingBalance: 0, endingBalance: 0, totalDebit: 0, totalCredit: 0 };
+    bankName = b.bankName; opening = Number(b.openingBalance);
+  }
+  const conds = [eq(schema.vouchers.companyId, companyId), lte(schema.vouchers.date, endDate)];
+  if (bankId !== 'ALL') conds.push(eq(schema.vouchers.bankId, bankId));
+  const vs: any[] = (await executor.select().from(schema.vouchers).where(and(...conds))).filter((v: any) => branchOk(v.branchId));
+  vs.sort((a, b) => a.date.localeCompare(b.date) || new Date(a.createdAt).toISOString().localeCompare(new Date(b.createdAt).toISOString()));
+  let running = opening;
+  const inPeriod: any[] = [];
+  for (const v of vs) {
+    if (v.date < startDate) { const e = voucherEffect(v); running = round2(running + e.debit - e.credit); } else inPeriod.push(v);
+  }
+  const openingBalance = round2(running);
+  const invIds = Array.from(new Set(inPeriod.filter(v => v.referenceType === 'Invoice').map(v => v.referenceId))) as string[];
+  const expIds = Array.from(new Set(inPeriod.filter(v => v.referenceType === 'Expense').map(v => v.referenceId))) as string[];
+  const invs: any[] = invIds.length ? await executor.select({ id: schema.invoices.id, n: schema.invoices.invoiceNumber }).from(schema.invoices).where(inArray(schema.invoices.id, invIds)) : [];
+  const exps: any[] = expIds.length ? await executor.select({ id: schema.expenses.id, n: schema.expenses.expenseNumber }).from(schema.expenses).where(inArray(schema.expenses.id, expIds)) : [];
+  const invNo = new Map<string, string>(invs.map(i => [i.id, i.n])); const expNo = new Map<string, string>(exps.map(e => [e.id, e.n]));
+  let totalDebit = 0, totalCredit = 0;
+  const rows: BankLedgerRow[] = inPeriod.map(v => {
+    const e = voucherEffect(v); running = round2(running + e.debit - e.credit);
+    totalDebit = round2(totalDebit + e.debit); totalCredit = round2(totalCredit + e.credit);
+    let sourceDoc = '-'; let refType: 'Invoice' | 'Expense' | null = null;
+    if (v.referenceType === 'Invoice' && invNo.has(v.referenceId)) { sourceDoc = invNo.get(v.referenceId)!; refType = 'Invoice'; }
+    else if (v.referenceType === 'Expense' && expNo.has(v.referenceId)) { sourceDoc = expNo.get(v.referenceId)!; refType = 'Expense'; }
+    return { id: v.id, date: v.date, type: v.type, voucherNumber: v.voucherNumber, description: v.description, debit: e.debit, credit: e.credit,
+      runningBalance: running, bankId: v.bankId, bankName: bankById.get(v.bankId)?.bankName || 'Unknown', sourceDoc, refType, referenceId: v.referenceId };
+  });
+  return { rows, bankName, openingBalance, endingBalance: rows.length ? rows[rows.length - 1].runningBalance : openingBalance, totalDebit, totalCredit };
+}
+
+export interface OutstandingRow { id: string; type: 'Invoice' | 'Expense'; docNumber: string; date: string; contactName: string; total: number; paid: number; outstanding: number; paymentStatus: string; referenceId: string; }
+// Credit Notes are never outstanding receivables, so excluded entirely.
+export async function computeOutstanding(executor: any, companyId: string, startDate: string | null, endDate: string | null, customerId: string | 'ALL', vendorId: string | 'ALL', opts: ReportScopeOpts) {
+  const branchOk = makeBranchOk(opts.branchIds);
+  const inRange = (d: string) => (!startDate || d >= startDate) && (!endDate || d <= endDate);
+  const invs: any[] = (await executor.select().from(schema.invoices).where(and(
+    eq(schema.invoices.companyId, companyId), eq(schema.invoices.status, 'Active'), inArray(schema.invoices.paymentStatus, ['Unpaid', 'Partially Paid']),
+  ))).filter((i: any) => i.documentType !== 'CreditNote' && branchOk(i.branchId) && inRange(i.date) && (customerId === 'ALL' || i.customerId === customerId));
+  const totals = await computeInvoiceTotalsMap(executor, invs);
+  const exps: any[] = (await executor.select().from(schema.expenses).where(and(
+    eq(schema.expenses.companyId, companyId), eq(schema.expenses.status, 'Active'), inArray(schema.expenses.paymentStatus, ['Unpaid', 'Partially Paid']),
+  ))).filter((e: any) => branchOk(e.branchId) && inRange(e.date) && (vendorId === 'ALL' || e.vendorId === vendorId));
+  const cIds = Array.from(new Set(invs.map(i => i.customerId).filter(Boolean))) as string[];
+  const vIds = Array.from(new Set(exps.map(e => e.vendorId).filter(Boolean))) as string[];
+  const custs: any[] = cIds.length ? await executor.select().from(schema.customers).where(inArray(schema.customers.id, cIds)) : [];
+  const vends: any[] = vIds.length ? await executor.select().from(schema.vendors).where(inArray(schema.vendors.id, vIds)) : [];
+  const cName = new Map<string, string>(custs.map(c => [c.id, c.name])); const vName = new Map<string, string>(vends.map(v => [v.id, v.name]));
+  const byDate = (a: OutstandingRow, b: OutstandingRow) => a.date.localeCompare(b.date) || a.docNumber.localeCompare(b.docNumber);
+  const invRows: OutstandingRow[] = invs.map(i => {
+    const total = totals.get(i.id)!.grandTotal; const paid = Number(i.amountPaid || 0);
+    return { id: i.id, type: 'Invoice' as const, docNumber: i.invoiceNumber, date: i.date, contactName: cName.get(i.customerId) || 'Walk-In', total, paid, outstanding: round2(total - paid), paymentStatus: i.paymentStatus, referenceId: i.id };
+  }).sort(byDate);
+  const expRows: OutstandingRow[] = exps.map(e => {
+    const total = Number(e.amount); const paid = Number(e.amountPaid || 0);
+    return { id: e.id, type: 'Expense' as const, docNumber: e.expenseNumber, date: e.date, contactName: vName.get(e.vendorId) || 'Cash Vendor', total, paid, outstanding: round2(total - paid), paymentStatus: e.paymentStatus, referenceId: e.id };
+  }).sort(byDate);
+  const totalReceivable = round2(invRows.reduce((s, r) => s + r.outstanding, 0));
+  const totalPayable = round2(expRows.reduce((s, r) => s + r.outstanding, 0));
+  return { rows: [...invRows, ...expRows], invoiceCount: invRows.length, expenseCount: expRows.length, totalReceivable, totalPayable, netOutstanding: round2(totalReceivable - totalPayable) };
+}
+
+// Same per-investor split P&L computes inline, standalone.
+export async function computeInvestorProfitShare(executor: any, companyId: string, startDate: string, endDate: string) {
+  const pl = await computeProfitLoss(executor, companyId, startDate, endDate, 'Accrual');
+  return { startDate, endDate, netProfit: pl.netProfit, investorShares: pl.investorShares };
+}
+
+export async function computeFiscalMonthClosingHistory(executor: any, companyId: string) {
+  const ms: any[] = await executor.select().from(schema.fiscalMonths).where(and(eq(schema.fiscalMonths.companyId, companyId), eq(schema.fiscalMonths.status, 'Closed')));
+  ms.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  return { rows: ms.map(m => ({ id: m.id, name: m.name, closedAt: m.closedAt ? new Date(m.closedAt).toISOString() : null, closedPnL: m.closedPnL || null })) };
 }

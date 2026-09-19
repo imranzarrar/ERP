@@ -245,11 +245,15 @@ export async function assertStockAvailable(
 // physical stock at all, so both are no-ops here rather than errors. Also no-ops when no
 // warehouseId is given (nothing was resolved for this sale, e.g. a services-only invoice)
 // — a sale must never be blocked by incomplete inventory setup by itself (that's what
-// assertStockAvailable's opt-in flag is for). Clamped at 0 rather than allowed to go
-// negative, matching every other stock-mutating route in this app (GRN reversal, Purchase
-// Return, Stock Adjustment). `quantitySold` is in whatever unit the line was entered in
-// (`unitOfMeasureId`, null = the product's own base unit) — converted to base-unit terms
-// here, once, before it ever touches inventoryStocks/the ledger.
+// assertStockAvailable's opt-in flag is for). Allowed to go negative rather than clamped at
+// 0 — real-world SME timing means a sale is often keyed in before its matching receipt is
+// (stock physically moves all day, data entry catches up later), so on-hand legitimately
+// goes negative between transactions. Clamping here silently discards the true deficit,
+// which then makes a later reversal (Credit Note/cancel, restockForSaleReversal) add back
+// more than was ever actually removed — confirmed producing real phantom stock inflation.
+// `quantitySold` is in whatever unit the line was entered in (`unitOfMeasureId`, null = the
+// product's own base unit) — converted to base-unit terms here, once, before it ever
+// touches inventoryStocks/the ledger.
 export async function deductStockForSale(tx: any, companyId: string, productId: string, quantitySold: number, referenceId: string, date: Date, warehouseId?: string | null, unitOfMeasureId?: string | null) {
   if (!warehouseId) return;
   const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })
@@ -268,7 +272,7 @@ export async function deductStockForSale(tx: any, companyId: string, productId: 
     .for('update');
 
   const priorQty = existingStock ? Number(existingStock.quantity) : 0;
-  const newQty = Math.max(0, round2(priorQty - baseQuantitySold));
+  const newQty = round2(priorQty - baseQuantitySold);
 
   if (existingStock) {
     await tx.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));

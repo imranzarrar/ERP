@@ -376,25 +376,31 @@ describe('POST /api/inventory/stock-adjustments', () => {
     expect(rows.length).toBe(1);
   });
 
-  it('clamps a negative adjustment at 0 rather than going negative', async () => {
+  it('allows a negative adjustment to go negative rather than clamping at 0', async () => {
+    const [before] = await db.select().from(schema.inventoryStocks)
+      .where(and(eq(schema.inventoryStocks.productId, productId), eq(schema.inventoryStocks.warehouseId, warehouseId)));
+    const priorQty = before ? Number(before.quantity) : 0;
     const { status, body } = await api(adminSessionId, '/api/inventory/stock-adjustments', {
       method: 'POST',
       body: JSON.stringify({ productId, warehouseId, quantity: -1000, reason: 'Damaged stock write-off' }),
     });
     expect(status).toBe(200);
-    expect(Number(body.inventoryStock.quantity)).toBe(0);
+    expect(Number(body.inventoryStock.quantity)).toBe(priorQty - 1000);
   });
 
-  it('rejects a negative adjustment with no existing stock row to deduct from', async () => {
+  it('allows a negative adjustment to create a negative stock row when none exists yet', async () => {
     const freshProductId = generateId();
     await db.insert(schema.productsServices).values({
       id: freshProductId, name: 'Fresh Widget', description: 'x', unitPrice: '5.00', itemKind: 'item', companyId,
     });
-    const { status } = await api(adminSessionId, '/api/inventory/stock-adjustments', {
+    const { status, body } = await api(adminSessionId, '/api/inventory/stock-adjustments', {
       method: 'POST',
-      body: JSON.stringify({ productId: freshProductId, warehouseId, quantity: -5, reason: 'Should fail' }),
+      body: JSON.stringify({ productId: freshProductId, warehouseId, quantity: -5, reason: 'Known shortage recorded ahead of receipt' }),
     });
-    expect(status).toBe(400);
+    expect(status).toBe(200);
+    expect(Number(body.inventoryStock.quantity)).toBe(-5);
+    await db.delete(schema.stockLedgerTransactions).where(eq(schema.stockLedgerTransactions.productId, freshProductId));
+    await db.delete(schema.inventoryStocks).where(eq(schema.inventoryStocks.productId, freshProductId));
     await db.delete(schema.productsServices).where(eq(schema.productsServices.id, freshProductId));
   });
 

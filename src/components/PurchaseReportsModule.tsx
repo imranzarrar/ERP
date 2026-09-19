@@ -3,6 +3,7 @@ import { useTranslation, usePermissions } from '../hooks';
 import { DatabaseState } from '../dbStore';
 import { getMonthToDateRange } from '../dateUtils';
 import { Printer, Filter } from 'lucide-react';
+import { useReportViewer, ViewReportButton, ReportPlaceholder, ReportStatusStrip, ReportPager } from './ReportViewControls';
 
 type ReportType = 'PurchaseRegister' | 'VendorStatement' | 'PoStatus' | 'GrnPoVariance';
 
@@ -66,39 +67,56 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
   const branchMatchesViaWarehouse = (warehouseId: string | null | undefined) => branchMatches(warehouseId ? branchIdByWarehouseId.get(warehouseId) : undefined);
 
   const companyExpenses = db.expenses.filter(e => e.companyId === companyId && branchMatches((e as any).branchId));
-  const companyPOs = (db.purchaseOrders || []).filter((po: any) => po.companyId === companyId && branchMatches(po.branchId));
-  const companyGRNs = (db.goodsReceiptNotes || []).filter((g: any) => g.companyId === companyId && branchMatchesViaWarehouse(g.warehouseId));
+  const companyPOs = (db.purchaseOrders || []).filter((po: any) => po.companyId === companyId);
+  const companyGRNs = (db.goodsReceiptNotes || []).filter((g: any) => g.companyId === companyId);
 
-  // Purchase Register / Vendor Statement are fetched from GET /api/reports/purchase-register
-  // and /vendor-statement (server/lib/financialReports.ts) instead of computed client-side
-  // — see .claude/skills/server-side-report-aggregation/SKILL.md. PO Status and GRN vs. PO
-  // Variance below are untouched: purchaseOrders/goodsReceiptNotes were never among the
-  // capped tables in src/db/apiState.ts, so they were never subject to this bug.
-  const emptyPurchaseRegister = { rows: [] as any[], totalAmount: 0 };
-  const [purchaseRegisterData, setPurchaseRegisterData] = React.useState(emptyPurchaseRegister);
-  React.useEffect(() => {
-    if (reportType !== 'PurchaseRegister' || !companyId) return;
-    let cancelled = false;
-    const params = new URLSearchParams({ startDate, endDate, ...(selectedVendorId !== 'ALL' ? { vendorId: selectedVendorId } : {}) });
-    fetch(`/api/reports/purchase-register?${params}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setPurchaseRegisterData(d); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [reportType, companyId, startDate, endDate, selectedVendorId, selectedBranchId]);
-  const getPurchaseRegisterData = () => purchaseRegisterData;
+  // Purchase Register / Vendor Statement come from GET /api/reports/purchase-register and
+  // /vendor-statement (server/lib/financialReports.ts) — see
+  // .claude/skills/server-side-report-aggregation/SKILL.md. PO Status and GRN vs. PO Variance
+  // are still worked out in the browser from purchaseOrders/goodsReceiptNotes (never among the
+  // capped tables in src/db/apiState.ts). None of the four runs on open or on a filter change:
+  // the user sets filters and clicks View Report, which fetches (or, for the two in-browser
+  // reports, snapshots the filters those calculations then use).
+  const viewer = useReportViewer<any>({ rows: [] });
+  React.useEffect(() => { viewer.reset(); }, [reportType, companyId]);
+  const isServerReport = reportType === 'PurchaseRegister' || reportType === 'VendorStatement';
+  const draftFilters = { startDate, endDate, vendorId: selectedVendorId, branchId: selectedBranchId };
+  // In-browser reports read the filters as they were when View Report was clicked, never the
+  // draft inputs the user may have edited since.
+  const appliedFilters = (viewer.snapshot || draftFilters) as typeof draftFilters;
+  const appliedBranchMatches = (branchId: string | null | undefined) => appliedFilters.branchId === 'ALL' || branchId == null || branchId === appliedFilters.branchId;
 
-  const emptyVendorStatement = { entries: [] as any[], endingBalance: 0, vendorName: '' };
-  const [vendorStatementData, setVendorStatementData] = React.useState(emptyVendorStatement);
-  React.useEffect(() => {
-    if (reportType !== 'VendorStatement' || !companyId || !statementVendorId) return;
-    let cancelled = false;
-    fetch(`/api/reports/vendor-statement?vendorId=${statementVendorId}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setVendorStatementData(d); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [reportType, companyId, statementVendorId, selectedBranchId]);
-  const getVendorStatementData = () => vendorStatementData;
+  const buildReportUrl = (): string | null => {
+    if (!isServerReport) return null;
+    const params = new URLSearchParams();
+    if (selectedBranchId !== 'ALL') params.set('branchId', selectedBranchId);
+    if (reportType === 'VendorStatement') {
+      if (!statementVendorId) return null;
+      params.set('vendorId', statementVendorId);
+      return `/api/reports/vendor-statement?${params}`;
+    }
+    params.set('startDate', startDate);
+    params.set('endDate', endDate);
+    if (selectedVendorId !== 'ALL') params.set('vendorId', selectedVendorId);
+    return `/api/reports/purchase-register?${params}`;
+  };
+  const currentUrl = buildReportUrl();
+  const currentKey = isServerReport ? currentUrl : `local:${reportType}:${JSON.stringify(draftFilters)}`;
+  const isStale = viewer.hasViewed && viewer.appliedKey !== currentKey;
+  const canView = isServerReport ? !!currentUrl : true;
+  const handleView = () => {
+    if (isServerReport) { if (currentUrl) viewer.view(currentUrl, currentUrl); }
+    else viewer.view(currentKey!, null, draftFilters);
+  };
+  const viewed = viewer.hasViewed;
+
+  const getPurchaseRegisterData = () => viewer.data as { rows: any[]; totalAmount: number };
+  const getVendorStatementData = () => viewer.data as { entries: any[]; endingBalance: number; vendorName: string };
 
   // 3. PO Status — every PO by fulfillment status, with aging for what's still open.
   const getPoStatusData = () => {
     const rows = companyPOs
-      .filter((po: any) => po.date >= startDate && po.date <= endDate && (selectedVendorId === 'ALL' || po.vendorId === selectedVendorId))
+      .filter((po: any) => appliedBranchMatches(po.branchId) && po.date >= appliedFilters.startDate && po.date <= appliedFilters.endDate && (appliedFilters.vendorId === 'ALL' || po.vendorId === appliedFilters.vendorId))
       .map((po: any) => {
         const vend = db.vendors.find(v => v.id === po.vendorId);
         const isOpen = po.status === 'Sent' || po.status === 'Partially Received';
@@ -113,11 +131,11 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
   // 4. GRN vs. PO Variance — ordered vs. actually received quantity per PO line, summed
   // across every (non-reversed) GRN raised against that PO.
   const getGrnPoVarianceData = () => {
-    const pos = companyPOs.filter((po: any) => po.date >= startDate && po.date <= endDate && (selectedVendorId === 'ALL' || po.vendorId === selectedVendorId));
+    const pos = companyPOs.filter((po: any) => appliedBranchMatches(po.branchId) && po.date >= appliedFilters.startDate && po.date <= appliedFilters.endDate && (appliedFilters.vendorId === 'ALL' || po.vendorId === appliedFilters.vendorId));
     const rows: any[] = [];
     pos.forEach((po: any) => {
       const vend = db.vendors.find(v => v.id === po.vendorId);
-      const relatedGrns = companyGRNs.filter((g: any) => g.purchaseOrderId === po.id && !g.isReversed);
+      const relatedGrns = companyGRNs.filter((g: any) => g.purchaseOrderId === po.id && !g.isReversed && appliedBranchMatches(branchIdByWarehouseId.get(g.warehouseId)));
       (po.items || []).forEach((item: any) => {
         const received = relatedGrns.reduce((sum: number, g: any) => {
           const grnItem = (g.items || []).find((gi: any) => gi.productId === item.productId);
@@ -133,14 +151,17 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
     return { rows };
   };
 
-  const handlePrint = () => {
-    if (!can(REPORT_PERMISSION_KEYS[reportType])) return;
-    let reportData: any = {};
-    if (reportType === 'PurchaseRegister') reportData = getPurchaseRegisterData();
-    else if (reportType === 'VendorStatement') reportData = getVendorStatementData();
-    else if (reportType === 'PoStatus') reportData = getPoStatusData();
-    else if (reportType === 'GrnPoVariance') reportData = getGrnPoVarianceData();
-    onPrintDoc('Report', { type: reportType, startDate, endDate, data: reportData });
+  const handlePrint = async () => {
+    if (!can(REPORT_PERMISSION_KEYS[reportType]) || !viewed) return;
+    try {
+      let reportData: any;
+      if (isServerReport) reportData = (await viewer.fetchAll()) || viewer.data; // every row, not just the on-screen page
+      else if (reportType === 'PoStatus') reportData = getPoStatusData();
+      else reportData = getGrnPoVarianceData();
+      onPrintDoc('Report', { type: reportType, startDate: appliedFilters.startDate, endDate: appliedFilters.endDate, data: reportData });
+    } catch (e: any) {
+      window.alert(e?.message || t('Failed to load report'));
+    }
   };
 
   return (
@@ -200,18 +221,24 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
                   </select>
                 </div>
               )}
+              <ViewReportButton onView={handleView} loading={viewer.loading} stale={isStale} disabled={!canView} t={t} />
             </div>
           </div>
 
           <div className="bg-white border border-slate-200/60 rounded-[28px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden p-6">
+            {!viewed || !viewer.loaded ? (
+              <ReportPlaceholder loading={viewer.loading} error={viewer.error} t={t} />
+            ) : (
+            <>
+            <ReportStatusStrip loading={viewer.loading} error={viewer.error} t={t} />
 
             {reportType === 'PurchaseRegister' && (() => {
               const data = getPurchaseRegisterData();
               return (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-start">
-                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3 text-start">{t('Expense #')}</th><th className="p-3 text-start">{t('Date')}</th><th className="p-3 text-start">{t('Vendor')}</th><th className="p-3 text-start">{t('Classification')}</th><th className="p-3 text-start">{t('Payment')}</th><th className="p-3 text-end">{t('Amount')} ({currencySymbol})</th></tr></thead>
-                    <tbody>{data.rows.map((r, i) => (<tr key={i} className="border-b border-slate-100 text-slate-700"><td className="p-3 font-semibold">{r.expenseNumber}</td><td className="p-3">{r.date}</td><td className="p-3">{r.vendorName}</td><td className="p-3">{t(r.classification || '')}</td><td className="p-3">{t(r.paymentStatus)}</td><td className="p-3 text-end font-mono font-bold">{currencySymbol} {r.amount.toFixed(2)}</td></tr>))}</tbody>
+                    <thead><tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600 uppercase text-[10px]"><th className="p-3 text-start">{t('Expense #')}</th><th className="p-3 text-start">{t('Date')}</th><th className="p-3 text-start">{t('Vendor')}</th><th className="p-3 text-start">{t('Status')}</th><th className="p-3 text-start">{t('Payment')}</th><th className="p-3 text-end">{t('Amount')} ({currencySymbol})</th></tr></thead>
+                    <tbody>{data.rows.map((r, i) => (<tr key={i} className="border-b border-slate-100 text-slate-700"><td className="p-3 font-semibold">{r.expenseNumber}</td><td className="p-3">{r.date}</td><td className="p-3">{r.vendorName}</td><td className="p-3">{t(r.status)}</td><td className="p-3">{t(r.paymentStatus)}</td><td className="p-3 text-end font-mono font-bold">{currencySymbol} {r.totalAmount.toFixed(2)}</td></tr>))}</tbody>
                     <tfoot><tr className="bg-slate-900 text-white font-bold text-xs"><td className="p-3.5" colSpan={5}>{t('Total:')}</td><td className="p-3.5 text-end font-mono text-emerald-400">{currencySymbol} {data.totalAmount.toFixed(2)}</td></tr></tfoot>
                   </table>
                 </div>
@@ -265,6 +292,9 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
               );
             })()}
 
+            <ReportPager pagination={viewer.pagination} pageSize={viewer.pageSize} loading={viewer.loading} onPage={viewer.goToPage} onPageSize={viewer.changePageSize} t={t} />
+            </>
+            )}
           </div>
         </>
       )}

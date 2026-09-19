@@ -565,8 +565,9 @@ describe('A "sales" default can never be a backend warehouse', () => {
 });
 
 describe('Opt-in stock availability enforcement (inventorySettings.enforceStockAvailability)', () => {
-  it('allows overselling by default (clamped at 0, not rejected)', async () => {
+  it('allows overselling by default (goes negative, not rejected or clamped)', async () => {
     const today = new Date().toISOString().split('T')[0];
+    const priorQty = await stockQty(stockProductId, warehouseCompanyDefaultId);
     const res = await api(adminSessionId, '/api/transactions/invoices', {
       method: 'POST',
       body: JSON.stringify({
@@ -578,7 +579,7 @@ describe('Opt-in stock availability enforcement (inventorySettings.enforceStockA
       }),
     });
     expect(res.status).toBe(200);
-    expect(await stockQty(stockProductId, warehouseCompanyDefaultId)).toBe(0);
+    expect(await stockQty(stockProductId, warehouseCompanyDefaultId)).toBe(priorQty - 999999);
   });
 
   it('rejects an oversell once enforceStockAvailability is turned on', async () => {

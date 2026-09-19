@@ -346,7 +346,7 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
       const uom = (db.unitsOfMeasure || []).find((u: any) => u.id === puc.unitOfMeasureId);
       tiles.push({
         ...product,
-        name: `${product.name} (${uom ? uom.name : t('Packaging Unit')})`,
+        name: `${product.name} (${uom ? uom.name : t('Packaging Unit')} × ${puc.conversionFactor})`,
         unitPrice: puc.salePrice ?? product.unitPrice,
         barcode: puc.barcode || undefined,
         sku: puc.sku || undefined,

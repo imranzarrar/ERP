@@ -15,6 +15,7 @@ import {
  ArrowDownLeft,
  ArrowUpRight
 } from 'lucide-react';
+import { useReportViewer, ViewReportButton, ReportPlaceholder, ReportStatusStrip, ReportPager } from './ReportViewControls';
 
 type ReportType = 'TrialBalance' | 'SalesVAT' | 'PurchaseVAT' | 'BankLedger' | 'Outstanding' | 'ProfitLoss'
   | 'BalanceSheet' | 'VatReturnSummary' | 'InvestorProfitShare' | 'FiscalMonthClosingHistory';
@@ -79,12 +80,12 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
  .some(list => Array.isArray(list) && list.length >= RECORD_LIST_CAP);
 
  // Universal Filter States
- const [startDate, setStartDate] = React.useState(() => getMonthToDateRange().start);
- const [endDate, setEndDate] = React.useState(() => getMonthToDateRange().end);
- const [accountingBasis, setAccountingBasis] = React.useState<'Accrual' | 'Cash'>('Accrual');
- const [selectedCustomerId, setSelectedCustomerId] = React.useState('ALL');
- const [selectedVendorId, setSelectedVendorId] = React.useState('ALL');
- const [selectedBankId, setSelectedBankId] = React.useState('');
+ const [draftStartDate, setStartDate] = React.useState(() => getMonthToDateRange().start);
+ const [draftEndDate, setEndDate] = React.useState(() => getMonthToDateRange().end);
+ const [draftAccountingBasis, setAccountingBasis] = React.useState<'Accrual' | 'Cash'>('Accrual');
+ const [draftCustomerId, setSelectedCustomerId] = React.useState('ALL');
+ const [draftVendorId, setSelectedVendorId] = React.useState('ALL');
+ const [draftBankId, setSelectedBankId] = React.useState('');
  // Branch focus — see SalesReportsModule.tsx's matching comment for the full reasoning.
  // Scoped here to the reports that are naturally per-transaction aggregations (Sales VAT,
  // Purchase VAT, Outstanding, Bank Ledger) — Trial Balance/P&L/Balance Sheet/VAT Return
@@ -93,7 +94,7 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
  const isBranchUnrestricted = db.currentUser?.isSuperAdmin === true || db.currentUser?.role === 'admin' || can('branches.viewAllBranches');
  const myBranchIds = new Set((db.userBranches || []).filter(ub => ub.userId === db.currentUser?.id).map(ub => ub.branchId));
  const companyBranches = (db.branches || []).filter(b => b.companyId === db.selectedCompanyId && b.isActive !== false && (isBranchUnrestricted || myBranchIds.has(b.id)));
- const [selectedBranchId, setSelectedBranchId] = React.useState('ALL');
+ const [draftBranchId, setSelectedBranchId] = React.useState('ALL');
  const branchMatches = (branchId: string | null | undefined) => selectedBranchId === 'ALL' || branchId == null || branchId === selectedBranchId;
 
  React.useEffect(() => {
@@ -105,48 +106,47 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
  }
  }, [db.selectedCompanyId, db.banks]);
 
- // Trial Balance / Profit & Loss / Balance Sheet are fetched from
- // GET /api/reports/trial-balance|profit-loss|balance-sheet (server/lib/financialReports.ts)
- // instead of computed client-side from db.invoices/db.expenses/db.vouchers — see
- // .claude/skills/server-side-report-aggregation/SKILL.md. Only fetches whichever report
- // is actually on screen, re-fetching when its own inputs change. Every OTHER report in
- // this file (VAT views, Bank Ledger, Outstanding, Investor Profit Share, Fiscal Month
- // History) is untouched and still reads getSalesVATData()/etc. directly, including
- // getInvestorProfitShareData's own internal call to the (still-synchronous)
- // getProfitLossData() below — that function stays exactly as it was for that one caller.
- const [trialBalanceData, setTrialBalanceData] = React.useState<ReturnType<typeof getTrialBalance> | null>(null);
- const [profitLossData, setProfitLossData] = React.useState<ReturnType<typeof getProfitLossData> | null>(null);
- const [balanceSheetData, setBalanceSheetData] = React.useState<ReturnType<typeof getBalanceSheetData> | null>(null);
+ // Nothing on this screen calculates or fetches on open or when a filter changes: the user sets
+ // filters and clicks View Report. Trial Balance / Profit & Loss / Balance Sheet are then fetched
+ // from GET /api/reports/trial-balance|profit-loss|balance-sheet (server/lib/financialReports.ts —
+ // see .claude/skills/server-side-report-aggregation/SKILL.md); every OTHER report here is still
+ // worked out in the browser, from the filter values as they were when View Report was clicked
+ // (never the draft inputs edited since).
+ const viewer = useReportViewer<any>({});
+ React.useEffect(() => { viewer.reset(); }, [reportType, db.selectedCompanyId]);
+ const isServerReport = true;
+ const draftFilters = {
+   startDate: draftStartDate, endDate: draftEndDate, accountingBasis: draftAccountingBasis,
+   selectedCustomerId: draftCustomerId, selectedVendorId: draftVendorId, selectedBankId: draftBankId, selectedBranchId: draftBranchId,
+ };
+ const applied = (viewer.snapshot || draftFilters) as typeof draftFilters;
+ const { startDate, endDate, accountingBasis, selectedCustomerId, selectedVendorId, selectedBankId, selectedBranchId } = applied;
 
- React.useEffect(() => {
- if (reportType !== 'TrialBalance' || !db.selectedCompanyId) return;
- let cancelled = false;
- fetch(`/api/reports/trial-balance?startDate=${startDate}&endDate=${endDate}`)
- .then(r => r.ok ? r.json() : null)
- .then(data => { if (!cancelled && data) setTrialBalanceData(data); })
- .catch(() => {});
- return () => { cancelled = true; };
- }, [reportType, db.selectedCompanyId, startDate, endDate]);
+ const buildReportUrl = (): string | null => {
+   const p = new URLSearchParams();
+   if (draftBranchId !== 'ALL') p.set('branchId', draftBranchId);
+   const range = () => { p.set('startDate', draftStartDate); p.set('endDate', draftEndDate); };
+   if (reportType === 'TrialBalance') return `/api/reports/trial-balance?startDate=${draftStartDate}&endDate=${draftEndDate}`;
+   if (reportType === 'ProfitLoss') return `/api/reports/profit-loss?startDate=${draftStartDate}&endDate=${draftEndDate}&basis=${draftAccountingBasis}`;
+   if (reportType === 'BalanceSheet') return `/api/reports/balance-sheet?asOfDate=${draftEndDate}`;
+   if (reportType === 'SalesVAT') { range(); if (draftCustomerId !== 'ALL') p.set('customerId', draftCustomerId); return `/api/reports/sales-vat?${p}`; }
+   if (reportType === 'PurchaseVAT') { range(); if (draftVendorId !== 'ALL') p.set('vendorId', draftVendorId); return `/api/reports/purchase-vat?${p}`; }
+   if (reportType === 'VatReturnSummary') { range(); return `/api/reports/vat-return-summary?${p}`; }
+   if (reportType === 'BankLedger') { if (!draftBankId) return null; range(); p.set('bankId', draftBankId); return `/api/reports/bank-ledger?${p}`; }
+   if (reportType === 'Outstanding') { range(); if (draftCustomerId !== 'ALL') p.set('customerId', draftCustomerId); if (draftVendorId !== 'ALL') p.set('vendorId', draftVendorId); return `/api/reports/outstanding?${p}`; }
+   if (reportType === 'InvestorProfitShare') { range(); return `/api/reports/investor-profit-share?${p}`; }
+   if (reportType === 'FiscalMonthClosingHistory') return '/api/reports/fiscal-month-closing-history';
+   return null;
+ };
+ const currentUrl = buildReportUrl();
+ const currentKey = currentUrl;
+ const isStale = viewer.hasViewed && viewer.appliedKey !== currentKey;
+ const handleView = () => { if (currentUrl) viewer.view(currentUrl, currentUrl, draftFilters); };
+ const viewed = viewer.hasViewed;
 
- React.useEffect(() => {
- if (reportType !== 'ProfitLoss' || !db.selectedCompanyId) return;
- let cancelled = false;
- fetch(`/api/reports/profit-loss?startDate=${startDate}&endDate=${endDate}&basis=${accountingBasis}`)
- .then(r => r.ok ? r.json() : null)
- .then(data => { if (!cancelled && data) setProfitLossData(data); })
- .catch(() => {});
- return () => { cancelled = true; };
- }, [reportType, db.selectedCompanyId, startDate, endDate, accountingBasis]);
-
- React.useEffect(() => {
- if (reportType !== 'BalanceSheet' || !db.selectedCompanyId) return;
- let cancelled = false;
- fetch(`/api/reports/balance-sheet?asOfDate=${endDate}`)
- .then(r => r.ok ? r.json() : null)
- .then(data => { if (!cancelled && data) setBalanceSheetData(data); })
- .catch(() => {});
- return () => { cancelled = true; };
- }, [reportType, db.selectedCompanyId, endDate]);
+ const trialBalanceData = (reportType === 'TrialBalance' && viewed && viewer.loaded ? viewer.data : null) as ReturnType<typeof getTrialBalance> | null;
+ const profitLossData = (reportType === 'ProfitLoss' && viewed && viewer.loaded ? viewer.data : null) as ReturnType<typeof getProfitLossData> | null;
+ const balanceSheetData = (reportType === 'BalanceSheet' && viewed && viewer.loaded ? viewer.data : null) as ReturnType<typeof getBalanceSheetData> | null;
 
  // Column Sorting States
  const [sortField, setSortField] = React.useState<string>('date');
@@ -263,275 +263,44 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
  return { ledgers, totalDebits, totalCredits, totalSalesRev, totalPurchaseExp };
  };
 
- // Sales VAT Register Rows
- const getSalesVATData = () => {
- return db.invoices
- .filter(inv => {
- if (inv.companyId !== db.selectedCompanyId) return false;
- if (!branchMatches((inv as any).branchId)) return false;
- const matchesDate = inv.date >= startDate && inv.date <= endDate;
- const matchesCust = selectedCustomerId === 'ALL' || inv.customerId === selectedCustomerId;
- return matchesDate && matchesCust && inv.status === 'Active';
- })
- .map(inv => {
- const cust = db.customers.find(c => c.id === inv.customerId);
- const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId, inv.discountPercentage);
- // A Credit Note shows as its own line here, signed negative — a genuine, auditable
- // reduction to output VAT, not just excluded (matches real VAT register convention).
- // Anything summing these rows (e.g. VAT Return Summary below) nets correctly for free.
- const sign = getInvoiceSign(inv);
- return {
- invoiceNumber: inv.invoiceNumber,
- date: inv.date,
- customerName: cust?.name || 'Walk-In',
- vatNumber: cust?.vatNumber || 'N/A',
- subtotal: totals.subtotal * sign,
- taxAmount: totals.taxAmount * sign,
- grandTotal: totals.grandTotal * sign
- };
+ // Every figure below comes from the server (server/lib/financialReports.ts via
+ // /api/reports/*): these adapters only reshape the fetched page for the existing tables.
+ // Totals/counts are the server's, over the FULL result — never summed from the visible page.
+ const vd: any = viewed && viewer.loaded ? viewer.data : {};
+ const mapSalesVat = (d: any) => ((d?.rows || []) as any[]).map(r => ({ invoiceNumber: r.documentNumber, date: r.date, customerName: r.partyName, vatNumber: r.vatNumber, subtotal: r.subtotal, taxAmount: r.taxAmount, grandTotal: r.grandTotal }));
+ const mapPurchaseVat = (d: any) => ((d?.rows || []) as any[]).map(r => ({ expenseNumber: r.documentNumber, date: r.date, vendorName: r.partyName, vatNumber: r.vatNumber, subtotal: r.subtotal, taxAmount: r.taxAmount, grandTotal: r.grandTotal }));
+ const getSalesVATData = () => mapSalesVat(vd);
+ const getPurchaseVATData = () => mapPurchaseVat(vd);
+
+ // Column-header sorting only re-orders the page on screen (paging itself is server-side, chronological).
+ const sortRows = (list: any[]) => [...list].sort((a: any, b: any) => {
+   let f = sortField;
+   if (f === 'voucherNumber' || f === 'sourceDoc') f = 'docNumber';
+   let valA = a[f]; let valB = b[f];
+   if (valA === undefined || valA === null) valA = '';
+   if (valB === undefined || valB === null) valB = '';
+   if (typeof valA === 'string') return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+   return sortOrder === 'asc' ? valA - valB : valB - valA;
  });
- };
-
- // Purchase VAT Register Rows
- const getPurchaseVATData = () => {
- return db.expenses
- .filter(exp => {
- if (exp.companyId !== db.selectedCompanyId) return false;
- if (!branchMatches((exp as any).branchId)) return false;
- const matchesDate = exp.date >= startDate && exp.date <= endDate;
- const matchesVend = selectedVendorId === 'ALL' || exp.vendorId === selectedVendorId;
- return matchesDate && matchesVend && exp.status === 'Active';
- })
- .map(exp => {
- const vend = db.vendors.find(v => v.id === exp.vendorId);
- // Direct expense doesn't support nested VAT calculation, we extract VAT percentage from tax slab
- const slab = db.taxSlabs.find(s => s.id === exp.taxSlabId);
- const rate = slab ? slab.percentage : 0;
- 
- // Back-calculate taxable subtotal and tax paid
- const subtotal = exp.amount / (1 + rate / 100);
- const taxAmount = exp.amount - subtotal;
-
- return {
- expenseNumber: exp.expenseNumber,
- date: exp.date,
- vendorName: vend?.name || 'Cash Vendor',
- vatNumber: vend?.vatNumber || 'N/A',
- subtotal,
- taxAmount,
- grandTotal: exp.amount
- };
- });
- };
-
- // Outstanding Invoices & Expenses Rows
  const getOutstandingData = () => {
- // 1. Outstanding Invoices (Receivables) — a Credit Note is never itself an outstanding
- // receivable (its paymentStatus is always 'Unpaid' by default, but that field is
- // vestigial for this document type — see dbStore.ts's getInvoiceSign), so it's excluded
- // here entirely rather than netted; an "aging" report has no natural way to show a
- // negative days-overdue line, unlike a VAT register where a signed row is meaningful.
- const rawInvoices = db.invoices
- .filter(inv => {
- if (inv.companyId !== db.selectedCompanyId) return false;
- if (!branchMatches((inv as any).branchId)) return false;
- if (inv.documentType === 'CreditNote') return false;
- const matchesDate = !startDate || !endDate || (inv.date >= startDate && inv.date <= endDate);
- const matchesCust = selectedCustomerId === 'ALL' || inv.customerId === selectedCustomerId;
- const isOutstanding = inv.paymentStatus === 'Unpaid' || inv.paymentStatus === 'Partially Paid';
- return matchesDate && matchesCust && inv.status === 'Active' && isOutstanding;
- })
- .map(inv => {
- const cust = db.customers.find(c => c.id === inv.customerId);
- const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId, inv.discountPercentage);
- const total = totals.grandTotal;
- const paid = inv.amountPaid || 0;
- const outstanding = total - paid;
- return {
- id: inv.id,
- type: 'Invoice',
- docNumber: inv.invoiceNumber,
- date: inv.date,
- contactName: cust?.name || 'Walk-In',
- total,
- paid,
- outstanding,
- paymentStatus: inv.paymentStatus,
- referenceId: inv.id,
- original: inv
+   const rows = (vd.rows || []) as any[];
+   return {
+     invoices: sortRows(rows.filter(r => r.type === 'Invoice')),
+     expenses: sortRows(rows.filter(r => r.type === 'Expense')),
+     totalReceivable: Number(vd.totalReceivable || 0), totalPayable: Number(vd.totalPayable || 0), netOutstanding: Number(vd.netOutstanding || 0),
+     invoiceCount: Number(vd.invoiceCount || 0), expenseCount: Number(vd.expenseCount || 0),
+   };
  };
- });
-
- // 2. Outstanding Expenses (Payables)
- const rawExpenses = db.expenses
- .filter(exp => {
- if (exp.companyId !== db.selectedCompanyId) return false;
- if (!branchMatches((exp as any).branchId)) return false;
- const matchesDate = !startDate || !endDate || (exp.date >= startDate && exp.date <= endDate);
- const matchesVend = selectedVendorId === 'ALL' || exp.vendorId === selectedVendorId;
- const isOutstanding = exp.paymentStatus === 'Unpaid' || exp.paymentStatus === 'Partially Paid';
- return matchesDate && matchesVend && exp.status === 'Active' && isOutstanding;
- })
- .map(exp => {
- const vend = db.vendors.find(v => v.id === exp.vendorId);
- const total = exp.amount;
- const paid = exp.amountPaid || 0;
- const outstanding = total - paid;
- return {
- id: exp.id,
- type: 'Expense',
- docNumber: exp.expenseNumber,
- date: exp.date,
- contactName: vend?.name || 'Cash Vendor',
- total,
- paid,
- outstanding,
- paymentStatus: exp.paymentStatus,
- referenceId: exp.id,
- original: exp
- };
- });
-
- // Apply sorting
- const sortFn = (a: any, b: any) => {
- let f = sortField;
- if (f === 'voucherNumber' || f === 'sourceDoc') {
- f = 'docNumber';
- }
- let valA = a[f];
- let valB = b[f];
-
- if (valA === undefined || valA === null) valA = '';
- if (valB === undefined || valB === null) valB = '';
-
- if (typeof valA === 'string') {
- return sortOrder === 'asc' 
- ? valA.localeCompare(valB) 
- : valB.localeCompare(valA);
- } else {
- return sortOrder === 'asc' 
- ? valA - valB 
- : valB - valA;
- }
- };
-
- const sortedInvoices = [...rawInvoices].sort(sortFn);
- const sortedExpenses = [...rawExpenses].sort(sortFn);
-
- return { invoices: sortedInvoices, expenses: sortedExpenses };
- };
-
- // Bank Ledger Vouchers
- const getBankLedgerData = () => {
- let rawVouchers = [];
- let startBal = 0;
- let bankNameStr = '';
-
- if (selectedBankId === 'ALL') {
- rawVouchers = db.vouchers.filter(v => v.companyId === db.selectedCompanyId && branchMatches((v as any).branchId));
- startBal = db.banks.filter(b => b.companyId === db.selectedCompanyId).reduce((sum, b) => sum + b.openingBalance, 0);
- bankNameStr = t('All Banks Combined');
- } else {
- const selectedBank = db.banks.find(b => b.id === selectedBankId);
- if (!selectedBank || selectedBank.companyId !== db.selectedCompanyId) return { vouchers: [], endingBalance: 0, bankName: '' };
- rawVouchers = db.vouchers.filter(v => v.bankId === selectedBankId && v.companyId === db.selectedCompanyId && branchMatches((v as any).branchId));
- startBal = selectedBank.openingBalance;
- bankNameStr = selectedBank.bankName;
- }
-
- // Filter by dates
- if (startDate) {
- rawVouchers = rawVouchers.filter(v => v.date >= startDate);
- }
- if (endDate) {
- rawVouchers = rawVouchers.filter(v => v.date <= endDate);
- }
-
- // Always sort chronologically first to compute correct sequential running balances
- rawVouchers.sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
-
- let runningBalance = startBal;
-
- const ledgerLines = rawVouchers.map(v => {
- let debit = 0;
- let credit = 0;
-
- if (v.type === 'Receipt' || v.type === 'TransferIn') {
- debit = v.amount;
- runningBalance += v.amount;
- } else if (v.type === 'Payment' || v.type === 'TransferOut') {
- credit = v.amount;
- runningBalance -= v.amount;
- } else if (v.type === 'Reversal') {
- if (v.referenceType === 'Invoice') {
- credit = v.amount;
- runningBalance -= v.amount;
- } else {
- debit = v.amount;
- runningBalance += v.amount;
- }
- }
-
- // Pre-calculate source document info for rendering and sorting
- let sourceDoc = '-';
- let refType: 'Invoice' | 'Expense' | null = null;
- if (v.referenceType === 'Invoice') {
- const inv = db.invoices.find(i => i.id === v.referenceId);
- if (inv) {
- sourceDoc = inv.invoiceNumber;
- refType = 'Invoice';
- }
- } else if (v.referenceType === 'Expense') {
- const exp = db.expenses.find(e => e.id === v.referenceId);
- if (exp) {
- sourceDoc = exp.expenseNumber;
- refType = 'Expense';
- }
- }
-
- const bank = db.banks.find(b => b.id === v.bankId);
-
- return {
- id: v.id,
- date: v.date,
- type: v.type,
- voucherNumber: v.voucherNumber,
- description: v.description,
- debit,
- credit,
- runningBalance: Number(runningBalance.toFixed(2)),
- bankId: v.bankId,
- bankName: bank ? bank.bankName : t('Unknown'),
- sourceDoc,
- refType,
- referenceId: v.referenceId
- };
- });
-
- const endingBalance = ledgerLines.length > 0 
- ? ledgerLines[ledgerLines.length - 1].runningBalance 
- : startBal;
-
- // Now apply user-selected sort order
- const sortedLines = [...ledgerLines].sort((a: any, b: any) => {
- let valA = a[sortField];
- let valB = b[sortField];
-
- if (valA === undefined || valA === null) valA = '';
- if (valB === undefined || valB === null) valB = '';
-
- if (typeof valA === 'string') {
- return sortOrder === 'asc' 
- ? valA.localeCompare(valB) 
- : valB.localeCompare(valA);
- } else {
- return sortOrder === 'asc' 
- ? valA - valB 
- : valB - valA;
- }
- });
-
- return { vouchers: sortedLines, endingBalance, bankName: bankNameStr };
+ const getBankLedgerData = (d: any = vd) => {
+   const rows = ((d.rows || []) as any[]).map(r => ({ ...r, bankName: r.bankName === 'Unknown' ? t('Unknown') : r.bankName }));
+   const sorted = [...rows].sort((a: any, b: any) => {
+     let valA = a[sortField]; let valB = b[sortField];
+     if (valA === undefined || valA === null) valA = '';
+     if (valB === undefined || valB === null) valB = '';
+     if (typeof valA === 'string') return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+     return sortOrder === 'asc' ? valA - valB : valB - valA;
+   });
+   return { vouchers: sorted, endingBalance: Number(d.endingBalance || 0), openingBalance: Number(d.openingBalance || 0), bankName: d.bankName === 'All Banks Combined' ? t('All Banks Combined') : (d.bankName || '') };
  };
 
 const getProfitLossData = () => {
@@ -695,76 +464,31 @@ const getBalanceSheetData = () => {
   };
 };
 
-// VAT Return Summary — the one number a periodic VAT filing actually needs, aggregating
-// the Sales VAT and Purchase VAT registers this app already computes rather than
-// re-deriving anything new.
-const getVatReturnSummaryData = () => {
-  const sales = getSalesVATData();
-  const purchases = getPurchaseVATData();
-  const outputVat = sales.reduce((sum: number, r: any) => sum + r.taxAmount, 0);
-  const inputVat = purchases.reduce((sum: number, r: any) => sum + r.taxAmount, 0);
-  return {
-    startDate, endDate,
-    outputVat, inputVat,
-    netVatPayable: outputVat - inputVat,
-    salesCount: sales.length,
-    purchaseCount: purchases.length,
-  };
-};
+const getVatReturnSummaryData = () => ({ startDate, endDate, outputVat: 0, inputVat: 0, netVatPayable: 0, salesCount: 0, purchaseCount: 0, ...vd });
+const getInvestorProfitShareData = () => ({ startDate, endDate, netProfit: 0, investorShares: [] as any[], ...vd });
+const getFiscalMonthClosingHistoryData = () => ({ months: (vd.rows || []) as any[] });
 
-// Investor Profit Share — standalone view of the same per-investor split P&L already
-// computes inline (getProfitLossData's investorShares), for when someone just wants the
-// distribution table without the full income statement around it.
-const getInvestorProfitShareData = () => {
-  const { netProfit, investorShares } = getProfitLossData();
-  return { startDate, endDate, netProfit, investorShares };
-};
-
-// Fiscal Month Closing History — every closed month's locked P&L snapshot, side by side.
-// No date-range filter (a closed month's own id already carries its period); shows every
-// closed month for this company so far.
-const getFiscalMonthClosingHistoryData = () => {
-  const closedMonths = (db.months || [])
-    .filter((m: any) => m.companyId === db.selectedCompanyId && m.status === 'Closed')
-    .sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)));
-  return { months: closedMonths };
-};
-
- const handlePrint = () => {
+ const handlePrint = async () => {
+ if (!viewed) return;
  // Defense in depth — the button that sets reportType is already permission-filtered
  // below, but guard the action itself too rather than trust that alone.
  if (!can(REPORT_PERMISSION_KEYS[reportType])) return;
- let reportData: any = {};
- if (reportType === 'TrialBalance') {
- // Print exactly what's on screen (server-fetched) rather than a fresh, possibly-racy
- // re-derivation — see the trialBalanceData/profitLossData/balanceSheetData fetch effects above.
- reportData = trialBalanceData || {};
- } else if (reportType === 'SalesVAT') {
- reportData = getSalesVATData();
- } else if (reportType === 'PurchaseVAT') {
- reportData = getPurchaseVATData();
- } else if (reportType === 'BankLedger') {
- reportData = getBankLedgerData();
- } else if (reportType === 'Outstanding') {
- reportData = getOutstandingData();
- } else if (reportType === 'ProfitLoss') {
- reportData = profitLossData || {};
- } else if (reportType === 'BalanceSheet') {
- reportData = balanceSheetData || {};
- } else if (reportType === 'VatReturnSummary') {
- reportData = getVatReturnSummaryData();
- } else if (reportType === 'InvestorProfitShare') {
- reportData = getInvestorProfitShareData();
- } else if (reportType === 'FiscalMonthClosingHistory') {
- reportData = getFiscalMonthClosingHistoryData();
+ try {
+ // Print exactly what was viewed, but with EVERY row (not just the on-screen page).
+ const d: any = (await viewer.fetchAll()) || viewer.data;
+ let reportData: any = d || {};
+ if (reportType === 'SalesVAT') reportData = mapSalesVat(d);
+ else if (reportType === 'PurchaseVAT') reportData = mapPurchaseVat(d);
+ else if (reportType === 'BankLedger') reportData = getBankLedgerData(d);
+ else if (reportType === 'Outstanding') {
+   const rows = (d?.rows || []) as any[];
+   reportData = { invoices: rows.filter(r => r.type === 'Invoice'), expenses: rows.filter(r => r.type === 'Expense') };
  }
-
- onPrintDoc('Report', {
- type: reportType,
- startDate,
- endDate,
- data: reportData
- });
+ else if (reportType === 'FiscalMonthClosingHistory') reportData = { months: d?.rows || [] };
+ onPrintDoc('Report', { type: reportType, startDate, endDate, data: reportData });
+ } catch (e: any) {
+ window.alert(e?.message || t('Failed to load report'));
+ }
  };
 
  return (
@@ -792,17 +516,6 @@ const getFiscalMonthClosingHistoryData = () => {
  </button>
  </div>
 
- {/* Disclosure: reports read from a capped, most-recent-N window per record type. This is
- a check on already-fetched in-memory data, no new query. */}
- {isDataPossiblyTruncated && (
- <div className="bg-slate-100 border border-slate-200 rounded-2xl p-3 flex items-center gap-2.5">
- <span className="text-sm shrink-0">ℹ️</span>
- <p className="text-[10.5px] text-slate-600">
- {t('Based on the most recent 500 records per type (invoices, expenses, vouchers, quotations) - totals in these reports may be incomplete for companies with more history.')}
- </p>
- </div>
- )}
-
  {/* Dynamic Filter Panel */}
  <div className="bg-white border border-slate-200/80 rounded-2xl p-5 text-xs text-slate-600 shadow-sm">
  <div className="flex items-center justify-between gap-2 mb-5 border-b border-slate-100 pb-3 flex-wrap">
@@ -820,7 +533,7 @@ const getFiscalMonthClosingHistoryData = () => {
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('From Date')}</label>
  <input
  type="date"
- value={startDate}
+ value={draftStartDate}
  onChange={(e) => setStartDate(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
  />
@@ -830,7 +543,7 @@ const getFiscalMonthClosingHistoryData = () => {
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('To Date')}</label>
  <input
  type="date"
- value={endDate}
+ value={draftEndDate}
  onChange={(e) => setEndDate(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
  />
@@ -840,7 +553,7 @@ const getFiscalMonthClosingHistoryData = () => {
  <div className="space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Filter Customer')}</label>
  <select
- value={selectedCustomerId}
+ value={draftCustomerId}
  onChange={(e) => setSelectedCustomerId(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
  >
@@ -856,7 +569,7 @@ const getFiscalMonthClosingHistoryData = () => {
  <div className="space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Filter Vendor')}</label>
  <select
- value={selectedVendorId}
+ value={draftVendorId}
  onChange={(e) => setSelectedVendorId(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
  >
@@ -872,7 +585,7 @@ const getFiscalMonthClosingHistoryData = () => {
  <div className="space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Select Bank Ledger')}</label>
  <select
- value={selectedBankId}
+ value={draftBankId}
  onChange={(e) => setSelectedBankId(e.target.value)}
  className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none"
  >
@@ -887,7 +600,7 @@ const getFiscalMonthClosingHistoryData = () => {
  <div className="space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Filter Branch')}</label>
  <select
- value={selectedBranchId}
+ value={draftBranchId}
  onChange={(e) => setSelectedBranchId(e.target.value)}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
  >
@@ -898,11 +611,30 @@ const getFiscalMonthClosingHistoryData = () => {
  </select>
  </div>
  )}
+ {reportType === 'ProfitLoss' && (
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Accounting Basis')}</label>
+ <select
+ value={draftAccountingBasis}
+ onChange={(e) => setAccountingBasis(e.target.value as 'Accrual' | 'Cash')}
+ className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none"
+ >
+ <option value="Accrual">{t('Accrual Basis')}</option>
+ <option value="Cash">{t('Cash Basis')}</option>
+ </select>
+ </div>
+ )}
+ <ViewReportButton onView={handleView} loading={viewer.loading} stale={isStale} disabled={isServerReport && !currentUrl} t={t} />
  </div>
  </div>
 
  {/* REPORT CONTENT VIEWPORTS */}
  <div className="bg-white border border-slate-200/60 rounded-[28px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl overflow-hidden p-6">
+ {!viewed || !viewer.loaded ? (
+ <ReportPlaceholder loading={viewer.loading} error={viewer.error} t={t} />
+ ) : (
+ <>
+ <ReportStatusStrip loading={viewer.loading} error={viewer.error} t={t} />
 
  {/* 1. Trial Balance viewport */}
  {reportType === 'TrialBalance' && (() => {
@@ -1140,9 +872,9 @@ const getFiscalMonthClosingHistoryData = () => {
  {/* 2. Sales VAT register viewport */}
  {reportType === 'SalesVAT' && (() => {
  const rows = getSalesVATData();
- const subtotalSum = rows.reduce((s, r) => s + r.subtotal, 0);
- const taxSum = rows.reduce((s, r) => s + r.taxAmount, 0);
- const grandSum = rows.reduce((s, r) => s + r.grandTotal, 0);
+ const subtotalSum = Number(vd.totals?.subtotal || 0);
+ const taxSum = Number(vd.totals?.taxAmount || 0);
+ const grandSum = Number(vd.totals?.grandTotal || 0);
 
  return (
  <div className="space-y-6">
@@ -1200,9 +932,9 @@ const getFiscalMonthClosingHistoryData = () => {
  {/* 3. Purchase VAT register viewport */}
  {reportType === 'PurchaseVAT' && (() => {
  const rows = getPurchaseVATData();
- const subtotalSum = rows.reduce((s, r) => s + r.subtotal, 0);
- const taxSum = rows.reduce((s, r) => s + r.taxAmount, 0);
- const grandSum = rows.reduce((s, r) => s + r.grandTotal, 0);
+ const subtotalSum = Number(vd.totals?.subtotal || 0);
+ const taxSum = Number(vd.totals?.taxAmount || 0);
+ const grandSum = Number(vd.totals?.grandTotal || 0);
 
  return (
  <div className="space-y-6">
@@ -1259,13 +991,13 @@ const getFiscalMonthClosingHistoryData = () => {
 
  {/* 4. Bank ledger viewport with running balances */}
  {reportType === 'BankLedger' && (() => {
- const { vouchers, endingBalance, bankName } = getBankLedgerData();
+ const { vouchers, endingBalance, openingBalance, bankName } = getBankLedgerData();
  const isAllBanks = selectedBankId === 'ALL';
  return (
  <div className="space-y-6">
  <div className="text-center">
  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">{bankName} {t("statement card")}</h3>
- <p className="text-[10px] text-slate-400 mt-1">{t("Audit Ledger Statement:")} {startDate} {t("to")} {endDate}</p>
+ <p className="text-[10px] text-slate-400 mt-1">{t("Audit Ledger Statement:")} {startDate} {t("to")} {endDate} — {t("Opening Balance")}: {currencySymbol} {openingBalance.toFixed(2)}</p>
  </div>
 
  <div className="overflow-x-auto">
@@ -1377,11 +1109,7 @@ const getFiscalMonthClosingHistoryData = () => {
 
  {/* 5. Outstanding Aging & Balances viewport */}
  {reportType === 'Outstanding' && (() => {
- const { invoices, expenses } = getOutstandingData();
- 
- const totalReceivable = invoices.reduce((sum, i) => sum + i.outstanding, 0);
- const totalPayable = expenses.reduce((sum, e) => sum + e.outstanding, 0);
- const netOutstanding = totalReceivable - totalPayable;
+ const { invoices, expenses, totalReceivable, totalPayable, netOutstanding, invoiceCount, expenseCount } = getOutstandingData();
 
  return (
  <div className="space-y-8">
@@ -1398,7 +1126,7 @@ const getFiscalMonthClosingHistoryData = () => {
  <h4 className="text-xl font-black text-slate-900 font-mono mt-1">
  {currencySymbol} {totalReceivable.toFixed(2)}
  </h4>
- <p className="text-[10px] text-emerald-600 font-medium mt-0.5">{t("From")} {invoices.length} {invoices.length === 1 ? t('unpaid invoice') : t('unpaid invoices')}</p>
+ <p className="text-[10px] text-emerald-600 font-medium mt-0.5">{t("From")} {invoiceCount} {invoiceCount === 1 ? t('unpaid invoice') : t('unpaid invoices')}</p>
  </div>
  <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
  <ArrowDownLeft className="w-5 h-5" />
@@ -1411,7 +1139,7 @@ const getFiscalMonthClosingHistoryData = () => {
  <h4 className="text-xl font-black text-slate-900 font-mono mt-1">
  {currencySymbol} {totalPayable.toFixed(2)}
  </h4>
- <p className="text-[10px] text-rose-600 font-medium mt-0.5">{t("To")} {expenses.length} {expenses.length === 1 ? t('unpaid expense') : t('unpaid expenses')}</p>
+ <p className="text-[10px] text-rose-600 font-medium mt-0.5">{t("To")} {expenseCount} {expenseCount === 1 ? t('unpaid expense') : t('unpaid expenses')}</p>
  </div>
  <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center text-rose-600 shrink-0">
  <ArrowUpRight className="w-5 h-5" />
@@ -1444,7 +1172,7 @@ const getFiscalMonthClosingHistoryData = () => {
  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
  {t("Outstanding Customer Invoices (Receivables)")}
  </span>
- <span className="text-[10px] text-slate-400 font-mono">{t("Count:")} {invoices.length}</span>
+ <span className="text-[10px] text-slate-400 font-mono">{t("Count:")} {invoiceCount}</span>
  </div>
 
  <div className="overflow-x-auto">
@@ -1474,9 +1202,11 @@ const getFiscalMonthClosingHistoryData = () => {
  <button
  type="button"
  onClick={() => {
- const customer = db.customers.find(c => c.id === inv.original.customerId);
- const bank = db.banks.find(b => b.id === inv.original.bankId);
- onPrintDoc('Invoice', { ...inv.original, customerData: customer, bankData: bank });
+ const original: any = db.invoices.find(i => i.id === inv.id);
+ if (!original) { window.alert(t('Open this document from the Invoices screen — it is older than the records loaded here.')); return; }
+ const customer = db.customers.find(c => c.id === original.customerId);
+ const bank = db.banks.find(b => b.id === original.bankId);
+ onPrintDoc('Invoice', { ...original, customerData: customer, bankData: bank });
  }}
  className="text-indigo-600 hover:text-indigo-800 hover:underline font-bold font-mono cursor-pointer"
  >
@@ -1544,9 +1274,11 @@ const getFiscalMonthClosingHistoryData = () => {
  <button
  type="button"
  onClick={() => {
- const vendor = db.vendors.find(v => v.id === exp.original.vendorId);
- const bank = db.banks.find(b => b.id === exp.original.bankId);
- onPrintDoc('Expense', { ...exp.original, vendorData: vendor, bankData: bank });
+ const original: any = db.expenses.find(e => e.id === exp.id);
+ if (!original) { window.alert(t('Open this document from the Expenses screen — it is older than the records loaded here.')); return; }
+ const vendor = db.vendors.find(v => v.id === original.vendorId);
+ const bank = db.banks.find(b => b.id === original.bankId);
+ onPrintDoc('Expense', { ...original, vendorData: vendor, bankData: bank });
  }}
  className="text-indigo-600 hover:text-indigo-800 hover:underline font-bold font-mono cursor-pointer"
  >
@@ -1605,7 +1337,7 @@ const getFiscalMonthClosingHistoryData = () => {
  <button
  onClick={() => setAccountingBasis('Accrual')}
  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
- accountingBasis === 'Accrual'
+ draftAccountingBasis === 'Accrual'
  ? 'bg-white text-indigo-600 shadow-sm'
  : 'text-slate-500 hover:text-slate-700'
  }`}
@@ -1615,7 +1347,7 @@ const getFiscalMonthClosingHistoryData = () => {
  <button
  onClick={() => setAccountingBasis('Cash')}
  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
- accountingBasis === 'Cash'
+ draftAccountingBasis === 'Cash'
  ? 'bg-white text-indigo-600 shadow-sm'
  : 'text-slate-500 hover:text-slate-700'
  }`}
@@ -1849,6 +1581,9 @@ const getFiscalMonthClosingHistoryData = () => {
  );
  })()}
 
+ <ReportPager pagination={viewer.pagination} pageSize={viewer.pageSize} loading={viewer.loading} onPage={viewer.goToPage} onPageSize={viewer.changePageSize} t={t} />
+ </>
+ )}
  </div>
  </>
  )}

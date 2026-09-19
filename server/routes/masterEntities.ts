@@ -1237,6 +1237,16 @@ router.post('/product-unit-conversions', withTenantDb, async (req: any, res) => 
       return res.status(404).json({ error: 'Product not found for this company.' });
     }
 
+    // sku is auto-generated on create and immutable afterward, same convention as the base
+    // product's own SKU above — previously a free-typed field, so two packaging units could
+    // collide or be left blank entirely. Its own counter key ('packagingSku') keeps this
+    // sequence independent of the base-product SKU sequence.
+    if (existing) {
+      delete data.sku;
+    } else {
+      data.sku = await getAndIncrementDocumentNumber(tdb, data.companyId, 'packagingSku', new Date().toISOString().slice(0, 10));
+    }
+
     await tdb.insert(schema.productUnitConversions).values(data).onConflictDoUpdate({
       target: schema.productUnitConversions.id,
       set: data

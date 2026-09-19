@@ -533,9 +533,10 @@ router.post('/goods-receipt-notes', withTenantDb, async (req: any, res) => {
 });
 
 // Reverse a GRN — the correction path for a wrong-quantity/wrong-batch receipt. Reverts
-// the stock movement (clamped at 0, matching the stock-adjustments route's own clamping —
-// a receipt that's already been partly consumed by a sale can't be reversed below 0), and
-// recomputes the linked PO's fulfillment status from the remaining (non-reversed) GRNs.
+// the stock movement (allowed to go negative — a receipt that's already been partly
+// consumed by a sale legitimately reverses below 0 rather than silently losing the real
+// deficit, same reasoning as deductStockForSale in businessLogic.ts), and recomputes the
+// linked PO's fulfillment status from the remaining (non-reversed) GRNs.
 // Deliberately does NOT unwind the product's average cost: a moving weighted average is
 // forward-only by design — precisely reversing it would require replaying full receipt
 // history, which no real ERP does. A materially wrong average cost from a bad receipt
@@ -592,7 +593,7 @@ router.post('/goods-receipt-notes/:id/reverse', withTenantDb, async (req: any, r
       if (existingStock) {
         const baseQtyReceived = await toBaseQuantity(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReceived));
         const priorQty = Number(existingStock.quantity);
-        const newQty = Math.max(0, round2(priorQty - baseQtyReceived));
+        const newQty = round2(priorQty - baseQtyReceived);
         await tdb.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
         await writeStockLedgerEntry(tdb, {
           productId: item.productId, warehouseId: grn.warehouseId, companyId,
@@ -1167,14 +1168,17 @@ router.post('/warehouse-dispatches/:id/cancel', withTenantDb, async (req: any, r
 // Manual stock adjustment (count discrepancy, damage, etc.) — reuses the exact
 // lock-then-increment-or-insert pattern the GRN route above uses to update
 // inventoryStocks, just with a signed delta instead of an always-positive received
-// quantity. Clamped at 0 (matches the previous client-only behavior in
-// InventoryModule.tsx's handleStockAdjustment) rather than allowing negative stock.
+// quantity. Allowed to go negative (see deductStockForSale's comment in businessLogic.ts
+// for the full reasoning) rather than clamped at 0. `quantity` is entered in whatever unit
+// was selected (`unitOfMeasureId`, null = base) and converted to base-unit terms here —
+// same convention as every other stock-mutating route — so a packaging-unit adjustment
+// (e.g. "-1 Outer") doesn't require the caller to hand-compute the base-unit delta first.
 router.post('/stock-adjustments', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'inventory.stock')) {
       return res.status(403).json({ error: 'Forbidden' });
     }
-    const { productId, warehouseId, quantity, batchNumber, reason } = req.body || {};
+    const { productId, warehouseId, quantity, batchNumber, reason, unitOfMeasureId } = req.body || {};
     if (!productId || !warehouseId || quantity === undefined || quantity === null || Number(quantity) === 0) {
       return res.status(400).json({ error: 'A product, warehouse, and non-zero quantity are required.' });
     }
@@ -1182,8 +1186,8 @@ router.post('/stock-adjustments', withTenantDb, async (req: any, res) => {
       return res.status(400).json({ error: 'A reason is required for stock adjustments.' });
     }
     const companyId = req.targetCompanyId;
-    const delta = Number(quantity);
     const tdb = tenantDb();
+    const delta = await toBaseQuantity(tdb, productId, unitOfMeasureId, companyId, Number(quantity));
 
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
     // request in one transaction; the row lock below still applies within it.
@@ -1231,7 +1235,7 @@ router.post('/stock-adjustments', withTenantDb, async (req: any, res) => {
     let stock;
     if (existingStock) {
       const priorQty = Number(existingStock.quantity);
-      const newQty = Math.max(0, round2(priorQty + delta));
+      const newQty = round2(priorQty + delta);
       const [updatedStock] = await tdb.update(schema.inventoryStocks)
         .set({ quantity: String(newQty) })
         .where(eq(schema.inventoryStocks.id, existingStock.id))
@@ -1243,12 +1247,6 @@ router.post('/stock-adjustments', withTenantDb, async (req: any, res) => {
       });
       stock = updatedStock;
     } else {
-      if (delta <= 0) {
-        const err: any = new Error('No existing stock record to deduct from.');
-        err.status = 400;
-        throw err;
-      }
-
       const [newStock] = await tdb.insert(schema.inventoryStocks).values({
         id: generateId(),
         productId,
@@ -1638,9 +1636,12 @@ router.patch('/purchase-bills/:id/cancel', withTenantDb, async (req: any, res) =
 // A return references a single GRN and can never return more of a product/batch than that
 // GRN actually received minus whatever's already been returned against it — the same
 // "can't exceed the source document" 3-way-match discipline as Purchase Bills, applied to
-// the reverse flow. Decrements stock (clamped at 0, matching every other stock-mutating
-// route in this file) but deliberately does NOT unwind averageCost, same forward-only
-// philosophy as GRN reversal.
+// the reverse flow. Decrements stock and is allowed to go negative — the return is validated
+// against the GRN's own remaining-returnable quantity above, not against current on-hand
+// (some of the original receipt may have already been sold elsewhere), so clamping the
+// resulting on-hand at 0 would silently lose that real deficit, same reasoning as
+// deductStockForSale in businessLogic.ts. Deliberately does NOT unwind averageCost, same
+// forward-only philosophy as GRN reversal.
 router.post('/purchase-returns', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'purchaseReturns.create')) {
@@ -1768,7 +1769,7 @@ router.post('/purchase-returns', withTenantDb, async (req: any, res) => {
         .for('update');
       if (existingStock) {
         const priorQty = Number(existingStock.quantity);
-        const newQty = Math.max(0, round2(priorQty - baseQtyReturned));
+        const newQty = round2(priorQty - baseQtyReturned);
         await tdb.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
         await writeStockLedgerEntry(tdb, {
           productId: item.productId, warehouseId: grn.warehouseId, companyId,

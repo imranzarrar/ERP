@@ -238,7 +238,8 @@ export default function InventoryModule({
     warehouseId: warehouses[0]?.id || '',
     quantity: 0,
     batchNumber: '',
-    reason: ''
+    reason: '',
+    unitOfMeasureId: ''
   });
 
   // Purchase Bill Form State — references one or more un-billed GRNs (the 3-way match);
@@ -311,6 +312,21 @@ export default function InventoryModule({
     if (!baseHit) return null;
     return { productId: baseHit.id, unitOfMeasureId: null, purchasePrice: baseHit.costPrice ?? baseHit.unitPrice, salePrice: baseHit.unitPrice };
   }, [db.productUnitConversions, db.products]);
+
+  // Shared purchase-cost resolver for the GRN/PO unit dropdowns below — a packaging unit's
+  // own configured purchasePrice when one exists, else the base product's own costPrice.
+  // Without this, switching the unit dropdown from Base to a packaging unit (or back) left
+  // whatever cost was already typed in untouched, so the base unit's cost stayed in the
+  // field even after selecting e.g. "Outer" — the exact "cost appears for base only though
+  // I selected outer" defect confirmed during QA.
+  const resolveUnitPurchasePrice = React.useCallback((productId: string, unitOfMeasureId: string): number => {
+    if (unitOfMeasureId) {
+      const puc = (db.productUnitConversions || []).find(p => p.productId === productId && p.unitOfMeasureId === unitOfMeasureId && p.isActive !== false);
+      if (puc?.purchasePrice != null) return Number(puc.purchasePrice);
+    }
+    const product = products.find(p => p.id === productId);
+    return Number(product?.costPrice ?? product?.unitPrice ?? 0);
+  }, [db.productUnitConversions, products]);
 
   // Unsaved-changes guard — one useDirtyGuard per document type (see hooks.ts). This
   // component has no onDone/mode prop like Invoice/Quotation/Expense; each form is its
@@ -1091,7 +1107,9 @@ export default function InventoryModule({
 
   // Handle Manual Stock Adjustment — goes through the real backend route (POST
   // /api/inventory/stock-adjustments), which reuses the GRN route's exact
-  // lock-then-increment-or-insert math (clamped at 0), instead of mutating local state only.
+  // lock-then-increment-or-insert math (allowed to go negative, see businessLogic.ts),
+  // instead of mutating local state only. `quantity` is entered in whatever unit is
+  // selected (unitOfMeasureId) and converted to base-unit terms server-side.
   const handleStockAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adjustmentForm.productId || !adjustmentForm.warehouseId || isSubmittingAdjustment) return;
@@ -1105,7 +1123,8 @@ export default function InventoryModule({
           warehouseId: adjustmentForm.warehouseId,
           quantity: adjustmentForm.quantity,
           batchNumber: adjustmentForm.batchNumber || undefined,
-          reason: adjustmentForm.reason
+          reason: adjustmentForm.reason,
+          unitOfMeasureId: adjustmentForm.unitOfMeasureId || undefined
         })
       });
       const payload = await res.json().catch(() => ({}));
@@ -1126,7 +1145,7 @@ export default function InventoryModule({
       });
 
       triggerSuccess(t('Stock adjustment applied successfully.'));
-      setAdjustmentForm({ productId: '', warehouseId: warehouses[0]?.id || '', quantity: 0, batchNumber: '', reason: '' });
+      setAdjustmentForm({ productId: '', warehouseId: warehouses[0]?.id || '', quantity: 0, batchNumber: '', reason: '', unitOfMeasureId: '' });
       setIsAdjustingStock(false);
     } catch (err: any) {
       triggerError(err?.message || t('Failed to apply stock adjustment.'));
@@ -2430,6 +2449,7 @@ export default function InventoryModule({
                     <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                       <tr>
                         <th className="px-4 py-2 text-start">{t('Product')}</th>
+                        <th className="px-4 py-2 text-start">{t('Unit')}</th>
                         <th className="px-4 py-2 text-end">{t('Qty Received')}</th>
                         <th className="px-4 py-2 text-end">{t('Unit Cost')}</th>
                         <th className="px-4 py-2 text-end">{t('Tax %')}</th>
@@ -2441,13 +2461,25 @@ export default function InventoryModule({
                     <tbody className="text-sm divide-y divide-gray-100">
                       {(viewingGrn.items || []).map((item, idx) => {
                         const prod = products.find(p => p.id === item.productId);
-                        const subTotal = item.quantityReceived * item.unitCost;
+                        // unitCost/quantityReceived come back as strings on a freshly-created
+                        // GRN (drizzle .returning() serializes decimal columns as strings,
+                        // never coerced to number) — confirmed crashing this view with
+                        // "item.unitCost.toFixed is not a function" until every arithmetic
+                        // use here is explicitly coerced, same convention every other
+                        // decimal-column read in this app already follows.
+                        const quantityReceived = Number(item.quantityReceived);
+                        const unitCost = Number(item.unitCost);
+                        const subTotal = quantityReceived * unitCost;
                         const vat = subTotal * ((item.taxRate || 0) / 100);
+                        const puc = item.unitOfMeasureId ? (db.productUnitConversions || []).find(p => p.productId === item.productId && p.unitOfMeasureId === item.unitOfMeasureId) : null;
+                        const uom = puc ? (db.unitsOfMeasure || []).find(u => u.id === puc.unitOfMeasureId) : null;
+                        const unitLabel = uom ? `${uom.name} (×${puc!.conversionFactor})` : t('Base Unit');
                         return (
                           <tr key={idx}>
                             <td className="px-4 py-2 font-medium text-gray-900">{prod?.name || t('Unknown Product')}</td>
+                            <td className="px-4 py-2 text-gray-600">{unitLabel}</td>
                             <td className="px-4 py-2 text-right font-bold text-emerald-600">{item.quantityReceived}</td>
-                            <td className="px-4 py-2 text-right">{item.unitCost.toFixed(2)} {currency}</td>
+                            <td className="px-4 py-2 text-right">{unitCost.toFixed(2)} {currency}</td>
                             <td className="px-4 py-2 text-right">{item.taxRate || 0}%</td>
                             <td className="px-4 py-2 text-right">{vat.toFixed(2)} {currency}</td>
                             <td className="px-4 py-2 text-right font-bold">{(subTotal + vat).toFixed(2)} {currency}</td>
@@ -2465,19 +2497,19 @@ export default function InventoryModule({
                   <div>
                     {t('Subtotal (excl. tax):')} &nbsp;
                     <span className="font-bold text-gray-900">
-                      {(viewingGrn.items || []).reduce((sum, item) => sum + item.quantityReceived * item.unitCost, 0).toFixed(2)} {currency}
+                      {(viewingGrn.items || []).reduce((sum, item) => sum + Number(item.quantityReceived) * Number(item.unitCost), 0).toFixed(2)} {currency}
                     </span>
                   </div>
                   <div>
                     {t('VAT Total:')} &nbsp;
                     <span className="font-bold text-gray-900">
-                      {(viewingGrn.items || []).reduce((sum, item) => sum + (item.quantityReceived * item.unitCost * ((item.taxRate || 0) / 100)), 0).toFixed(2)} {currency}
+                      {(viewingGrn.items || []).reduce((sum, item) => sum + (Number(item.quantityReceived) * Number(item.unitCost) * ((item.taxRate || 0) / 100)), 0).toFixed(2)} {currency}
                     </span>
                   </div>
                   <div className="text-lg font-bold text-emerald-700 mt-1 border-t border-gray-100 pt-1.5">
                     {t('Grand Total:')} &nbsp;
                     <span>
-                      {(viewingGrn.items || []).reduce((sum, item) => sum + (item.quantityReceived * item.unitCost * (1 + ((item.taxRate || 0) / 100))), 0).toFixed(2)} {currency}
+                      {(viewingGrn.items || []).reduce((sum, item) => sum + (Number(item.quantityReceived) * Number(item.unitCost) * (1 + ((item.taxRate || 0) / 100))), 0).toFixed(2)} {currency}
                     </span>
                   </div>
                 </div>
@@ -3050,7 +3082,7 @@ export default function InventoryModule({
                       <label className="block text-xs font-semibold text-gray-500 mb-1">{t('Unit')}</label>
                       <select
                         value={newPoItem.unitOfMeasureId}
-                        onChange={(e) => setNewPoItem({ ...newPoItem, unitOfMeasureId: e.target.value })}
+                        onChange={(e) => setNewPoItem({ ...newPoItem, unitOfMeasureId: e.target.value, unitPrice: resolveUnitPurchasePrice(newPoItem.productId, e.target.value) })}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
                       >
                         <option value="">{t('Base Unit')}</option>
@@ -3414,7 +3446,7 @@ export default function InventoryModule({
                     <div>
                       <select
                         value={newGrnItem.unitOfMeasureId}
-                        onChange={(e) => setNewGrnItem({ ...newGrnItem, unitOfMeasureId: e.target.value })}
+                        onChange={(e) => setNewGrnItem({ ...newGrnItem, unitOfMeasureId: e.target.value, unitCost: resolveUnitPurchasePrice(newGrnItem.productId, e.target.value) })}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
                       >
                         <option value="">{t('Base Unit')}</option>
@@ -3427,8 +3459,9 @@ export default function InventoryModule({
                     <div>
                       <input
                         type="number"
+                        step="1"
                         placeholder={t('Qty')}
-                        value={newGrnItem.quantityReceived}
+                        value={newGrnItem.quantityReceived || ''}
                         onChange={(e) => setNewGrnItem({ ...newGrnItem, quantityReceived: Number(e.target.value) })}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
                       />
@@ -3444,13 +3477,25 @@ export default function InventoryModule({
                       />
                     </div>
                     <div>
-                      <input
-                        type="number"
-                        placeholder={t('Tax %')}
+                      <select
                         value={newGrnItem.taxRate}
                         onChange={(e) => setNewGrnItem({ ...newGrnItem, taxRate: Number(e.target.value) })}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
-                      />
+                      >
+                        {db.taxSlabs?.map(ts => (
+                          <option key={ts.id} value={ts.percentage}>{ts.name} ({ts.percentage}%)</option>
+                        ))}
+                        {!db.taxSlabs && (
+                          <>
+                            <option value={15}>VAT (15%)</option>
+                            <option value={5}>VAT (5%)</option>
+                            <option value={0}>Exempt (0%)</option>
+                          </>
+                        )}
+                        {db.taxSlabs && !db.taxSlabs.some(ts => ts.percentage === 0) && (
+                          <option value={0}>{t('Exempt (0%)')}</option>
+                        )}
+                      </select>
                     </div>
                     <div>
                       <input
@@ -4053,6 +4098,20 @@ export default function InventoryModule({
                   </select>
                 </div>
                 <div>
+                  <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('Unit')}</label>
+                  <select
+                    value={adjustmentForm.unitOfMeasureId}
+                    onChange={(e) => setAdjustmentForm({ ...adjustmentForm, unitOfMeasureId: e.target.value })}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                  >
+                    <option value="">{t('Base Unit')}</option>
+                    {(db.productUnitConversions || []).filter(puc => puc.productId === adjustmentForm.productId && puc.isActive !== false).map(puc => {
+                      const uom = (db.unitsOfMeasure || []).find(u => u.id === puc.unitOfMeasureId);
+                      return <option key={puc.id} value={puc.unitOfMeasureId}>{uom ? uom.name : t('Unit')} (×{puc.conversionFactor})</option>;
+                    })}
+                  </select>
+                </div>
+                <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('Warehouse')}</label>
                   <select
                     value={adjustmentForm.warehouseId}
@@ -4076,7 +4135,7 @@ export default function InventoryModule({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('Quantity Adjustment')}</label>
+                  <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">{t('Quantity Adjustment (in the unit selected above)')}</label>
                   <input
                     type="number"
                     required
@@ -4512,19 +4571,27 @@ export default function InventoryModule({
                     <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                       <tr>
                         <th className="px-4 py-2 text-start">{t('Product')}</th>
-                        <th className="px-4 py-2 text-end">{t('System Qty')}</th>
+                        <th className="px-4 py-2 text-start">{t('Unit Counted')}</th>
                         <th className="px-4 py-2 text-end">{t('Physical Qty')}</th>
-                        <th className="px-4 py-2 text-end">{t('Variance')}</th>
+                        <th className="px-4 py-2 text-end">{t('Physical (Base Equivalent)')}</th>
+                        <th className="px-4 py-2 text-end">{t('System Qty (Base)')}</th>
+                        <th className="px-4 py-2 text-end">{t('Variance (Base)')}</th>
                       </tr>
                     </thead>
                     <tbody className="text-sm divide-y divide-gray-100">
                       {(viewingStockTake.items || []).map((item, idx) => {
                         const prod = products.find(p => p.id === item.productId);
+                        const puc = item.unitOfMeasureId ? (db.productUnitConversions || []).find(p => p.productId === item.productId && p.unitOfMeasureId === item.unitOfMeasureId) : null;
+                        const uom = puc ? (db.unitsOfMeasure || []).find(u => u.id === puc.unitOfMeasureId) : null;
+                        const factor = puc ? Number(puc.conversionFactor) : 1;
+                        const baseEquivalent = Number(item.physicalQuantity) * factor;
                         return (
                           <tr key={idx}>
                             <td className="px-4 py-2 font-medium text-gray-900">{prod?.name || t('Unknown Product')}</td>
-                            <td className="px-4 py-2 text-right text-gray-600">{item.systemQuantity}</td>
+                            <td className="px-4 py-2 text-gray-600">{uom ? `${uom.name} (×${factor})` : t('Base Unit')}</td>
                             <td className="px-4 py-2 text-right font-bold text-gray-900">{item.physicalQuantity}</td>
+                            <td className="px-4 py-2 text-right text-gray-600">{baseEquivalent}</td>
+                            <td className="px-4 py-2 text-right text-gray-600">{item.systemQuantity}</td>
                             <td className={`px-4 py-2 text-right font-bold ${item.variance > 0 ? 'text-emerald-600' : item.variance < 0 ? 'text-rose-600' : 'text-gray-400'}`}>
                               {item.variance > 0 ? '+' : ''}{item.variance}
                             </td>
@@ -4649,10 +4716,12 @@ export default function InventoryModule({
                       <tbody className="divide-y divide-gray-100">
                         {stockTakeForm.items.map((item, idx) => {
                           const prod = products.find(p => p.id === item.productId);
+                          const puc = item.unitOfMeasureId ? (db.productUnitConversions || []).find(p => p.productId === item.productId && p.unitOfMeasureId === item.unitOfMeasureId) : null;
+                          const uom = puc ? (db.unitsOfMeasure || []).find(u => u.id === puc.unitOfMeasureId) : null;
                           return (
                             <tr key={idx}>
                               <td className="px-3 py-2 font-medium text-gray-900">{prod?.name}</td>
-                              <td className="px-3 py-2 text-right">{item.physicalQuantity}</td>
+                              <td className="px-3 py-2 text-right">{item.physicalQuantity} <span className="text-gray-400">{uom ? `${uom.name} (×${puc!.conversionFactor})` : t('Base')}</span></td>
                               <td className="px-3 py-2 text-gray-500 font-mono">{item.batchNumber || '-'}</td>
                               <td className="px-3 py-2 text-right">
                                 <button type="button" onClick={() => removeStockTakeItem(idx)} className="text-rose-500 hover:text-rose-700">

@@ -313,7 +313,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
      const uom = (db.unitsOfMeasure || []).find(u => u.id === puc.unitOfMeasureId);
      rows.push({
        ...product,
-       name: `${product.name} (${uom ? uom.name : t('Packaging Unit')})`,
+       name: `${product.name} (${uom ? uom.name : t('Packaging Unit')} × ${puc.conversionFactor})`,
        unitPrice: puc.salePrice ?? product.unitPrice,
        unit: uom ? uom.code : product.unit,
        barcode: puc.barcode || undefined,

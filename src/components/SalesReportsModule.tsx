@@ -3,6 +3,7 @@ import { useTranslation, usePermissions } from '../hooks';
 import { DatabaseState } from '../dbStore';
 import { getMonthToDateRange } from '../dateUtils';
 import { Printer, Filter } from 'lucide-react';
+import { useReportViewer, ViewReportButton, ReportPlaceholder, ReportStatusStrip, ReportPager } from './ReportViewControls';
 
 type ReportType = 'SalesRegister' | 'ItemWiseSales' | 'CustomerStatement' | 'QuotationConversion' | 'SalesByStaff' | 'PosShiftSummary';
 
@@ -73,83 +74,51 @@ export default function SalesReportsModule({ db, defaultReportType, onPrintDoc }
   const companyCustomers = db.customers.filter(c => c.companyId === companyId);
   const companyInvoices = db.invoices.filter(inv => inv.companyId === companyId && branchMatches((inv as any).branchId));
 
-  // All 6 reports below are fetched from GET /api/reports/* (server/lib/financialReports.ts)
-  // instead of computed client-side from db.invoices/db.quotations/db.vouchers/db.posShifts
-  // — see .claude/skills/server-side-report-aggregation/SKILL.md. Each report only fetches
-  // while it's the one actually on screen. Company/branch scope is resolved server-side
-  // from req.targetCompanyId/req.allowedBranchIds — never sent by the client.
-  const emptySalesRegister = { rows: [] as any[], totalSales: 0 };
-  const [salesRegisterData, setSalesRegisterData] = React.useState(emptySalesRegister);
-  React.useEffect(() => {
-    if (reportType !== 'SalesRegister' || !companyId) return;
-    let cancelled = false;
-    const params = new URLSearchParams({ startDate, endDate, ...(selectedCustomerId !== 'ALL' ? { customerId: selectedCustomerId } : {}) });
-    fetch(`/api/reports/sales-register?${params}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setSalesRegisterData(d); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [reportType, companyId, startDate, endDate, selectedCustomerId, selectedBranchId]);
-  const getSalesRegisterData = () => salesRegisterData;
+  // Nothing here queries the server on open or on a filter change: the user sets filters and
+  // clicks View Report (see ReportViewControls.tsx). Company scope is resolved server-side
+  // from req.targetCompanyId — never sent by the client — and the branch filter, which can
+  // only narrow what the user may already see, travels as ?branchId=.
+  const viewer = useReportViewer<any>({ rows: [] });
+  React.useEffect(() => { viewer.reset(); }, [reportType, companyId]);
 
-  const emptyItemWiseSales = { rows: [] as any[], totalQuantity: 0, totalRevenue: 0 };
-  const [itemWiseSalesData, setItemWiseSalesData] = React.useState(emptyItemWiseSales);
-  React.useEffect(() => {
-    if (reportType !== 'ItemWiseSales' || !companyId) return;
-    let cancelled = false;
-    fetch(`/api/reports/item-wise-sales?startDate=${startDate}&endDate=${endDate}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setItemWiseSalesData(d); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [reportType, companyId, startDate, endDate, selectedBranchId]);
-  const getItemWiseSalesData = () => itemWiseSalesData;
+  const buildReportUrl = (): string | null => {
+    const params = new URLSearchParams();
+    if (selectedBranchId !== 'ALL' && reportType !== 'PosShiftSummary') params.set('branchId', selectedBranchId);
+    if (reportType === 'CustomerStatement') {
+      if (!statementCustomerId) return null;
+      params.set('customerId', statementCustomerId);
+    } else {
+      params.set('startDate', startDate);
+      params.set('endDate', endDate);
+      if ((reportType === 'SalesRegister' || reportType === 'QuotationConversion') && selectedCustomerId !== 'ALL') params.set('customerId', selectedCustomerId);
+    }
+    const path = {
+      SalesRegister: 'sales-register', ItemWiseSales: 'item-wise-sales', CustomerStatement: 'customer-statement',
+      QuotationConversion: 'quotation-conversion', SalesByStaff: 'sales-by-staff', PosShiftSummary: 'pos-shift-summary',
+    }[reportType];
+    return `/api/reports/${path}?${params}`;
+  };
+  const currentUrl = buildReportUrl();
+  const isStale = viewer.hasViewed && viewer.appliedKey !== currentUrl;
+  const handleView = () => { if (currentUrl) viewer.view(currentUrl, currentUrl); };
+  const viewed = viewer.hasViewed;
 
-  const emptyCustomerStatement = { entries: [] as any[], endingBalance: 0, customerName: '' };
-  const [customerStatementData, setCustomerStatementData] = React.useState(emptyCustomerStatement);
-  React.useEffect(() => {
-    if (reportType !== 'CustomerStatement' || !companyId || !statementCustomerId) return;
-    let cancelled = false;
-    fetch(`/api/reports/customer-statement?customerId=${statementCustomerId}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setCustomerStatementData(d); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [reportType, companyId, statementCustomerId, selectedBranchId]);
-  const getCustomerStatementData = () => customerStatementData;
+  const getSalesRegisterData = () => viewer.data as { rows: any[]; totalSales: number };
+  const getItemWiseSalesData = () => viewer.data as { rows: any[]; totalQuantity: number; totalRevenue: number };
+  const getCustomerStatementData = () => viewer.data as { entries: any[]; endingBalance: number; customerName: string };
+  const getQuotationConversionData = () => viewer.data as { rows: any[]; total: number; converted: number; cancelled: number; pending: number; conversionRate: number };
+  const getSalesByStaffData = () => viewer.data as { rows: any[]; totalRevenue: number };
+  const getPosShiftSummaryData = () => viewer.data as { rows: any[]; totalSales: number };
 
-  const emptyQuotationConversion = { rows: [] as any[], total: 0, converted: 0, cancelled: 0, pending: 0, conversionRate: 0 };
-  const [quotationConversionData, setQuotationConversionData] = React.useState(emptyQuotationConversion);
-  React.useEffect(() => {
-    if (reportType !== 'QuotationConversion' || !companyId) return;
-    let cancelled = false;
-    const params = new URLSearchParams({ startDate, endDate, ...(selectedCustomerId !== 'ALL' ? { customerId: selectedCustomerId } : {}) });
-    fetch(`/api/reports/quotation-conversion?${params}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setQuotationConversionData(d); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [reportType, companyId, startDate, endDate, selectedCustomerId, selectedBranchId]);
-  const getQuotationConversionData = () => quotationConversionData;
-
-  const emptySalesByStaff = { rows: [] as any[], totalRevenue: 0 };
-  const [salesByStaffData, setSalesByStaffData] = React.useState(emptySalesByStaff);
-  React.useEffect(() => {
-    if (reportType !== 'SalesByStaff' || !companyId) return;
-    let cancelled = false;
-    fetch(`/api/reports/sales-by-staff?startDate=${startDate}&endDate=${endDate}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setSalesByStaffData(d); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [reportType, companyId, startDate, endDate, selectedBranchId]);
-  const getSalesByStaffData = () => salesByStaffData;
-
-  const emptyPosShiftSummary = { rows: [] as any[], totalSales: 0 };
-  const [posShiftSummaryData, setPosShiftSummaryData] = React.useState(emptyPosShiftSummary);
-  React.useEffect(() => {
-    if (reportType !== 'PosShiftSummary' || !companyId) return;
-    let cancelled = false;
-    fetch(`/api/reports/pos-shift-summary?startDate=${startDate}&endDate=${endDate}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setPosShiftSummaryData(d); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [reportType, companyId, startDate, endDate, selectedBranchId]);
-  const getPosShiftSummaryData = () => posShiftSummaryData;
-
-  const handlePrint = () => {
-    if (!can(REPORT_PERMISSION_KEYS[reportType])) return;
-    let reportData: any = {};
-    if (reportType === 'SalesRegister') reportData = getSalesRegisterData();
-    else if (reportType === 'ItemWiseSales') reportData = getItemWiseSalesData();
-    else if (reportType === 'CustomerStatement') reportData = getCustomerStatementData();
-    else if (reportType === 'QuotationConversion') reportData = getQuotationConversionData();
-    else if (reportType === 'SalesByStaff') reportData = getSalesByStaffData();
-    else if (reportType === 'PosShiftSummary') reportData = getPosShiftSummaryData();
-    onPrintDoc('Report', { type: reportType, startDate, endDate, data: reportData });
+  const handlePrint = async () => {
+    if (!can(REPORT_PERMISSION_KEYS[reportType]) || !viewed) return;
+    try {
+      // The screen only holds one page of a large report — print needs every row.
+      const full = await viewer.fetchAll();
+      onPrintDoc('Report', { type: reportType, startDate, endDate, data: full || viewer.data });
+    } catch (e: any) {
+      window.alert(e?.message || t('Failed to load report'));
+    }
   };
 
   return (
@@ -226,11 +195,17 @@ export default function SalesReportsModule({ db, defaultReportType, onPrintDoc }
                   </select>
                 </div>
               )}
+              <ViewReportButton onView={handleView} loading={viewer.loading} stale={isStale} disabled={!currentUrl} t={t} />
             </div>
           </div>
 
           {/* REPORT CONTENT VIEWPORTS */}
           <div className="bg-white border border-slate-200/60 rounded-[28px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden p-6">
+            {!viewed || !viewer.loaded ? (
+              <ReportPlaceholder loading={viewer.loading} error={viewer.error} t={t} />
+            ) : (
+            <>
+            <ReportStatusStrip loading={viewer.loading} error={viewer.error} t={t} />
 
             {reportType === 'SalesRegister' && (() => {
               const data = getSalesRegisterData();
@@ -380,6 +355,9 @@ export default function SalesReportsModule({ db, defaultReportType, onPrintDoc }
               );
             })()}
 
+            <ReportPager pagination={viewer.pagination} pageSize={viewer.pageSize} loading={viewer.loading} onPage={viewer.goToPage} onPageSize={viewer.changePageSize} t={t} />
+            </>
+            )}
           </div>
         </>
       )}

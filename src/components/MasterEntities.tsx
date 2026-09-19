@@ -592,11 +592,20 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  }
  }
  onUpdateDbLocal(() => newDb);
- triggerSuccess(editingId ? 'Product updated successfully.' : 'Product added successfully.');
- clearForm();
  onDirtyChange?.(false);
  if (onRefreshDb) await onRefreshDb();
+ if (!editingId && prodCatalogType === 'item' && savedProd) {
+ // Stay on this same item in edit mode right after first save, rather than closing
+ // the form — packaging/alternate units can only be added once editingId is set
+ // (see the "Alternate / Packaging Units" section below), so without this a brand-new
+ // item required a manual close-and-reopen before packaging could be configured at all.
+ triggerSuccess('Product added successfully. You can now add packaging/alternate units below.');
+ handleStartEdit(savedProd, 'products');
+ } else {
+ triggerSuccess(editingId ? 'Product updated successfully.' : 'Product added successfully.');
+ clearForm();
  onDone();
+ }
  } catch(err) {
  triggerError('Failed to save product.');
  }
@@ -954,7 +963,8 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
       unitOfMeasureId: addPucUnitId,
       conversionFactor: String(factor),
       barcode: addPucBarcode.trim() || null,
-      sku: addPucSku.trim() || null,
+      // sku is auto-generated server-side on create (see POST /product-unit-conversions) —
+      // never sent from here, same convention as the base product's own SKU.
       purchasePrice: addPucPurchasePrice ? String(parseFloat(addPucPurchasePrice)) : null,
       salePrice: addPucSalePrice ? String(parseFloat(addPucSalePrice)) : null,
     };
@@ -1816,7 +1826,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
  <div className="space-y-0.5">
  <label className="text-[9px] font-bold text-slate-400">{t('SKU')}</label>
- <input type="text" value={addPucSku} onChange={(e) => setAddPucSku(e.target.value)} className="w-full bg-white border border-slate-200 rounded px-1.5 py-0.5 text-xs" />
+ <input type="text" readOnly disabled placeholder={t('Auto-assigned on save')} title={t('Auto-generated for every new packaging unit — not manually editable.')} className="w-full bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 text-xs font-mono text-slate-400 cursor-not-allowed" />
  </div>
  </div>
 
@@ -2465,6 +2475,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <th className="p-4 text-start">{t('POS Enabled')}</th>
  <th className="p-4 text-start">{t('Type / Ledger Scope')}</th>
  <th className="p-4 text-start">{t('Unit')}</th>
+ <th className="p-4 text-start">{t('Packaging')}</th>
  <th className="p-4 text-start">{t('Status')}</th>
  <th className="p-4 text-end">{t('Cost Price')}</th>
  <th className="p-4 text-end">{t('Sales Price')}</th>
@@ -2490,6 +2501,23 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </span>
  </td>
  <td className="p-4 font-semibold text-slate-600">{p.unit || t('No')}</td>
+ <td className="p-4">
+ {(() => {
+ const pucs = (db.productUnitConversions || []).filter(puc => puc.productId === p.id && puc.isActive !== false);
+ if (pucs.length === 0) return <span className="text-slate-300">—</span>;
+ return (
+ <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-100" title={pucs.map(puc => {
+ const uom = (db.unitsOfMeasure || []).find(u => u.id === puc.unitOfMeasureId);
+ return `${uom ? uom.name : t('Unit')} ×${puc.conversionFactor}`;
+ }).join(', ')}>
+ {pucs.length === 1 ? (() => {
+ const uom = (db.unitsOfMeasure || []).find(u => u.id === pucs[0].unitOfMeasureId);
+ return `${uom ? uom.name : t('Unit')} ×${pucs[0].conversionFactor}`;
+ })() : `${pucs.length} ${t('units')}`}
+ </span>
+ );
+ })()}
+ </td>
  <td className="p-4">
  <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
  p.isActive === false ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
