@@ -33,7 +33,11 @@ export function useTranslation(db: DatabaseState, langOverride?: 'en' | 'ar' | '
     }
 
     // 3. If missing in both, register it in the background asynchronously
-    if (!reportedKeys.has(key)) {
+    // Only once the translation table has actually arrived: before that (first render, login
+    // screen, /api/state still in flight) EVERY key looks "missing", so this used to fire
+    // ~100 POSTs at once — over HTTP/1.1 that saturates the browser's 6 connections and
+    // delays the very /api/state request the translations are waiting on.
+    if (db.translations && db.translations.length > 0 && !reportedKeys.has(key)) {
       reportedKeys.add(key);
       fetch('/api/register-missing-key', {
         method: 'POST',

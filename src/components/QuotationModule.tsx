@@ -306,7 +306,19 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  });
  };
 
- // Save Quotation
+ // Blocks a second click/Enter while a save or conversion is still in flight. The ref (not
+  // just state) is what actually stops the second call: state updates are async, so two
+  // fast clicks would otherwise both see "not busy" and create two documents.
+  const busyRef = React.useRef(false);
+  const [isBusy, setIsBusy] = React.useState(false);
+  const runGuarded = (fn: (e: React.FormEvent) => Promise<void>) => async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setIsBusy(true);
+    try { await fn(e); } finally { busyRef.current = false; setIsBusy(false); }
+  };
+
   // Save Quotation
   const handleSaveQuotation = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -995,7 +1007,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
 
  {/* CREATE & EDIT FORM VIEW */}
  {(view === 'create' || view === 'edit') && (
- <form onSubmit={handleSaveQuotation} className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 sm:p-5 space-y-4">
+ <form onSubmit={runGuarded(handleSaveQuotation)} className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 sm:p-5 space-y-4">
  <div className="flex justify-between items-center bg-slate-50/80 rounded-xl px-3.5 py-2 border border-slate-200/60">
  <div className="flex items-center gap-2.5 flex-wrap">
  <h3 className="font-extrabold text-xs text-slate-800 uppercase tracking-wider">
@@ -1295,9 +1307,10 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  </button>
  <button
  type="submit"
- className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-5 py-2 font-bold text-xs shadow-sm"
+ disabled={isBusy}
+ className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl px-5 py-2 font-bold text-xs shadow-sm"
  >
- {t('Save Quotation File')}
+ {isBusy ? t('Saving...') : t('Save Quotation File')}
  </button>
  </div>
  </form>
@@ -1315,7 +1328,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  </div>
  </h3>
 
- <form onSubmit={handleConvert} className="space-y-5 mt-4">
+ <form onSubmit={runGuarded(handleConvert)} className="space-y-5 mt-4">
  {/* Top Configuration Grid */}
  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
  <div className="space-y-1">
@@ -1574,9 +1587,10 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  </button>
  <button
  type="submit"
- className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl px-5 py-2 font-bold text-xs shadow-sm transition"
+ disabled={isBusy}
+ className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl px-5 py-2 font-bold text-xs shadow-sm transition"
  >
- {t('Approve & Issue Invoice')}
+ {isBusy ? t('Saving...') : t('Approve & Issue Invoice')}
  </button>
  </div>
  </form>
