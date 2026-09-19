@@ -40,7 +40,9 @@ if [ -n "$SCHEMA_CHANGED" ]; then
   echo ""
   echo "!! src/db/schema.ts changed in this deploy ($BEFORE_COMMIT..$AFTER_COMMIT)."
   echo "!! Run 'npm run db:push' yourself and review its plan before or after this reload —"
-  echo "!! it is never run automatically by this script."
+  echo "!! it is never run automatically by this script. After db:push ALWAYS run"
+  echo "!!   npx tsx scripts/apply-rls-policies.mjs && deploy/verify-rls.sh"
+  echo "!! (db:push drops RLS policy predicates; first-ever RLS deploy also needs deploy/setup-rls.sh)."
   echo ""
 fi
 
