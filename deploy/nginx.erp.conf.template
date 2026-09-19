@@ -11,6 +11,10 @@
 #   5. sudo certbot --nginx -d YOUR_DOMAIN   (Certbot rewrites this file in place to add SSL)
 #   6. sudo ufw allow 'Nginx Full' && sudo ufw delete allow 3000/tcp
 #      (close the direct app port now that Nginx is the only public entry point)
+#   7. bash deploy/nginx-tuning.sh YOUR_DOMAIN
+#      (HTTP/2 + gzip for JS/CSS/JSON + 1-year caching of /assets/ — NOT optional: without it the
+#      2.1 MB bundle and 1.8 MB /api/state are sent raw over HTTP/1.1. Run it after Certbot, since
+#      Certbot writes the 443 listeners it adds http2 to.)
 
 server {
     listen 80;

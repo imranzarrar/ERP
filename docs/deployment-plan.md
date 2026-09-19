@@ -48,6 +48,10 @@
 
 ## Files built
 
+- `deploy/setup-rls.sh`, `deploy/verify-rls.sh` — create the restricted `erp_app_tenant` Postgres role + grants, and check RLS afterwards (see Part 3).
+- `deploy/nginx-tuning.sh` + `deploy/nginx-snippets/` — HTTP/2, gzip, and long-lived `/assets/` caching for Nginx (see Part 3). Idempotent.
+- `scripts/verify-tenant-isolation.ts` — proves company isolation using the real restricted role inside a transaction that is always rolled back (safe on production).
+
 - `deploy/ecosystem.config.cjs` — PM2 process definition (cluster mode, 2 instances, log paths, memory restart threshold).
 - `deploy/setup-server.sh` — one-time provisioning script, run from inside the freshly-cloned repo on the VPS (installs Node/PM2/Postgres/ufw/fail2ban, creates the DB role, checks for `app.secrets`, builds, first PM2 start + `pm2 save`). Covers Part 1 steps 4–10 below (the pre-repo steps — deploy user, SSH hardening, cloning — happen first, by hand, since the script can't exist on the server before the repo is cloned).
 - `deploy/deploy.sh` — the repeatable pull → build → reload script, run on the VPS. Tags the pre-deploy commit automatically for rollback and warns (without blocking) if the schema changed.
@@ -63,3 +67,33 @@
 - `db:push` against production is always a separate, manually reviewed step — never chained automatically after a code deploy.
 - Secrets (`app.secrets`, DB passwords, session/ZATCA keys) are created directly on the VPS and never pass through git, chat, or any file in this repo.
 - Before any destructive or hard-to-reverse action on the live server (DB changes, force-pushes to the deploy branch, PM2 process deletion), stop and confirm — the same standing rule this session already follows for local git operations applies with even higher stakes on a live server.
+
+## Part 3 — Everything learned from the RLS / inventory release (2026-09-19). Read before moving hosts.
+
+### 3a. Row-Level Security needs its own one-time setup (a fresh server, or the first deploy that contains RLS)
+Order matters; each step needs the previous one:
+1. `bash deploy/setup-rls.sh` — creates role `erp_app_tenant` (LOGIN, NOSUPERUSER, NOBYPASSRLS) and grants it DML on all tables (+ default privileges for future tables). It prompts for a password.
+2. Put `TENANT_DB_USER=erp_app_tenant` and `TENANT_DB_PASSWORD=<same password>` in `app.secrets` **by hand**. Use a password of letters and digits only (e.g. `openssl rand -hex 20`): `dotenv` treats `#`, `$` and quotes specially, and a mismatched password makes every tenant-scoped request fail with "password authentication failed for user erp_app_tenant". (That is exactly what happened on the first deploy: pages loaded forever, see the log line in `pm2 logs --err`.)
+3. Deploy the code (`deploy.sh`), then `npm run db:push` (read the plan: only policies/indexes expected).
+4. `npx tsx scripts/apply-rls-policies.mjs` — **mandatory after every db:push**: drizzle-kit creates policies but drops their USING/WITH CHECK conditions.
+5. `bash deploy/verify-rls.sh` (must print `RLS OK`) and `npx tsx scripts/verify-tenant-isolation.ts` (must print `ALL ISOLATION CHECKS PASSED`; it creates two temporary companies inside a transaction that is rolled back — nothing is left behind).
+Also: Postgres `max_connections` must cover, per PM2 instance, the normal pool plus the tenant pool (`TENANT_DB_POOL_MAX`, default 10).
+
+### 3b. Nginx performance setup (not optional)
+`bash deploy/nginx-tuning.sh <domain>` after Certbot. It (1) adds HTTP/2 to the 443 listeners, (2) turns on gzip for JS/CSS/JSON — Ubuntu's stock `nginx.conf` only compresses HTML because `gzip_types` is commented out, and (3) caches the content-hashed `/assets/` files for a year (`immutable`) while leaving `index.html` uncached so deploys show up immediately. Verify:
+`curl -sI -H 'Accept-Encoding: gzip' https://<domain>/assets/<index-hash>.js` → `HTTP/2 200`, `content-encoding: gzip`, `cache-control: public, max-age=31536000, immutable`.
+Why each matters (measured): over HTTP/1.1 a burst of ~110 requests queued for ~6 s behind the browser's 6-connection limit; the bundle was 2.1 MB raw with `max-age=0`.
+
+### 3c. Client delivery, so the app stays fast as data grows
+- The JS bundle is split: first load ≈ 0.5 MB (152 KB gzip); each screen is fetched on first use (`React.lazy` in `src/App.tsx`); react/charts/motion are separate stable chunks (`vite.config.ts`).
+- The UI dictionary is **not** in `/api/state` any more: `GET /api/translation-bundle?lang=` (user's language only; all three for super-admins) with a content-digest ETag → repeat loads are a 304.
+- Browsers no longer auto-register missing translation keys in production (`ALLOW_TRANSLATION_AUTOREGISTER=true` re-enables it, off by default); new keys ship through reviewed changes. In dev it still works, batched (`POST /api/register-missing-keys`).
+
+### 3d. Diagnosing "the site is slow" — check the network first
+Two separate times a slowdown blamed on the release was the user's own connection (packet loss, 2-4 s TLS handshakes) while the VPS sat idle. Before touching code: (1) `top` + `pg_stat_activity` on the VPS (idle = not the server); (2) from the affected machine, `curl -w "connect=%{time_connect} tls=%{time_appconnect} ttfb=%{time_starttransfer}"` against the site and against a well-connected site for comparison, plus `ping` for loss; (3) browser Network tab → the slow request's Timing → "Waiting for server response". Locally, saving an invoice takes ~20-65 ms with RLS on, so multi-second saves point at the path or at an external call, not the database.
+
+### 3e. Gotchas
+- **Never `source app.secrets` in bash**: a value with an unquoted space makes bash try to run its second word as a command (`Compbrain: command not found`). Read single keys with `grep`/`cut` instead.
+- `deploy.sh` exits early ("Already up to date") if the code was already pulled by hand — then the build/reload never ran. If unsure, run `npm run build && pm2 reload deploy/ecosystem.config.cjs`.
+- New shell scripts checked in from Windows lose their executable bit; run them with `bash deploy/<script>.sh` (or `git update-index --chmod=+x`).
+- After a deploy, users with a stale cached page may see a blank screen once; a hard refresh (Ctrl+Shift+R) or "Clear site data" fixes it.
