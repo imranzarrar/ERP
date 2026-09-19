@@ -85,6 +85,10 @@ async function main() {
   } catch (err) {
     if (err !== ROLLBACK) {
       console.error('Could not run the isolation check:', (err as any)?.message || err);
+      if (String((err as any)?.message || err).includes('set local role')) {
+        console.error('Hint: the app DB user must be allowed to SET ROLE erp_app_tenant. As the Postgres admin run:
+  sudo -u postgres psql -d <db> -c "GRANT erp_app_tenant TO <SQL_USER>;"');
+      }
       failures++;
     }
   }

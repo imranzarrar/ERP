@@ -30,6 +30,9 @@ SELECT format('CREATE ROLE erp_app_tenant LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD
 SELECT format('ALTER ROLE erp_app_tenant LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD %L', :'pw') \gexec
 SELECT format('GRANT CONNECT ON DATABASE %I TO erp_app_tenant', :'db') \gexec
 GRANT USAGE ON SCHEMA public TO erp_app_tenant;
+-- Lets the app's own (non-superuser) DB user SET ROLE erp_app_tenant, which scripts/verify-tenant-isolation.ts needs.
+-- Adds no access: that user already owns every table.
+SELECT format('GRANT erp_app_tenant TO %I', :'owner') gexec
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO erp_app_tenant;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO erp_app_tenant;
 SELECT format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO erp_app_tenant', :'owner') \gexec
