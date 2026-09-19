@@ -12,6 +12,19 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          // Stable vendor files: they change only when a dependency does, so a returning user
+          // keeps them cached across deploys and re-downloads just the app's own code.
+          manualChunks: {
+            react: ['react', 'react-dom'],
+            charts: ['recharts'],
+            motion: ['motion'],
+          },
+        },
+      },
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.

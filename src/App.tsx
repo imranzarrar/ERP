@@ -6,29 +6,32 @@ import { THEME_PROFILES, applyTheme } from './theme';
 import { ensureCompatibleImage } from './imageUtils';
 
 // Importing Modules
-import Dashboard from './components/Dashboard';
-import QuotationModule from './components/QuotationModule';
-import InvoiceModule from './components/InvoiceModule';
-import InvoiceViewScreen from './components/InvoiceViewScreen';
-import ExpenseModule from './components/ExpenseModule';
-import RecurringExpenses from './components/RecurringExpenses';
-import PosModule from './components/PosModule';
-import MasterEntities from './components/MasterEntities';
-import AdminSettings from './components/AdminSettings';
-import DocumentRenderer from './components/DocumentRenderer';
-import ReportViewer from './components/ReportViewer';
-import SalesReportsModule from './components/SalesReportsModule';
-import PurchaseReportsModule from './components/PurchaseReportsModule';
-import InventoryReportsModule from './components/InventoryReportsModule';
+// Everything except the first screens (Dashboard, Login) is loaded on demand, so the file a user
+// must download before seeing anything is a fraction of the whole app; each module's code is
+// fetched the first time it is opened (and then cached by the browser for a year — see Nginx).
+const Dashboard = React.lazy(() => import('./components/Dashboard'));
+const QuotationModule = React.lazy(() => import('./components/QuotationModule'));
+const InvoiceModule = React.lazy(() => import('./components/InvoiceModule'));
+const InvoiceViewScreen = React.lazy(() => import('./components/InvoiceViewScreen'));
+const ExpenseModule = React.lazy(() => import('./components/ExpenseModule'));
+const RecurringExpenses = React.lazy(() => import('./components/RecurringExpenses'));
+const PosModule = React.lazy(() => import('./components/PosModule'));
+const MasterEntities = React.lazy(() => import('./components/MasterEntities'));
+const AdminSettings = React.lazy(() => import('./components/AdminSettings'));
+const DocumentRenderer = React.lazy(() => import('./components/DocumentRenderer'));
+const ReportViewer = React.lazy(() => import('./components/ReportViewer'));
+const SalesReportsModule = React.lazy(() => import('./components/SalesReportsModule'));
+const PurchaseReportsModule = React.lazy(() => import('./components/PurchaseReportsModule'));
+const InventoryReportsModule = React.lazy(() => import('./components/InventoryReportsModule'));
 import LoginScreen from './components/LoginScreen';
 import warraqMark from './assets/warraq-mark.svg';
-import ResetPasswordScreen from './components/ResetPasswordScreen';
-import ChangePasswordScreen from './components/ChangePasswordScreen';
-import CompanyOnboardingScreen from './components/CompanyOnboardingScreen';
-import ConfirmOnboardingEmailScreen from './components/ConfirmOnboardingEmailScreen';
-import InventoryModule from './components/InventoryModule';
-import EmployeesModule from './components/EmployeesModule';
-import ModifierGroupsModule from './components/ModifierGroupsModule';
+const ResetPasswordScreen = React.lazy(() => import('./components/ResetPasswordScreen'));
+const ChangePasswordScreen = React.lazy(() => import('./components/ChangePasswordScreen'));
+const CompanyOnboardingScreen = React.lazy(() => import('./components/CompanyOnboardingScreen'));
+const ConfirmOnboardingEmailScreen = React.lazy(() => import('./components/ConfirmOnboardingEmailScreen'));
+const InventoryModule = React.lazy(() => import('./components/InventoryModule'));
+const EmployeesModule = React.lazy(() => import('./components/EmployeesModule'));
+const ModifierGroupsModule = React.lazy(() => import('./components/ModifierGroupsModule'));
 
 // Importing Icons
 import {
@@ -62,6 +65,12 @@ import {
 } from 'lucide-react';
 
 
+
+const ScreenFallback = () => (
+  <div className="flex items-center justify-center py-24">
+    <div className="w-8 h-8 rounded-full border-2 border-indigo-200 border-t-indigo-600 animate-spin" />
+  </div>
+);
 
 export default function App() {
  const [db, setDb] = React.useState<DatabaseState>(() => getDatabase());
@@ -1644,7 +1653,7 @@ type NavSection = {
  <p className="text-slate-500 font-medium">{t("You don't have permission to access this page.")}</p>
  </div>
  ) : (
- <>
+ <React.Suspense fallback={<ScreenFallback />}>
  {activeTab === 'dashboard' && (
  <Dashboard db={activeDb} onNavigate={handleNavigate} lastSyncTimes={lastSyncTimes} />
  )}
@@ -1803,13 +1812,14 @@ type NavSection = {
        {activeTab === 'settings' && canAny(SETTINGS_ACCESS_PERMISSIONS) && (
  <AdminSettings db={activeDb} onUpdateDbLocal={handleUpdateDbLocal} onRefreshDb={triggerDbRefresh} defaultTab={settingsTab as any} />
  )}
- </>
+ </React.Suspense>
  )}
  </motion.div>
  </main>
 
  {/* DOCUMENT PRINTING/PREVIEW OVERLAY */}
  {printDoc && (
+ <React.Suspense fallback={null}>
  <DocumentRenderer
  documentType={printDoc.type}
  data={printDoc.data}
@@ -1820,15 +1830,18 @@ type NavSection = {
  onViewAnotherDoc={handleViewAnotherDoc}
  onClose={() => setPrintDoc(null)}
  />
+ </React.Suspense>
  )}
 
  {showChangePasswordModal && (
+ <React.Suspense fallback={null}>
  <ChangePasswordScreen
  variant="modal"
  db={activeDb}
  onClose={() => setShowChangePasswordModal(false)}
  onSuccess={() => setShowChangePasswordModal(false)}
  />
+ </React.Suspense>
  )}
 
  </div>
