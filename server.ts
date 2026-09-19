@@ -1256,8 +1256,45 @@ async function startServer() {
     }
   });
 
+  // Browser-driven key registration is a developer convenience, not a production feature: with
+  // thousands of users it turns every unfamiliar screen into shared-table writes, and new keys
+  // in production should arrive through a reviewed change (see the ux-translation skill).
+  // Off in production unless ALLOW_TRANSLATION_AUTOREGISTER=true.
+  const translationAutoRegisterEnabled = () =>
+    process.env.NODE_ENV !== 'production' || process.env.ALLOW_TRANSLATION_AUTOREGISTER === 'true';
+
+  // Batched form the client actually uses: one request carries every key that was missing.
+  app.post("/api/register-missing-keys", async (req: any, res: any) => {
+    try {
+      if (!translationAutoRegisterEnabled()) return res.json({ status: "disabled" });
+      const raw = req.body?.keys;
+      if (!Array.isArray(raw)) return res.status(400).json({ error: "keys must be an array of strings" });
+      const keys = Array.from(new Set(
+        raw.filter((k: any) => typeof k === 'string' && k.length > 0 && k.length <= 300)
+      )).slice(0, 200) as string[];
+      if (keys.length === 0) return res.json({ status: "ok", created: 0 });
+
+      const existingRows = await db.select({ key: schema.translations.key }).from(schema.translations).where(inArray(schema.translations.key, keys));
+      const existing = new Set(existingRows.map(r => r.key));
+      const missing = keys.filter(k => !existing.has(k));
+      if (missing.length > 0) {
+        const { SEED_TRANSLATIONS } = await import('./src/dbStore.js');
+        const seedByKey = new Map<string, any>(SEED_TRANSLATIONS.map((s: any) => [s.key, s]));
+        await db.insert(schema.translations).values(missing.map(key => {
+          const seed = seedByKey.get(key);
+          return { id: generateId(), key, en: key, ar: seed?.ar || "", ur: seed?.ur || "" };
+        }));
+      }
+      res.json({ status: "ok", created: missing.length });
+    } catch (error: any) {
+      console.error("Register missing keys error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/register-missing-key", async (req: any, res: any) => {
     try {
+      if (!translationAutoRegisterEnabled()) return res.json({ status: "disabled" });
       const { key } = req.body;
       if (!key || typeof key !== 'string') {
         return res.status(400).json({ error: "key must be a non-empty string" });

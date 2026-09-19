@@ -6,6 +6,63 @@ import { normalizePermissions, getAtPath } from './types';
 
 const reportedKeys = new Set<string>();
 
+// --- Fast lookups -----------------------------------------------------------------------
+// t() runs for every visible string on every render. A linear .find() over the whole
+// dictionary made that cost (strings x keys) — fine at a few hundred keys, painful at
+// thousands. Index each translations array once (keyed by array identity, so a refreshed
+// db.translations is re-indexed automatically) and the static seed once.
+const dbIndexCache = new WeakMap<object, Map<string, TranslationItem>>();
+function indexFor(list: TranslationItem[]): Map<string, TranslationItem> {
+  let m = dbIndexCache.get(list);
+  if (!m) {
+    m = new Map();
+    for (const item of list) m.set(item.key, item);
+    dbIndexCache.set(list, m);
+  }
+  return m;
+}
+let seedIndex: Map<string, TranslationItem> | null = null;
+function seedLookup(key: string): TranslationItem | undefined {
+  if (!seedIndex) {
+    seedIndex = new Map();
+    for (const item of SEED_TRANSLATIONS as TranslationItem[]) if (!seedIndex.has(item.key)) seedIndex.set(item.key, item);
+  }
+  return seedIndex.get(key);
+}
+
+// --- Missing-key reporting --------------------------------------------------------------
+// Batched (one request per flush, never one per string), debounced, and switched off for
+// good if the server says auto-registration is disabled (it is in production — new keys
+// there come from reviewed changes, not from browsers).
+const pendingKeys = new Set<string>();
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let reportingDisabled = false;
+const MAX_KEYS_PER_BATCH = 200;
+function queueMissingKey(key: string) {
+  if (reportingDisabled || reportedKeys.has(key)) return;
+  reportedKeys.add(key);
+  pendingKeys.add(key);
+  if (flushTimer) return;
+  flushTimer = setTimeout(async () => {
+    flushTimer = null;
+    const keys = Array.from(pendingKeys);
+    pendingKeys.clear();
+    for (let i = 0; i < keys.length && !reportingDisabled; i += MAX_KEYS_PER_BATCH) {
+      try {
+        const res = await fetch('/api/register-missing-keys', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keys: keys.slice(i, i + MAX_KEYS_PER_BATCH) }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (body?.status === 'disabled') reportingDisabled = true;
+      } catch (err) {
+        console.warn('Failed to register missing translation keys:', err);
+      }
+    }
+  }, 1500);
+}
+
 export function useTranslation(db: DatabaseState, langOverride?: 'en' | 'ar' | 'ur') {
   // langOverride exists for the pre-login screens (LoginScreen, ResetPasswordScreen) —
   // there's no db.currentUser yet to read a uiLanguage from at that point, so those
@@ -17,7 +74,7 @@ export function useTranslation(db: DatabaseState, langOverride?: 'en' | 'ar' | '
     if (!key) return '';
 
     // 1. Check for overrides in database-loaded state
-    const dbItem = db.translations?.find((t: TranslationItem) => t.key === key);
+    const dbItem = db.translations ? indexFor(db.translations).get(key) : undefined;
     if (dbItem) {
       if (lang === 'ar' && dbItem.ar) return dbItem.ar;
       if (lang === 'ur' && dbItem.ur) return dbItem.ur;
@@ -25,7 +82,7 @@ export function useTranslation(db: DatabaseState, langOverride?: 'en' | 'ar' | '
     }
 
     // 2. Check for values in our local pre-seeded static dictionary
-    const staticItem = SEED_TRANSLATIONS.find((t: TranslationItem) => t.key === key);
+    const staticItem = seedLookup(key);
     if (staticItem) {
       if (lang === 'ar' && staticItem.ar) return staticItem.ar;
       if (lang === 'ur' && staticItem.ur) return staticItem.ur;
@@ -37,16 +94,9 @@ export function useTranslation(db: DatabaseState, langOverride?: 'en' | 'ar' | '
     // screen, /api/state still in flight) EVERY key looks "missing", so this used to fire
     // ~100 POSTs at once — over HTTP/1.1 that saturates the browser's 6 connections and
     // delays the very /api/state request the translations are waiting on.
-    if (db.translations && db.translations.length > 0 && !reportedKeys.has(key)) {
-      reportedKeys.add(key);
-      fetch('/api/register-missing-key', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key })
-      }).catch(err => {
-        console.warn('Failed to register missing translation key:', key, err);
-      });
-    }
+    // Only once the translation table has actually arrived: before that (first render, login
+    // screen, /api/state in flight) EVERY key looks "missing".
+    if (db.translations && db.translations.length > 0) queueMissingKey(key);
 
     return key;
   };
