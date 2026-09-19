@@ -56,7 +56,16 @@ export async function withTenantDb(req: any, res: any, next: any) {
     return res.status(400).json({ error: 'No active company for this request' });
   }
 
-  const client = await tenantPool.connect();
+  // A failure to open the restricted connection (bad TENANT_DB_PASSWORD, role missing, DB down)
+  // must answer THIS request immediately — an unhandled rejection here previously left the
+  // request hanging with no response at all.
+  let client;
+  try {
+    client = await tenantPool.connect();
+  } catch (err) {
+    console.error('tenantDb: could not open a tenant connection:', (err as any)?.message || err);
+    return res.status(503).json({ error: 'Database temporarily unavailable. Please try again shortly.' });
+  }
   let settled = false;
   const finalize = async (commit: boolean) => {
     if (settled) return;
