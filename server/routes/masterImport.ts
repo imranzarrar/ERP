@@ -10,6 +10,9 @@ import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
 import {
   PRODUCT_IMPORT_MAX_ROWS, buildProductTemplate, parseWorkbook, validateProductRows, commitProductRows,
 } from '../lib/productImport.js';
+import {
+  PartyEntity, PARTY_IMPORT_MAX_ROWS, buildPartyTemplate, parsePartyWorkbook, validatePartyRows, commitPartyRows,
+} from '../lib/partyImport.js';
 
 const router = express.Router();
 
@@ -117,5 +120,98 @@ router.post('/master-import/products/commit', withTenantDb, upload.single('file'
     res.status(500).json({ error: error.message });
   }
 });
+
+// --- Customer Master / Vendor Master — same validate-then-commit shape as Products above,
+// parameterized by entity since the two tables share almost every field and rule (see
+// server/lib/partyImport.ts). ---
+
+function permissionKey(entity: PartyEntity) { return entity === 'customer' ? 'customers' : 'vendors'; }
+
+function partyRoutes(entity: PartyEntity) {
+  const base = entity === 'customer' ? 'customers' : 'vendors';
+
+  router.get(`/master-import/${base}/template`, withTenantDb, async (req: any, res) => {
+    try {
+      const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+      if (!(permissions as any)[permissionKey(entity)].create.enabled) return res.status(403).json({ error: 'Forbidden' });
+      const buf = buildPartyTemplate(entity);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${base}-import-template.xlsx"`);
+      res.send(buf);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  function parseAndCheckPartyRows(req: any, res: any) {
+    if (!req.file) { res.status(400).json({ error: 'No file uploaded.' }); return null; }
+    const { rows, error } = parsePartyWorkbook(req.file.buffer);
+    if (error) { res.status(400).json({ error }); return null; }
+    if (rows.length === 0) { res.status(400).json({ error: 'No data rows found in the file (only a header row, or the file is empty).' }); return null; }
+    if (rows.length > PARTY_IMPORT_MAX_ROWS) {
+      res.status(400).json({ error: `This file has ${rows.length} rows — the limit per upload is ${PARTY_IMPORT_MAX_ROWS}. Split it into smaller files.` });
+      return null;
+    }
+    return rows;
+  }
+
+  router.post(`/master-import/${base}/validate`, withTenantDb, upload.single('file'), async (req: any, res) => {
+    try {
+      const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+      if (!(permissions as any)[permissionKey(entity)].create.enabled) return res.status(403).json({ error: 'Forbidden' });
+      const companyId = req.targetCompanyId;
+      if (!companyId) return res.status(400).json({ error: 'No company selected.' });
+
+      const rows = parseAndCheckPartyRows(req, res);
+      if (!rows) return;
+
+      const results = await validatePartyRows(tenantDb(), entity, companyId, rows);
+      const summary = {
+        totalRows: results.length,
+        toCreate: results.filter(r => r.action === 'create').length,
+        toUpdate: results.filter(r => r.action === 'update').length,
+        errors: results.filter(r => r.action === 'error').length,
+      };
+      res.json({ summary, rows: results.map(r => ({ rowNumber: r.rowNumber, name: r.name, action: r.action, errors: r.errors })) });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.post(`/master-import/${base}/commit`, withTenantDb, upload.single('file'), async (req: any, res) => {
+    try {
+      const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+      if (!(permissions as any)[permissionKey(entity)].create.enabled) return res.status(403).json({ error: 'Forbidden' });
+      const companyId = req.targetCompanyId;
+      if (!companyId) return res.status(400).json({ error: 'No company selected.' });
+
+      const rows = parseAndCheckPartyRows(req, res);
+      if (!rows) return;
+
+      let excludeRowNumbers = new Set<number>();
+      if (req.body.excludeRows) {
+        try {
+          const parsed = JSON.parse(req.body.excludeRows);
+          if (Array.isArray(parsed)) excludeRowNumbers = new Set(parsed.map(Number).filter(Number.isFinite));
+        } catch {
+          return res.status(400).json({ error: 'excludeRows must be a JSON array of row numbers.' });
+        }
+      }
+
+      const outcomes = await commitPartyRows(tenantDb(), entity, companyId, rows, excludeRowNumbers);
+      const summary = {
+        created: outcomes.filter(o => o.action === 'created').length,
+        updated: outcomes.filter(o => o.action === 'updated').length,
+        skipped: outcomes.filter(o => o.action === 'skipped').length,
+      };
+      res.json({ summary, rows: outcomes });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+}
+
+partyRoutes('customer');
+partyRoutes('vendor');
 
 export default router;

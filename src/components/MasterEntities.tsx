@@ -1,5 +1,6 @@
 import React from 'react';
 const ProductImportModal = React.lazy(() => import('./ProductImportModal'));
+const PartyImportModal = React.lazy(() => import('./PartyImportModal'));
 import { useTranslation, usePermissions, useDirtyGuard } from '../hooks';
 // from 'react';
 import { DatabaseState, saveDatabase } from '../dbStore';
@@ -45,6 +46,7 @@ type SubTab = 'customers' | 'vendors' | 'products' | 'categories' | 'units' | 'w
 
 export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, forceSubTab, mode, editId, onDone, onEdit, onCreateNew, onDirtyChange }: MasterEntitiesProps) {
   const [showProductImport, setShowProductImport] = React.useState(false);
+  const [showPartyImport, setShowPartyImport] = React.useState<'customer' | 'vendor' | null>(null);
  const { t, isRTL, lang } = useTranslation(db);
  const currentUser = db.currentUser;
  const { can } = usePermissions(currentUser);
@@ -2331,6 +2333,24 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  📥 {t('Import Products')}
  </button>
  )}
+ {subTab === 'customers' && canCreateCustomers && (
+ <button
+ onClick={() => setShowPartyImport('customer')}
+ className="px-2.5 py-1 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 rounded-xl text-[10px] font-bold flex items-center gap-1"
+ title={t('Bulk import customers from a spreadsheet')}
+ >
+ 📥 {t('Import Customers')}
+ </button>
+ )}
+ {subTab === 'vendors' && canCreateVendors && (
+ <button
+ onClick={() => setShowPartyImport('vendor')}
+ className="px-2.5 py-1 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 rounded-xl text-[10px] font-bold flex items-center gap-1"
+ title={t('Bulk import vendors from a spreadsheet')}
+ >
+ 📥 {t('Import Vendors')}
+ </button>
+ )}
  </div>
 
  {subTab === 'customers' && (
@@ -2764,6 +2784,17 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <ProductImportModal
  db={db}
  onClose={() => setShowProductImport(false)}
+ onImported={async () => { if (onRefreshDb) await onRefreshDb(); }}
+ />
+ </React.Suspense>
+ )}
+
+ {showPartyImport && (
+ <React.Suspense fallback={null}>
+ <PartyImportModal
+ db={db}
+ entity={showPartyImport}
+ onClose={() => setShowPartyImport(null)}
  onImported={async () => { if (onRefreshDb) await onRefreshDb(); }}
  />
  </React.Suspense>

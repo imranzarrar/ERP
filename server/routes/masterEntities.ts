@@ -26,7 +26,7 @@ const router = express.Router();
 // Building number sits directly before the street (as in "3045 Main Street"), postal
 // code directly after the city (as in "Riyadh 12871") — position alone tells a reader
 // which number is which, no labels needed.
-function composeAddressFromZatcaFields(f: { buildingNumber?: string | null; streetName?: string | null; district?: string | null; city?: string | null; postalCode?: string | null }): string | null {
+export function composeAddressFromZatcaFields(f: { buildingNumber?: string | null; streetName?: string | null; district?: string | null; city?: string | null; postalCode?: string | null }): string | null {
   const buildingAndStreet = [f.buildingNumber, f.streetName].filter(Boolean).join(' ');
   const cityAndPostal = [f.city, f.postalCode].filter(Boolean).join(' ');
   const parts = [buildingAndStreet, f.district, cityAndPostal].filter(Boolean);
