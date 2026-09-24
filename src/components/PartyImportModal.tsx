@@ -19,7 +19,6 @@ export default function PartyImportModal({ db, entity, onClose, onImported }: {
 }) {
   const { t } = useTranslation(db);
   const base = entity === 'customer' ? 'customers' : 'vendors';
-  const label = entity === 'customer' ? t('Customers') : t('Vendors');
 
   const [file, setFile] = React.useState<File | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -94,7 +93,7 @@ export default function PartyImportModal({ db, entity, onClose, onImported }: {
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-            <FileSpreadsheet className="w-4 h-4 text-indigo-600" /> {t('Import')} {label} {t('from Spreadsheet')}
+            <FileSpreadsheet className="w-4 h-4 text-indigo-600" /> {entity === 'customer' ? t('Import Customers from Spreadsheet') : t('Import Vendors from Spreadsheet')}
           </h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
         </div>

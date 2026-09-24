@@ -15658,5 +15658,191 @@
     "en": "🗂️ Classic Sidebar",
     "ar": "🗂️ الشريط الجانبي الكلاسيكي",
     "ur": "🗂️ کلاسک سائیڈبار"
+  },
+  {
+    "key": "(no name)",
+    "en": "(no name)",
+    "ar": "(بدون اسم)",
+    "ur": "(کوئی نام نہیں)"
+  },
+  {
+    "key": "Bulk import customers from a spreadsheet",
+    "en": "Bulk import customers from a spreadsheet",
+    "ar": "استيراد جماعي للعملاء من جدول بيانات",
+    "ur": "اسپریڈ شیٹ سے کسٹمرز کی بلک درآمد"
+  },
+  {
+    "key": "Bulk import products from a spreadsheet",
+    "en": "Bulk import products from a spreadsheet",
+    "ar": "استيراد جماعي للمنتجات من جدول بيانات",
+    "ur": "اسپریڈ شیٹ سے مصنوعات کی بلک درآمد"
+  },
+  {
+    "key": "Bulk import vendors from a spreadsheet",
+    "en": "Bulk import vendors from a spreadsheet",
+    "ar": "استيراد جماعي للموردين من جدول بيانات",
+    "ur": "اسپریڈ شیٹ سے وینڈرز کی بلک درآمد"
+  },
+  {
+    "key": "Choose a .xlsx or .csv file",
+    "en": "Choose a .xlsx or .csv file",
+    "ar": "اختر ملف ‎.xlsx أو ‎.csv",
+    "ur": ".xlsx یا .csv فائل منتخب کریں"
+  },
+  {
+    "key": "Could not download the template.",
+    "en": "Could not download the template.",
+    "ar": "تعذّر تنزيل القالب.",
+    "ur": "ٹیمپلیٹ ڈاؤن لوڈ نہیں ہو سکا۔"
+  },
+  {
+    "key": "Created",
+    "en": "Created",
+    "ar": "تم الإنشاء",
+    "ur": "بنایا گیا"
+  },
+  {
+    "key": "Download Template",
+    "en": "Download Template",
+    "ar": "تنزيل القالب",
+    "ur": "ٹیمپلیٹ ڈاؤن لوڈ کریں"
+  },
+  {
+    "key": "Failed to read this file.",
+    "en": "Failed to read this file.",
+    "ar": "تعذّرت قراءة هذا الملف.",
+    "ur": "یہ فائل پڑھی نہیں جا سکی۔"
+  },
+  {
+    "key": "Have errors",
+    "en": "Have errors",
+    "ar": "بها أخطاء",
+    "ur": "خرابیاں موجود ہیں"
+  },
+  {
+    "key": "Import",
+    "en": "Import",
+    "ar": "استيراد",
+    "ur": "درآمد"
+  },
+  {
+    "key": "Import complete.",
+    "en": "Import complete.",
+    "ar": "اكتمل الاستيراد.",
+    "ur": "درآمد مکمل ہو گئی۔"
+  },
+  {
+    "key": "Import Customers",
+    "en": "Import Customers",
+    "ar": "استيراد العملاء",
+    "ur": "کسٹمرز درآمد کریں"
+  },
+  {
+    "key": "Import Customers from Spreadsheet",
+    "en": "Import Customers from Spreadsheet",
+    "ar": "استيراد العملاء من جدول بيانات",
+    "ur": "اسپریڈ شیٹ سے کسٹمرز درآمد کریں"
+  },
+  {
+    "key": "Import failed.",
+    "en": "Import failed.",
+    "ar": "فشل الاستيراد.",
+    "ur": "درآمد ناکام ہو گئی۔"
+  },
+  {
+    "key": "Import Products",
+    "en": "Import Products",
+    "ar": "استيراد المنتجات",
+    "ur": "مصنوعات درآمد کریں"
+  },
+  {
+    "key": "Import Products from Spreadsheet",
+    "en": "Import Products from Spreadsheet",
+    "ar": "استيراد المنتجات من جدول بيانات",
+    "ur": "اسپریڈ شیٹ سے مصنوعات درآمد کریں"
+  },
+  {
+    "key": "Import Vendors",
+    "en": "Import Vendors",
+    "ar": "استيراد الموردين",
+    "ur": "وینڈرز درآمد کریں"
+  },
+  {
+    "key": "Import Vendors from Spreadsheet",
+    "en": "Import Vendors from Spreadsheet",
+    "ar": "استيراد الموردين من جدول بيانات",
+    "ur": "اسپریڈ شیٹ سے وینڈرز درآمد کریں"
+  },
+  {
+    "key": "Importing...",
+    "en": "Importing...",
+    "ar": "جارٍ الاستيراد...",
+    "ur": "درآمد ہو رہا ہے..."
+  },
+  {
+    "key": "New customer",
+    "en": "New customer",
+    "ar": "عميل جديد",
+    "ur": "نیا کسٹمر"
+  },
+  {
+    "key": "New product",
+    "en": "New product",
+    "ar": "منتج جديد",
+    "ur": "نئی مصنوعات"
+  },
+  {
+    "key": "New vendor",
+    "en": "New vendor",
+    "ar": "مورد جديد",
+    "ur": "نیا وینڈر"
+  },
+  {
+    "key": "rows",
+    "en": "rows",
+    "ar": "صفوف",
+    "ur": "قطاریں"
+  },
+  {
+    "key": "Skipped",
+    "en": "Skipped",
+    "ar": "تم التخطي",
+    "ur": "نظر انداز کیا گیا"
+  },
+  {
+    "key": "Start from the template so your column headers match exactly.",
+    "en": "Start from the template so your column headers match exactly.",
+    "ar": "ابدأ من القالب حتى تتطابق عناوين الأعمدة تمامًا.",
+    "ur": "ٹیمپلیٹ سے شروع کریں تاکہ آپ کے کالم ہیڈرز بالکل مطابقت رکھیں۔"
+  },
+  {
+    "key": "Update existing (barcode match)",
+    "en": "Update existing (barcode match)",
+    "ar": "تحديث السجل الحالي (تطابق الباركود)",
+    "ur": "موجودہ ریکارڈ اپ ڈیٹ کریں (بارکوڈ مماثلت)"
+  },
+  {
+    "key": "Update existing (VAT match)",
+    "en": "Update existing (VAT match)",
+    "ar": "تحديث السجل الحالي (تطابق الرقم الضريبي)",
+    "ur": "موجودہ ریکارڈ اپ ڈیٹ کریں (VAT مماثلت)"
+  },
+  {
+    "key": "Updated",
+    "en": "Updated",
+    "ar": "تم التحديث",
+    "ur": "اپ ڈیٹ کیا گیا"
+  },
+  {
+    "key": "Will be created",
+    "en": "Will be created",
+    "ar": "سيتم إنشاؤها",
+    "ur": "بنائے جائیں گے"
+  },
+  {
+    "key": "Will be updated",
+    "en": "Will be updated",
+    "ar": "سيتم تحديثها",
+    "ur": "اپ ڈیٹ کیے جائیں گے"
   }
 ]
