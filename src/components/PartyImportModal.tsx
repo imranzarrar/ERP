@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { X, Upload, Download, FileSpreadsheet, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '../hooks';
 import type { DatabaseState } from '../dbStore';
@@ -86,7 +87,9 @@ export default function PartyImportModal({ db, entity, onClose, onImported }: {
     }
   };
 
-  return (
+  // Portal straight into document.body — see ProductImportModal.tsx's comment on this same
+  // line for why (an animated ancestor's `filter` breaks `position: fixed` containment).
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
@@ -222,6 +225,7 @@ export default function PartyImportModal({ db, entity, onClose, onImported }: {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

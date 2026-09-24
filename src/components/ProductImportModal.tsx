@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { X, Upload, Download, FileSpreadsheet, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '../hooks';
 import type { DatabaseState } from '../dbStore';
@@ -81,7 +82,14 @@ export default function ProductImportModal({ db, onClose, onImported }: { db: Da
     }
   };
 
-  return (
+  // Rendered via a portal straight into document.body — this screen's content sits inside
+  // an animated wrapper (App.tsx's motion.div, which transitions a `filter` on tab change).
+  // A non-`none` `filter` on ANY ancestor creates a new containing block for `position:
+  // fixed` descendants (same CSS rule as `transform`), so without the portal this overlay
+  // would center itself against that wrapper's box instead of the real viewport — exactly
+  // the "appears at the bottom of the screen instead of centered" bug this fixes. Same
+  // pattern already used by PartySearchSelect.tsx/ItemCatalogSearch.tsx for the same reason.
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
@@ -217,6 +225,7 @@ export default function ProductImportModal({ db, onClose, onImported }: { db: Da
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
