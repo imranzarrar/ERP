@@ -1031,6 +1031,14 @@ type NavSection = {
  <MasterEntities
  db={activeDb}
  onUpdateDbLocal={handleUpdateDbLocal}
+ // Was missing entirely — every save/toggle-active handler in MasterEntities.tsx already
+ // guards with `if (onRefreshDb) await onRefreshDb();`, expecting this to be wired. It went
+ // unnoticed because those handlers also apply an optimistic local update (onUpdateDbLocal)
+ // that keeps the visible list correct without a refetch — but the bulk import feature has
+ // no such local update (the server decides the SKU, and for an update, which existing row
+ // matched), so it surfaced this gap: the list silently never refreshed after an import
+ // until a manual "Reload View".
+ onRefreshDb={triggerDbRefresh}
  forceSubTab={sub}
  mode={activeTab === `${sub}-add` ? 'add' : 'list'}
  editId={editTarget?.module === sub ? editTarget.id : undefined}

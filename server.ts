@@ -22,6 +22,7 @@ import crypto from 'crypto';
 import { recordAuditLog } from './server/lib/audit.js';
 import { isMailerConfigured, sendPasswordResetEmail } from './server/lib/mailer.js';
 import masterEntitiesRouter from './server/routes/masterEntities.js';
+import masterImportRouter from './server/routes/masterImport.js';
 import usersRouter from './server/routes/users.js';
 import rolesRouter from './server/routes/roles.js';
 import transactionsRouter from './server/routes/transactions.js';
@@ -814,6 +815,7 @@ async function startServer() {
 
   // Protected Routers
   app.use('/api', masterEntitiesRouter);
+  app.use('/api', masterImportRouter);
   app.use('/api', branchesRouter);
   app.use('/api', taxReturnsRouter);
   app.use('/api', reportsRouter);
