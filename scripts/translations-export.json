@@ -15844,5 +15844,47 @@
     "en": "Will be updated",
     "ar": "سيتم تحديثها",
     "ur": "اپ ڈیٹ کیے جائیں گے"
+  },
+  {
+    "key": "System Announcement",
+    "en": "System Announcement",
+    "ar": "إعلان النظام",
+    "ur": "سسٹم اعلان"
+  },
+  {
+    "key": "A message shown at the top of the screen for every user of every company, including the login screen. Use it to warn clients about upcoming maintenance before the system actually goes down — this only works while the app itself is running.",
+    "en": "A message shown at the top of the screen for every user of every company, including the login screen. Use it to warn clients about upcoming maintenance before the system actually goes down — this only works while the app itself is running.",
+    "ar": "رسالة تظهر أعلى الشاشة لجميع مستخدمي جميع الشركات، بما في ذلك شاشة تسجيل الدخول. استخدمها لتنبيه العملاء بشأن الصيانة القادمة قبل توقف النظام فعليًا — تعمل هذه الميزة فقط أثناء تشغيل التطبيق.",
+    "ur": "یہ پیغام ہر کمپنی کے ہر صارف کے لیے اسکرین کے اوپر دکھایا جاتا ہے، بشمول لاگ ان اسکرین۔ اسے سسٹم کی متوقع بندش سے پہلے کلائنٹس کو خبردار کرنے کے لیے استعمال کریں — یہ صرف اس وقت کام کرتا ہے جب ایپ خود چل رہی ہو۔"
+  },
+  {
+    "key": "Show this announcement now",
+    "en": "Show this announcement now",
+    "ar": "إظهار هذا الإعلان الآن",
+    "ur": "یہ اعلان ابھی دکھائیں"
+  },
+  {
+    "key": "Message",
+    "en": "Message",
+    "ar": "الرسالة",
+    "ur": "پیغام"
+  },
+  {
+    "key": "e.g. Scheduled maintenance tonight 10-11 PM. The system will be unavailable during this time.",
+    "en": "e.g. Scheduled maintenance tonight 10-11 PM. The system will be unavailable during this time.",
+    "ar": "مثال: صيانة مجدولة الليلة من 10 إلى 11 مساءً. سيكون النظام غير متاح خلال هذا الوقت.",
+    "ur": "مثال: آج رات 10 سے 11 بجے تک شیڈول شدہ مینٹیننس۔ اس دوران سسٹم دستیاب نہیں ہوگا۔"
+  },
+  {
+    "key": "Last updated",
+    "en": "Last updated",
+    "ar": "آخر تحديث",
+    "ur": "آخری تازہ کاری"
+  },
+  {
+    "key": "Role Templates",
+    "en": "Role Templates",
+    "ar": "قوالب الأدوار",
+    "ur": "رول ٹیمپلیٹس"
   }
 ]
