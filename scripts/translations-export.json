@@ -38,8 +38,8 @@
   {
     "key": "-- Choose Employee --",
     "en": "-- Choose Employee --",
-    "ar": "",
-    "ur": ""
+    "ar": "-- اختر موظفًا --",
+    "ur": "-- ملازم منتخب کریں --"
   },
   {
     "key": "-- Choose Investor --",
@@ -1214,8 +1214,8 @@
   {
     "key": "and every invoice, customer, product, user, and record belonging to it — across the entire system. This cannot be undone.",
     "en": "and every invoice, customer, product, user, and record belonging to it — across the entire system. This cannot be undone.",
-    "ar": "",
-    "ur": ""
+    "ar": "وكل فاتورة وعميل ومنتج ومستخدم وسجل يخصها — عبر النظام بأكمله. لا يمكن التراجع عن هذا الإجراء.",
+    "ur": "اور اس سے متعلق ہر انوائس، کسٹمر، پروڈکٹ، صارف، اور ریکارڈ — پورے سسٹم میں۔ اسے واپس نہیں لیا جا سکتا۔"
   },
   {
     "key": "and testing. Continue?",
@@ -1262,8 +1262,8 @@
   {
     "key": "Approve",
     "en": "Approve",
-    "ar": "",
-    "ur": ""
+    "ar": "موافقة",
+    "ur": "منظور کریں"
   },
   {
     "key": "Approve & Issue Invoice",
@@ -1442,8 +1442,8 @@
   {
     "key": "Assign a Role Template",
     "en": "Assign a Role Template",
-    "ar": "",
-    "ur": ""
+    "ar": "تعيين قالب دور",
+    "ur": "رول ٹیمپلیٹ تفویض کریں"
   },
   {
     "key": "Assigned Branches",
@@ -1478,8 +1478,8 @@
   {
     "key": "Attribute every existing document (invoices, quotations, vouchers, expenses, purchase requisitions/orders/bills, warehouses) that has no branch yet to one branch. Safe to re-run — only rows that are currently unassigned are touched.",
     "en": "Attribute every existing document (invoices, quotations, vouchers, expenses, purchase requisitions/orders/bills, warehouses) that has no branch yet to one branch. Safe to re-run — only rows that are currently unassigned are touched.",
-    "ar": "",
-    "ur": ""
+    "ar": "إسناد كل مستند حالي (فواتير، عروض أسعار، سندات، مصروفات، طلبات/أوامر/فواتير شراء، مستودعات) ليس له فرع بعد إلى فرع واحد. آمن لإعادة التشغيل — يتم التعامل فقط مع الصفوف غير المسندة حاليًا.",
+    "ur": "ہر موجودہ دستاویز (انوائسز، کوٹیشنز، واؤچرز، اخراجات، پرچیز ریکوزیشن/آرڈرز/بلز، گودام) جس کی ابھی کوئی شاخ مقرر نہیں، ایک شاخ سے منسلک کریں۔ دوبارہ چلانا محفوظ ہے — صرف وہی قطاریں متاثر ہوں گی جو ابھی غیر تفویض شدہ ہیں۔"
   },
   {
     "key": "Audit Compliance Logs",
@@ -1526,8 +1526,8 @@
   {
     "key": "Auto-selected on a new Invoice/POS sale created under this branch, so staff never need to pick one manually.",
     "en": "Auto-selected on a new Invoice/POS sale created under this branch, so staff never need to pick one manually.",
-    "ar": "",
-    "ur": ""
+    "ar": "يُختار تلقائيًا عند إنشاء فاتورة/عملية بيع نقطة بيع جديدة ضمن هذا الفرع، بحيث لا يحتاج الموظفون أبدًا لاختياره يدويًا.",
+    "ur": "اس شاخ کے تحت نئی انوائس/POS سیل بننے پر خودکار طور پر منتخب ہوتا ہے، تاکہ عملے کو کبھی دستی طور پر منتخب کرنے کی ضرورت نہ پڑے۔"
   },
   {
     "key": "Auto-Translate (Google/Gemini)",
@@ -1562,8 +1562,8 @@
   {
     "key": "Automatically create a matching warehouse for this branch",
     "en": "Automatically create a matching warehouse for this branch",
-    "ar": "",
-    "ur": ""
+    "ar": "إنشاء مستودع مطابق لهذا الفرع تلقائيًا",
+    "ur": "اس شاخ کے لیے خودکار طور پر مماثل گودام بنائیں"
   },
   {
     "key": "Average sale price vs. average cost margin, per product.",
@@ -1646,8 +1646,8 @@
   {
     "key": "Backfill Unassigned Documents",
     "en": "Backfill Unassigned Documents",
-    "ar": "",
-    "ur": ""
+    "ar": "تعبئة المستندات غير المسندة بأثر رجعي",
+    "ur": "غیر تفویض شدہ دستاویزات کو بیک فل کریں"
   },
   {
     "key": "Balance",
@@ -2084,14 +2084,14 @@
   {
     "key": "Calibri",
     "en": "Calibri",
-    "ar": "",
-    "ur": ""
+    "ar": "كاليبري",
+    "ur": "کیلیبری"
   },
   {
     "key": "Calibri — Microsoft Office standard",
     "en": "Calibri — Microsoft Office standard",
-    "ar": "",
-    "ur": ""
+    "ar": "كاليبري — معيار مايكروسوفت أوفيس",
+    "ur": "کیلیبری — مائیکروسافٹ آفس کا معیاری فونٹ"
   },
   {
     "key": "Cancel",
@@ -2114,8 +2114,8 @@
   {
     "key": "Cancel Draft Stock Takes",
     "en": "Cancel Draft Stock Takes",
-    "ar": "",
-    "ur": ""
+    "ar": "إلغاء مسودات الجرد",
+    "ur": "ڈرافٹ اسٹاک ٹیک منسوخ کریں"
   },
   {
     "key": "Cancel Edit",
@@ -2150,14 +2150,14 @@
   {
     "key": "Cancel Purchase Bills",
     "en": "Cancel Purchase Bills",
-    "ar": "",
-    "ur": ""
+    "ar": "إلغاء فواتير الشراء",
+    "ur": "پرچیز بلز منسوخ کریں"
   },
   {
     "key": "Cancel Purchase Returns",
     "en": "Cancel Purchase Returns",
-    "ar": "",
-    "ur": ""
+    "ar": "إلغاء مرتجعات الشراء",
+    "ur": "پرچیز ریٹرن منسوخ کریں"
   },
   {
     "key": "Cancel Quotation",
@@ -2174,8 +2174,8 @@
   {
     "key": "Cancel Registration",
     "en": "Cancel Registration",
-    "ar": "",
-    "ur": ""
+    "ar": "إلغاء التسجيل",
+    "ur": "رجسٹریشن منسوخ کریں"
   },
   {
     "key": "Cancel Return",
@@ -2222,14 +2222,14 @@
   {
     "key": "Cancel Warehouse Dispatches",
     "en": "Cancel Warehouse Dispatches",
-    "ar": "",
-    "ur": ""
+    "ar": "إلغاء عمليات صرف المستودع",
+    "ur": "گودام ڈسپیچ منسوخ کریں"
   },
   {
     "key": "Cancel Warehouse Receivings",
     "en": "Cancel Warehouse Receivings",
-    "ar": "",
-    "ur": ""
+    "ar": "إلغاء عمليات استلام المستودع",
+    "ur": "گودام وصولی منسوخ کریں"
   },
   {
     "key": "Cancelled",
@@ -2456,8 +2456,8 @@
   {
     "key": "Choose branch...",
     "en": "Choose branch...",
-    "ar": "",
-    "ur": ""
+    "ar": "اختر الفرع...",
+    "ur": "شاخ منتخب کریں..."
   },
   {
     "key": "Choose required options above",
@@ -2468,8 +2468,8 @@
   {
     "key": "Choose template...",
     "en": "Choose template...",
-    "ar": "",
-    "ur": ""
+    "ar": "اختر القالب...",
+    "ur": "ٹیمپلیٹ منتخب کریں..."
   },
   {
     "key": "City",
@@ -2894,8 +2894,8 @@
   {
     "key": "Confirm Approval",
     "en": "Confirm Approval",
-    "ar": "",
-    "ur": ""
+    "ar": "تأكيد الموافقة",
+    "ur": "منظوری کی تصدیق کریں"
   },
   {
     "key": "Confirm Dispatch & Deduct Stock",
@@ -2966,8 +2966,8 @@
   {
     "key": "Contact",
     "en": "Contact",
-    "ar": "",
-    "ur": ""
+    "ar": "جهة الاتصال",
+    "ur": "رابطہ"
   },
   {
     "key": "Contact Email",
@@ -3206,8 +3206,8 @@
   {
     "key": "Create Job Titles",
     "en": "Create Job Titles",
-    "ar": "",
-    "ur": ""
+    "ar": "إنشاء المسميات الوظيفية",
+    "ur": "جاب ٹائٹلز بنائیں"
   },
   {
     "key": "Create layouts for Quotations and Invoices. Only ONE template is active globally at a time.",
@@ -3290,8 +3290,8 @@
   {
     "key": "Create Purchase Bills",
     "en": "Create Purchase Bills",
-    "ar": "",
-    "ur": ""
+    "ar": "إنشاء فواتير الشراء",
+    "ur": "پرچیز بلز بنائیں"
   },
   {
     "key": "Create Purchase Requisition (PR)",
@@ -3302,8 +3302,8 @@
   {
     "key": "Create Purchase Returns",
     "en": "Create Purchase Returns",
-    "ar": "",
-    "ur": ""
+    "ar": "إنشاء مرتجعات الشراء",
+    "ur": "پرچیز ریٹرن بنائیں"
   },
   {
     "key": "Create Quotations",
@@ -3356,14 +3356,14 @@
   {
     "key": "Create Warehouse Dispatches",
     "en": "Create Warehouse Dispatches",
-    "ar": "",
-    "ur": ""
+    "ar": "إنشاء عمليات صرف المستودع",
+    "ur": "گودام ڈسپیچ بنائیں"
   },
   {
     "key": "Create Warehouse Receivings (Receive Against Dispatch)",
     "en": "Create Warehouse Receivings (Receive Against Dispatch)",
-    "ar": "",
-    "ur": ""
+    "ar": "إنشاء عمليات استلام المستودع (الاستلام مقابل الصرف)",
+    "ur": "گودام وصولی بنائیں (ڈسپیچ کے مقابلے میں وصولی)"
   },
   {
     "key": "Create Warehouses",
@@ -3740,8 +3740,8 @@
   {
     "key": "Deactivate Branches",
     "en": "Deactivate Branches",
-    "ar": "",
-    "ur": ""
+    "ar": "تعطيل الفروع",
+    "ur": "شاخیں غیر فعال کریں"
   },
   {
     "key": "Deactivate Customers",
@@ -3752,14 +3752,14 @@
   {
     "key": "Deactivate Employees",
     "en": "Deactivate Employees",
-    "ar": "",
-    "ur": ""
+    "ar": "تعطيل الموظفين",
+    "ur": "ملازمین کو غیر فعال کریں"
   },
   {
     "key": "Deactivate Job Titles",
     "en": "Deactivate Job Titles",
-    "ar": "",
-    "ur": ""
+    "ar": "تعطيل المسميات الوظيفية",
+    "ur": "جاب ٹائٹلز غیر فعال کریں"
   },
   {
     "key": "Deactivate Product Categories",
@@ -3968,8 +3968,8 @@
   {
     "key": "Default Sales Warehouse",
     "en": "Default Sales Warehouse",
-    "ar": "",
-    "ur": ""
+    "ar": "مستودع المبيعات الافتراضي",
+    "ur": "ڈیفالٹ سیلز گودام"
   },
   {
     "key": "Default Warehouse Branch",
@@ -4064,8 +4064,8 @@
   {
     "key": "Delete Company & All Data",
     "en": "Delete Company & All Data",
-    "ar": "",
-    "ur": ""
+    "ar": "حذف الشركة وجميع البيانات",
+    "ur": "کمپنی اور تمام ڈیٹا حذف کریں"
   },
   {
     "key": "Delete Document Templates",
@@ -4076,8 +4076,8 @@
   {
     "key": "Delete Generated/Unfiled VAT Returns",
     "en": "Delete Generated/Unfiled VAT Returns",
-    "ar": "",
-    "ur": ""
+    "ar": "حذف إقرارات ضريبة القيمة المضافة المُنشأة/غير المُقدَّمة",
+    "ur": "بنائے گئے/غیر جمع شدہ VAT ریٹرنز حذف کریں"
   },
   {
     "key": "Delete role",
@@ -4814,8 +4814,8 @@
   {
     "key": "e.g. Sales Manager, Accountant",
     "en": "e.g. Sales Manager, Accountant",
-    "ar": "",
-    "ur": ""
+    "ar": "مثال: مدير مبيعات، محاسب",
+    "ur": "مثال: سیلز منیجر، اکاؤنٹنٹ"
   },
   {
     "key": "e.g. Sales Rep, Cashier, Procurement Officer",
@@ -4898,8 +4898,8 @@
   {
     "key": "Edit / Finalize Stock Takes",
     "en": "Edit / Finalize Stock Takes",
-    "ar": "",
-    "ur": ""
+    "ar": "تعديل / إنهاء عمليات الجرد",
+    "ur": "اسٹاک ٹیک میں ترمیم / حتمی شکل دیں"
   },
   {
     "key": "Edit Accrual Ledger Entry",
@@ -4928,8 +4928,8 @@
   {
     "key": "Edit Branches",
     "en": "Edit Branches",
-    "ar": "",
-    "ur": ""
+    "ar": "تعديل الفروع",
+    "ur": "شاخوں میں ترمیم کریں"
   },
   {
     "key": "Edit Category",
@@ -4964,8 +4964,8 @@
   {
     "key": "Edit Document Numbering Settings",
     "en": "Edit Document Numbering Settings",
-    "ar": "",
-    "ur": ""
+    "ar": "تعديل إعدادات ترقيم المستندات",
+    "ur": "دستاویز نمبرنگ کی ترتیبات میں ترمیم کریں"
   },
   {
     "key": "Edit Document Templates",
@@ -4982,8 +4982,8 @@
   {
     "key": "Edit Employees",
     "en": "Edit Employees",
-    "ar": "",
-    "ur": ""
+    "ar": "تعديل الموظفين",
+    "ur": "ملازمین میں ترمیم کریں"
   },
   {
     "key": "Edit Job Title",
@@ -4994,8 +4994,8 @@
   {
     "key": "Edit Job Titles",
     "en": "Edit Job Titles",
-    "ar": "",
-    "ur": ""
+    "ar": "تعديل المسميات الوظيفية",
+    "ur": "جاب ٹائٹلز میں ترمیم کریں"
   },
   {
     "key": "Edit Modifier Group",
@@ -5024,8 +5024,8 @@
   {
     "key": "Edit Purchase Bills",
     "en": "Edit Purchase Bills",
-    "ar": "",
-    "ur": ""
+    "ar": "تعديل فواتير الشراء",
+    "ur": "پرچیز بلز میں ترمیم کریں"
   },
   {
     "key": "Edit Purchase Requisition (PR)",
@@ -5036,8 +5036,8 @@
   {
     "key": "Edit Purchase Returns",
     "en": "Edit Purchase Returns",
-    "ar": "",
-    "ur": ""
+    "ar": "تعديل مرتجعات الشراء",
+    "ur": "پرچیز ریٹرن میں ترمیم کریں"
   },
   {
     "key": "Edit Quotation",
@@ -5084,14 +5084,14 @@
   {
     "key": "Edit template",
     "en": "Edit template",
-    "ar": "",
-    "ur": ""
+    "ar": "تعديل القالب",
+    "ur": "ٹیمپلیٹ میں ترمیم کریں"
   },
   {
     "key": "Edit Template",
     "en": "Edit Template",
-    "ar": "",
-    "ur": ""
+    "ar": "تعديل القالب",
+    "ur": "ٹیمپلیٹ میں ترمیم کریں"
   },
   {
     "key": "Edit Translation Key",
@@ -5132,14 +5132,14 @@
   {
     "key": "Edit Warehouse Dispatches",
     "en": "Edit Warehouse Dispatches",
-    "ar": "",
-    "ur": ""
+    "ar": "تعديل عمليات صرف المستودع",
+    "ur": "گودام ڈسپیچ میں ترمیم کریں"
   },
   {
     "key": "Edit Warehouse Receivings",
     "en": "Edit Warehouse Receivings",
-    "ar": "",
-    "ur": ""
+    "ar": "تعديل عمليات استلام المستودع",
+    "ur": "گودام وصولی میں ترمیم کریں"
   },
   {
     "key": "Edit Warehouses",
@@ -5228,8 +5228,8 @@
   {
     "key": "Employees (HR)",
     "en": "Employees (HR)",
-    "ar": "",
-    "ur": ""
+    "ar": "الموظفون (الموارد البشرية)",
+    "ur": "ملازمین (HR)"
   },
   {
     "key": "Enable in POS Module",
@@ -6350,8 +6350,8 @@
   {
     "key": "Full Company Admin access",
     "en": "Full Company Admin access",
-    "ar": "",
-    "ur": ""
+    "ar": "صلاحية مسؤول الشركة الكاملة",
+    "ur": "مکمل کمپنی ایڈمن رسائی"
   },
   {
     "key": "Full name",
@@ -6440,8 +6440,8 @@
   {
     "key": "Generate VAT Returns",
     "en": "Generate VAT Returns",
-    "ar": "",
-    "ur": ""
+    "ar": "إنشاء إقرارات ضريبة القيمة المضافة",
+    "ur": "VAT ریٹرنز تیار کریں"
   },
   {
     "key": "Generated",
@@ -6656,14 +6656,14 @@
   {
     "key": "Helvetica / Arial",
     "en": "Helvetica / Arial",
-    "ar": "",
-    "ur": ""
+    "ar": "هلفتيكا / أريال",
+    "ur": "ہیلویٹیکا / ایریل"
   },
   {
     "key": "Helvetica / Arial — global invoice standard",
     "en": "Helvetica / Arial — global invoice standard",
-    "ar": "",
-    "ur": ""
+    "ar": "هلفتيكا / أريال — المعيار العالمي للفواتير",
+    "ur": "ہیلویٹیکا / ایریل — عالمی انوائس معیار"
   },
   {
     "key": "High Density (8px Gap)",
@@ -7664,8 +7664,8 @@
   {
     "key": "Linked Employee",
     "en": "Linked Employee",
-    "ar": "",
-    "ur": ""
+    "ar": "الموظف المرتبط",
+    "ur": "منسلک ملازم"
   },
   {
     "key": "Linked GRN",
@@ -7952,14 +7952,14 @@
   {
     "key": "Mark Registered",
     "en": "Mark Registered",
-    "ar": "",
-    "ur": ""
+    "ar": "تعيين كمسجّل",
+    "ur": "رجسٹرڈ کے طور پر نشان زد کریں"
   },
   {
     "key": "Mark VAT Returns as ZATCA Filed (Permanent)",
     "en": "Mark VAT Returns as ZATCA Filed (Permanent)",
-    "ar": "",
-    "ur": ""
+    "ar": "تعيين إقرارات ضريبة القيمة المضافة كمُقدَّمة لهيئة الزكاة والضريبة (نهائي)",
+    "ur": "VAT ریٹرنز کو ZATCA میں فائل شدہ کے طور پر نشان زد کریں (مستقل)"
   },
   {
     "key": "Master Entities",
@@ -7976,8 +7976,8 @@
   {
     "key": "Match Portal Theme — Default",
     "en": "Match Portal Theme — Default",
-    "ar": "",
-    "ur": ""
+    "ar": "مطابقة سمة البوابة — افتراضي",
+    "ur": "پورٹل تھیم سے مماثل — ڈیفالٹ"
   },
   {
     "key": "Matched",
@@ -8210,8 +8210,8 @@
   {
     "key": "Most retail branches are their own warehouse — the selling floor and the stock location are the same place. Uncheck this only if this branch will share an existing warehouse instead.",
     "en": "Most retail branches are their own warehouse — the selling floor and the stock location are the same place. Uncheck this only if this branch will share an existing warehouse instead.",
-    "ar": "",
-    "ur": ""
+    "ar": "معظم فروع التجزئة هي مستودعها الخاص — أرضية البيع وموقع المخزون هما نفس المكان. ألغِ تحديد هذا الخيار فقط إذا كان هذا الفرع سيشارك مستودعًا موجودًا بدلاً من ذلك.",
+    "ur": "زیادہ تر ریٹیل شاخیں خود ہی اپنا گودام ہوتی ہیں — سیلنگ فلور اور اسٹاک لوکیشن ایک ہی جگہ ہوتی ہے۔ اسے صرف اس صورت میں ان-چیک کریں اگر یہ شاخ کسی موجودہ گودام کو شیئر کرے گی۔"
   },
   {
     "key": "Move block down",
@@ -8732,8 +8732,8 @@
   {
     "key": "No onboarding requests yet.",
     "en": "No onboarding requests yet.",
-    "ar": "",
-    "ur": ""
+    "ar": "لا توجد طلبات انضمام بعد.",
+    "ur": "ابھی تک کوئی آن بورڈنگ درخواست نہیں۔"
   },
   {
     "key": "No Open Month",
@@ -8876,8 +8876,8 @@
   {
     "key": "No role templates created yet.",
     "en": "No role templates created yet.",
-    "ar": "",
-    "ur": ""
+    "ar": "لم يتم إنشاء أي قوالب أدوار بعد.",
+    "ur": "ابھی تک کوئی رول ٹیمپلیٹ نہیں بنایا گیا۔"
   },
   {
     "key": "No roles created yet.",
@@ -9008,8 +9008,8 @@
   {
     "key": "None — fall back to company default",
     "en": "None — fall back to company default",
-    "ar": "",
-    "ur": ""
+    "ar": "بلا — الرجوع إلى الإعداد الافتراضي للشركة",
+    "ur": "کوئی نہیں — کمپنی کے ڈیفالٹ پر واپس جائیں"
   },
   {
     "key": "None (0px)",
@@ -9236,8 +9236,8 @@
   {
     "key": "Onboard Employees",
     "en": "Onboard Employees",
-    "ar": "",
-    "ur": ""
+    "ar": "إلحاق الموظفين",
+    "ur": "ملازمین کو آن بورڈ کریں"
   },
   {
     "key": "Onboard New Employee",
@@ -9404,8 +9404,8 @@
   {
     "key": "optional",
     "en": "optional",
-    "ar": "",
-    "ur": ""
+    "ar": "اختياري",
+    "ur": "اختیاری"
   },
   {
     "key": "Optional",
@@ -10052,8 +10052,8 @@
   {
     "key": "Permanently Delete",
     "en": "Permanently Delete",
-    "ar": "",
-    "ur": ""
+    "ar": "حذف نهائي",
+    "ur": "مستقل طور پر حذف کریں"
   },
   {
     "key": "Permanently Lock Month",
@@ -10718,8 +10718,8 @@
   {
     "key": "Public company signup requests (submitted via the ?onboard=1 link). Approving one atomically creates the company, its starter resources, and a user account for the requester.",
     "en": "Public company signup requests (submitted via the ?onboard=1 link). Approving one atomically creates the company, its starter resources, and a user account for the requester.",
-    "ar": "",
-    "ur": ""
+    "ar": "طلبات تسجيل الشركات العامة (المُقدَّمة عبر رابط ?onboard=1). الموافقة على طلب تُنشئ فورًا الشركة ومواردها الأولية وحساب مستخدم لمقدّم الطلب.",
+    "ur": "عوامی کمپنی سائن اپ درخواستیں (?onboard=1 لنک کے ذریعے جمع کرائی گئیں)۔ کسی درخواست کو منظور کرنے سے فوری طور پر کمپنی، اس کے ابتدائی وسائل، اور درخواست دہندہ کے لیے یوزر اکاؤنٹ بن جاتا ہے۔"
   },
   {
     "key": "Purchase",
@@ -10904,8 +10904,8 @@
   {
     "key": "Purchase Returns (Debit Notes)",
     "en": "Purchase Returns (Debit Notes)",
-    "ar": "",
-    "ur": ""
+    "ar": "مرتجعات الشراء (إشعارات مدين)",
+    "ur": "پرچیز ریٹرن (ڈیبٹ نوٹس)"
   },
   {
     "key": "Purchase Supply Flow (Supplier procurement)",
@@ -11630,8 +11630,8 @@
   {
     "key": "Registration:",
     "en": "Registration:",
-    "ar": "",
-    "ur": ""
+    "ar": "التسجيل:",
+    "ur": "رجسٹریشن:"
   },
   {
     "key": "registries-catalog",
@@ -11660,14 +11660,14 @@
   {
     "key": "Reinstate",
     "en": "Reinstate",
-    "ar": "",
-    "ur": ""
+    "ar": "إعادة التفعيل",
+    "ur": "بحال کریں"
   },
   {
     "key": "Reject",
     "en": "Reject",
-    "ar": "",
-    "ur": ""
+    "ar": "رفض",
+    "ur": "مسترد کریں"
   },
   {
     "key": "Reject PR",
@@ -12020,8 +12020,8 @@
   {
     "key": "Run Backfill",
     "en": "Run Backfill",
-    "ar": "",
-    "ur": ""
+    "ar": "تشغيل التعبئة بأثر رجعي",
+    "ur": "بیک فل چلائیں"
   },
   {
     "key": "Run Compliance Tests",
@@ -13166,8 +13166,8 @@
   {
     "key": "Start Stock Takes",
     "en": "Start Stock Takes",
-    "ar": "",
-    "ur": ""
+    "ar": "بدء عمليات الجرد",
+    "ur": "اسٹاک ٹیک شروع کریں"
   },
   {
     "key": "Starting...",
@@ -13412,8 +13412,8 @@
   {
     "key": "Submitted",
     "en": "Submitted",
-    "ar": "",
-    "ur": ""
+    "ar": "تم الإرسال",
+    "ur": "جمع کرایا گیا"
   },
   {
     "key": "SUBMITTING",
@@ -13676,8 +13676,8 @@
   {
     "key": "Template Name",
     "en": "Template Name",
-    "ar": "",
-    "ur": ""
+    "ar": "اسم القالب",
+    "ur": "ٹیمپلیٹ کا نام"
   },
   {
     "key": "Template Title",
@@ -13688,8 +13688,8 @@
   {
     "key": "Templates",
     "en": "Templates",
-    "ar": "",
-    "ur": ""
+    "ar": "القوالب",
+    "ur": "ٹیمپلیٹس"
   },
   {
     "key": "Terminal",
@@ -13808,8 +13808,8 @@
   {
     "key": "This company uses HR employee onboarding — every login account must be linked to the onboarded employee it belongs to.",
     "en": "This company uses HR employee onboarding — every login account must be linked to the onboarded employee it belongs to.",
-    "ar": "",
-    "ur": ""
+    "ar": "تستخدم هذه الشركة نظام إلحاق الموظفين عبر الموارد البشرية — يجب ربط كل حساب دخول بالموظف المُلحق الذي ينتمي إليه.",
+    "ur": "یہ کمپنی HR ایمپلائی آن بورڈنگ استعمال کرتی ہے — ہر لاگ ان اکاؤنٹ کو اس آن بورڈ ملازم سے منسلک ہونا ضروری ہے جس سے وہ تعلق رکھتا ہے۔"
   },
   {
     "key": "This creates a new, separately-signed ZATCA document — the original invoice is not modified.",
@@ -13850,8 +13850,8 @@
   {
     "key": "This permanently deletes",
     "en": "This permanently deletes",
-    "ar": "",
-    "ur": ""
+    "ar": "هذا يحذف بشكل نهائي",
+    "ur": "یہ مستقل طور پر حذف کر دے گا"
   },
   {
     "key": "This removes it from the shared dictionary for every company. Any screen still using this key will show the raw key text until it is re-added.",
@@ -13868,8 +13868,8 @@
   {
     "key": "This user will NOT be able to create or edit Roles for their own company later — only a Company Admin or platform Super Admin can. Choose \"Full Company Admin access\" instead if that matters.",
     "en": "This user will NOT be able to create or edit Roles for their own company later — only a Company Admin or platform Super Admin can. Choose \"Full Company Admin access\" instead if that matters.",
-    "ar": "",
-    "ur": ""
+    "ar": "لن يتمكن هذا المستخدم لاحقًا من إنشاء أو تعديل الأدوار لشركته — فقط مسؤول الشركة أو المسؤول الأعلى للمنصة يمكنه ذلك. اختر \"صلاحية مسؤول الشركة الكاملة\" بدلاً من ذلك إذا كان هذا مهمًا.",
+    "ur": "یہ صارف بعد میں اپنی کمپنی کے لیے رولز بنانے یا ترمیم کرنے کے قابل نہیں ہوگا — یہ صرف کمپنی ایڈمن یا پلیٹ فارم سپر ایڈمن کر سکتا ہے۔ اگر یہ اہم ہے تو اس کے بجائے \"مکمل کمپنی ایڈمن رسائی\" منتخب کریں۔"
   },
   {
     "key": "This uses the same verified signing code as Sandbox, but hasn't been exercised against ZATCA's real",
@@ -14300,8 +14300,8 @@
   {
     "key": "Trial",
     "en": "Trial",
-    "ar": "",
-    "ur": ""
+    "ar": "تجريبي",
+    "ur": "ٹرائل"
   },
   {
     "key": "Trial Balance Ledger",
@@ -14360,8 +14360,8 @@
   {
     "key": "Type the company name to confirm:",
     "en": "Type the company name to confirm:",
-    "ar": "",
-    "ur": ""
+    "ar": "اكتب اسم الشركة للتأكيد:",
+    "ur": "تصدیق کے لیے کمپنی کا نام لکھیں:"
   },
   {
     "key": "Type:",
@@ -14570,8 +14570,8 @@
   {
     "key": "Update Template",
     "en": "Update Template",
-    "ar": "",
-    "ur": ""
+    "ar": "تحديث القالب",
+    "ur": "ٹیمپلیٹ اپ ڈیٹ کریں"
   },
   {
     "key": "Update User Account",
@@ -14930,8 +14930,8 @@
   {
     "key": "View & Act Across All Branches (not just assigned ones)",
     "en": "View & Act Across All Branches (not just assigned ones)",
-    "ar": "",
-    "ur": ""
+    "ar": "عرض والتصرف عبر جميع الفروع (وليس المُعيَّنة فقط)",
+    "ur": "تمام شاخوں میں دیکھیں اور کارروائی کریں (نہ صرف تفویض شدہ)"
   },
   {
     "key": "View All",
@@ -14954,8 +14954,8 @@
   {
     "key": "View Branches",
     "en": "View Branches",
-    "ar": "",
-    "ur": ""
+    "ar": "عرض الفروع",
+    "ur": "شاخیں دیکھیں"
   },
   {
     "key": "View Company Profile",
@@ -14972,8 +14972,8 @@
   {
     "key": "View Document Numbering Settings",
     "en": "View Document Numbering Settings",
-    "ar": "",
-    "ur": ""
+    "ar": "عرض إعدادات ترقيم المستندات",
+    "ur": "دستاویز نمبرنگ کی ترتیبات دیکھیں"
   },
   {
     "key": "View Document Templates",
@@ -14984,8 +14984,8 @@
   {
     "key": "View Employees",
     "en": "View Employees",
-    "ar": "",
-    "ur": ""
+    "ar": "عرض الموظفين",
+    "ur": "ملازمین دیکھیں"
   },
   {
     "key": "View Expenses",
@@ -15008,8 +15008,8 @@
   {
     "key": "View Job Titles",
     "en": "View Job Titles",
-    "ar": "",
-    "ur": ""
+    "ar": "عرض المسميات الوظيفية",
+    "ur": "جاب ٹائٹلز دیکھیں"
   },
   {
     "key": "View Product Categories",
@@ -15026,14 +15026,14 @@
   {
     "key": "View Purchase Bills",
     "en": "View Purchase Bills",
-    "ar": "",
-    "ur": ""
+    "ar": "عرض فواتير الشراء",
+    "ur": "پرچیز بلز دیکھیں"
   },
   {
     "key": "View Purchase Returns",
     "en": "View Purchase Returns",
-    "ar": "",
-    "ur": ""
+    "ar": "عرض مرتجعات الشراء",
+    "ur": "پرچیز ریٹرن دیکھیں"
   },
   {
     "key": "View Quotation Book",
@@ -15062,8 +15062,8 @@
   {
     "key": "View Stock Takes",
     "en": "View Stock Takes",
-    "ar": "",
-    "ur": ""
+    "ar": "عرض عمليات الجرد",
+    "ur": "اسٹاک ٹیک دیکھیں"
   },
   {
     "key": "View Tax Slabs",
@@ -15080,8 +15080,8 @@
   {
     "key": "View VAT Returns",
     "en": "View VAT Returns",
-    "ar": "",
-    "ur": ""
+    "ar": "عرض إقرارات ضريبة القيمة المضافة",
+    "ur": "VAT ریٹرنز دیکھیں"
   },
   {
     "key": "View Vendors Directory",
@@ -15092,14 +15092,14 @@
   {
     "key": "View Warehouse Dispatches",
     "en": "View Warehouse Dispatches",
-    "ar": "",
-    "ur": ""
+    "ar": "عرض عمليات صرف المستودع",
+    "ur": "گودام ڈسپیچ دیکھیں"
   },
   {
     "key": "View Warehouse Receivings",
     "en": "View Warehouse Receivings",
-    "ar": "",
-    "ur": ""
+    "ar": "عرض عمليات استلام المستودع",
+    "ur": "گودام وصولی دیکھیں"
   },
   {
     "key": "View Warehouses",
@@ -15254,8 +15254,8 @@
   {
     "key": "Warehouse Transfer Reconciliation Report",
     "en": "Warehouse Transfer Reconciliation Report",
-    "ar": "",
-    "ur": ""
+    "ar": "تقرير تسوية تحويلات المستودع",
+    "ur": "گودام ٹرانسفر ریکنسیلیئیشن رپورٹ"
   },
   {
     "key": "Warehouse Type",
@@ -15302,8 +15302,8 @@
   {
     "key": "What is this template for?",
     "en": "What is this template for?",
-    "ar": "",
-    "ur": ""
+    "ar": "ما الغرض من هذا القالب؟",
+    "ur": "یہ ٹیمپلیٹ کس لیے ہے؟"
   },
   {
     "key": "Width",
@@ -15892,5 +15892,203 @@
     "en": "Onboarding Requests",
     "ar": "طلبات الانضمام",
     "ur": "آن بورڈنگ درخواستیں"
+  },
+  {
+    "key": "A Solid Card gives the Seller block the same bordered treatment as the Customer block beside it, for a matched, deliberate pair instead of two different styles side by side.",
+    "en": "A Solid Card gives the Seller block the same bordered treatment as the Customer block beside it, for a matched, deliberate pair instead of two different styles side by side.",
+    "ar": "تمنح البطاقة الصلبة قسم البائع نفس المعالجة المؤطرة الخاصة بقسم العميل المجاور له، لتحصل على زوج متطابق ومتناسق بدلاً من نمطين مختلفين جنبًا إلى جنب.",
+    "ur": "سولڈ کارڈ سیلر بلاک کو کسٹمر بلاک جیسا ہی بارڈر والا انداز دیتا ہے، تاکہ دونوں ایک جیسے اور ہم آہنگ نظر آئیں بجائے اس کے کہ ساتھ ساتھ دو مختلف اسٹائل ہوں۔"
+  },
+  {
+    "key": "Anchor Notes/QR/Totals to page bottom",
+    "en": "Anchor Notes/QR/Totals to page bottom",
+    "ar": "تثبيت الملاحظات/رمز الاستجابة السريعة/الإجماليات في أسفل الصفحة",
+    "ur": "نوٹس/QR/ٹوٹلز کو صفحے کے نیچے فکس کریں"
+  },
+  {
+    "key": "Awaiting Email Confirmation",
+    "en": "Awaiting Email Confirmation",
+    "ar": "بانتظار تأكيد البريد الإلكتروني",
+    "ur": "ای میل کی تصدیق کا انتظار"
+  },
+  {
+    "key": "Confirm Rejection",
+    "en": "Confirm Rejection",
+    "ar": "تأكيد الرفض",
+    "ur": "مسترد کرنے کی تصدیق کریں"
+  },
+  {
+    "key": "Create Modifier Groups",
+    "en": "Create Modifier Groups",
+    "ar": "إنشاء مجموعات المعدّلات",
+    "ur": "موڈیفائر گروپس بنائیں"
+  },
+  {
+    "key": "Deactivate Modifier Groups",
+    "en": "Deactivate Modifier Groups",
+    "ar": "تعطيل مجموعات المعدّلات",
+    "ur": "موڈیفائر گروپس غیر فعال کریں"
+  },
+  {
+    "key": "Edit Modifier Groups",
+    "en": "Edit Modifier Groups",
+    "ar": "تعديل مجموعات المعدّلات",
+    "ur": "موڈیفائر گروپس میں ترمیم کریں"
+  },
+  {
+    "key": "Email Verified",
+    "en": "Email Verified",
+    "ar": "تم التحقق من البريد الإلكتروني",
+    "ur": "ای میل کی تصدیق ہو گئی"
+  },
+  {
+    "key": "Flat (No border) — Default",
+    "en": "Flat (No border) — Default",
+    "ar": "مسطّح (بدون إطار) — افتراضي",
+    "ur": "فلیٹ (بغیر بارڈر) — ڈیفالٹ"
+  },
+  {
+    "key": "Gives the seller name and VAT/CR their own fixed color instead of following the company’s portal-wide theme color — useful for a template with its own consistent brand accent.",
+    "en": "Gives the seller name and VAT/CR their own fixed color instead of following the company’s portal-wide theme color — useful for a template with its own consistent brand accent.",
+    "ar": "يمنح اسم البائع ورقم ضريبة القيمة المضافة/السجل التجاري لونًا ثابتًا خاصًا بهما بدلاً من اتباع لون سمة البوابة العام للشركة — مفيد لقالب له لمسة علامة تجارية ثابتة خاصة به.",
+    "ur": "سیلر کے نام اور VAT/CR کو کمپنی کے عمومی پورٹل تھیم کلر کی بجائے اپنا مقررہ رنگ دیتا ہے — یہ ایسے ٹیمپلیٹ کے لیے مفید ہے جس کا اپنا ایک مستقل برانڈ رنگ ہو۔"
+  },
+  {
+    "key": "Leave blank to default to 123456 — either way, forced to change it on first login unless unchecked below",
+    "en": "Leave blank to default to 123456 — either way, forced to change it on first login unless unchecked below",
+    "ar": "اتركه فارغًا لاستخدام 123456 افتراضيًا — في كلتا الحالتين، سيُطلب تغييره عند أول تسجيل دخول ما لم يتم إلغاء تحديد الخيار أدناه",
+    "ur": "خالی چھوڑنے پر ڈیفالٹ 123456 استعمال ہوگا — دونوں صورتوں میں، پہلی لاگ ان پر تبدیل کرنا لازمی ہوگا جب تک نیچے دیا گیا آپشن ان-چیک نہ کیا جائے"
+  },
+  {
+    "key": "Makes the preview show a full A4-height page with this row pinned to the bottom, instead of sitting directly under a short items table. Preview only — never affects the actual printed page height.",
+    "en": "Makes the preview show a full A4-height page with this row pinned to the bottom, instead of sitting directly under a short items table. Preview only — never affects the actual printed page height.",
+    "ar": "يجعل المعاينة تعرض صفحة بارتفاع A4 كامل مع تثبيت هذا الصف في الأسفل، بدلاً من وضعه مباشرة أسفل جدول أصناف قصير. للمعاينة فقط — لا يؤثر أبدًا على ارتفاع الصفحة المطبوعة الفعلي.",
+    "ur": "پیش نظارہ مکمل A4 اونچائی کا صفحہ دکھاتا ہے جس میں یہ قطار نیچے فکس ہوتی ہے، بجائے اس کے کہ مختصر آئٹمز ٹیبل کے فوراً نیچے آئے۔ صرف پیش نظارے کے لیے — اصل پرنٹ شدہ صفحے کی اونچائی پر کبھی اثر نہیں پڑتا۔"
+  },
+  {
+    "key": "Max Discount %",
+    "en": "Max Discount %",
+    "ar": "الحد الأقصى للخصم %",
+    "ur": "زیادہ سے زیادہ رعایت %"
+  },
+  {
+    "key": "Max Discount Amount",
+    "en": "Max Discount Amount",
+    "ar": "الحد الأقصى لمبلغ الخصم",
+    "ur": "زیادہ سے زیادہ رعایت کی رقم"
+  },
+  {
+    "key": "Optional reason (shown to the requester by email)",
+    "en": "Optional reason (shown to the requester by email)",
+    "ar": "سبب اختياري (يُعرض لمقدّم الطلب عبر البريد الإلكتروني)",
+    "ur": "اختیاری وجہ (درخواست دہندہ کو ای میل کے ذریعے دکھائی جائے گی)"
+  },
+  {
+    "key": "Registered",
+    "en": "Registered",
+    "ar": "مسجّل",
+    "ur": "رجسٹرڈ"
+  },
+  {
+    "key": "Require password change on next login",
+    "en": "Require password change on next login",
+    "ar": "طلب تغيير كلمة المرور عند تسجيل الدخول التالي",
+    "ur": "اگلی لاگ ان پر پاس ورڈ تبدیل کرنا لازمی بنائیں"
+  },
+  {
+    "key": "Resend Confirmation",
+    "en": "Resend Confirmation",
+    "ar": "إعادة إرسال التأكيد",
+    "ur": "تصدیق دوبارہ بھیجیں"
+  },
+  {
+    "key": "Solid Card — matches Customer box",
+    "en": "Solid Card — matches Customer box",
+    "ar": "بطاقة صلبة — تطابق مربع العميل",
+    "ur": "سولڈ کارڈ — کسٹمر باکس سے مماثل"
+  },
+  {
+    "key": "The contact has not yet clicked the confirmation link we emailed them.",
+    "en": "The contact has not yet clicked the confirmation link we emailed them.",
+    "ar": "لم تنقر جهة الاتصال بعد على رابط التأكيد الذي أرسلناه لها عبر البريد الإلكتروني.",
+    "ur": "رابطہ کار نے ابھی تک وہ تصدیقی لنک نہیں کھولا جو ہم نے ای میل کے ذریعے بھیجا تھا۔"
+  },
+  {
+    "key": "This account will log in with the email address below — there is no separate username to set.",
+    "en": "This account will log in with the email address below — there is no separate username to set.",
+    "ar": "سيُسجّل هذا الحساب الدخول باستخدام عنوان البريد الإلكتروني أدناه — لا يوجد اسم مستخدم منفصل لتعيينه.",
+    "ur": "یہ اکاؤنٹ نیچے دیے گئے ای میل ایڈریس سے لاگ ان ہوگا — الگ سے کوئی یوزر نیم مقرر کرنے کی ضرورت نہیں۔"
+  },
+  {
+    "key": "This request cannot be approved until the contact confirms their email.",
+    "en": "This request cannot be approved until the contact confirms their email.",
+    "ar": "لا يمكن الموافقة على هذا الطلب حتى تؤكد جهة الاتصال بريدها الإلكتروني.",
+    "ur": "جب تک رابطہ کار اپنا ای میل تصدیق نہیں کرتا، یہ درخواست منظور نہیں کی جا سکتی۔"
+  },
+  {
+    "key": "View Modifier Groups",
+    "en": "View Modifier Groups",
+    "ar": "عرض مجموعات المعدّلات",
+    "ur": "موڈیفائر گروپس دیکھیں"
+  },
+  {
+    "key": "Whichever limit is reached first applies. Leave at 0 to block all discounts for this role even though the leaf is checked.",
+    "en": "Whichever limit is reached first applies. Leave at 0 to block all discounts for this role even though the leaf is checked.",
+    "ar": "يُطبَّق أي حد يتم الوصول إليه أولاً. اتركه عند 0 لمنع جميع الخصومات لهذا الدور حتى لو كان الخيار محددًا.",
+    "ur": "جو حد پہلے پوری ہو وہی لاگو ہوگی۔ اس کردار کے لیے تمام رعایتیں روکنے کے لیے 0 پر چھوڑیں، چاہے آپشن منتخب ہو۔"
+  },
+  {
+    "key": "e.g. +966 5x xxx xxxx",
+    "en": "e.g. +966 5x xxx xxxx",
+    "ar": "مثال: +966 5x xxx xxxx",
+    "ur": "مثال: +966 5x xxx xxxx"
+  },
+  {
+    "key": "e.g. Sarah Al-Amin",
+    "en": "e.g. Sarah Al-Amin",
+    "ar": "مثال: سارة الأمين",
+    "ur": "مثال: سارہ الامین"
+  },
+  {
+    "key": "Customer Code",
+    "en": "Customer Code",
+    "ar": "رمز العميل",
+    "ur": "کسٹمر کوڈ"
+  },
+  {
+    "key": "Item SKU",
+    "en": "Item SKU",
+    "ar": "رمز الصنف (SKU)",
+    "ur": "آئٹم SKU"
+  },
+  {
+    "key": "Only takes effect before this sequence has ever issued a number — changing it afterward has no effect.",
+    "en": "Only takes effect before this sequence has ever issued a number — changing it afterward has no effect.",
+    "ar": "لا يسري إلا قبل أن يُصدر هذا التسلسل أي رقم — تغييره لاحقًا لن يكون له أي تأثير.",
+    "ur": "یہ صرف اس وقت مؤثر ہے جب اس سیکوئنس نے ابھی تک کوئی نمبر جاری نہ کیا ہو — بعد میں تبدیل کرنے کا کوئی اثر نہیں ہوگا۔"
+  },
+  {
+    "key": "Return Window (days)",
+    "en": "Return Window (days)",
+    "ar": "مدة الإرجاع (أيام)",
+    "ur": "واپسی کی مدت (دن)"
+  },
+  {
+    "key": "Start Number",
+    "en": "Start Number",
+    "ar": "رقم البداية",
+    "ur": "ابتدائی نمبر"
+  },
+  {
+    "key": "Start Number only matters before this sequence has ever issued a number — it has no effect once the first one is already out.",
+    "en": "Start Number only matters before this sequence has ever issued a number — it has no effect once the first one is already out.",
+    "ar": "رقم البداية له أهمية فقط قبل أن يُصدر هذا التسلسل أي رقم — لا تأثير له بمجرد صدور الرقم الأول.",
+    "ur": "ابتدائی نمبر صرف اس وقت اہم ہے جب اس سیکوئنس نے ابھی تک کوئی نمبر جاری نہ کیا ہو — پہلا نمبر جاری ہونے کے بعد اس کا کوئی اثر نہیں۔"
+  },
+  {
+    "key": "Vendor Code",
+    "en": "Vendor Code",
+    "ar": "رمز المورد",
+    "ur": "وینڈر کوڈ"
   }
 ]
