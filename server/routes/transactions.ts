@@ -1,7 +1,7 @@
 import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
-import { eq, inArray, and, desc, or, isNull } from 'drizzle-orm';
+import { eq, inArray, and, asc, desc, or, isNull, count, sql, gte, lte, ne } from 'drizzle-orm';
 import { validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, postCreditNoteReversalVoucher, round2, round4, computePaymentStatus, computeInvoiceServerTotals, deductStockForSale, restockForSaleReversal, assertQuarterNotFiled, resolveSaleWarehouse, assertStockAvailable, assertProductsOwnedByCompany, cancelExpense } from '../lib/businessLogic.js';
 import { computeMonthPnL } from '../lib/financialReports.js';
 import { toBaseQuantity, toBaseUnitCost, loadZatcaCodesByUnitId } from '../lib/uomConversion.js';
@@ -10,7 +10,7 @@ import { isStillChainTip, setHashChainState, ZatcaEnvironment } from '../lib/zat
 import { normalizePermissions } from '../../src/types.js';
 import { processInvoiceZatca } from '../lib/zatca/processInvoice.js';
 import { hasPermission, assertOwnsRow, resolveDocumentBranchId, branchAccessOk, resolveUserDiscountCap, verifyOverrideCredentials } from '../lib/authz.js';
-import { parseLimitOffset } from '../lib/pagination.js';
+import { parseLimitOffset, parsePageSort, wantsPaged } from '../lib/pagination.js';
 import { generateId } from '../../src/id.js';
 import { normalizeZatcaUnitCode } from '../../src/zatcaUnitCodes.js';
 import { recordAuditLog } from '../lib/audit.js';
@@ -59,6 +59,13 @@ async function assertDocumentRefsOwnedByCompany(dbOrTx: any, companyId: string, 
   return null;
 }
 
+const QUOTATIONS_SORTABLE = {
+  quotationNumber: schema.quotations.quotationNumber,
+  date: schema.quotations.date,
+  createdAt: schema.quotations.createdAt,
+  status: schema.quotations.status,
+} as const;
+
 router.get('/quotations', withTenantDb, async (req: any, res) => {
   try {
     const tdb = tenantDb();
@@ -69,17 +76,49 @@ router.get('/quotations', withTenantDb, async (req: any, res) => {
     if (!(req.user.role === 'admin' || req.user.isSuperAdmin)) {
       conditions.push(eq(schema.quotations.createdById, req.user.id));
     }
-    const { limit, offset } = parseLimitOffset(req);
-    const quotations = await tdb.select().from(schema.quotations).where(and(...conditions))
-      .orderBy(desc(schema.quotations.createdAt)).limit(limit).offset(offset);
+    const search = String(req.query?.search || '').trim();
+    if (search) {
+      conditions.push(sql`${schema.quotations.quotationNumber} ILIKE ${'%' + search + '%'}`);
+    }
+    const whereClause = and(...conditions);
+    const paged = wantsPaged(req);
+
+    let quotations: (typeof schema.quotations.$inferSelect)[];
+    let total = 0;
+    let pageMeta: { page: number; pageSize: number } | null = null;
+    if (paged) {
+      const { pageSize, offset, sortBy, sortDir, page } = parsePageSort(req, QUOTATIONS_SORTABLE, 'createdAt', 'desc');
+      const orderFn = sortDir === 'asc' ? asc : desc;
+      let countResult: { value: number }[];
+      [countResult, quotations] = await Promise.all([
+        tdb.select({ value: count() }).from(schema.quotations).where(whereClause),
+        tdb.select().from(schema.quotations).where(whereClause).orderBy(orderFn(QUOTATIONS_SORTABLE[sortBy])).limit(pageSize).offset(offset),
+      ]);
+      total = countResult[0].value;
+      pageMeta = { page, pageSize };
+    } else {
+      const { limit, offset } = parseLimitOffset(req);
+      quotations = await tdb.select().from(schema.quotations).where(whereClause)
+        .orderBy(desc(schema.quotations.createdAt)).limit(limit).offset(offset);
+    }
 
     const quotIds = quotations.map(q => q.id);
     const items = quotIds.length > 0 ? await tdb.select().from(schema.quotationItems).where(inArray(schema.quotationItems.quotationId, quotIds)) : [];
 
-    res.json(quotations.map(q => ({
+    // Drizzle returns decimal columns as strings — convert to numbers here the same way
+    // src/db/apiState.ts's quotationsWithItems does for db.quotations, so client code
+    // (e.g. calculateInvoiceTotals, .toFixed()) sees the same shape from either source.
+    const rows = quotations.map(q => ({
       ...q,
-      items: items.filter(i => i.quotationId === q.id)
-    })));
+      items: items.filter(i => i.quotationId === q.id).map(i => ({
+        ...i,
+        unitCost: Number(i.unitCost),
+        quantity: Number(i.quantity),
+        discountAmount: i.discountAmount ? Number(i.discountAmount) : undefined,
+      })),
+      discountPercentage: q.discountPercentage ? Number(q.discountPercentage) : undefined,
+    }));
+    res.json(paged ? { rows, total, ...pageMeta! } : rows);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -468,8 +507,17 @@ router.post('/quotations/:id/convert', withTenantDb, async (req: any, res) => {
 });
 
 // --- Invoices ---
+const INVOICES_SORTABLE = {
+  invoiceNumber: schema.invoices.invoiceNumber,
+  date: schema.invoices.date,
+  createdAt: schema.invoices.createdAt,
+  status: schema.invoices.status,
+  paymentStatus: schema.invoices.paymentStatus,
+} as const;
+
 router.get('/invoices', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.invoice.read.enabled) return res.status(403).json({ error: 'Forbidden' });
 
@@ -478,10 +526,83 @@ router.get('/invoices', withTenantDb, async (req: any, res) => {
     if (req.user.role !== 'admin' && !req.user.isSuperAdmin) {
       conditions.push(eq(schema.invoices.createdById, req.user.id));
     }
-    const { limit, offset } = parseLimitOffset(req);
-    const invoices = await tenantDb().select().from(schema.invoices).where(and(...conditions))
-      .orderBy(desc(schema.invoices.createdAt)).limit(limit).offset(offset);
-    res.json(invoices);
+    const search = String(req.query?.search || '').trim();
+    if (search) {
+      conditions.push(sql`${schema.invoices.invoiceNumber} ILIKE ${'%' + search + '%'}`);
+    }
+    // Server-side equivalents of InvoiceModule.tsx's own client-side filteredInvoices logic
+    // (kept byte-for-byte equivalent in meaning) — all still scoped by the whereClause's own
+    // companyId condition above, never by anything client-supplied.
+    const startDate = String(req.query?.startDate || '').trim();
+    if (startDate) conditions.push(gte(schema.invoices.date, startDate));
+    const endDate = String(req.query?.endDate || '').trim();
+    if (endDate) conditions.push(lte(schema.invoices.date, endDate));
+    if (req.query?.status === 'Unpaid') {
+      conditions.push(ne(schema.invoices.paymentStatus, 'Paid'));
+      conditions.push(eq(schema.invoices.status, 'Active'));
+    }
+    const zatcaStatusFilter = String(req.query?.zatcaStatus || 'All');
+    if (zatcaStatusFilter === 'CLEARED_REPORTED') {
+      conditions.push(inArray(schema.invoices.zatcaStatus, ['CLEARED', 'REPORTED']));
+    } else if (zatcaStatusFilter === 'PENDING') {
+      conditions.push(eq(schema.invoices.zatcaStatus, 'PENDING'));
+    } else if (zatcaStatusFilter === 'REJECTED_ERROR') {
+      conditions.push(inArray(schema.invoices.zatcaStatus, ['REJECTED', 'ERROR']));
+    } else if (zatcaStatusFilter === 'NOT_SUBMITTED') {
+      conditions.push(or(isNull(schema.invoices.zatcaStatus), eq(schema.invoices.zatcaStatus, 'NOT_SUBMITTED'))!);
+    }
+    const docTypeFilter = String(req.query?.docType || 'All');
+    if (docTypeFilter !== 'All') {
+      conditions.push(docTypeFilter === 'Invoice'
+        ? or(isNull(schema.invoices.documentType), eq(schema.invoices.documentType, 'Invoice'))!
+        : eq(schema.invoices.documentType, docTypeFilter));
+    }
+    const originFilter = String(req.query?.origin || 'All');
+    if (originFilter === 'POS') conditions.push(eq(schema.invoices.isPosSale, true));
+    else if (originFilter === 'Manual') conditions.push(or(isNull(schema.invoices.isPosSale), eq(schema.invoices.isPosSale, false))!);
+
+    const whereClause = and(...conditions);
+    const paged = wantsPaged(req);
+
+    let invoices: (typeof schema.invoices.$inferSelect)[];
+    let total = 0;
+    let pageMeta: { page: number; pageSize: number } | null = null;
+    if (!paged) {
+      const { limit, offset } = parseLimitOffset(req);
+      invoices = await tdb.select().from(schema.invoices).where(whereClause)
+        .orderBy(desc(schema.invoices.createdAt)).limit(limit).offset(offset);
+    } else {
+      const { pageSize, offset, sortBy, sortDir, page } = parsePageSort(req, INVOICES_SORTABLE, 'createdAt', 'desc');
+      const orderFn = sortDir === 'asc' ? asc : desc;
+      let countResult: { value: number }[];
+      [countResult, invoices] = await Promise.all([
+        tdb.select({ value: count() }).from(schema.invoices).where(whereClause),
+        tdb.select().from(schema.invoices).where(whereClause).orderBy(orderFn(INVOICES_SORTABLE[sortBy])).limit(pageSize).offset(offset),
+      ]);
+      total = countResult[0].value;
+      pageMeta = { page, pageSize };
+    }
+
+    // Each row's line items — needed client-side to compute the row's own grand total
+    // (calculateInvoiceTotals) for display, same as GET /quotations above.
+    const invoiceIds = invoices.map(i => i.id);
+    const items = invoiceIds.length > 0 ? await tdb.select().from(schema.invoiceItems).where(inArray(schema.invoiceItems.invoiceId, invoiceIds)) : [];
+    // Drizzle returns decimal columns as strings — convert to numbers here the same way
+    // src/db/apiState.ts's invoicesWithItems does for db.invoices, so client code
+    // (e.g. calculateInvoiceTotals, .toFixed()) sees the same shape from either source.
+    const rows = invoices.map(inv => ({
+      ...inv,
+      items: items.filter(i => i.invoiceId === inv.id).map(i => ({
+        ...i,
+        unitCost: Number(i.unitCost),
+        quantity: Number(i.quantity),
+        discountAmount: i.discountAmount ? Number(i.discountAmount) : undefined,
+      })),
+      discountPercentage: inv.discountPercentage ? Number(inv.discountPercentage) : undefined,
+      discountAmount: inv.discountAmount ? Number(inv.discountAmount) : undefined,
+      amountPaid: inv.amountPaid ? Number(inv.amountPaid) : undefined,
+    }));
+    res.json(paged ? { rows, total, ...pageMeta! } : rows);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

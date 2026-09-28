@@ -8,6 +8,8 @@ import { Invoice, InvoiceItem, Customer, TaxSlab, BankAccount, User, normalizePe
 import StatusPill, { StatusPillTone } from './StatusPill';
 import ItemCatalogSearch from './ItemCatalogSearch';
 import PartySearchSelect from './PartySearchSelect';
+import { usePaginatedList } from '../usePaginatedList';
+import { RowNumberTd, PaginationFooter } from './PaginationControls';
 import {
   Plus,
   Trash,
@@ -81,14 +83,6 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  const openMonth = getActiveOpenMonth(db, db.selectedCompanyId);
  const currencySymbol = db.companySetup?.currency || 'SAR';
 
- // Sorting state (default: createdAt descending, so newly added is on top!)
- const [sortField, setSortField] = React.useState<string>('createdAt');
- const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('desc');
-
- // Pagination state
- const [currentPage, setCurrentPage] = React.useState(1);
- const itemsPerPage = 20;
-
  // List Filters — default to start of the current month through today.
  const [filterStartDate, setFilterStartDate] = React.useState<string>(() => getMonthToDateRange().start);
  const [filterEndDate, setFilterEndDate] = React.useState<string>(() => getMonthToDateRange().end);
@@ -100,49 +94,6 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  // already used server-side (server/routes/pos.ts) but this list never exposed a filter
  // for it.
  const [filterOrigin, setFilterOrigin] = React.useState<'All' | 'POS' | 'Manual'>('All');
-
- // Update filters if openMonth changes
-  // Filter Invoices
-  const filteredInvoices = React.useMemo(() => {
-    return db.invoices.filter(inv => {
-      // Company Filter
-      if (inv.companyId !== db.selectedCompanyId) return false;
-
-      // Date & Status Filters
-      if (filterStartDate && inv.date < filterStartDate) return false;
-      if (filterEndDate && inv.date > filterEndDate) return false;
-      if (filterStatus === "Unpaid" && (inv.paymentStatus === "Paid" || inv.status !== "Active")) return false;
-
-      // ZATCA Status Filter
-      if (filterZatcaStatus !== 'All') {
-        const zStatus = inv.zatcaStatus || 'NOT_SUBMITTED';
-        if (filterZatcaStatus === 'CLEARED_REPORTED' && zStatus !== 'CLEARED' && zStatus !== 'REPORTED') return false;
-        if (filterZatcaStatus === 'PENDING' && zStatus !== 'PENDING') return false;
-        if (filterZatcaStatus === 'REJECTED_ERROR' && zStatus !== 'REJECTED' && zStatus !== 'ERROR') return false;
-        if (filterZatcaStatus === 'NOT_SUBMITTED' && zStatus !== 'NOT_SUBMITTED') return false;
-      }
-
-      // Document Type Filter (Invoice / Credit Note / Debit Note) — these all live in
-      // the same table (see BACKLOG.md item 32), previously indistinguishable in this
-      // list except by reading the invoice number prefix.
-      if (filterDocType !== 'All') {
-        const docType = inv.documentType || 'Invoice';
-        if (docType !== filterDocType) return false;
-      }
-
-      // Origin Filter (POS-sold vs. manually-created back-office) — see filterOrigin's
-      // own declaration comment.
-      if (filterOrigin === 'POS' && !(inv as any).isPosSale) return false;
-      if (filterOrigin === 'Manual' && (inv as any).isPosSale) return false;
-
-      return userPermissions.invoice.read.enabled || (currentUser?.id ? inv.createdById === currentUser.id : false);
-    });
-  }, [db.invoices, db.selectedCompanyId, filterStartDate, filterEndDate, filterStatus, filterZatcaStatus, filterDocType, filterOrigin, isAdmin, currentUser]);
-
- // Reset page when length changes
- React.useEffect(() => {
- setCurrentPage(1);
- }, [filteredInvoices.length]);
 
  // Notifications
  const [success, setSuccess] = React.useState<string | null>(null);
@@ -196,6 +147,17 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  const [viewAttachment, setViewAttachment] = React.useState<string | null>(null);
  const [view] = React.useState<'list' | 'create'>(mode === 'add' ? 'create' : 'list');
  const [isSavingInvoice, setIsSavingInvoice] = React.useState(false);
+
+ // Real server-side pagination (GET /api/invoices) replacing the old client-side filter
+ // over the capped `db.invoices` array — see
+ // .claude/skills/server-side-report-aggregation/SKILL.md. Company scoping and the
+ // admin-vs-own-records visibility rule are both enforced server-side in GET /api/invoices
+ // (server/routes/transactions.ts); the filter dropdowns above are passed through as query
+ // params, mirroring exactly what the old client-side filteredInvoices did.
+ const invoicesList = usePaginatedList<Invoice>('/api/transactions/invoices', 50, view === 'list', {
+   startDate: filterStartDate, endDate: filterEndDate, status: filterStatus,
+   zatcaStatus: filterZatcaStatus, docType: filterDocType, origin: filterOrigin,
+ });
 
  // Form states
  const [formDate, setFormDate] = React.useState('');
@@ -529,80 +491,15 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  return totals.grandTotal;
  };
 
- // Sorting handler
- const handleSort = (field: string) => {
- if (sortField === field) {
- setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
- } else {
- setSortField(field);
- setSortOrder('asc');
- }
- setCurrentPage(1);
- };
-
- // Sort invoices
- const sortedInvoices = React.useMemo(() => {
- const list = [...filteredInvoices];
- 
- if (sortField === 'createdAt') {
- list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
- return list;
- }
-
- list.sort((a, b) => {
- let valA: any = a[sortField as keyof Invoice];
- let valB: any = b[sortField as keyof Invoice];
-
- if (sortField === 'customer') {
- const custA = db.customers.find(c => c.id === a.customerId)?.name || '';
- const custB = db.customers.find(c => c.id === b.customerId)?.name || '';
- valA = custA.toLowerCase();
- valB = custB.toLowerCase();
- } else if (sortField === 'bank') {
- const bankA = db.banks.find(bk => bk.id === a.bankId)?.bankName || '';
- const bankB = db.banks.find(bk => bk.id === b.bankId)?.bankName || '';
- valA = bankA.toLowerCase();
- valB = bankB.toLowerCase();
- } else if (sortField === 'grandTotal') {
- valA = getInvoiceTotal(a);
- valB = getInvoiceTotal(b);
- } else {
- if (typeof valA === 'string') valA = valA.toLowerCase();
- if (typeof valB === 'string') valB = valB.toLowerCase();
- }
-
- // Fallback secondary sort: newest on top
- if (valA === valB || valA === undefined || valB === undefined) {
- return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
- }
-
- if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
- if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
- return 0;
- });
-
- return list;
- }, [filteredInvoices, sortField, sortOrder, db.customers, db.banks]);
-
- // Paginated invoices
- const totalPages = Math.ceil(sortedInvoices.length / itemsPerPage);
- const paginatedInvoices = React.useMemo(() => {
- const startIdx = (currentPage - 1) * itemsPerPage;
- return sortedInvoices.slice(startIdx, startIdx + itemsPerPage);
- }, [sortedInvoices, currentPage]);
-
- // KPI Analytics
- const activeInvoices = React.useMemo(() => {
-   return filteredInvoices.filter(i => i.status === 'Active');
- }, [filteredInvoices]);
-
  // Fetched from GET /api/reports/invoice-kpis (server/lib/financialReports.ts) with the
- // SAME filter params as filteredInvoices above, instead of summed client-side from
+ // SAME filter params passed to invoicesList above, instead of summed client-side from
  // db.invoices — see .claude/skills/server-side-report-aggregation/SKILL.md. The server
  // version also fixes two real bugs found while porting: a Credit Note previously
  // inflated "Total Invoiced" instead of reducing it (no sign applied), and "Total
  // Collected" is now the same Paid-uses-grandTotal-else-amountPaid logic, correctly signed.
- const [invoiceKpis, setInvoiceKpis] = React.useState({ totalInvoiced: 0, totalCollected: 0 });
+ // paidCount/pendingCount were added alongside the pagination migration so these KPI cards
+ // no longer depend on the (now removed) full client-side invoices list.
+ const [invoiceKpis, setInvoiceKpis] = React.useState({ totalInvoiced: 0, totalCollected: 0, paidCount: 0, pendingCount: 0 });
  React.useEffect(() => {
    if (!db.selectedCompanyId) return;
    let cancelled = false;
@@ -618,14 +515,14 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  const kpiTotalCollected = invoiceKpis.totalCollected;
 
  const kpiPendingBalance = kpiTotalInvoiced - kpiTotalCollected;
- const kpiPaidCount = activeInvoices.filter(i => i.paymentStatus === 'Paid').length;
- const kpiPendingCount = activeInvoices.filter(i => i.paymentStatus === 'Unpaid' || i.paymentStatus === 'Partially Paid').length;
+ const kpiPaidCount = invoiceKpis.paidCount;
+ const kpiPendingCount = invoiceKpis.pendingCount;
 
  const renderSortableHeader = (label: string, field: string, align: 'left' | 'center' | 'right' = 'left') => {
- const isCurrent = sortField === field;
+ const isCurrent = invoicesList.sortBy === field;
  return (
  <th
- onClick={() => handleSort(field)}
+ onClick={() => invoicesList.toggleSort(field)}
  className={`p-3 cursor-pointer select-none hover:bg-slate-100 :bg-slate-800 transition-colors ${
  align === 'right' ? 'text-end' : align === 'center' ? 'text-center' : 'text-start'
  }`}
@@ -635,7 +532,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  }`}>
  <span>{label}</span>
  {isCurrent ? (
- sortOrder === 'asc' ? <ChevronUp className="w-3.5 h-3.5 text-indigo-600 inline" /> : <ChevronDown className="w-3.5 h-3.5 text-indigo-600 inline" />
+ invoicesList.sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5 text-indigo-600 inline" /> : <ChevronDown className="w-3.5 h-3.5 text-indigo-600 inline" />
  ) : (
  <ChevronDown className="w-3 h-3 text-slate-300 opacity-40 inline" />
  )}
@@ -678,7 +575,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
        </div>
        <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1 font-semibold">
          <Sparkles className="w-3 h-3 text-amber-400" />
-         <span>{filteredInvoices.length} {t("invoices in scope")}</span>
+         <span>{invoicesList.total} {t("invoices in scope")}</span>
        </div>
      </div>
 
@@ -748,7 +645,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
    <Receipt className="w-4 h-4 text-indigo-600" />
    <span>{t("Sales Invoices Workspace")}</span>
    <span className="text-[10px] font-bold text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-full">
-     {filteredInvoices.length}
+     {invoicesList.total}
    </span>
  </h4>
  <div className="flex items-center gap-2 mt-1">
@@ -844,27 +741,32 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  <table className="w-full text-xs text-start">
  <thead>
  <tr className="bg-slate-50/50 border-b border-slate-100 text-slate-500 uppercase tracking-wider text-[10px]">
+ <th className="p-3 text-start w-10">#</th>
  {renderSortableHeader(t('Invoice No'), 'invoiceNumber')}
  <th className="p-3 text-center">{t('Type')}</th>
  {renderSortableHeader(t('Date'), 'date')}
- {renderSortableHeader(t('Customer'), 'customer')}
- {renderSortableHeader(t('Post Bank'), 'bank')}
- {renderSortableHeader(t('Grand Total'), 'grandTotal', 'right')}
+ <th className="p-3 text-start">{t('Customer')}</th>
+ <th className="p-3 text-start">{t('Post Bank')}</th>
+ <th className="p-3 text-end">{t('Grand Total')}</th>
  {renderSortableHeader(t('Status'), 'status', 'center')}
  {renderSortableHeader(t('Payment'), 'paymentStatus', 'center')}
- {renderSortableHeader(t('ZATCA Status'), 'zatcaStatus', 'center')}
+ <th className="p-3 text-center">{t('ZATCA Status')}</th>
  <th className="p-3 text-end">{t('Actions')}</th>
  </tr>
  </thead>
  <tbody>
- {paginatedInvoices.length === 0 ? (
+ {invoicesList.loading ? (
  <tr>
- <td colSpan={9} className="p-8 text-center text-slate-400">
+ <td colSpan={11} className="p-8 text-center text-slate-400">{t('Loading...')}</td>
+ </tr>
+ ) : invoicesList.rows.length === 0 ? (
+ <tr>
+ <td colSpan={11} className="p-8 text-center text-slate-400">
  {t('No invoices issued for this period. Click "Issue Invoice" or convert from Quotations.')}
  </td>
  </tr>
  ) : (
- paginatedInvoices.map(inv => {
+ invoicesList.rows.map((inv, invIdx) => {
  const cust = db.customers.find(c => c.id === inv.customerId);
  const bank = db.banks.find(b => b.id === inv.bankId);
  // A Credit Note here is a full-document reversal (MVP scope) — a second one against the
@@ -877,6 +779,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
 
  return (
  <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-50/20">
+ <RowNumberTd page={invoicesList.page} pageSize={invoicesList.pageSize} index={invIdx} />
  <td className="p-3 font-bold text-slate-900">
  <div className="flex items-center gap-2">
  <button
@@ -1008,50 +911,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  </table>
  </div>
 
- {/* Pagination Bar */}
- {totalPages > 1 && (
- <div className="p-4 border-t border-slate-100 bg-slate-50/30 flex items-center justify-between flex-wrap gap-2">
- <p className="text-[11px] text-slate-400">
- Showing <span className="font-bold text-slate-700 ">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
- <span className="font-bold text-slate-700 ">
- {Math.min(currentPage * itemsPerPage, sortedInvoices.length)}
- </span>{' '}
- of <span className="font-bold text-slate-700 ">{sortedInvoices.length}</span> records
- </p>
- <div className="flex gap-1">
- <button
- type="button"
- disabled={currentPage === 1}
- onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
- className="px-2.5 py-1 rounded bg-white border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 :bg-slate-800 disabled:opacity-50 disabled:hover:bg-white :hover:bg-slate-950 transition text-xs"
- >
- Previous
- </button>
- {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
- <button
- key={page}
- type="button"
- onClick={() => setCurrentPage(page)}
- className={`px-3 py-1 rounded font-bold text-xs transition ${
- currentPage === page
- ? 'bg-indigo-600 text-white shadow-sm'
- : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 :bg-slate-800'
- }`}
- >
- {page}
- </button>
- ))}
- <button
- type="button"
- disabled={currentPage === totalPages}
- onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
- className="px-2.5 py-1 rounded bg-white border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 :bg-slate-800 disabled:opacity-50 disabled:hover:bg-white :hover:bg-slate-950 transition text-xs"
- >
- Next
- </button>
- </div>
- </div>
- )}
+ <PaginationFooter db={db} page={invoicesList.page} totalPages={invoicesList.totalPages} total={invoicesList.total} pageSize={invoicesList.pageSize} onPageChange={invoicesList.setPage} />
  </div>
  )}
 

@@ -5,6 +5,8 @@ import { generateId } from '../id';
 import { getMonthToDateRange } from '../dateUtils';
 import { Expense, ExpenseItem, Vendor, TaxSlab, BankAccount, User, normalizePermissions } from '../types';
 import ItemCatalogSearch from './ItemCatalogSearch';
+import { usePaginatedList } from '../usePaginatedList';
+import { RowNumberTd, PaginationFooter } from './PaginationControls';
 import {
  FileText,
  Plus,
@@ -51,14 +53,6 @@ export default function ExpenseModule({ db, onPrintDoc, mode, onDone, onCreateNe
  const userPermissions = normalizePermissions(currentUser?.permissions, currentUser?.role, currentUser?.isSuperAdmin);
  const openMonth = getActiveOpenMonth(db);
  const currencySymbol = db.companySetup?.currency || 'SAR';
-
- // Sorting state (default: createdAt descending, so newly added is on top!)
- const [sortField, setSortField] = React.useState<string>('createdAt');
- const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('desc');
-
- // Pagination state
- const [currentPage, setCurrentPage] = React.useState(1);
- const itemsPerPage = 20;
 
  // List Filters — default to start of the current month through today.
  const [filterStartDate, setFilterStartDate] = React.useState<string>(() => getMonthToDateRange().start);
@@ -119,27 +113,14 @@ export default function ExpenseModule({ db, onPrintDoc, mode, onDone, onCreateNe
  const [isSavingExpense, setIsSavingExpense] = React.useState(false);
   const [view] = React.useState<"list" | "create">(mode === 'add' ? 'create' : 'list');
 
-  // Filter based on role and active filters — reads straight from the shared
-  // `db.expenses` (populated by `/api/state`, refreshed via `onRefreshDb`); this used to
-  // be a separately-fetched local copy, which meant an expense created/updated elsewhere
-  // never appeared here without a hard page reload.
-  const filteredExpenses = db.expenses.filter(exp => {
-    const expCompanyId = exp.companyId;
-    if (expCompanyId !== db.selectedCompanyId) return false;
-
-    // Date & Status Filters
-    if (filterStartDate && exp.date < filterStartDate) return false;
-    if (filterEndDate && exp.date > filterEndDate) return false;
-    if (filterStatus === 'Unpaid' && (exp.paymentStatus === 'Paid' || exp.status !== 'Active')) return false;
-
-    if (userPermissions.expense.read.enabled) return true;
-    return exp.createdById === currentUser.id;
+  // Real server-side pagination (GET /api/expenses) replacing the old client-side filter
+  // over the capped `db.expenses` array — see
+  // .claude/skills/server-side-report-aggregation/SKILL.md. Company scoping and the
+  // admin-vs-own-records visibility rule are both enforced server-side in GET /api/expenses
+  // (server/routes/expenses.ts); the filter inputs above are passed through as query params.
+  const expensesList = usePaginatedList<Expense>('/api/expenses', 50, view === 'list', {
+    startDate: filterStartDate, endDate: filterEndDate, status: filterStatus,
   });
-
-  // Reset page when length changes
-  React.useEffect(() => {
-    setCurrentPage(1);
-  }, [filteredExpenses.length]);
 
 
  // Form states
@@ -376,6 +357,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  }
  triggerSuccess(`Expense ${payingExpense.expenseNumber} payment of ${amt} ${currencySymbol} received and payment voucher posted.`);
  if (onRefreshDb) await onRefreshDb();
+ expensesList.reload();
  // Auto-open the printable receipt right away — proof of disbursement on the spot.
  // Undefined for an Accrual-type expense (no voucher is created on that path).
  if (result.voucher) {
@@ -402,70 +384,17 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  }
  triggerSuccess('Expense cancelled successfully. Reversal vouchers generated in bank ledger.');
  if (onRefreshDb) await onRefreshDb();
+ expensesList.reload();
  } catch (err: any) {
  triggerError(err?.message || 'Failed to cancel expense — check your connection and try again.');
  }
  };
 
- // Sorting handler
- const handleSort = (field: string) => {
- if (sortField === field) {
- setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
- } else {
- setSortField(field);
- setSortOrder('asc');
- }
- setCurrentPage(1);
- };
-
- // Sort expenses
- const sortedExpenses = React.useMemo(() => {
- const list = [...filteredExpenses];
- 
- if (sortField === 'createdAt') {
- list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
- return list;
- }
-
- list.sort((a, b) => {
- let valA: any = a[sortField as keyof Expense];
- let valB: any = b[sortField as keyof Expense];
-
- if (sortField === 'vendor') {
- const vendA = db.vendors.find(v => v.id === a.vendorId)?.name || 'Cash Vendor';
- const vendB = db.vendors.find(v => v.id === b.vendorId)?.name || 'Cash Vendor';
- valA = vendA.toLowerCase();
- valB = vendB.toLowerCase();
- } else {
- if (typeof valA === 'string') valA = valA.toLowerCase();
- if (typeof valB === 'string') valB = valB.toLowerCase();
- }
-
- // Fallback secondary sort: newest on top
- if (valA === valB || valA === undefined || valB === undefined) {
- return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
- }
-
- if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
- if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
- return 0;
- });
-
- return list;
- }, [filteredExpenses, sortField, sortOrder, db.vendors]);
-
- // Paginated expenses
- const totalPages = Math.ceil(sortedExpenses.length / itemsPerPage);
- const paginatedExpenses = React.useMemo(() => {
- const startIdx = (currentPage - 1) * itemsPerPage;
- return sortedExpenses.slice(startIdx, startIdx + itemsPerPage);
- }, [sortedExpenses, currentPage]);
-
  const renderSortableHeader = (label: string, field: string, align: 'left' | 'center' | 'right' = 'left') => {
- const isCurrent = sortField === field;
+ const isCurrent = expensesList.sortBy === field;
  return (
  <th
- onClick={() => handleSort(field)}
+ onClick={() => expensesList.toggleSort(field)}
  className={`p-3 cursor-pointer select-none hover:bg-slate-100 :bg-slate-800 transition-colors ${
  align === 'right' ? 'text-end' : align === 'center' ? 'text-center' : 'text-start'
  }`}
@@ -475,7 +404,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  }`}>
  <span>{label}</span>
  {isCurrent ? (
- sortOrder === 'asc' ? <ChevronUp className="w-3.5 h-3.5 text-indigo-600 inline" /> : <ChevronDown className="w-3.5 h-3.5 text-indigo-600 inline" />
+ expensesList.sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5 text-indigo-600 inline" /> : <ChevronDown className="w-3.5 h-3.5 text-indigo-600 inline" />
  ) : (
  <ChevronDown className="w-3 h-3 text-slate-300 opacity-40 inline" />
  )}
@@ -506,7 +435,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
  <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
  <div>
- <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">{t('Purchase & Business Expenses')} ({filteredExpenses.length})</h4>
+ <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">{t('Purchase & Business Expenses')} ({expensesList.total})</h4>
  <div className="flex items-center gap-2 mt-0.5">
  <p className="text-[10px] text-slate-400">{isAdmin ? t('All expenses and accruals') : t('Your submitted expenses')}</p>
  <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded uppercase">
@@ -561,9 +490,10 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  <table className="w-full text-xs text-start">
  <thead>
  <tr className="bg-slate-50/50 border-b border-slate-100 text-slate-500 uppercase tracking-wider text-[10px]">
+ <th className="p-3 text-start w-10">#</th>
  {renderSortableHeader('Expense No', 'expenseNumber')}
  {renderSortableHeader('Date', 'date')}
- {renderSortableHeader('Vendor', 'vendor')}
+ <th className="p-3 text-start">Vendor</th>
  {renderSortableHeader('Description', 'description')}
  {renderSortableHeader('Type', 'type')}
  {renderSortableHeader('Amount', 'amount', 'right')}
@@ -573,14 +503,18 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  </tr>
  </thead>
  <tbody>
- {paginatedExpenses.length === 0 ? (
+ {expensesList.loading ? (
  <tr>
- <td colSpan={9} className="p-8 text-center text-slate-400">
+ <td colSpan={10} className="p-8 text-center text-slate-400">Loading...</td>
+ </tr>
+ ) : expensesList.rows.length === 0 ? (
+ <tr>
+ <td colSpan={10} className="p-8 text-center text-slate-400">
  No expense entries recorded for this period. Click "Log Expense" to document procurement costs.
  </td>
  </tr>
  ) : (
- paginatedExpenses.map(exp => {
+ expensesList.rows.map((exp, expIdx) => {
  const vend = db.vendors.find(v => v.id === exp.vendorId);
  const bank = db.banks.find(b => b.id === exp.bankId);
  const isPending = (exp.paymentStatus === 'Unpaid' || exp.paymentStatus === 'Partially Paid') && exp.status === 'Active';
@@ -588,6 +522,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
 
  return (
  <tr key={exp.id} className="border-b border-slate-100 hover:bg-slate-50/20">
+ <RowNumberTd page={expensesList.page} pageSize={expensesList.pageSize} index={expIdx} />
  <td className="p-3 font-bold text-slate-900">
  <div className="flex items-center gap-2">
  {exp.expenseNumber}
@@ -689,50 +624,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  </table>
  </div>
 
- {/* Pagination Bar */}
- {totalPages > 1 && (
- <div className="p-4 border-t border-slate-100 bg-slate-50/30 flex items-center justify-between flex-wrap gap-2">
- <p className="text-[11px] text-slate-400">
- Showing <span className="font-bold text-slate-700 ">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
- <span className="font-bold text-slate-700 ">
- {Math.min(currentPage * itemsPerPage, sortedExpenses.length)}
- </span>{' '}
- of <span className="font-bold text-slate-700 ">{sortedExpenses.length}</span> records
- </p>
- <div className="flex gap-1">
- <button
- type="button"
- disabled={currentPage === 1}
- onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
- className="px-2.5 py-1 rounded bg-white border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 :bg-slate-800 disabled:opacity-50 disabled:hover:bg-white :hover:bg-slate-950 transition text-xs"
- >
- Previous
- </button>
- {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
- <button
- key={page}
- type="button"
- onClick={() => setCurrentPage(page)}
- className={`px-3 py-1 rounded font-bold text-xs transition ${
- currentPage === page
- ? 'bg-indigo-600 text-white shadow-sm'
- : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 :bg-slate-800'
- }`}
- >
- {page}
- </button>
- ))}
- <button
- type="button"
- disabled={currentPage === totalPages}
- onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
- className="px-2.5 py-1 rounded bg-white border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 :bg-slate-800 disabled:opacity-50 disabled:hover:bg-white :hover:bg-slate-950 transition text-xs"
- >
- Next
- </button>
- </div>
- </div>
- )}
+ <PaginationFooter db={db} page={expensesList.page} totalPages={expensesList.totalPages} total={expensesList.total} pageSize={expensesList.pageSize} onPageChange={expensesList.setPage} />
  </div>
  )}
 

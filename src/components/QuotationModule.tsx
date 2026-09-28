@@ -6,6 +6,8 @@ import { Quotation, QuotationItem, Customer, TaxSlab, User, normalizePermissions
 import StatusPill from './StatusPill';
 import ItemCatalogSearch from './ItemCatalogSearch';
 import PartySearchSelect from './PartySearchSelect';
+import { usePaginatedList } from '../usePaginatedList';
+import { RowNumberTh, RowNumberTd, PaginationFooter } from './PaginationControls';
 import {
   FileText,
   Plus,
@@ -75,33 +77,6 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  const openMonth = getActiveOpenMonth(db, db.selectedCompanyId);
  const currencySymbol = db.companySetup?.currency || 'SAR';
 
- // Sorting state (default: createdAt descending, so newly added is on top!)
- const [sortField, setSortField] = React.useState<string>('createdAt');
- const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('desc');
-
- // Quotations render straight from the shared `db.quotations` (populated by
- // `/api/state`, refreshed via `onRefreshDb`) — this module used to keep its own
- // separately-fetched copy here, which meant a quotation created/updated elsewhere
- // (another session, or this app's own "Reload View") never appeared in this list
- // without a hard page reload, since nothing ever re-ran that separate fetch.
-
- // Pagination state
- const [currentPage, setCurrentPage] = React.useState(1);
- const itemsPerPage = 20;
-
- // List quotations - filter for admin/staff with module permission to see all records for the company
- const filteredQuotations = db.quotations.filter(q => {
- const qCompanyId = q.companyId;
- if (qCompanyId !== db.selectedCompanyId) return false;
- if (userPermissions.quotation.read.enabled) return true;
- return q.createdById === currentUser.id;
- });
-
- // Reset page when length changes
- React.useEffect(() => {
- setCurrentPage(1);
- }, [filteredQuotations.length]);
-
  // Notifications
  const [success, setSuccess] = React.useState<string | null>(null);
  const [error, setError] = React.useState<string | null>(null);
@@ -154,7 +129,8 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  description: item.description,
  unitCost: item.unitCost,
  quantity: item.quantity,
- discountAmount: item.discountAmount || 0
+ discountAmount: item.discountAmount || 0,
+ taxSlabId: item.taxSlabId,
  }));
  setFormItems(mappedItems);
  markFormClean({
@@ -176,6 +152,14 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
 
  // View state — fixed for the lifetime of this mount by which page (mode) rendered it.
  const [view] = React.useState<'list' | 'create' | 'edit'>(mode === 'add' ? (editId ? 'edit' : 'create') : 'list');
+
+ // List quotations - real server-side pagination (GET /api/quotations with ?page=...),
+ // replacing the old client-side filter over the capped `db.quotations` array (see
+ // .claude/skills/server-side-report-aggregation/SKILL.md — a plain list screen is fine to
+ // paginate, but must not silently drop older rows past a fixed cap once a tenant's own
+ // history grows). Company scoping and the admin-vs-own-records visibility rule are both
+ // already enforced server-side in GET /api/quotations (server/routes/transactions.ts).
+ const quotationsList = usePaginatedList<Quotation>('/api/transactions/quotations', 50, view === 'list');
  const [editingQuotationId, setEditingQuotationId] = React.useState<string | null>(null);
 
  // Form states
@@ -350,6 +334,12 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
       unitOfMeasureId: item.unitOfMeasureId || undefined,
     }));
 
+    // editingQuotationId set means this is an edit, not a new document — the existing
+    // quotationNumber must be carried through, or the server (which only generates a fresh
+    // one when this field is empty, see server/routes/transactions.ts) silently reassigns
+    // the NEXT number in the sequence on every single edit, bumping e.g. QT-3 to QT-4 the
+    // moment someone just fixes a typo or changes the tax slab on a still-Draft quotation.
+    const existingQuotation = editingQuotationId ? db.quotations.find(q => q.id === editingQuotationId) : undefined;
     const qData = {
       id: editingQuotationId,
       createdById: currentUser.id,
@@ -357,7 +347,8 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
       customerId: formCustomerId || db.customers.find(c => c.isSystem)!.id,
       taxSlabId: formTaxSlabId,
       notes: formNotes,
-      status: (view === "edit" && editingQuotationId) ? db.quotations.find(q => q.id === editingQuotationId)!.status : "Draft" as const,
+      status: existingQuotation ? existingQuotation.status : "Draft" as const,
+      quotationNumber: existingQuotation?.quotationNumber,
       items: cleanItems,
       discountPercentage: formDiscountPercentage,
       companyId: db.selectedCompanyId,
@@ -387,12 +378,13 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
     }
   };
 
- const handleStatusChange = async (qId: string, newStatus: Quotation['status']) => {
+ // Takes the full quotation object (the row already on-screen), not just its id — a
+ // db.quotations.find(...) lookup here would silently no-op for a quotation past
+ // /api/state's row cap once the paginated list (which has no such cap) shows an older
+ // page than that lookup could see.
+ const handleStatusChange = async (q: Quotation, newStatus: Quotation['status']) => {
   try {
-    const q = db.quotations.find(x => x.id === qId);
-    if (!q) return;
-
-    const response = await fetch(`/api/transactions/quotations/${qId}`, {
+    const response = await fetch(`/api/transactions/quotations/${q.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -414,9 +406,11 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
     triggerSuccess(`Quotation status updated to: ${newStatus}`);
     onUpdateDbLocal(prev => ({
       ...prev,
-      quotations: prev.quotations.map(item => item.id === qId ? { ...item, status: newStatus } : item)
+      quotations: prev.quotations.map(item => item.id === q.id ? { ...item, status: newStatus } : item)
     }));
     if (onRefreshDb) await onRefreshDb();
+    quotationsList.reload();
+    reloadQuotationKpis();
   } catch (err: any) {
     triggerError(err.message || 'Failed to update quotation status');
   }
@@ -442,6 +436,8 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
       quotations: prev.quotations.map(item => item.id === qId ? { ...item, isCancelled: true } : item)
     }));
     if (onRefreshDb) await onRefreshDb();
+    quotationsList.reload();
+    reloadQuotationKpis();
   } catch (err: any) {
     triggerError(err.message || 'Failed to cancel quotation');
   }
@@ -575,6 +571,8 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
     }
 
     if (onRefreshDb) await onRefreshDb();
+    quotationsList.reload();
+    reloadQuotationKpis();
     setConvertingQ(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (err: any) {
@@ -622,63 +620,6 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  return totals.grandTotal;
  };
 
- // Sorting handler
- const handleSort = (field: string) => {
- if (sortField === field) {
- setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
- } else {
- setSortField(field);
- setSortOrder('asc');
- }
- setCurrentPage(1);
- };
-
- // Sort quotations
- const sortedQuotations = React.useMemo(() => {
- const list = [...filteredQuotations];
- 
- if (sortField === 'createdAt') {
- list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
- return list;
- }
-
- list.sort((a, b) => {
- let valA: any = a[sortField as keyof Quotation];
- let valB: any = b[sortField as keyof Quotation];
-
- if (sortField === 'customer') {
- const custA = db.customers.find(c => c.id === a.customerId)?.name || '';
- const custB = db.customers.find(c => c.id === b.customerId)?.name || '';
- valA = custA.toLowerCase();
- valB = custB.toLowerCase();
- } else if (sortField === 'grandTotal') {
- valA = getQuotationTotal(a);
- valB = getQuotationTotal(b);
- } else {
- if (typeof valA === 'string') valA = valA.toLowerCase();
- if (typeof valB === 'string') valB = valB.toLowerCase();
- }
-
- // Fallback secondary sort: newest on top
- if (valA === valB || valA === undefined || valB === undefined) {
- return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
- }
-
- if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
- if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
- return 0;
- });
-
- return list;
- }, [filteredQuotations, sortField, sortOrder, db.customers]);
-
- // Paginated quotations
- const totalPages = Math.ceil(sortedQuotations.length / itemsPerPage);
- const paginatedQuotations = React.useMemo(() => {
- const startIdx = (currentPage - 1) * itemsPerPage;
- return sortedQuotations.slice(startIdx, startIdx + itemsPerPage);
- }, [sortedQuotations, currentPage]);
-
  // Fetched from GET /api/reports/quotation-kpis (server/lib/financialReports.ts) instead
  // of summed client-side from db.quotations — see
  // .claude/skills/server-side-report-aggregation/SKILL.md. Also fixes a real bug found
@@ -686,29 +627,24 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  // (isCancelled was never checked here), inflating both figures — the server version
  // excludes them, matching this codebase's own established "cancelled documents never
  // inflate a total" convention (see e.g. SalesReportsModule.tsx's getSalesRegisterData).
- const [quotationKpis, setQuotationKpis] = React.useState({ totalValue: 0, convertedValue: 0 });
- React.useEffect(() => {
+ // totalCount/convertedCount/activeCount were added alongside the pagination migration so
+ // these KPI cards no longer depend on the (now removed) full client-side quotations list.
+ const [quotationKpis, setQuotationKpis] = React.useState({ totalValue: 0, convertedValue: 0, totalCount: 0, convertedCount: 0, activeCount: 0 });
+ const reloadQuotationKpis = React.useCallback(() => {
    if (!db.selectedCompanyId) return;
-   let cancelled = false;
-   fetch('/api/reports/quotation-kpis').then(r => r.ok ? r.json() : null).then(d => { if (!cancelled && d) setQuotationKpis(d); }).catch(() => {});
-   return () => { cancelled = true; };
+   fetch('/api/reports/quotation-kpis').then(r => r.ok ? r.json() : null).then(d => { if (d) setQuotationKpis(d); }).catch(() => {});
  }, [db.selectedCompanyId]);
+ React.useEffect(() => { reloadQuotationKpis(); }, [reloadQuotationKpis]);
  const kpiTotalValue = quotationKpis.totalValue;
  const kpiConvertedValue = quotationKpis.convertedValue;
- // A plain count (not a monetary total), still derived from the client's own
- // company-scoped filteredQuotations — same "plain list screen" carve-out as
- // kpiActiveQuotesCount below, not part of this port.
- const kpiConvertedQuotes = React.useMemo(() => {
-   return filteredQuotations.filter(q => q.status === 'Converted');
- }, [filteredQuotations]);
-
- const kpiActiveQuotesCount = filteredQuotations.filter(q => q.status === 'Draft' || !q.status).length;
+ const kpiConvertedCount = quotationKpis.convertedCount;
+ const kpiActiveQuotesCount = quotationKpis.activeCount;
 
  const renderSortableHeader = (label: string, field: string, align: 'left' | 'center' | 'right' = 'left') => {
- const isCurrent = sortField === field;
+ const isCurrent = quotationsList.sortBy === field;
  return (
  <th
- onClick={() => handleSort(field)}
+ onClick={() => quotationsList.toggleSort(field)}
  className={`p-3 cursor-pointer select-none hover:bg-slate-100 :bg-slate-800 transition-colors ${
  align === 'right' ? 'text-end' : align === 'center' ? 'text-center' : 'text-start'
  }`}
@@ -718,7 +654,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  }`}>
  <span>{label}</span>
  {isCurrent ? (
- sortOrder === 'asc' ? <ChevronUp className="w-3.5 h-3.5 text-indigo-600 inline" /> : <ChevronDown className="w-3.5 h-3.5 text-indigo-600 inline" />
+ quotationsList.sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5 text-indigo-600 inline" /> : <ChevronDown className="w-3.5 h-3.5 text-indigo-600 inline" />
  ) : (
  <ChevronDown className="w-3 h-3 text-slate-300 opacity-40 inline" />
  )}
@@ -760,7 +696,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
        </div>
        <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1 font-semibold">
          <Sparkles className="w-3 h-3 text-amber-400" />
-         <span>{filteredQuotations.length} {t("proposals issued")}</span>
+         <span>{quotationKpis.totalCount} {t("proposals issued")}</span>
        </div>
      </div>
 
@@ -777,7 +713,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
        </div>
        <div className="text-[10px] text-emerald-300/80 mt-1 flex items-center gap-1 font-semibold">
          <Receipt className="w-3 h-3 text-emerald-400" />
-         <span>{kpiConvertedQuotes.length} {t("converted to invoices")}</span>
+         <span>{kpiConvertedCount} {t("converted to invoices")}</span>
        </div>
      </div>
 
@@ -806,12 +742,12 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
          </span>
        </div>
        <div className="text-xl font-extrabold tracking-tight">
-         {filteredQuotations.length > 0 ? ((kpiConvertedQuotes.length / filteredQuotations.length) * 100).toFixed(1) : '0.0'}%
+         {quotationKpis.totalCount > 0 ? ((kpiConvertedCount / quotationKpis.totalCount) * 100).toFixed(1) : '0.0'}%
        </div>
        <div className="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
-         <div 
-           className="bg-emerald-400 h-full rounded-full transition-all duration-500" 
-           style={{ width: `${filteredQuotations.length > 0 ? Math.min(100, (kpiConvertedQuotes.length / filteredQuotations.length) * 100) : 0}%` }}
+         <div
+           className="bg-emerald-400 h-full rounded-full transition-all duration-500"
+           style={{ width: `${quotationKpis.totalCount > 0 ? Math.min(100, (kpiConvertedCount / quotationKpis.totalCount) * 100) : 0}%` }}
          />
        </div>
      </div>
@@ -827,7 +763,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
    <FileText className="w-4 h-4 text-indigo-600" />
    <span>{t("Quotations & Proposals Workspace")}</span>
    <span className="text-[10px] font-bold text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-full">
-     {filteredQuotations.length}
+     {quotationsList.total}
    </span>
  </h4>
  <div className="flex items-center gap-2 mt-1">
@@ -836,6 +772,17 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  🏢 {t("Scoped:")} {db.companySetup?.name}
  </span>
  </div>
+ </div>
+ <div className="flex items-center gap-2">
+ <div className="relative">
+ <Search className="w-3.5 h-3.5 text-slate-400 absolute start-3 top-1/2 -translate-y-1/2" />
+ <input
+ type="text"
+ value={quotationsList.search}
+ onChange={e => quotationsList.setSearch(e.target.value)}
+ placeholder={t('Search Doc No...')}
+ className="ps-8 pe-3 py-2 rounded-xl border border-slate-200 text-xs w-48 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+ />
  </div>
  {openMonth && userPermissions.quotation.create.enabled && (
  <button
@@ -846,28 +793,34 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  </button>
  )}
  </div>
+ </div>
 
  <div className="overflow-x-auto">
  <table className="w-full text-xs text-start">
  <thead>
  <tr className="bg-slate-50/50 border-b border-slate-100 text-slate-500 uppercase tracking-wider text-[10px]">
+ <th className="p-3 text-start w-10">#</th>
  {renderSortableHeader(t('Doc No'), 'quotationNumber')}
  {renderSortableHeader(t('Date'), 'date')}
- {renderSortableHeader(t('Customer'), 'customer')}
- {renderSortableHeader(t('Grand Total'), 'grandTotal', 'right')}
+ <th className="p-3 text-start">{t('Customer')}</th>
+ <th className="p-3 text-end">{t('Grand Total')}</th>
  {renderSortableHeader(t('Status'), 'status', 'center')}
  <th className="p-3 text-end">{t('Actions')}</th>
  </tr>
  </thead>
  <tbody>
- {paginatedQuotations.length === 0 ? (
+ {quotationsList.loading ? (
  <tr>
- <td colSpan={6} className="p-8 text-center text-slate-400">
+ <td colSpan={7} className="p-8 text-center text-slate-400">{t('Loading...')}</td>
+ </tr>
+ ) : quotationsList.rows.length === 0 ? (
+ <tr>
+ <td colSpan={7} className="p-8 text-center text-slate-400">
  {t('No quotations found for this period. Click "New Quotation" to start.')}
  </td>
  </tr>
  ) : (
- paginatedQuotations.map(q => {
+ quotationsList.rows.map((q, qIdx) => {
  const cust = db.customers.find(c => c.id === q.customerId);
  const isAccepted = q.status === 'Accepted';
  const isDraft = q.status === 'Draft' || q.status === 'Sent';
@@ -875,6 +828,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
 
  return (
  <tr key={q.id} className="border-b border-slate-100 hover:bg-slate-50/20">
+ <RowNumberTd page={quotationsList.page} pageSize={quotationsList.pageSize} index={qIdx} />
  <td className="p-3 font-bold text-slate-900">{q.quotationNumber}</td>
  <td className="p-3 text-slate-600">{q.date}</td>
  <td className="p-3 font-semibold text-slate-700">{cust?.name || t('Walk-in')}</td>
@@ -914,7 +868,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
 
  {isDraft && (
  <button
- onClick={() => handleStatusChange(q.id, 'Accepted')}
+ onClick={() => handleStatusChange(q, 'Accepted')}
  className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition cursor-pointer inline-flex items-center gap-1 text-[11px] font-bold"
  title={t('Accept Quotation')}
  >
@@ -958,50 +912,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  </table>
  </div>
 
- {/* Pagination Bar */}
- {totalPages > 1 && (
- <div className="p-4 border-t border-slate-100 bg-slate-50/30 flex items-center justify-between flex-wrap gap-2">
- <p className="text-[11px] text-slate-400">
- Showing <span className="font-bold text-slate-700 ">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
- <span className="font-bold text-slate-700 ">
- {Math.min(currentPage * itemsPerPage, sortedQuotations.length)}
- </span>{' '}
- of <span className="font-bold text-slate-700 ">{sortedQuotations.length}</span> records
- </p>
- <div className="flex gap-1">
- <button
- type="button"
- disabled={currentPage === 1}
- onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
- className="px-2.5 py-1 rounded bg-white border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 :bg-slate-800 disabled:opacity-50 disabled:hover:bg-white :hover:bg-slate-950 transition text-xs"
- >
- Previous
- </button>
- {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
- <button
- key={page}
- type="button"
- onClick={() => setCurrentPage(page)}
- className={`px-3 py-1 rounded font-bold text-xs transition ${
- currentPage === page
- ? 'bg-indigo-600 text-white shadow-sm'
- : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 :bg-slate-800'
- }`}
- >
- {page}
- </button>
- ))}
- <button
- type="button"
- disabled={currentPage === totalPages}
- onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
- className="px-2.5 py-1 rounded bg-white border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 :bg-slate-800 disabled:opacity-50 disabled:hover:bg-white :hover:bg-slate-950 transition text-xs"
- >
- Next
- </button>
- </div>
- </div>
- )}
+ <PaginationFooter db={db} page={quotationsList.page} totalPages={quotationsList.totalPages} total={quotationsList.total} pageSize={quotationsList.pageSize} onPageChange={quotationsList.setPage} />
  </div>
  )}
 
@@ -1124,6 +1035,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  <th className="py-2.5 px-3 text-end w-32">{t('Unit Price')} ({currencySymbol})<span className="text-rose-500"> *</span></th>
  <th className="py-2.5 px-3 text-center w-24">{t('Quantity')}<span className="text-rose-500"> *</span></th>
  <th className="py-2.5 px-3 text-end w-28">{t('Discount')} ({currencySymbol})</th>
+ <th className="py-2.5 px-3 text-center w-28">{t('VAT Slab')}</th>
  <th className="py-2.5 px-3 text-end w-32">{t('Total')} ({currencySymbol})</th>
  <th className="py-2.5 px-3 text-center w-12"></th>
  </tr>
@@ -1198,6 +1110,18 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  onChange={(e) => handleUpdateLineItem(idx, 'discountAmount', parseFloat(e.target.value) || 0)}
  className="w-full text-end bg-rose-50/30 hover:bg-rose-50/80 border border-rose-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-rose-400 font-semibold"
  />
+ </td>
+
+ <td className="py-2 px-2 align-top">
+ <select
+ value={item.taxSlabId || formTaxSlabId}
+ onChange={(e) => handleUpdateLineItem(idx, 'taxSlabId', e.target.value)}
+ className="w-full bg-slate-50/50 hover:bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+ >
+ {db.taxSlabs.map(slab => (
+ <option key={slab.id} value={slab.id}>{slab.name} ({slab.percentage}%)</option>
+ ))}
+ </select>
  </td>
 
  <td className="py-2 px-3 text-end font-bold text-slate-900 text-xs align-top pt-3">

@@ -1,11 +1,11 @@
 import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
-import { eq, and, desc, inArray, sql } from 'drizzle-orm';
+import { eq, and, asc, desc, inArray, sql, count, gte, lte, ne } from 'drizzle-orm';
 import { validateTransactionDate, syncVoucherForExpense, round2, computePaymentStatus, assertQuarterNotFiled, cancelExpense } from '../lib/businessLogic.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { normalizePermissions } from '../../src/types.js';
-import { parseLimitOffset } from '../lib/pagination.js';
+import { parseLimitOffset, parsePageSort, wantsPaged } from '../lib/pagination.js';
 import { generateId } from '../../src/id.js';
 import { assertOwnsRow, resolveDocumentBranchId, branchAccessOk } from '../lib/authz.js';
 import { recordAuditLog } from '../lib/audit.js';
@@ -13,14 +13,25 @@ import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
 
 const router = express.Router();
 
+const EXPENSES_SORTABLE = {
+  expenseNumber: schema.expenses.expenseNumber,
+  date: schema.expenses.date,
+  createdAt: schema.expenses.createdAt,
+  amount: schema.expenses.amount,
+  status: schema.expenses.status,
+  paymentStatus: schema.expenses.paymentStatus,
+  description: schema.expenses.description,
+  type: schema.expenses.type,
+} as const;
+
 router.get('/', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.expense.read.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const companyId = req.targetCompanyId;
-    const { limit, offset } = parseLimitOffset(req);
     const conditions = [eq(schema.expenses.companyId, companyId)];
     // Branch-restricted callers (req.allowedBranchIds is a real array, not null — see
     // isAuthenticated in server.ts) must only see their own branch's expenses, same rule
@@ -29,9 +40,43 @@ router.get('/', withTenantDb, async (req: any, res) => {
     if (Array.isArray(req.allowedBranchIds)) {
       conditions.push(req.allowedBranchIds.length > 0 ? inArray(schema.expenses.branchId, req.allowedBranchIds) : sql`false`);
     }
-    const expenses = await tenantDb().select().from(schema.expenses).where(and(...conditions))
-      .orderBy(desc(schema.expenses.createdAt)).limit(limit).offset(offset);
-    res.json(expenses);
+    const search = String(req.query?.search || '').trim();
+    if (search) {
+      conditions.push(sql`${schema.expenses.expenseNumber} ILIKE ${'%' + search + '%'}`);
+    }
+    // Server-side equivalents of ExpenseModule.tsx's own client-side filteredExpenses logic,
+    // scoped by the whereClause's own companyId condition above — never client-supplied.
+    const startDate = String(req.query?.startDate || '').trim();
+    if (startDate) conditions.push(gte(schema.expenses.date, startDate));
+    const endDate = String(req.query?.endDate || '').trim();
+    if (endDate) conditions.push(lte(schema.expenses.date, endDate));
+    if (req.query?.status === 'Unpaid') {
+      conditions.push(ne(schema.expenses.paymentStatus, 'Paid'));
+      conditions.push(eq(schema.expenses.status, 'Active'));
+    }
+    const whereClause = and(...conditions);
+    const paged = wantsPaged(req);
+
+    // Drizzle returns decimal columns as strings — convert to numbers here the same way
+    // src/db/apiState.ts's expensesWithItems does for db.expenses.
+    const numify = (e: typeof schema.expenses.$inferSelect) => ({
+      ...e,
+      amount: Number(e.amount),
+      amountPaid: e.amountPaid ? Number(e.amountPaid) : undefined,
+    });
+    if (!paged) {
+      const { limit, offset } = parseLimitOffset(req);
+      const expenses = await tdb.select().from(schema.expenses).where(whereClause)
+        .orderBy(desc(schema.expenses.createdAt)).limit(limit).offset(offset);
+      return res.json(expenses.map(numify));
+    }
+    const { pageSize, offset, sortBy, sortDir, page } = parsePageSort(req, EXPENSES_SORTABLE, 'createdAt', 'desc');
+    const orderFn = sortDir === 'asc' ? asc : desc;
+    const [countResult, rawRows] = await Promise.all([
+      tdb.select({ value: count() }).from(schema.expenses).where(whereClause),
+      tdb.select().from(schema.expenses).where(whereClause).orderBy(orderFn(EXPENSES_SORTABLE[sortBy])).limit(pageSize).offset(offset),
+    ]);
+    res.json({ rows: rawRows.map(numify), total: countResult[0].value, page, pageSize });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

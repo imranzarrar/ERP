@@ -2,6 +2,8 @@ import React from 'react';
 const ProductImportModal = React.lazy(() => import('./ProductImportModal'));
 const PartyImportModal = React.lazy(() => import('./PartyImportModal'));
 import { useTranslation, usePermissions, useDirtyGuard } from '../hooks';
+import { usePaginatedList } from '../usePaginatedList';
+import { SortableTh, RowNumberTh, RowNumberTd, PaginationFooter } from './PaginationControls';
 // from 'react';
 import { DatabaseState, saveDatabase } from '../dbStore';
 import { generateId } from '../id';
@@ -17,7 +19,7 @@ import {
  AlertTriangle,
  Lock,
  Edit2
-, X, FolderKanban, Scaling, MapPin, Package } from 'lucide-react';
+, X, FolderKanban, Scaling, MapPin, Package, Search } from 'lucide-react';
 
 interface MasterEntitiesProps {
  db: DatabaseState;
@@ -136,6 +138,14 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
  // InventoryModule.tsx's resolveProductByCode and its GRN/PO item-add handlers).
  const [prodCostPrice, setProdCostPrice] = React.useState('');
  const [prodUnit, setProdUnit] = React.useState('PCE');
+ // Tracks WHICH specific unitsOfMeasure row is selected, separate from prodUnit's own
+ // stored value (a bare ZATCA code like "PCE") — needed because productsServices.unit has
+ // no real unitOfMeasureId column, only that code string, so two differently-named units
+ // sharing one ZATCA code (e.g. both mapped to "PCE") are otherwise indistinguishable in
+ // the <select>: with option value={u.code}, the browser resolves duplicate values to
+ // whichever <option> comes first in the DOM, which was always the hardcoded "Piece (PCE)"
+ // entry — reported as "selecting a unit picks Piece instead" for any unit sharing that code.
+ const [prodUnitId, setProdUnitId] = React.useState('');
   const [prodIsPos, setProdIsPos] = React.useState(false);
   const [prodCategory, setProdCategory] = React.useState('');
   const [prodImage, setProdImage] = React.useState('');
@@ -266,7 +276,14 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
  setProdSalesPurchaseFlow(0);
  setProdPrice('');
  setProdCostPrice('');
+ // Default a new product to the company's own real "Piece" unit row (auto-provisioned
+ // for every company — see server/lib/companyProvisioning.ts) rather than the bare "PCE"
+ // pseudo-value, so it starts life with a real unitOfMeasureId like any explicitly-picked
+ // unit would. Falls back to the pseudo-value only for the rare pre-existing company that
+ // predates that provisioning step (none among real companies as of this fix).
+ const defaultPieceUnit = db.unitsOfMeasure.find(u => u.code === 'PCE' && u.isActive !== false);
  setProdUnit('PCE');
+ setProdUnitId(defaultPieceUnit ? defaultPieceUnit.id : '');
     setProdIsPos(false);
     setProdCategory('');
     setProdImage('');
@@ -344,27 +361,21 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
   const companyVendors = db.vendors;
   const companyProducts = db.products;
 
-  // Shared search box above the Customers/Vendors directories — matches on name, the
-  // auto-generated code, or the VAT number (whichever the user actually has on hand).
-  const [entitySearchQuery, setEntitySearchQuery] = React.useState('');
-  const filteredCustomers = React.useMemo(() => {
-    const q = entitySearchQuery.trim().toLowerCase();
-    if (!q) return companyCustomers;
-    return companyCustomers.filter((c: any) =>
-      c.name.toLowerCase().includes(q) ||
-      (c.customerCode && c.customerCode.toLowerCase().includes(q)) ||
-      (c.vatNumber && c.vatNumber.toLowerCase().includes(q))
-    );
-  }, [companyCustomers, entitySearchQuery]);
-  const filteredVendors = React.useMemo(() => {
-    const q = entitySearchQuery.trim().toLowerCase();
-    if (!q) return companyVendors;
-    return companyVendors.filter((v: any) =>
-      v.name.toLowerCase().includes(q) ||
-      (v.vendorCode && v.vendorCode.toLowerCase().includes(q)) ||
-      (v.vatNumber && v.vatNumber.toLowerCase().includes(q))
-    );
-  }, [companyVendors, entitySearchQuery]);
+  // Server-side paginated + sortable table data for the three directory screens below —
+  // each list's own dedicated GET route (server/routes/masterEntities.ts), 50 rows per
+  // page, independent of the full companyProducts/Customers/Vendors arrays above (which
+  // stay as-is for the edit-form/dropdown/lookup uses elsewhere in this file that still
+  // need the complete set, not just one page of it).
+  const productsList = usePaginatedList<any>('/api/products', 50, subTab === 'products');
+  const customersList = usePaginatedList<any>('/api/customers', 50, subTab === 'customers');
+  const vendorsList = usePaginatedList<any>('/api/vendors', 50, subTab === 'vendors');
+
+  // Shared search box above the Customers/Vendors/Products directories — now server-side
+  // (each list's own GET route matches on name/code/VAT, see server/routes/masterEntities.ts),
+  // reading/writing whichever of the three lists' own search state matches the active tab.
+  const activeDirectoryList = subTab === 'customers' ? customersList : subTab === 'vendors' ? vendorsList : productsList;
+  const entitySearchQuery = activeDirectoryList.search;
+  const setEntitySearchQuery = activeDirectoryList.setSearch;
 
  // Handlers - Customers
 const handleSaveCustomer = async (e: React.FormEvent) => {
@@ -402,6 +413,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
     clearForm();
     onDirtyChange?.(false);
     if (onRefreshDb) await onRefreshDb();
+    customersList.reload();
     onDone();
   } catch (err: any) {
     triggerError('Failed to save customer to database.');
@@ -424,6 +436,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  const data = await res.json().catch(() => ({}));
  triggerSuccess(data.isActive ? 'Customer reactivated.' : 'Customer deactivated.');
  if (onRefreshDb) await onRefreshDb();
+ customersList.reload();
  } catch(err) {
  triggerError('Failed to update customer status.');
  }
@@ -487,6 +500,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  // server-side on create) and no server-derived address (composed server-side for B2B),
  // so a create/edit needs this refetch to show the real row, same as handleSaveCustomer.
  if (onRefreshDb) await onRefreshDb();
+ vendorsList.reload();
  onDone();
  } catch(err) {
  triggerError('Failed to save vendor.');
@@ -509,6 +523,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  const data = await res.json().catch(() => ({}));
  triggerSuccess(data.isActive ? 'Vendor reactivated.' : 'Vendor deactivated.');
  if (onRefreshDb) await onRefreshDb();
+ vendorsList.reload();
  } catch(err) {
  triggerError('Failed to update vendor status.');
  }
@@ -542,6 +557,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  unitPrice: priceNum,
  costPrice: costPriceNum,
  unit: prodUnit,
+ unitOfMeasureId: prodUnitId || null,
  base64Image: prodImage,
  isPosItem: prodIsPos,
  category: prodCategory,
@@ -568,6 +584,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  salesPurchaseFlow: prodSalesPurchaseFlow,
  itemKind: prodCatalogType,
  unit: prodUnit,
+ unitOfMeasureId: prodUnitId || null,
       isPosItem: prodIsPos,
       category: prodCategory,
       categoryId: prodCategoryId || null,
@@ -598,6 +615,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  onUpdateDbLocal(() => newDb);
  onDirtyChange?.(false);
  if (onRefreshDb) await onRefreshDb();
+ productsList.reload();
  if (!editingId && prodCatalogType === 'item' && savedProd) {
  // Stay on this same item in edit mode right after first save, rather than closing
  // the form — packaging/alternate units can only be added once editingId is set
@@ -701,6 +719,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
      const data = await res.json().catch(() => ({}));
      triggerSuccess(data.isActive ? 'Product reactivated.' : 'Product deactivated.');
      if (onRefreshDb) await onRefreshDb();
+     productsList.reload();
    } catch (err) {
      triggerError('Failed to update product status.');
    }
@@ -1017,6 +1036,19 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
      setProdPrice(entity.unitPrice.toString());
      setProdCostPrice(entity.costPrice != null ? entity.costPrice.toString() : '');
      setProdUnit(entity.unit || 'No');
+ // The real fix: entity.unitOfMeasureId is an exact, unambiguous reference to which named
+ // unit row this product uses — no guessing needed. Only rows saved before this column
+ // existed have it null, so THOSE fall back to best-effort code matching (which can only
+ // pick the first same-code match, since the old save path never recorded which one it
+ // originally was — see prodUnitId's own comment above for the full incident).
+ if (entity.unitOfMeasureId) {
+   setProdUnitId(entity.unitOfMeasureId);
+ } else {
+   const matchedUnit = (entity.unit && entity.unit !== 'No' && entity.unit !== 'Lumpsum')
+     ? db.unitsOfMeasure.find(u => u.code === entity.unit && u.isActive !== false)
+     : undefined;
+   setProdUnitId(matchedUnit ? matchedUnit.id : '');
+ }
      setProdIsPos(entity.isPosItem || false);
      setProdCategory(entity.category || '');
      setProdImage(entity.base64Image || '');
@@ -1640,15 +1672,26 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <div className="space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Unit of Measure')}</label>
  <select
- value={prodUnit}
- onChange={(e) => setProdUnit(e.target.value)}
+ value={prodUnitId || prodUnit}
+ onChange={(e) => {
+ const val = e.target.value;
+ if (val === 'No' || val === 'PCE') {
+ setProdUnitId('');
+ setProdUnit(val);
+ return;
+ }
+ // A real unit row was picked — select by its unique id, never by code (two
+ // different named units can share one ZATCA code, e.g. both "PCE").
+ const picked = db.unitsOfMeasure.find(u => u.id === val);
+ setProdUnitId(val);
+ setProdUnit(picked ? picked.code : 'PCE');
+ }}
  className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none transition-all duration-150"
  >
  <option value="No">{t('None / Default')}</option>
  <option value="PCE">{t('Piece')} (PCE)</option>
- <option value="Lumpsum">{t('Lumpsum')}</option>
- {db.unitsOfMeasure.map(u => (
- <option key={u.id} value={u.code}>{u.name} ({u.code})</option>
+ {db.unitsOfMeasure.filter(u => u.isActive !== false).map(u => (
+ <option key={u.id} value={u.id}>{u.name} ({u.code})</option>
  ))}
  </select>
  </div>
@@ -2296,16 +2339,19 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
  </div>
  <span className="px-2.5 py-1 bg-white border border-slate-200/60 rounded-xl text-[10px] font-bold text-slate-500">
- {t('Total:')} {subTab === 'customers' ? filteredCustomers.length : subTab === 'vendors' ? filteredVendors.length : subTab === 'products' ? companyProducts.length : subTab === 'categories' ? db.productCategories.length : subTab === 'units' ? db.unitsOfMeasure.length : db.warehouses.length} {t('records')}
+ {t('Total:')} {subTab === 'customers' ? customersList.total : subTab === 'vendors' ? vendorsList.total : subTab === 'products' ? productsList.total : subTab === 'categories' ? db.productCategories.length : subTab === 'units' ? db.unitsOfMeasure.length : db.warehouses.length} {t('records')}
  </span>
- {(subTab === 'customers' || subTab === 'vendors') && (
+ {(subTab === 'customers' || subTab === 'vendors' || subTab === 'products') && (
+ <div className="relative flex-1 min-w-[180px]">
+ <Search className="w-3.5 h-3.5 text-slate-400 absolute top-1/2 -translate-y-1/2 start-3" />
  <input
  type="text"
  value={entitySearchQuery}
  onChange={(e) => setEntitySearchQuery(e.target.value)}
- placeholder={t('Search by name, code, or VAT number...')}
- className="flex-1 min-w-[180px] bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl px-3 py-1.5 text-[11px] text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"
+ placeholder={subTab === 'products' ? t('Search by name or SKU...') : t('Search by name, code, or VAT number...')}
+ className="w-full bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl ps-8 pe-3 py-1.5 text-[11px] text-slate-800 placeholder-slate-400 focus:outline-none transition-all duration-150"
  />
+ </div>
  )}
  {((subTab === 'customers' && canCreateCustomers) || (subTab === 'vendors' && canCreateVendors) || (subTab === 'products' && canCreateProducts) || (subTab === 'categories' && canCreateCategories) || (subTab === 'units' && canCreateUnits) || (subTab === 'warehouses' && canCreateWarehouses)) && (
  <button
@@ -2358,17 +2404,19 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <table className="w-full text-start border-collapse">
  <thead>
  <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
- <th className="p-4 ps-5 text-start">{t('Customer Profile Name')}</th>
- <th className="p-4 text-start">{t('Code')}</th>
- <th className="p-4 text-start">{t('Contact Email')}</th>
- <th className="p-4 text-start">{t('VAT Registration')}</th>
- <th className="p-4 text-start">{t('Status')}</th>
+ <RowNumberTh label="#" />
+ <SortableTh label={t('Customer Profile Name')} column="name" sortBy={customersList.sortBy} sortDir={customersList.sortDir} onSort={customersList.toggleSort} className="text-start" />
+ <SortableTh label={t('Code')} column="customerCode" sortBy={customersList.sortBy} sortDir={customersList.sortDir} onSort={customersList.toggleSort} className="text-start" />
+ <SortableTh label={t('Contact Email')} column="email" sortBy={customersList.sortBy} sortDir={customersList.sortDir} onSort={customersList.toggleSort} className="text-start" />
+ <SortableTh label={t('VAT Registration')} column="vatNumber" sortBy={customersList.sortBy} sortDir={customersList.sortDir} onSort={customersList.toggleSort} className="text-start" />
+ <SortableTh label={t('Status')} column="isActive" sortBy={customersList.sortBy} sortDir={customersList.sortDir} onSort={customersList.toggleSort} className="text-start" />
  <th className="p-4 pe-5 text-end">{t('Actions')}</th>
  </tr>
  </thead>
  <tbody className="divide-y divide-slate-100 ">
- {filteredCustomers.map((c: any) => (
+ {customersList.rows.map((c: any, idx: number) => (
  <tr key={c.id} className={`hover:bg-slate-50/40 transition-colors duration-150 ${c.isActive === false ? 'opacity-60 text-slate-500' : 'text-slate-700'}`}>
+ <RowNumberTd page={customersList.page} pageSize={customersList.pageSize} index={idx} />
  <td className="p-4 ps-5">
  <span className="font-bold text-slate-900 block">{c.name}</span>
  <span className="text-[10px] text-slate-400 block mt-0.5 font-medium">
@@ -2421,6 +2469,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  ))}
  </tbody>
  </table>
+ <PaginationFooter db={db} page={customersList.page} totalPages={customersList.totalPages} total={customersList.total} pageSize={customersList.pageSize} onPageChange={customersList.setPage} />
  </div>
  )}
 
@@ -2429,17 +2478,19 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <table className="w-full text-start border-collapse">
  <thead>
  <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
- <th className="p-4 ps-5 text-start">{t('Vendor / Material Supplier')}</th>
- <th className="p-4 text-start">{t('Code')}</th>
- <th className="p-4 text-start">{t('Email')}</th>
- <th className="p-4 text-start">{t('VAT Registration')}</th>
- <th className="p-4 text-start">{t('Status')}</th>
+ <RowNumberTh label="#" />
+ <SortableTh label={t('Vendor / Material Supplier')} column="name" sortBy={vendorsList.sortBy} sortDir={vendorsList.sortDir} onSort={vendorsList.toggleSort} className="text-start" />
+ <SortableTh label={t('Code')} column="vendorCode" sortBy={vendorsList.sortBy} sortDir={vendorsList.sortDir} onSort={vendorsList.toggleSort} className="text-start" />
+ <SortableTh label={t('Email')} column="email" sortBy={vendorsList.sortBy} sortDir={vendorsList.sortDir} onSort={vendorsList.toggleSort} className="text-start" />
+ <SortableTh label={t('VAT Registration')} column="vatNumber" sortBy={vendorsList.sortBy} sortDir={vendorsList.sortDir} onSort={vendorsList.toggleSort} className="text-start" />
+ <SortableTh label={t('Status')} column="isActive" sortBy={vendorsList.sortBy} sortDir={vendorsList.sortDir} onSort={vendorsList.toggleSort} className="text-start" />
  <th className="p-4 pe-5 text-end">{t('Actions')}</th>
  </tr>
  </thead>
  <tbody className="divide-y divide-slate-100 ">
- {filteredVendors.map((v: any) => (
+ {vendorsList.rows.map((v: any, idx: number) => (
  <tr key={v.id} className={`hover:bg-slate-50/40 transition-colors duration-150 ${v.isActive === false ? 'opacity-60 text-slate-500' : 'text-slate-700'}`}>
+ <RowNumberTd page={vendorsList.page} pageSize={vendorsList.pageSize} index={idx} />
  <td className="p-4 ps-5">
  <span className="font-bold text-slate-900 block">{v.name}</span>
  <span className="text-[10px] text-slate-400 block mt-0.5 font-medium">
@@ -2492,6 +2543,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  ))}
  </tbody>
  </table>
+ <PaginationFooter db={db} page={vendorsList.page} totalPages={vendorsList.totalPages} total={vendorsList.total} pageSize={vendorsList.pageSize} onPageChange={vendorsList.setPage} />
  </div>
  )}
 
@@ -2500,22 +2552,24 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <table className="w-full text-start border-collapse">
  <thead>
  <tr className="bg-slate-50/70 border-b border-slate-100 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
- <th className="p-4 ps-5 text-start">{t('Catalog Service / Item')}</th>
- <th className="p-4 text-start">{t('SKU')}</th>
+ <RowNumberTh label="#" />
+ <SortableTh label={t('Catalog Service / Item')} column="name" sortBy={productsList.sortBy} sortDir={productsList.sortDir} onSort={productsList.toggleSort} className="text-start" />
+ <SortableTh label={t('SKU')} column="sku" sortBy={productsList.sortBy} sortDir={productsList.sortDir} onSort={productsList.toggleSort} className="text-start" />
  <th className="p-4 text-start">{t('Image')}</th>
  <th className="p-4 text-start">{t('POS Enabled')}</th>
  <th className="p-4 text-start">{t('Type / Ledger Scope')}</th>
- <th className="p-4 text-start">{t('Unit')}</th>
+ <SortableTh label={t('Unit')} column="unit" sortBy={productsList.sortBy} sortDir={productsList.sortDir} onSort={productsList.toggleSort} className="text-start" />
  <th className="p-4 text-start">{t('Packaging')}</th>
- <th className="p-4 text-start">{t('Status')}</th>
- <th className="p-4 text-end">{t('Cost Price')}</th>
- <th className="p-4 text-end">{t('Sales Price')}</th>
+ <SortableTh label={t('Status')} column="isActive" sortBy={productsList.sortBy} sortDir={productsList.sortDir} onSort={productsList.toggleSort} className="text-start" />
+ <SortableTh label={t('Cost Price')} column="costPrice" sortBy={productsList.sortBy} sortDir={productsList.sortDir} onSort={productsList.toggleSort} className="text-end" align="end" />
+ <SortableTh label={t('Sales Price')} column="unitPrice" sortBy={productsList.sortBy} sortDir={productsList.sortDir} onSort={productsList.toggleSort} className="text-end" align="end" />
  {(canUpdateProducts || canDeleteProducts) && <th className="p-4 pe-5 text-end">{t('Actions')}</th>}
  </tr>
  </thead>
  <tbody className="divide-y divide-slate-100 ">
- {companyProducts.map(p => (
+ {productsList.rows.map((p: any, idx: number) => (
  <tr key={p.id} className={`hover:bg-slate-50/40 transition-colors duration-150 ${p.isActive === false ? 'opacity-60 text-slate-500' : 'text-slate-700'}`}>
+ <RowNumberTd page={productsList.page} pageSize={productsList.pageSize} index={idx} />
  <td className="p-4 ps-5 font-bold text-slate-900">{p.name}</td>
  <td className="p-4 font-mono text-slate-500">{p.sku || '—'}</td>
  <td className="p-4">
@@ -2531,7 +2585,17 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  {(p as any).salesPurchaseFlow === 1 ? t('Sales') : (p as any).salesPurchaseFlow === 2 ? t('Purchase') : t('Both')}
  </span>
  </td>
- <td className="p-4 font-semibold text-slate-600">{p.unit || t('No')}</td>
+ <td className="p-4 font-semibold text-slate-600">
+ {(() => {
+ // Show the real named unit (e.g. "Box of 12") when this product has one, resolved
+ // from its unitOfMeasureId — not the bare ZATCA code, which is all p.unit alone
+ // carries and can't tell apart two units that happen to share one code. Falls back
+ // to the raw code for the "No"/"PCE" pseudo-values and any pre-fix row that
+ // predates unitOfMeasureId (never null, so this branch stays correct for those too).
+ const uom = p.unitOfMeasureId ? (db.unitsOfMeasure || []).find(u => u.id === p.unitOfMeasureId) : undefined;
+ return uom ? `${uom.name} (${uom.code})` : (p.unit || t('No'));
+ })()}
+ </td>
  <td className="p-4">
  {(() => {
  const pucs = (db.productUnitConversions || []).filter(puc => puc.productId === p.id && puc.isActive !== false);
@@ -2589,6 +2653,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  ))}
  </tbody>
  </table>
+ <PaginationFooter db={db} page={productsList.page} totalPages={productsList.totalPages} total={productsList.total} pageSize={productsList.pageSize} onPageChange={productsList.setPage} />
  </div>
  )}
 
@@ -2784,7 +2849,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  <ProductImportModal
  db={db}
  onClose={() => setShowProductImport(false)}
- onImported={async () => { if (onRefreshDb) await onRefreshDb(); }}
+ onImported={async () => { if (onRefreshDb) await onRefreshDb(); productsList.reload(); }}
  />
  </React.Suspense>
  )}
@@ -2795,7 +2860,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  db={db}
  entity={showPartyImport}
  onClose={() => setShowPartyImport(null)}
- onImported={async () => { if (onRefreshDb) await onRefreshDb(); }}
+ onImported={async () => { if (onRefreshDb) await onRefreshDb(); customersList.reload(); vendorsList.reload(); }}
  />
  </React.Suspense>
  )}

@@ -582,6 +582,15 @@ export const productsServices = pgTable('products_services', {
   // the old `type` column's Sales/Purchase meaning; see salesProducts/purchaseProducts
   // filters in InvoiceModule.tsx/QuotationModule.tsx/ExpenseModule.tsx.
   salesPurchaseFlow: integer('sales_purchase_flow').notNull().default(0),
+  // `unit` is kept as the plain ZATCA unit code (e.g. "PCE") that every existing reader of
+  // this column already expects (invoice/quotation/expense line items, ZATCA XML, etc.) —
+  // changing its meaning would ripple everywhere. This new column is the actual reference
+  // to WHICH named units_of_measure row was picked, since two different named units can
+  // share one ZATCA code (e.g. both "Piece" and a custom "Box of 12" coded "PCE"), which
+  // `unit` alone can never disambiguate — see MasterEntities.tsx's prodUnitId comment for
+  // the real incident this was built to fix. Nullable: `unit` stays the source of truth for
+  // ZATCA reporting either way; this only powers the picker's own round-trip display.
+  unitOfMeasureId: uuid('unit_of_measure_id').references((): any => unitsOfMeasure.id),
   unit: text('unit'),
   isPosItem: boolean('is_pos_item').default(false),
   category: text('category'),

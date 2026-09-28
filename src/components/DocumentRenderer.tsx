@@ -13,6 +13,7 @@ import { Printer, Download, Eye, X, Globe, FileText, Check, AlertCircle } from '
 import { calculateInvoiceTotals, DatabaseState } from '../dbStore';
 import { useTranslation } from '../hooks';
 import { ensureCompatibleImage } from '../imageUtils';
+import warraqMark from '../assets/warraq-mark.svg';
 import QRCode from 'qrcode';
 import { DEFAULT_DOCUMENT_LAYOUT, COL_SPAN_MD, COL_SPAN_PRINT } from '../documentTemplateDefaults';
 import { amountToWordsForCurrency } from '../numberToWords';
@@ -917,8 +918,8 @@ export default function DocumentRenderer({
            referrerPolicy="no-referrer"
           />
          ) : (
-          <div className="w-12 h-12 bg-slate-900 text-white rounded-lg flex items-center justify-center font-bold text-lg mb-2">
-           CNC
+          <div className="w-12 h-12 bg-slate-900 rounded-lg flex items-center justify-center mb-2 p-2">
+           <img src={warraqMark} alt="Warraq" className="w-full h-full object-contain" />
           </div>
          )}
         </div>

@@ -935,7 +935,7 @@ export interface InvoiceKpiFilters {
 // dbStore.ts's getInvoiceSign comment documents as already fixed in Dashboard/
 // ReportViewer/SalesReportsModule, just missed here; (2) "Total Collected" only ever
 // used it for a Paid invoice's own believed-full amount).
-export async function computeInvoiceKpis(executor: any, companyId: string, filters: InvoiceKpiFilters, opts: ReportScopeOpts): Promise<{ totalInvoiced: number; totalCollected: number }> {
+export async function computeInvoiceKpis(executor: any, companyId: string, filters: InvoiceKpiFilters, opts: ReportScopeOpts): Promise<{ totalInvoiced: number; totalCollected: number; paidCount: number; pendingCount: number }> {
   const branchOk = makeBranchOk(opts.branchIds);
   const conditions = [eq(schema.invoices.companyId, companyId)];
   if (filters.startDate) conditions.push(gte(schema.invoices.date, filters.startDate));
@@ -961,22 +961,28 @@ export async function computeInvoiceKpis(executor: any, companyId: string, filte
   const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, activeInvoices);
   let totalInvoiced = 0;
   let totalCollected = 0;
+  let paidCount = 0;
+  let pendingCount = 0;
   for (const inv of activeInvoices) {
     const sign = invoiceSign(inv);
     const grandTotal = totalsByInvoiceId.get(inv.id)!.grandTotal;
     totalInvoiced = round2(totalInvoiced + grandTotal * sign);
     const collectedForThisInvoice = inv.paymentStatus === 'Paid' ? grandTotal : Number(inv.amountPaid || 0);
     totalCollected = round2(totalCollected + collectedForThisInvoice * sign);
+    if (inv.paymentStatus === 'Paid') paidCount++;
+    else if (inv.paymentStatus === 'Unpaid' || inv.paymentStatus === 'Partially Paid') pendingCount++;
   }
-  return { totalInvoiced, totalCollected };
+  return { totalInvoiced, totalCollected, paidCount, pendingCount };
 }
 
-// Ports QuotationModule.tsx's kpiTotalValue/kpiConvertedValue.
-export async function computeQuotationKpis(executor: any, companyId: string, opts: ReportScopeOpts & { restrictToUserId?: string | null }): Promise<{ totalValue: number; convertedValue: number }> {
+// Ports QuotationModule.tsx's kpiTotalValue/kpiConvertedValue/kpiConvertedQuotes.length/
+// kpiActiveQuotesCount — all four cards, so none of them depend on the capped client-side
+// db.quotations array once the list itself moves to real server-side pagination.
+export async function computeQuotationKpis(executor: any, companyId: string, opts: ReportScopeOpts & { restrictToUserId?: string | null }): Promise<{ totalValue: number; convertedValue: number; totalCount: number; convertedCount: number; activeCount: number }> {
   const branchOk = makeBranchOk(opts.branchIds);
   const quotationsAll = (await executor.select().from(schema.quotations).where(eq(schema.quotations.companyId, companyId)))
     .filter(q => branchOk(q.branchId) && !q.isCancelled && (!opts.restrictToUserId || q.createdById === opts.restrictToUserId));
-  if (quotationsAll.length === 0) return { totalValue: 0, convertedValue: 0 };
+  if (quotationsAll.length === 0) return { totalValue: 0, convertedValue: 0, totalCount: 0, convertedCount: 0, activeCount: 0 };
   const quotationIds = quotationsAll.map(q => q.id);
   const items = await executor.select().from(schema.quotationItems).where(inArray(schema.quotationItems.quotationId, quotationIds));
   const itemsByQuotationId = new Map<string, typeof items>();
@@ -989,14 +995,17 @@ export async function computeQuotationKpis(executor: any, companyId: string, opt
   const percentageById = new Map(taxSlabRows.map(s => [s.id, Number(s.percentage)]));
   let totalValue = 0;
   let convertedValue = 0;
+  let convertedCount = 0;
+  let activeCount = 0;
   for (const q of quotationsAll) {
     const qItems = itemsByQuotationId.get(q.id) || [];
     const headerPercentage = q.taxSlabId && percentageById.has(q.taxSlabId) ? percentageById.get(q.taxSlabId)! : 0;
     const totals = computeInvoiceServerTotals(qItems as any, headerPercentage, Number(q.discountPercentage || 0), percentageById);
     totalValue = round2(totalValue + totals.grandTotal);
-    if (q.status === 'Converted') convertedValue = round2(convertedValue + totals.grandTotal);
+    if (q.status === 'Converted') { convertedValue = round2(convertedValue + totals.grandTotal); convertedCount++; }
+    if (q.status === 'Draft' || !q.status) activeCount++;
   }
-  return { totalValue, convertedValue };
+  return { totalValue, convertedValue, totalCount: quotationsAll.length, convertedCount, activeCount };
 }
 
 // Ports AdminSettings.tsx's Equity tab per-investor currentTotalContributed — batched

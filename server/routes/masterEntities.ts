@@ -1,7 +1,8 @@
 import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
-import { eq, and, ne, sql, or, isNull, inArray } from 'drizzle-orm';
+import { eq, and, ne, sql, or, isNull, inArray, asc, desc, count } from 'drizzle-orm';
+import { parsePageSort, wantsPaged } from '../lib/pagination.js';
 import { normalizePermissions } from '../../src/types.js';
 import { isSuperAdminUser, isAdminUser, hasPermission, assertOwnsRow, branchAccessOk } from '../lib/authz.js';
 import { generateId } from '../../src/id.js';
@@ -39,15 +40,43 @@ export function composeAddressFromZatcaFields(f: { buildingNumber?: string | nul
 // default superuser `db` — company scoping is enforced by both the existing app-level
 // `req.targetCompanyId` filters below (unchanged, kept as-is deliberately) AND the
 // database-level RLS policy on `customers`, as two independent layers.
+const CUSTOMERS_SORTABLE = {
+  name: schema.customers.name,
+  customerCode: schema.customers.customerCode,
+  email: schema.customers.email,
+  vatNumber: schema.customers.vatNumber,
+  isActive: schema.customers.isActive,
+} as const;
+
 router.get('/customers', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.customers.read.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const companyId = req.targetCompanyId;
-    const customers = await tenantDb().select().from(schema.customers).where(eq(schema.customers.companyId, companyId));
-    res.json(customers);
+    const paged = wantsPaged(req);
+    const search = String(req.query?.search || '').trim();
+    const whereClause = search
+      ? and(eq(schema.customers.companyId, companyId), or(
+          sql`${schema.customers.name} ILIKE ${'%' + search + '%'}`,
+          sql`${schema.customers.customerCode} ILIKE ${'%' + search + '%'}`,
+          sql`${schema.customers.vatNumber} ILIKE ${'%' + search + '%'}`,
+        ))
+      : eq(schema.customers.companyId, companyId);
+
+    if (!paged) {
+      const customers = await tdb.select().from(schema.customers).where(whereClause);
+      return res.json(customers);
+    }
+    const { pageSize, offset, sortBy, sortDir, page } = parsePageSort(req, CUSTOMERS_SORTABLE, 'name', 'asc');
+    const orderFn = sortDir === 'asc' ? asc : desc;
+    const [countResult, rows] = await Promise.all([
+      tdb.select({ value: count() }).from(schema.customers).where(whereClause),
+      tdb.select().from(schema.customers).where(whereClause).orderBy(orderFn(CUSTOMERS_SORTABLE[sortBy])).limit(pageSize).offset(offset),
+    ]);
+    res.json({ rows, total: countResult[0].value, page, pageSize });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -153,15 +182,43 @@ router.patch('/customers/:id/toggle-active', withTenantDb, async (req: any, res)
 });
 
 // --- Vendors ---
+const VENDORS_SORTABLE = {
+  name: schema.vendors.name,
+  vendorCode: schema.vendors.vendorCode,
+  email: schema.vendors.email,
+  vatNumber: schema.vendors.vatNumber,
+  isActive: schema.vendors.isActive,
+} as const;
+
 router.get('/vendors', withTenantDb, async (req: any, res) => {
   try {
+    const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     if (!permissions.vendors.read.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const companyId = req.targetCompanyId;
-    const vendors = await tenantDb().select().from(schema.vendors).where(eq(schema.vendors.companyId, companyId));
-    res.json(vendors);
+    const paged = wantsPaged(req);
+    const search = String(req.query?.search || '').trim();
+    const whereClause = search
+      ? and(eq(schema.vendors.companyId, companyId), or(
+          sql`${schema.vendors.name} ILIKE ${'%' + search + '%'}`,
+          sql`${schema.vendors.vendorCode} ILIKE ${'%' + search + '%'}`,
+          sql`${schema.vendors.vatNumber} ILIKE ${'%' + search + '%'}`,
+        ))
+      : eq(schema.vendors.companyId, companyId);
+
+    if (!paged) {
+      const vendors = await tdb.select().from(schema.vendors).where(whereClause);
+      return res.json(vendors);
+    }
+    const { pageSize, offset, sortBy, sortDir, page } = parsePageSort(req, VENDORS_SORTABLE, 'name', 'asc');
+    const orderFn = sortDir === 'asc' ? asc : desc;
+    const [countResult, rows] = await Promise.all([
+      tdb.select({ value: count() }).from(schema.vendors).where(whereClause),
+      tdb.select().from(schema.vendors).where(whereClause).orderBy(orderFn(VENDORS_SORTABLE[sortBy])).limit(pageSize).offset(offset),
+    ]);
+    res.json({ rows, total: countResult[0].value, page, pageSize });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -243,6 +300,15 @@ router.patch('/vendors/:id/toggle-active', withTenantDb, async (req: any, res) =
 });
 
 // --- Products ---
+const PRODUCTS_SORTABLE = {
+  name: schema.productsServices.name,
+  sku: schema.productsServices.sku,
+  unit: schema.productsServices.unit,
+  isActive: schema.productsServices.isActive,
+  costPrice: schema.productsServices.costPrice,
+  unitPrice: schema.productsServices.unitPrice,
+} as const;
+
 router.get('/products', withTenantDb, async (req: any, res) => {
   try {
     const tdb = tenantDb();
@@ -251,7 +317,32 @@ router.get('/products', withTenantDb, async (req: any, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const companyId = req.targetCompanyId;
-    const products = await tdb.select().from(schema.productsServices).where(eq(schema.productsServices.companyId, companyId));
+    const paged = wantsPaged(req);
+    const search = String(req.query?.search || '').trim();
+    const whereClause = search
+      ? and(eq(schema.productsServices.companyId, companyId), or(
+          sql`${schema.productsServices.name} ILIKE ${'%' + search + '%'}`,
+          sql`${schema.productsServices.sku} ILIKE ${'%' + search + '%'}`,
+        ))
+      : eq(schema.productsServices.companyId, companyId);
+
+    let products: (typeof schema.productsServices.$inferSelect)[];
+    let total = 0;
+    let pageMeta: { page: number; pageSize: number } | null = null;
+    if (paged) {
+      const { pageSize, offset, sortBy, sortDir, page } = parsePageSort(req, PRODUCTS_SORTABLE, 'name', 'asc');
+      const orderFn = sortDir === 'asc' ? asc : desc;
+      let countResult: { value: number }[];
+      [countResult, products] = await Promise.all([
+        tdb.select({ value: count() }).from(schema.productsServices).where(whereClause),
+        tdb.select().from(schema.productsServices).where(whereClause).orderBy(orderFn(PRODUCTS_SORTABLE[sortBy])).limit(pageSize).offset(offset),
+      ]);
+      total = countResult[0].value;
+      pageMeta = { page, pageSize };
+    } else {
+      products = await tdb.select().from(schema.productsServices).where(whereClause);
+    }
+
     const productIds = products.map(p => p.id);
     const links = productIds.length
       ? await tdb.select().from(schema.productModifierGroups).where(inArray(schema.productModifierGroups.productId, productIds))
@@ -261,7 +352,8 @@ router.get('/products', withTenantDb, async (req: any, res) => {
       if (!groupIdsByProduct.has(l.productId)) groupIdsByProduct.set(l.productId, []);
       groupIdsByProduct.get(l.productId)!.push(l.modifierGroupId);
     }
-    res.json(products.map(p => ({ ...p, modifierGroupIds: groupIdsByProduct.get(p.id) || [] })));
+    const rows = products.map(p => ({ ...p, modifierGroupIds: groupIdsByProduct.get(p.id) || [] }));
+    res.json(paged ? { rows, total, ...pageMeta! } : rows);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
