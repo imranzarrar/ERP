@@ -40,6 +40,7 @@ import roleTemplatesRouter from './server/routes/roleTemplates.js';
 import companiesRouter from './server/routes/companies.js';
 import { parseImageDataUrl } from './server/lib/companyLogo.js';
 import { publicRouter as onboardingPublicRouter, adminRouter as onboardingAdminRouter } from './server/routes/onboarding.js';
+import { publicRouter as systemBannerPublicRouter, adminRouter as systemBannerAdminRouter } from './server/routes/systemBanner.js';
 
 async function startServer() {
   const app = express();
@@ -628,6 +629,10 @@ async function startServer() {
   // for its own input validation/honeypot/rate-limit hardening.
   app.use('/api', onboardingPublicRouter);
 
+  // Announcement banner — public on purpose (see server/routes/systemBanner.ts), so it
+  // still shows on the login screen for someone about to log in right as maintenance starts.
+  app.use('/api', systemBannerPublicRouter);
+
   // Company logo bytes, served from their own cacheable address (see server/lib/companyLogo.ts).
   // Public on purpose and registered BEFORE the auth gate: the address must work for <img> tags,
   // which cannot send the x-session-id header, and for the headless browser that renders PDFs. It only
@@ -822,6 +827,7 @@ async function startServer() {
   app.use('/api', employeesRouter);
   app.use('/api', sessionsRouter);
   app.use('/api', onboardingAdminRouter);
+  app.use('/api', systemBannerAdminRouter);
   app.use('/api/role-templates', roleTemplatesRouter);
   app.use('/api/companies', companiesRouter);
   app.use('/api/users', usersRouter);

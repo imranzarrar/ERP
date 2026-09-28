@@ -1345,6 +1345,26 @@ export const deletedCompanyLog = pgTable('deleted_company_log', {
   }),
 })).enableRLS();
 
+// Platform-wide, single-row announcement banner (id is always the literal 'singleton') —
+// not company-scoped at all, and only ever written/read via the superuser db from
+// server/routes/systemBanner.ts, same as user_sessions/zatca.ts stay on superuser db by
+// design. RLS still enabled with an explicit allow-all policy so that's an auditable
+// choice, not an accidental gap — same convention as translations/companyOnboardingRequests.
+export const systemBanner = pgTable('system_banner', {
+  id: text('id').primaryKey().default('singleton'),
+  enabled: boolean('enabled').notNull().default(false),
+  message: text('message').notNull().default(''),
+  updatedBy: uuid('updated_by').references(() => users.id),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  tenantIsolationPolicy: pgPolicy('system_banner_shared_access', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`true`,
+    withCheck: sql`true`,
+  }),
+})).enableRLS();
+
 export const posHeldInvoices = pgTable('pos_held_invoices', {
   id: uuid('id').primaryKey(),
   shiftId: uuid('shift_id').references(() => posShifts.id).notNull(),

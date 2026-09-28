@@ -2,6 +2,7 @@ import {StrictMode, Suspense} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import PrintInvoiceView from './PrintInvoiceView.tsx';
+import SystemBanner from './components/SystemBanner.tsx';
 import './index.css';
 import { debugAuth } from './debug.ts';
 
@@ -125,6 +126,11 @@ const printInvoiceMatch = window.location.pathname.match(/^\/print\/invoice\/([^
 
 createRoot(document.getElementById('root')!).render(
  <StrictMode>
- {printInvoiceMatch ? <PrintInvoiceView invoiceId={printInvoiceMatch[1]} /> : <Suspense fallback={null}><App /></Suspense>}
+ {printInvoiceMatch ? <PrintInvoiceView invoiceId={printInvoiceMatch[1]} /> : (
+   <Suspense fallback={null}>
+     <SystemBanner />
+     <App />
+   </Suspense>
+ )}
  </StrictMode>,
 );

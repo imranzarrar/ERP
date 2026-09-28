@@ -39,7 +39,7 @@ import {
  Sliders,
  ShoppingCart,
  ShieldCheck,
- Shield, MapPin, Hash, FileCheck, Monitor, LogOut, Inbox, Layers} from 'lucide-react';
+ Shield, MapPin, Hash, FileCheck, Monitor, LogOut, Inbox, Layers, Megaphone} from 'lucide-react';
 import { ensureCompatibleImage, downscaleImageDataUrl } from '../imageUtils';
 import { DEFAULT_DOCUMENT_LAYOUT, DETAILED_TAX_INVOICE_LAYOUT, buildCompactA4Layout, COL_SPAN_MD, COL_SPAN_PRINT } from '../documentTemplateDefaults';
 import { XMLParser } from 'fast-xml-parser';
@@ -368,6 +368,7 @@ const CATEGORY_GROUPS: { id: string; label: string; icon: any; subTabs: Settings
     subTabs: [
       { id: 'companies', label: 'Companies Directory', icon: Building, superAdminOnly: true },
       { id: 'onboarding', label: 'Onboarding Requests', icon: Inbox, superAdminOnly: true },
+      { id: 'systemBanner', label: 'System Announcement', icon: Megaphone, superAdminOnly: true },
       { id: 'roleTemplates', label: 'Role Templates', icon: Layers, superAdminOnly: true },
       { id: 'company', label: 'Company Profile', icon: Settings, requiredPermission: 'companyProfile.read' },
       { id: 'zatca', label: 'ZATCA Phase 2 E-Invoicing', icon: ShieldCheck, adminOnly: true },
@@ -2700,6 +2701,49 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
     }
   };
 
+  // --- Platform-wide announcement banner (see server/routes/systemBanner.ts) — a single
+  // on/off message shown to every user of every company, e.g. "maintenance tonight 10-11
+  // PM". Loaded once when this tab is first opened, not on every AdminSettings mount.
+  const [bannerState, setBannerState] = React.useState<{ enabled: boolean; message: string; updatedAt: string | null }>({ enabled: false, message: '', updatedAt: null });
+  const [bannerLoaded, setBannerLoaded] = React.useState(false);
+  const [bannerSaving, setBannerSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (activeTab !== 'systemBanner' || bannerLoaded) return;
+    (async () => {
+      try {
+        const resp = await fetch('/api/system-banner');
+        const result = await resp.json().catch(() => ({}));
+        setBannerState({ enabled: !!result.enabled, message: result.message || '', updatedAt: result.updatedAt || null });
+      } catch {
+        // Leave defaults — the save form still works even if this initial load failed.
+      } finally {
+        setBannerLoaded(true);
+      }
+    })();
+  }, [activeTab, bannerLoaded]);
+
+  const handleSaveBanner = async () => {
+    setBannerSaving(true);
+    try {
+      const resp = await fetch('/api/system-banner', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: bannerState.enabled, message: bannerState.message }),
+      });
+      const result = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        return triggerError(result.error || 'Failed to save the announcement.');
+      }
+      setBannerState({ enabled: !!result.enabled, message: result.message || '', updatedAt: result.updatedAt || null });
+      triggerSuccess(result.enabled ? 'Announcement is now live for all users.' : 'Announcement turned off.');
+    } catch (err: any) {
+      triggerError('Failed to save the announcement: ' + err.message);
+    } finally {
+      setBannerSaving(false);
+    }
+  };
+
  const handleAddUser = async (e: React.FormEvent) => {
  e.preventDefault();
  // A brand-new account has no username field at all — the server derives it from
@@ -3682,6 +3726,61 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  ))}
  </tbody>
  </table>
+ </div>
+ </div>
+ )}
+
+ {/* TAB: SYSTEM ANNOUNCEMENT BANNER */}
+ {activeTab === 'systemBanner' && (
+ <div className="space-y-6 animate-fade-in">
+ <div>
+ <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">{t('System Announcement')}</h3>
+ <p className="text-[11px] text-slate-400 mt-0.5">{t('A message shown at the top of the screen for every user of every company, including the login screen. Use it to warn clients about upcoming maintenance before the system actually goes down — this only works while the app itself is running.')}</p>
+ </div>
+
+ {successMsg && (
+ <div className="p-3 bg-emerald-50 text-emerald-700 rounded-2xl border border-emerald-100 text-xs font-semibold">{successMsg}</div>
+ )}
+ {errorMsg && (
+ <div className="p-3 bg-rose-50 text-rose-700 rounded-2xl border border-rose-100 text-xs font-semibold break-all">{errorMsg}</div>
+ )}
+
+ <div className="border border-slate-100 rounded-2xl p-5 space-y-4 max-w-xl">
+ <label className="flex items-center gap-3 cursor-pointer">
+ <input
+ type="checkbox"
+ checked={bannerState.enabled}
+ onChange={(e) => setBannerState(prev => ({ ...prev, enabled: e.target.checked }))}
+ className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+ />
+ <span className="text-xs font-bold text-slate-700">{t('Show this announcement now')}</span>
+ </label>
+
+ <div>
+ <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">{t('Message')}</label>
+ <textarea
+ value={bannerState.message}
+ onChange={(e) => setBannerState(prev => ({ ...prev, message: e.target.value }))}
+ rows={3}
+ maxLength={2000}
+ dir="auto"
+ placeholder={t('e.g. Scheduled maintenance tonight 10-11 PM. The system will be unavailable during this time.')}
+ className="w-full text-xs border border-slate-200 rounded-xl p-3 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300"
+ />
+ </div>
+
+ {bannerState.updatedAt && (
+ <p className="text-[10px] text-slate-400">{t('Last updated')}: {new Date(bannerState.updatedAt).toLocaleString()}</p>
+ )}
+
+ <button
+ type="button"
+ disabled={bannerSaving}
+ onClick={handleSaveBanner}
+ className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold"
+ >
+ {bannerSaving ? t('Saving...') : t('Save')}
+ </button>
  </div>
  </div>
  )}
