@@ -153,6 +153,20 @@ describe('reports reconcile with source documents (GRN, bill, credit note, refun
     expect(body.totalSales).toBe(57.5);              // "Gross Month Sales" stays VAT-inclusive
     expect(body.netProfit).toBe(-70);
   });
+  it('VAT return summary includes purchase bills, equals the Balance Sheet VAT lines and the filed-return computation', async () => {
+    const { body: v } = await api(`/api/reports/vat-return-summary?startDate=${today}&endDate=${today}`);
+    // Input VAT = 30 (bill) + 15 (expense X) + 30 (capex Y) = 75 — the bill used to be missing from this report.
+    expect(v.inputVat).toBe(75);
+    expect(v.outputVat).toBe(7.5);
+    expect(v.netVatPayable).toBe(-67.5);             // 7.50 collected - 75 recoverable
+    expect(v.purchaseCount).toBe(3);                 // expense X, capex Y and the bill
+    const bs = (await api(`/api/reports/balance-sheet?asOfDate=${today}`)).body;
+    expect(v.inputVat).toBe(bs.vatInputRecoverable);
+    expect(v.outputVat).toBe(bs.vatOutputPayable);
+    const reg = (await api(`/api/reports/purchase-vat?startDate=${today}&endDate=${today}`)).body;
+    expect(reg.rows.some((r: any) => String(r.documentNumber).startsWith('BILL-'))).toBe(true);
+  });
+
   it('The LEDGER itself (journal lines) agrees with the documents and with every report', async () => {
     const lines = await db.select().from(schema.journalLines).where(eq(schema.journalLines.companyId, companyId)) as any[];
     const net = (key: string) => Math.round(lines.filter(l => l.accountKey === key).reduce((n, l) => n + Number(l.debit) - Number(l.credit), 0) * 100) / 100;

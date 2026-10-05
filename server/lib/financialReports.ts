@@ -1668,24 +1668,41 @@ export async function computeSalesVatRegister(executor: any, companyId: string, 
 }
 
 // Direct expenses don't carry a tax breakdown, so VAT is back-calculated from the slab.
+// Purchase VAT register = the purchases side of the VAT return, built with the SAME rules as
+// server/lib/vatReturn.ts's computeVatReturnFigures so the summary report and the filed return can
+// never disagree: Active expenses (a settled Accrual is excluded — its Actual settlement row carries the
+// VAT, counting both would double the claim) PLUS non-cancelled Purchase Bills (which carry their own
+// subTotal/taxTotal). It previously listed expenses only, so every bill's input VAT was missing from the
+// summary and from the register.
 export async function computePurchaseVatRegister(executor: any, companyId: string, startDate: string, endDate: string, vendorId: string | 'ALL', opts: ReportScopeOpts): Promise<VatRegisterResult> {
   const branchOk = makeBranchOk(opts.branchIds);
   const exps: any[] = await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId), eq(schema.expenses.status, 'Active'),
     gte(schema.expenses.date, startDate), lte(schema.expenses.date, endDate),
   ));
-  const filtered = exps.filter(e => branchOk(e.branchId) && (vendorId === 'ALL' || e.vendorId === vendorId));
+  const filtered = exps.filter(e => !(e.type === 'Accrual' && e.accrualSettled) && branchOk(e.branchId) && (vendorId === 'ALL' || e.vendorId === vendorId));
+  const bills: any[] = (await executor.select().from(schema.purchaseBills).where(and(
+    eq(schema.purchaseBills.companyId, companyId), ne(schema.purchaseBills.status, 'Cancelled'),
+    gte(schema.purchaseBills.date, new Date(startDate + 'T00:00:00.000Z')),
+    lte(schema.purchaseBills.date, new Date(endDate + 'T23:59:59.999Z')),
+  ))).filter(b => branchOk(b.branchId) && (vendorId === 'ALL' || b.vendorId === vendorId));
   const slabs: any[] = await executor.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.companyId, companyId));
   const rateBySlab = new Map<string, number>(slabs.map(s => [s.id, Number(s.percentage)]));
-  const vIds = Array.from(new Set(filtered.map(e => e.vendorId).filter(Boolean))) as string[];
+  const vIds = Array.from(new Set([...filtered.map(e => e.vendorId), ...bills.map(b => b.vendorId)].filter(Boolean))) as string[];
   const vends: any[] = vIds.length ? await executor.select().from(schema.vendors).where(inArray(schema.vendors.id, vIds)) : [];
   const vendById = new Map<string, any>(vends.map(v => [v.id, v]));
-  const rows: VatRegisterRow[] = filtered.map(e => {
+  const expenseRows: VatRegisterRow[] = filtered.map(e => {
     const rate = rateBySlab.get(e.taxSlabId) || 0; const amount = Number(e.amount);
     const subtotal = round2(amount / (1 + rate / 100)); const v = vendById.get(e.vendorId);
     return { documentNumber: e.expenseNumber, date: e.date, partyName: v?.name || 'Cash Vendor', vatNumber: v?.vatNumber || 'N/A',
       subtotal, taxAmount: round2(amount - subtotal), grandTotal: round2(amount) };
-  }).sort((a, b) => a.date.localeCompare(b.date) || a.documentNumber.localeCompare(b.documentNumber));
+  });
+  const billRows: VatRegisterRow[] = bills.map(b => {
+    const v = vendById.get(b.vendorId);
+    return { documentNumber: b.billNumber, date: b.date.toISOString().slice(0, 10), partyName: v?.name || 'Cash Vendor', vatNumber: v?.vatNumber || 'N/A',
+      subtotal: round2(Number(b.subTotal)), taxAmount: round2(Number(b.taxTotal)), grandTotal: round2(Number(b.grandTotal)) };
+  });
+  const rows = [...expenseRows, ...billRows].sort((a, b) => a.date.localeCompare(b.date) || a.documentNumber.localeCompare(b.documentNumber));
   return { rows, totals: sumVat(rows), count: rows.length };
 }
 
