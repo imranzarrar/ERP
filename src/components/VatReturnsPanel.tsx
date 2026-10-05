@@ -163,7 +163,7 @@ export default function VatReturnsPanel({ db }: VatReturnsPanelProps) {
         <table class="vr-table">
           <tbody>
             ${rowsHtml}
-            <tr class="vr-net-row"><td class="vr-label">${escapeHtml(t('Net Payable VAT'))}</td><td class="vr-value">${escapeHtml(money(row.figuresSnapshot.netVatPayable))}</td></tr>
+            <tr class="vr-net-row"><td class="vr-label">${escapeHtml(t('Net Payable VAT'))}</td><td class="vr-value">${escapeHtml(money(row.figuresSnapshot.netVatPayable))}${row.figuresSnapshot.netVatPayable < 0 ? ` (${escapeHtml(t('Refundable'))})` : ''}</td></tr>
           </tbody>
         </table>
         <p class="vr-footnote">${escapeHtml(t('Filing with ZATCA is a manual step performed on ZATCA\'s own VAT return portal — this record only tracks that it was done, and permanently locks the quarter\'s documents once you confirm it here.'))}</p>
@@ -299,7 +299,7 @@ export default function VatReturnsPanel({ db }: VatReturnsPanelProps) {
                   <td className="p-3 text-end font-mono">{money(row.figuresSnapshot.outputVat)}</td>
                   <td className="p-3 text-end font-mono">{money(row.figuresSnapshot.purchasesSubtotal)}</td>
                   <td className="p-3 text-end font-mono">{money(row.figuresSnapshot.inputVat)}</td>
-                  <td className="p-3 text-end font-mono font-bold text-slate-800">{money(row.figuresSnapshot.netVatPayable)}</td>
+                  <td className="p-3 text-end font-mono font-bold text-slate-800">{money(row.figuresSnapshot.netVatPayable)}{row.figuresSnapshot.netVatPayable < 0 && <span className="ms-1 text-[9px] font-bold uppercase text-emerald-600">({t('Refundable')})</span>}</td>
                   <td className="p-3 text-end">
                     {!row.isDeleted && (
                       <div className="flex justify-end gap-3">

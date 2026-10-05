@@ -304,6 +304,16 @@ describe('Figure correctness (Credit Note netting + Purchase Bill inclusion)', (
     expect(body.taxReturn.referenceNumber).toBe(`Q${currentQuarter}-${currentYear}`);
     expect(body.taxReturn.status).toBe('Generated');
   });
+
+  it('the VAT Return Summary report and the generated filing figures are the same numbers (one source of truth)', async () => {
+    const generated = (await db.select().from(schema.taxReturns).where(eq(schema.taxReturns.companyId, companyId)))
+      .find(r => r.year === currentYear && r.quarter === currentQuarter && !r.isDeleted)!;
+    const f: any = generated.figuresSnapshot;
+    const { body } = await api(adminSessionId, `/api/reports/vat-return-summary?startDate=${generated.startDate}&endDate=${generated.endDate}`);
+    expect(body.outputVat).toBe(f.outputVat);
+    expect(body.inputVat).toBe(f.inputVat);          // expense VAT + the Purchase Bill's VAT, as filed
+    expect(body.netVatPayable).toBe(f.netVatPayable);
+  });
 });
 
 describe('Generate -> Delete -> Regenerate', () => {
@@ -415,6 +425,24 @@ describe('Unreported ZATCA invoices block both Generate and File', () => {
 
 describe('Filing, permanent lock, and the filed-quarter document lock', () => {
   let filedReturnId: string;
+
+  it('refuses to file a stale snapshot: a document added after generate must force a regenerate', async () => {
+    const today = now.toISOString().split('T')[0];
+    const target = (await db.select().from(schema.taxReturns).where(eq(schema.taxReturns.companyId, companyId)))
+      .find(r => r.year === currentYear && r.quarter === currentQuarter && !r.isDeleted)!;
+    const added = await api(adminSessionId, '/api/transactions/invoices', {
+      method: 'POST',
+      body: JSON.stringify({ invoiceData: { date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+        items: [{ id: generateId(), description: 'Added after generate', unitCost: 200, quantity: 1, unit: 'PCE' }] } }),
+    });
+    expect(added.status).toBe(200);
+    await new Promise(r => setTimeout(r, 900));   // let the fire-and-forget ZATCA job settle to DISABLED
+    const attempt = await api(adminSessionId, `/api/tax-returns/${target.id}/file`, { method: 'POST' });
+    expect(attempt.status).toBe(400);
+    expect(attempt.body.error).toMatch(/have changed since it was generated/i);
+    // Cancelling the extra invoice restores the snapshot's truth, so the real filing test below is unaffected.
+    expect((await api(adminSessionId, `/api/transactions/invoices/${added.body.invoiceId}/cancel`, { method: 'POST' })).status).toBe(200);
+  });
 
   it('files the current quarter (passes the ZATCA-completeness and sequential-order checks)', async () => {
     const target = (await db.select().from(schema.taxReturns).where(eq(schema.taxReturns.companyId, companyId)))

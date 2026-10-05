@@ -159,6 +159,20 @@ router.post('/tax-returns/:id/file', withTenantDb, async (req: any, res) => {
     // a number ZATCA's own e-invoicing pipeline might still reject or hasn't seen at all.
     await assertNoUnreportedZatcaInvoices(tdb, companyId, row.startDate, row.endDate);
 
+    // The figures were snapshotted when this return was GENERATED. Any invoice, credit note, expense or bill
+    // added, cancelled or changed in the quarter since then would make that snapshot wrong, and filing is the
+    // one-way door — so recompute now and refuse if anything moved, rather than lock in a stale number.
+    const fresh = await computeVatReturnFigures(tdb, companyId, row.year, row.quarter);
+    const snap: any = row.figuresSnapshot || {};
+    const moved = (['salesSubtotal', 'outputVat', 'purchasesSubtotal', 'inputVat', 'netVatPayable'] as const)
+      .filter(k => Math.abs(Number(snap[k] ?? 0) - Number((fresh as any)[k])) > 0.005);
+    if (moved.length > 0) {
+      const detail = moved.map(k => `${k}: ${Number(snap[k] ?? 0).toFixed(2)} -> ${Number((fresh as any)[k]).toFixed(2)}`).join('; ');
+      const err: any = new Error(`The figures for ${row.referenceNumber} have changed since it was generated (${detail}). Delete this return and generate it again before filing.`);
+      err.status = 400;
+      throw err;
+    }
+
     const [updated] = await tdb.update(schema.taxReturns).set({ status: 'Filed', filedAt: new Date(), filedById: req.user.id }).where(eq(schema.taxReturns.id, id)).returning();
 
     res.json({ success: true, taxReturn: updated });

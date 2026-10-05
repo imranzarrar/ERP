@@ -281,6 +281,7 @@ export const SEED_RECURRING: RecurringExpenseTemplate[] = [
 
 
 export const SEED_TRANSLATIONS: TranslationItem[] = [
+  { id: '019fa55c-7000-7000-8000-00000000f005', key: 'Refundable', en: 'Refundable', ar: 'قابل للاسترداد', ur: 'قابل واپسی' },
   { id: '019fa55c-7000-7000-8000-00000000f001', key: 'Fixed Assets', en: 'Fixed Assets', ar: 'الأصول الثابتة', ur: 'اثاثے (مستقل اثاثہ جات)' },
   { id: '019fa55c-7000-7000-8000-00000000f002', key: 'VAT Input (Recoverable)', en: 'VAT Input (Recoverable)', ar: 'ضريبة المدخلات (قابلة للاسترداد)', ur: 'ان پٹ ویٹ (قابل واپسی)' },
   { id: '019fa55c-7000-7000-8000-00000000f003', key: 'VAT Output (Payable)', en: 'VAT Output (Payable)', ar: 'ضريبة المخرجات (مستحقة الدفع)', ur: 'آؤٹ پٹ ویٹ (قابل ادائیگی)' },
