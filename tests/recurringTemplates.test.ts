@@ -71,6 +71,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Invoice/expense/GRN postings write ledger rows that reference these users and banks; they must go first.
+  await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, companyId));
+  await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, companyId));
   for (const expId of createdExpenseIds) {
     await db.delete(schema.recurringPostings).where(eq(schema.recurringPostings.expenseId, expId));
     await db.delete(schema.expenses).where(eq(schema.expenses.id, expId));

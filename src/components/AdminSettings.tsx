@@ -1105,16 +1105,17 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  };
 
  // Three starter templates, kept in parity with companyProvisioning.ts's server-side
- // onboarding-approval flow (see that file's comment). "Compact A4" is the only one
- // marked isActive — the pre-selected default in the Print dialog's template dropdown —
- // the other two are saved and immediately selectable from that same dropdown without
- // an admin needing to build them from scratch.
+ // onboarding-approval flow (see that file's comment). "Detailed Compact (A4)" is the only
+ // English one marked isActive — the pre-selected default in the Print dialog's template
+ // dropdown — the other two are saved and immediately selectable from that same dropdown
+ // without an admin needing to build them from scratch. (Only one English template may be
+ // active per company: schema.documentTemplates' unique_active_template index.)
  const newTemplate: DocumentTemplate = {
  id: generateId(),
  name: 'Compact A4',
  language: 'English',
  pageSize: '8.27in x 11.69in (A4)',
- isActive: true,
+ isActive: false,
  printHeader: true,
  printFooter: true,
  printLogo: true,
@@ -1144,7 +1145,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  name: 'Detailed Compact (A4)',
  language: 'English',
  pageSize: '8.27in x 11.69in (A4)',
- isActive: false,
+ isActive: true,
  printHeader: true,
  printFooter: true,
  printLogo: true,

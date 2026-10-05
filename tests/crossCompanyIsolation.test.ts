@@ -85,6 +85,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Invoice/expense/GRN postings write ledger rows that reference these users and banks; they must go first.
+  await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, companyAId));
+  await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, companyAId));
+  await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, companyBId));
+  await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, companyBId));
   // No invoiceItems rows exist for these fixtures (every invoice created here used an
   // empty items array), so no invoiceItems cleanup step is needed before deleting invoices.
   await db.delete(schema.invoices).where(eq(schema.invoices.companyId, companyAId));

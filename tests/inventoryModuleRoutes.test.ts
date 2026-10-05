@@ -128,6 +128,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Invoice/expense/GRN postings write ledger rows that reference these users and banks; they must go first.
+  await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, companyId));
+  await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, companyId));
   await db.delete(schema.inventoryStocks).where(eq(schema.inventoryStocks.companyId, companyId));
   const grns = await db.select().from(schema.goodsReceiptNotes).where(eq(schema.goodsReceiptNotes.companyId, companyId));
   for (const grn of grns) {
@@ -552,12 +555,15 @@ describe('POST /api/inventory/goods-receipt-notes/:id/reverse + average cost', (
     expect(Number(product.totalQuantityPurchased)).toBe(20);
   });
 
-  it('reverses stock and PO fulfillment status, but leaves average cost untouched', async () => {
+  it('reverses stock and PO fulfillment status, and unwinds the average cost back to its pre-receipt value', async () => {
     const poRes = await api(adminSessionId, '/api/inventory/purchase-orders', {
       method: 'POST',
       body: JSON.stringify({ poData: { vendorId, items: [{ productId, quantityOrdered: 5, unitPrice: 10 }] } }),
     });
     const poId = poRes.body.purchaseOrder.id;
+
+    const [productPreGrn] = await db.select().from(schema.productsServices).where(eq(schema.productsServices.id, productId));
+    const avgCostPreGrn = productPreGrn.averageCost;
 
     const grnRes = await api(adminSessionId, '/api/inventory/goods-receipt-notes', {
       method: 'POST',
@@ -567,8 +573,6 @@ describe('POST /api/inventory/goods-receipt-notes/:id/reverse + average cost', (
     expect(grnRes.body.updatedPurchaseOrder.status).toBe('Received');
     const grnId = grnRes.body.goodsReceiptNote.id;
 
-    const [productBefore] = await db.select().from(schema.productsServices).where(eq(schema.productsServices.id, productId));
-    const avgCostBefore = productBefore.averageCost;
 
     const [stockBefore] = await db.select().from(schema.inventoryStocks)
       .where(and(eq(schema.inventoryStocks.productId, productId), eq(schema.inventoryStocks.warehouseId, warehouseId), eq(schema.inventoryStocks.companyId, companyId)));
@@ -584,7 +588,9 @@ describe('POST /api/inventory/goods-receipt-notes/:id/reverse + average cost', (
     expect(Number(stockAfter.quantity)).toBe(qtyBefore - 5);
 
     const [productAfter] = await db.select().from(schema.productsServices).where(eq(schema.productsServices.id, productId));
-    expect(productAfter.averageCost).toBe(avgCostBefore); // untouched, by design
+    // The receipt's weighted-average fold is exactly inverted on reversal, so the product's cost returns to what it was
+    // before this GRN was received (not merely left at the post-receipt value).
+    expect(productAfter.averageCost).toBe(avgCostPreGrn);
 
     const [poAfter] = await db.select().from(schema.purchaseOrders).where(eq(schema.purchaseOrders.id, poId));
     expect(poAfter.status).toBe('Sent');

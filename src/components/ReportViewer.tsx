@@ -15,7 +15,7 @@ import {
  ArrowDownLeft,
  ArrowUpRight
 } from 'lucide-react';
-import { useReportViewer, ViewReportButton, ReportPlaceholder, ReportStatusStrip, ReportPager } from './ReportViewControls';
+import { useReportViewer, ViewReportButton, ReportPlaceholder, ReportStatusStrip, ReportPager, ExportExcelButton } from './ReportViewControls';
 
 type ReportType = 'TrialBalance' | 'SalesVAT' | 'PurchaseVAT' | 'BankLedger' | 'Outstanding' | 'ProfitLoss'
   | 'BalanceSheet' | 'VatReturnSummary' | 'InvestorProfitShare' | 'FiscalMonthClosingHistory';
@@ -126,9 +126,18 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
    const p = new URLSearchParams();
    if (draftBranchId !== 'ALL') p.set('branchId', draftBranchId);
    const range = () => { p.set('startDate', draftStartDate); p.set('endDate', draftEndDate); };
-   if (reportType === 'TrialBalance') return `/api/reports/trial-balance?startDate=${draftStartDate}&endDate=${draftEndDate}`;
-   if (reportType === 'ProfitLoss') return `/api/reports/profit-loss?startDate=${draftStartDate}&endDate=${draftEndDate}&basis=${draftAccountingBasis}`;
-   if (reportType === 'BalanceSheet') return `/api/reports/balance-sheet?asOfDate=${draftEndDate}`;
+   // These three previously hand-built their URL as a raw template string, entirely
+   // bypassing `p`. Now built through `p` like every other report type below — but Trial
+   // Balance and Balance Sheet never read a `branchId` param server-side even if `p`
+   // happens to carry one (stale from a different report type's dropdown): both are
+   // balancing statements (Debit=Credit, Assets=Liabilities+Equity) and this app's chart
+   // of accounts has no per-branch mapping, so Bank/Capital/Retained-Earnings are always
+   // company-wide — branch-filtering only the AR/AP/Revenue/Expense lines would silently
+   // break the balance. Profit & Loss has no such line and DOES honor branchId (its own
+   // "Filter Branch" dropdown entry, above).
+   if (reportType === 'TrialBalance') { range(); return `/api/reports/trial-balance?${p}`; }
+   if (reportType === 'ProfitLoss') { range(); p.set('basis', draftAccountingBasis); return `/api/reports/profit-loss?${p}`; }
+   if (reportType === 'BalanceSheet') { p.set('asOfDate', draftEndDate); return `/api/reports/balance-sheet?${p}`; }
    if (reportType === 'SalesVAT') { range(); if (draftCustomerId !== 'ALL') p.set('customerId', draftCustomerId); return `/api/reports/sales-vat?${p}`; }
    if (reportType === 'PurchaseVAT') { range(); if (draftVendorId !== 'ALL') p.set('vendorId', draftVendorId); return `/api/reports/purchase-vat?${p}`; }
    if (reportType === 'VatReturnSummary') { range(); return `/api/reports/vat-return-summary?${p}`; }
@@ -286,7 +295,9 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
    const rows = (vd.rows || []) as any[];
    return {
      invoices: sortRows(rows.filter(r => r.type === 'Invoice')),
-     expenses: sortRows(rows.filter(r => r.type === 'Expense')),
+     // Purchase Bills (Phase 3) are a payable too, alongside Expenses — see
+     // computeOutstanding's matching comment for why they're combined into one list here.
+     expenses: sortRows(rows.filter(r => r.type === 'Expense' || r.type === 'PurchaseBill')),
      totalReceivable: Number(vd.totalReceivable || 0), totalPayable: Number(vd.totalPayable || 0), netOutstanding: Number(vd.netOutstanding || 0),
      invoiceCount: Number(vd.invoiceCount || 0), expenseCount: Number(vd.expenseCount || 0),
    };
@@ -392,6 +403,11 @@ const getProfitLossData = () => {
  return {
  accountingBasis,
  totalRevenue,
+ // Dead code kept only for its return TYPE (isServerReport is unconditionally true above
+ // — this body never actually runs); the real figure comes from computeProfitLoss
+ // (server/lib/financialReports.ts), which does compute this from the ledger's own COGS
+ // account. Not reproduced here since nothing reads this function's actual output.
+ costOfGoodsSold: 0,
  totalExpenses,
  netProfit,
  operatingInflows,
@@ -482,7 +498,7 @@ const getFiscalMonthClosingHistoryData = () => ({ months: (vd.rows || []) as any
  else if (reportType === 'BankLedger') reportData = getBankLedgerData(d);
  else if (reportType === 'Outstanding') {
    const rows = (d?.rows || []) as any[];
-   reportData = { invoices: rows.filter(r => r.type === 'Invoice'), expenses: rows.filter(r => r.type === 'Expense') };
+   reportData = { invoices: rows.filter(r => r.type === 'Invoice'), expenses: rows.filter(r => r.type === 'Expense' || r.type === 'PurchaseBill') };
  }
  else if (reportType === 'FiscalMonthClosingHistory') reportData = { months: d?.rows || [] };
  onPrintDoc('Report', { type: reportType, startDate, endDate, data: reportData });
@@ -508,12 +524,15 @@ const getFiscalMonthClosingHistoryData = () => ({ months: (vd.rows || []) as any
  now, not an in-page tab switcher (see App.tsx's defaultReportType prop). */}
  <div className="bg-white border border-slate-200/80 rounded-2xl p-4.5 flex items-center justify-between gap-4 shadow-sm">
  <h3 className="text-sm font-extrabold text-slate-900">{t(REPORT_LABELS[reportType])}</h3>
+ <div className="flex items-center gap-2 shrink-0">
+ <ExportExcelButton url={viewed ? viewer.appliedKey : null} disabled={isStale || viewer.loading} t={t} />
  <button
  onClick={handlePrint}
  className="bg-slate-900 hover:bg-slate-950 text-white font-extrabold rounded-xl px-4 py-2 text-xs transition-all duration-150 flex items-center gap-1.5 shadow-md shrink-0 hover:shadow-lg"
  >
  <Printer className="w-4 h-4 text-indigo-400" /> {t('Export Statement (Print)')}
  </button>
+ </div>
  </div>
 
  {/* Dynamic Filter Panel */}
@@ -596,7 +615,7 @@ const getFiscalMonthClosingHistoryData = () => ({ months: (vd.rows || []) as any
  </select>
  </div>
  )}
- {companyBranches.length > 0 && (reportType === 'SalesVAT' || reportType === 'PurchaseVAT' || reportType === 'Outstanding' || reportType === 'BankLedger') && (
+ {companyBranches.length > 0 && (reportType === 'SalesVAT' || reportType === 'PurchaseVAT' || reportType === 'Outstanding' || reportType === 'BankLedger' || reportType === 'ProfitLoss') && (
  <div className="space-y-1">
  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Filter Branch')}</label>
  <select
@@ -1271,6 +1290,9 @@ const getFiscalMonthClosingHistoryData = () => ({ months: (vd.rows || []) as any
  expenses.map((exp) => (
  <tr key={exp.id} className="border-b border-slate-100 hover:bg-slate-50/20 text-slate-700 bg-white">
  <td className="p-3">
+ {exp.type === 'PurchaseBill' ? (
+ <span className="font-bold font-mono text-slate-700">{exp.docNumber}</span>
+ ) : (
  <button
  type="button"
  onClick={() => {
@@ -1284,6 +1306,7 @@ const getFiscalMonthClosingHistoryData = () => ({ months: (vd.rows || []) as any
  >
  {exp.docNumber}
  </button>
+ )}
  </td>
  <td className="p-3">{exp.date}</td>
  <td className="p-3 font-semibold">{exp.contactName}</td>
@@ -1370,6 +1393,12 @@ const getFiscalMonthClosingHistoryData = () => ({ months: (vd.rows || []) as any
  <span className="text-xs text-slate-500 font-medium">{t("Total Revenue")}</span>
  <span className="text-sm font-bold text-slate-800 ">{currencySymbol} {data.totalRevenue.toFixed(2)}</span>
  </div>
+ {data.costOfGoodsSold > 0 && (
+ <div className="flex justify-between items-center py-2 border-b border-slate-50 ">
+ <span className="text-xs text-slate-500 font-medium">{t("Cost of Goods Sold")}</span>
+ <span className="text-sm font-bold text-rose-600">{currencySymbol} {data.costOfGoodsSold.toFixed(2)}</span>
+ </div>
+ )}
  <div className="flex justify-between items-center py-2 border-b border-slate-50 ">
  <span className="text-xs text-slate-500 font-medium">{t("Total Expenses")}</span>
  <span className="text-sm font-bold text-rose-600">{currencySymbol} {data.totalExpenses.toFixed(2)}</span>

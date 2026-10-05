@@ -160,6 +160,11 @@ export default function InventoryModule({
   const [viewingPo, setViewingPo] = React.useState<PurchaseOrder | null>(null);
   const [viewingGrn, setViewingGrn] = React.useState<GoodsReceiptNote | null>(null);
   const [viewingBill, setViewingBill] = React.useState<PurchaseBill | null>(null);
+  // Draft text while editing viewingBill's Vendor Bill # inline (null = not editing) — the
+  // one field POST /purchase-bills always let arrive later via PUT /purchase-bills/:id
+  // (server/routes/inventory.ts), but no screen ever exposed a way to actually do that.
+  const [editingVendorBillNumber, setEditingVendorBillNumber] = React.useState<string | null>(null);
+  const [isSavingVendorBillNumber, setIsSavingVendorBillNumber] = React.useState(false);
   const [viewingReturn, setViewingReturn] = React.useState<PurchaseReturn | null>(null);
   const [viewingStockTake, setViewingStockTake] = React.useState<PhysicalStockTake | null>(null);
   const [viewingDispatch, setViewingDispatch] = React.useState<WarehouseDispatch | null>(null);
@@ -224,6 +229,14 @@ export default function InventoryModule({
     notes: '',
     vehicleNumber: '',
     driverName: '',
+    // "Vendor paid in full at delivery" — the common SME case where a small vendor is
+    // paid cash on the spot and hands over their bill right there. When checked, the
+    // server creates AND fully pays a Purchase Bill for this GRN in the same request —
+    // billBankId/vendorBillNumber are both then mandatory (enforced client- and
+    // server-side).
+    autoPostBillPaid: false,
+    billBankId: '',
+    vendorBillNumber: '',
     items: [] as Array<{ productId: string; quantityReceived: number; unitCost: number; taxRate: number; batchNumber: string; expiryDate: string; unitOfMeasureId?: string }>
   });
   const [newGrnItem, setNewGrnItem] = React.useState({ productId: '', quantityReceived: 1, unitCost: 0, taxRate: defaultTaxRate, batchNumber: '', expiryDate: '', unitOfMeasureId: '' });
@@ -244,7 +257,7 @@ export default function InventoryModule({
 
   // Purchase Bill Form State — references one or more un-billed GRNs (the 3-way match);
   // totals are always computed server-side from those GRNs, never entered here.
-  const [billForm, setBillForm] = React.useState({ grnIds: [] as string[], dueDate: '', bankId: '' });
+  const [billForm, setBillForm] = React.useState({ grnIds: [] as string[], dueDate: '', bankId: '', vendorBillNumber: '' });
   const [payBillForm, setPayBillForm] = React.useState({ date: '', amount: '', bankId: '' });
 
   // Purchase Return (Debit Note) Form State
@@ -801,7 +814,10 @@ export default function InventoryModule({
             isDsd: grnForm.isDsd,
             receivedBy: grnForm.receivedBy,
             notes: grnForm.notes,
-            items: grnForm.items
+            items: grnForm.items,
+            autoPostBillPaid: grnForm.autoPostBillPaid,
+            billBankId: grnForm.autoPostBillPaid ? grnForm.billBankId : undefined,
+            vendorBillNumber: grnForm.autoPostBillPaid ? grnForm.vendorBillNumber : undefined,
           }
         })
       });
@@ -819,6 +835,7 @@ export default function InventoryModule({
         driverName: grnForm.driverName || undefined
       };
       const updatedPo: { id: string; status: PurchaseOrder['status'] } | null = payload.updatedPurchaseOrder;
+      const autoPostedBill = payload.purchaseBill || null;
 
       onUpdateDbLocal(prev => {
         const currentStocks = [...(prev.inventoryStocks || [])];
@@ -847,15 +864,18 @@ export default function InventoryModule({
 
         return {
           ...prev,
-          goodsReceiptNotes: [...(prev.goodsReceiptNotes || []), newGrn],
+          goodsReceiptNotes: [...(prev.goodsReceiptNotes || []), { ...newGrn, isBilled: !!autoPostedBill }],
           inventoryStocks: currentStocks,
           purchaseOrders: updatedPo
             ? (prev.purchaseOrders || []).map(po => po.id === updatedPo.id ? { ...po, status: updatedPo.status } : po)
-            : prev.purchaseOrders
+            : prev.purchaseOrders,
+          purchaseBills: autoPostedBill ? [...(prev.purchaseBills || []), autoPostedBill] : prev.purchaseBills,
         };
       });
 
-      triggerSuccess(t('Goods receipt recorded and stock updated successfully.'));
+      triggerSuccess(autoPostedBill
+        ? t('Goods receipt recorded, Bill raised and paid in full.')
+        : t('Goods receipt recorded and stock updated successfully.'));
       setGrnForm({
         purchaseOrderId: '',
         warehouseId: warehouses[0]?.id || '',
@@ -865,6 +885,9 @@ export default function InventoryModule({
         notes: '',
         vehicleNumber: '',
         driverName: '',
+        autoPostBillPaid: false,
+        billBankId: '',
+        vendorBillNumber: '',
         items: []
       });
       markGrnClean({
@@ -876,6 +899,9 @@ export default function InventoryModule({
         notes: '',
         vehicleNumber: '',
         driverName: '',
+        autoPostBillPaid: false,
+        billBankId: '',
+        vendorBillNumber: '',
         items: []
       });
       setIsCreatingGrn(false);
@@ -1174,7 +1200,7 @@ export default function InventoryModule({
       const res = await fetch('/api/inventory/purchase-bills', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ billData: { grnIds: billForm.grnIds, dueDate: billForm.dueDate || undefined, bankId: billForm.bankId || undefined } })
+        body: JSON.stringify({ billData: { grnIds: billForm.grnIds, dueDate: billForm.dueDate || undefined, bankId: billForm.bankId || undefined, vendorBillNumber: billForm.vendorBillNumber || undefined } })
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || t('Failed to create purchase bill.'));
@@ -1186,8 +1212,8 @@ export default function InventoryModule({
         goodsReceiptNotes: (prev.goodsReceiptNotes || []).map((g: GoodsReceiptNote) => billForm.grnIds.includes(g.id) ? { ...g, isBilled: true } : g)
       }));
       triggerSuccess(t('Purchase bill created successfully.'));
-      setBillForm({ grnIds: [], dueDate: '', bankId: '' });
-      markBillClean({ grnIds: [], dueDate: '', bankId: '' });
+      setBillForm({ grnIds: [], dueDate: '', bankId: '', vendorBillNumber: '' });
+      markBillClean({ grnIds: [], dueDate: '', bankId: '', vendorBillNumber: '' });
       setIsCreatingBill(false);
     } catch (err: any) {
       triggerError(err?.message || t('Failed to create purchase bill.'));
@@ -1254,6 +1280,34 @@ export default function InventoryModule({
       setViewingBill(null);
     } catch (err: any) {
       triggerError(err?.message || t('Failed to cancel purchase bill.'));
+    }
+  };
+
+  // The other half of "Optional — can be added later" on bill creation: the only place
+  // that promise is actually kept, via the pre-existing PUT /purchase-bills/:id route.
+  const handleSaveVendorBillNumber = async (bill: PurchaseBill) => {
+    if (editingVendorBillNumber === null || isSavingVendorBillNumber) return;
+    setIsSavingVendorBillNumber(true);
+    try {
+      const res = await fetch(`/api/inventory/purchase-bills/${bill.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ billData: { vendorBillNumber: editingVendorBillNumber.trim() || null } }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || t('Failed to update the bill.'));
+      const updatedBill: PurchaseBill = payload.purchaseBill;
+      onUpdateDbLocal(prev => ({
+        ...prev,
+        purchaseBills: (prev.purchaseBills || []).map((b: PurchaseBill) => b.id === updatedBill.id ? updatedBill : b),
+      }));
+      setViewingBill(updatedBill);
+      setEditingVendorBillNumber(null);
+      triggerSuccess(t('Vendor Bill # updated.'));
+    } catch (err: any) {
+      triggerError(err?.message || t('Failed to update the bill.'));
+    } finally {
+      setIsSavingVendorBillNumber(false);
     }
   };
 
@@ -3582,6 +3636,48 @@ export default function InventoryModule({
                     </table>
                   </div>
                 </div>
+
+                {/* Auto-post Bill, paid at delivery — the common SME case: a small
+                    vendor is paid cash on the spot and hands over their bill right
+                    there. When checked, the server creates AND fully pays a Purchase
+                    Bill for this GRN in the same request. */}
+                <div className="mt-4 border border-gray-100 rounded-lg p-4 bg-gray-50/50">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={grnForm.autoPostBillPaid}
+                      onChange={(e) => setGrnForm({ ...grnForm, autoPostBillPaid: e.target.checked })}
+                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-xs font-semibold text-gray-800">{t('Vendor paid in full at delivery — auto-post Bill')}</span>
+                  </label>
+                  {grnForm.autoPostBillPaid && (
+                    <div className="grid grid-cols-2 gap-3 mt-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">{t('Vendor Bill / Invoice #')}<span className="text-rose-500"> *</span></label>
+                        <input
+                          type="text"
+                          required={grnForm.autoPostBillPaid}
+                          value={grnForm.vendorBillNumber}
+                          onChange={(e) => setGrnForm({ ...grnForm, vendorBillNumber: e.target.value })}
+                          className="w-full bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">{t('Payment Bank / Cash Account')}<span className="text-rose-500"> *</span></label>
+                        <select
+                          required={grnForm.autoPostBillPaid}
+                          value={grnForm.billBankId}
+                          onChange={(e) => setGrnForm({ ...grnForm, billBankId: e.target.value })}
+                          className="w-full bg-white border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                          <option value="">{t('Select bank')}</option>
+                          {banks.map(b => <option key={b.id} value={b.id}>{b.bankName}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="p-6 border-t border-gray-200 flex justify-end gap-3 bg-gray-50">
                 <button
@@ -3593,7 +3689,7 @@ export default function InventoryModule({
                 </button>
                 <button
                   type="submit"
-                  disabled={grnForm.items.length === 0 || (!grnForm.isDsd && !grnForm.purchaseOrderId) || (grnForm.isDsd && !grnForm.vendorId) || isSubmittingGrn}
+                  disabled={grnForm.items.length === 0 || (!grnForm.isDsd && !grnForm.purchaseOrderId) || (grnForm.isDsd && !grnForm.vendorId) || (grnForm.autoPostBillPaid && (!grnForm.vendorBillNumber.trim() || !grnForm.billBankId)) || isSubmittingGrn}
                   className="px-5 py-2 bg-emerald-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-emerald-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   {isSubmittingGrn ? t('Recording...') : t('Confirm Receipt & Update Stock')}
@@ -4201,6 +4297,36 @@ export default function InventoryModule({
                   <span className="text-gray-500">{t('Due Date:')}</span>
                   <p className="font-semibold text-gray-900 mt-0.5">{viewingBill.dueDate ? new Date(viewingBill.dueDate).toLocaleDateString() : '-'}</p>
                 </div>
+                <div>
+                  <span className="text-gray-500">{t('Vendor Bill / Invoice #:')}</span>
+                  {editingVendorBillNumber !== null ? (
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={editingVendorBillNumber}
+                        onChange={(e) => setEditingVendorBillNumber(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSaveVendorBillNumber(viewingBill); } if (e.key === 'Escape') setEditingVendorBillNumber(null); }}
+                        className="w-full font-mono text-sm border border-indigo-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                      <button type="button" disabled={isSavingVendorBillNumber} onClick={() => handleSaveVendorBillNumber(viewingBill)} className="p-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button type="button" disabled={isSavingVendorBillNumber} onClick={() => setEditingVendorBillNumber(null)} className="p-1.5 bg-gray-100 hover:bg-gray-200 text-gray-500 rounded-lg">
+                        <XCircle className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="font-semibold text-gray-900 mt-0.5 font-mono flex items-center gap-2">
+                      {viewingBill.vendorBillNumber || '-'}
+                      {viewingBill.status === 'Unpaid' && can('purchaseBills.update') && (
+                        <button type="button" onClick={() => setEditingVendorBillNumber(viewingBill.vendorBillNumber || '')} className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider">
+                          {t('Add / Edit')}
+                        </button>
+                      )}
+                    </p>
+                  )}
+                </div>
                 <div className="col-span-2">
                   <span className="text-gray-500">{t('Referenced Receipts (GRN):')}</span>
                   <p className="font-semibold text-gray-900 mt-0.5 font-mono">
@@ -4322,6 +4448,12 @@ export default function InventoryModule({
                   )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{t('Vendor Bill / Invoice #')}</label>
+                    <input type="text" value={billForm.vendorBillNumber} onChange={(e) => setBillForm({ ...billForm, vendorBillNumber: e.target.value })}
+                      placeholder={t('Optional — can be added later')}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                  </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-gray-400 uppercase">{t('Due Date')}</label>
                     <input type="date" value={billForm.dueDate} onChange={(e) => setBillForm({ ...billForm, dueDate: e.target.value })}

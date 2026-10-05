@@ -96,12 +96,18 @@ export async function computeVatReturnFigures(executor: any, companyId: string, 
   }
 
   // --- Purchases side, part 1: Active expenses in the quarter (header-only tax, back-calculated from a tax-inclusive amount) ---
-  const expensesInRange = await executor.select().from(schema.expenses).where(and(
+  // Excludes a settled Accrual — its own status/date never change on settlement, so
+  // without this a real expense accrued and settled in the same quarter would double its
+  // Input VAT claim (the accrual's own entry plus its separate Actual settlement row).
+  // Same root cause already found and fixed in computeOutstanding/computeBalanceSheet/
+  // computeMonthPnL this session — this is the same bug in the one place with real
+  // regulatory consequences (an overstated Input VAT claim on an actual ZATCA filing).
+  const expensesInRange = (await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId),
     eq(schema.expenses.status, 'Active'),
     gte(schema.expenses.date, startDate),
     lte(schema.expenses.date, endDate)
-  ));
+  ))).filter((e: any) => !(e.type === 'Accrual' && e.accrualSettled));
   const expenseTaxSlabIds = Array.from(new Set(expensesInRange.map(e => e.taxSlabId).filter(Boolean))) as string[];
   const expenseTaxSlabRows: any[] = expenseTaxSlabIds.length > 0 ? await executor.select().from(schema.taxSlabs).where(inArray(schema.taxSlabs.id, expenseTaxSlabIds)) : [];
   const expensePercentageById = new Map(expenseTaxSlabRows.map(s => [s.id, Number(s.percentage)]));

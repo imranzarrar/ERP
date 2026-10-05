@@ -1,5 +1,8 @@
 import { relations, sql } from 'drizzle-orm';
-import { integer, bigint, pgTable, serial, text, timestamp, boolean, decimal, jsonb, uuid, primaryKey, uniqueIndex, index, pgPolicy } from 'drizzle-orm/pg-core';
+import { integer, bigint, pgTable, serial, text, timestamp, boolean, decimal, jsonb, uuid, primaryKey, uniqueIndex, index, pgPolicy, check, customType } from 'drizzle-orm/pg-core';
+
+// Postgres bytea <-> Node Buffer (drizzle-orm/pg-core ships no bytea builder).
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => 'bytea' });
 
 // Row-Level Security, introduced as a defense-in-depth SECOND layer on top of (never
 // instead of) this app's existing req.targetCompanyId application-level checks — see
@@ -951,7 +954,14 @@ export const invoices = pgTable('invoices', {
   icv: integer('icv').default(0),
   previousInvoiceHash: text('previous_invoice_hash'),
   currentInvoiceHash: text('current_invoice_hash'),
+  // Legacy plain-text copy of the signed UBL XML. New and re-signed invoices write xmlContentZ instead
+  // and leave this NULL; rows from before the change are converted by
+  // scripts/backfill-compress-invoice-xml.ts. Read through server/lib/zatca/xmlStorage.ts's
+  // readInvoiceXml(), never directly. Safe to drop once every environment has been backfilled.
   xmlContent: text('xml_content'),
+  // Brotli-compressed signed UBL XML with a 1-byte format tag (see xmlStorage.ts). The signed
+  // document is the legal VAT record — lossless, round-trip-verified on every write.
+  xmlContentZ: bytea('xml_content_z'),
   qrCodeContent: text('qr_code_content'),
   zatcaStatus: text('zatca_status').default('NOT_SUBMITTED'),
   zatcaValidationResults: jsonb('zatca_validation_results'),
@@ -1208,10 +1218,109 @@ export const vouchers = pgTable('vouchers', {
   // voucher/payment receipt should always attribute to the same branch as what it
   // settles. See quotations.branchId's comment for the general nullable/additive pattern.
   branchId: uuid('branch_id').references(() => branches.id),
+  // Set only on a type='Reversal' row, pointing at the specific Receipt/Payment voucher
+  // it reverses — mirrors journalEntries.reversalOfId's own comment/reasoning exactly.
+  // Without this link, a Reversal could only be matched to "any voucher for this
+  // referenceId" rather than one specific original, which is what let a second Receipt
+  // voucher (e.g. a later installment posted via POST /invoices/:id/paid, alongside an
+  // earlier one from creation) go permanently unreversed on cancel — see
+  // syncVoucherForInvoice's own comment for the live incident this was found from.
+  reversalOfVoucherId: uuid('reversal_of_voucher_id').references((): any => vouchers.id),
 }, (table) => ({
   companyIdIdx: index('vouchers_company_id_idx').on(table.companyId),
   referenceIdIdx: index('vouchers_reference_id_idx').on(table.referenceId),
+  reversalOfVoucherUniqueIdx: uniqueIndex('vouchers_reversal_of_voucher_unique_idx').on(table.reversalOfVoucherId).where(sql`${table.reversalOfVoucherId} IS NOT NULL`),
   tenantIsolationPolicy: pgPolicy('vouchers_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
+
+// The fixed, canonical set of accounts every ledger posting refers to by key — see
+// docs/procurement-ledger-review (Phase 1 design) for the full rationale. Genuinely
+// cross-tenant by design (no companyId column, same convention as `translations` above):
+// every company reads the same fixed account list today. When a real company-configurable
+// chart of accounts ships, a separate `companyAccountMappings(companyId, systemAccountKey,
+// realAccountCode, realAccountName)` table attaches to these same keys without a schema
+// change here.
+export const systemAccounts = pgTable('system_accounts', {
+  key: text('key').primaryKey(), // 'AR' | 'AP' | 'COGS' | 'VAT_OUTPUT' | ... — see the seed list
+  code: text('code').notNull(), // display code, e.g. '1100' — cosmetic only, not sorted/indexed on
+  name: text('name').notNull(),
+  type: text('type').notNull(), // 'Asset' | 'Liability' | 'Equity' | 'Revenue' | 'Expense'
+  normalBalance: text('normal_balance').notNull(), // 'Debit' | 'Credit' — which side a positive balance displays as
+}, (table) => ({
+  tenantIsolationPolicy: pgPolicy('system_accounts_shared_access', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`true`,
+    withCheck: sql`true`,
+  }),
+})).enableRLS();
+
+// Journal entry header — one row per posted transaction. Every report that needs a
+// real, reconciling account balance (AR, AP, VAT, COGS, ...) reads from journalLines
+// below, never straight from invoices/expenses/purchaseBills, the same way vouchers
+// already exist for cash movement but nothing else. See the Phase 1 design doc for the
+// full posting-rules table (currently 19 transaction types) this implements.
+export const journalEntries = pgTable('journal_entries', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  // Nullable, inherited from the source document — same convention as vouchers.branchId.
+  branchId: uuid('branch_id').references(() => branches.id),
+  date: text('date').notNull(),
+  referenceType: text('reference_type').notNull(), // 'Invoice' | 'CreditNote' | 'Expense' | 'PurchaseBill' | 'PurchaseReturn' | 'GRN' | 'Voucher' | 'Transfer' | 'FiscalMonthClose' | 'VatReturn'
+  referenceId: uuid('reference_id').notNull(), // polymorphic, same convention as vouchers.referenceId
+  // Second, optional reference pair — used only by the rare cross-document transaction
+  // (e.g. applying a Vendor Credit against a bill needs to record both which bill was
+  // reduced and which credit was drawn down). Left null by every other transaction type.
+  relatedReferenceType: text('related_reference_type'),
+  relatedReferenceId: uuid('related_reference_id'),
+  // Set when this entry reverses an earlier one — reversing a document means finding
+  // every non-reversed journalEntries row for that referenceId and posting a mirrored
+  // reversal for each, never assuming there is only one.
+  reversalOfId: uuid('reversal_of_id').references((): any => journalEntries.id),
+  description: text('description').notNull(),
+  createdById: uuid('created_by_id').notNull().references(() => users.id),
+  createdAt: timestamp('created_at').notNull(),
+}, (table) => ({
+  companyIdIdx: index('journal_entries_company_id_idx').on(table.companyId),
+  referenceIdIdx: index('journal_entries_reference_id_idx').on(table.referenceId),
+  // An entry can only ever be reversed once — a retried request or a race condition
+  // must not be able to double-reverse the same entry (the exact bug class Findings 7/8
+  // in the review fixed, just running in the opposite direction).
+  reversalOfUniqueIdx: uniqueIndex('journal_entries_reversal_of_unique_idx').on(table.reversalOfId).where(sql`${table.reversalOfId} IS NOT NULL`),
+  tenantIsolationPolicy: pgPolicy('journal_entries_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
+
+export const journalLines = pgTable('journal_lines', {
+  id: uuid('id').primaryKey(),
+  journalEntryId: uuid('journal_entry_id').notNull().references(() => journalEntries.id),
+  // Denormalized directly onto the line, same precedent as stockLedgerTransactions.companyId —
+  // this table is queried heavily ("sum every AP line for company X") and shouldn't need a
+  // join back to the header just to scope by company.
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  accountKey: text('account_key').notNull().references(() => systemAccounts.key),
+  debit: decimal('debit', { precision: 14, scale: 2 }).notNull().default('0'),
+  credit: decimal('credit', { precision: 14, scale: 2 }).notNull().default('0'),
+  // Set only when accountKey = 'BANK' — Bank isn't one pooled account, it's N separate
+  // ones, same as vouchers.bankId.
+  bankId: uuid('bank_id').references(() => bankAccounts.id),
+}, (table) => ({
+  companyIdIdx: index('journal_lines_company_id_idx').on(table.companyId),
+  journalEntryIdIdx: index('journal_lines_journal_entry_id_idx').on(table.journalEntryId),
+  accountKeyIdx: index('journal_lines_account_key_idx').on(table.accountKey),
+  // Exactly one of debit/credit is non-zero per line — a real double-entry line is never
+  // both or neither.
+  exactlyOneSideCheck: check('journal_lines_exactly_one_side_check', sql`(${table.debit} > 0 AND ${table.credit} = 0) OR (${table.debit} = 0 AND ${table.credit} > 0)`),
+  tenantIsolationPolicy: pgPolicy('journal_lines_tenant_isolation', {
     for: 'all',
     to: TENANT_DB_ROLE,
     using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
@@ -1815,6 +1924,13 @@ export const goodsReceiptNoteItems = pgTable('goods_receipt_note_items', {
 export const purchaseBills = pgTable('purchase_bills', {
   id: uuid('id').primaryKey(),
   billNumber: text('bill_number').notNull(),
+  // The VENDOR's own bill/invoice reference number — distinct from billNumber above,
+  // which is this system's own auto-generated sequence (PB-1001…). Nullable (never
+  // .notNull() on an existing table with real production rows in other companies) but
+  // enforced as required at the application layer for every new bill, same pattern as
+  // expenses.billNumber — without it there was no paper trail linking a system Bill back
+  // to the vendor's actual physical invoice.
+  vendorBillNumber: text('vendor_bill_number'),
   vendorId: uuid('vendor_id').notNull().references(() => vendors.id),
   date: timestamp('date').notNull(),
   dueDate: timestamp('due_date'),

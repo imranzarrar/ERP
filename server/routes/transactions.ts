@@ -2,8 +2,9 @@ import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, inArray, and, asc, desc, or, isNull, count, sql, gte, lte, ne } from 'drizzle-orm';
-import { validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, postCreditNoteReversalVoucher, round2, round4, computePaymentStatus, computeInvoiceServerTotals, deductStockForSale, restockForSaleReversal, assertQuarterNotFiled, resolveSaleWarehouse, assertStockAvailable, assertProductsOwnedByCompany, cancelExpense } from '../lib/businessLogic.js';
+import { validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, postCreditNoteReversalVoucher, round2, round4, computePaymentStatus, computeInvoiceServerTotals, deductStockForSale, restockForSaleReversal, assertQuarterNotFiled, resolveSaleWarehouse, assertStockAvailable, assertProductsOwnedByCompany, cancelExpense, splitExpenseTaxInclusiveAmount } from '../lib/businessLogic.js';
 import { computeMonthPnL } from '../lib/financialReports.js';
+import { postJournalEntry, reverseAllEntriesFor } from '../lib/ledger.js';
 import { toBaseQuantity, toBaseUnitCost, loadZatcaCodesByUnitId } from '../lib/uomConversion.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { isStillChainTip, setHashChainState, ZatcaEnvironment } from '../lib/zatca/hashChain.js';
@@ -11,6 +12,8 @@ import { normalizePermissions } from '../../src/types.js';
 import { processInvoiceZatca } from '../lib/zatca/processInvoice.js';
 import { hasPermission, assertOwnsRow, resolveDocumentBranchId, branchAccessOk, resolveUserDiscountCap, verifyOverrideCredentials } from '../lib/authz.js';
 import { parseLimitOffset, parsePageSort, wantsPaged } from '../lib/pagination.js';
+import { invoiceListColumns } from '../../src/db/invoiceColumns.js';
+import { readInvoiceXml } from '../lib/zatca/xmlStorage.js';
 import { generateId } from '../../src/id.js';
 import { normalizeZatcaUnitCode } from '../../src/zatcaUnitCodes.js';
 import { recordAuditLog } from '../lib/audit.js';
@@ -564,12 +567,12 @@ router.get('/invoices', withTenantDb, async (req: any, res) => {
     const whereClause = and(...conditions);
     const paged = wantsPaged(req);
 
-    let invoices: (typeof schema.invoices.$inferSelect)[];
+    let invoices: (Omit<typeof schema.invoices.$inferSelect, 'xmlContent' | 'xmlContentZ'> & { hasXml: boolean })[];
     let total = 0;
     let pageMeta: { page: number; pageSize: number } | null = null;
     if (!paged) {
       const { limit, offset } = parseLimitOffset(req);
-      invoices = await tdb.select().from(schema.invoices).where(whereClause)
+      invoices = await tdb.select(invoiceListColumns).from(schema.invoices).where(whereClause)
         .orderBy(desc(schema.invoices.createdAt)).limit(limit).offset(offset);
     } else {
       const { pageSize, offset, sortBy, sortDir, page } = parsePageSort(req, INVOICES_SORTABLE, 'createdAt', 'desc');
@@ -577,7 +580,7 @@ router.get('/invoices', withTenantDb, async (req: any, res) => {
       let countResult: { value: number }[];
       [countResult, invoices] = await Promise.all([
         tdb.select({ value: count() }).from(schema.invoices).where(whereClause),
-        tdb.select().from(schema.invoices).where(whereClause).orderBy(orderFn(INVOICES_SORTABLE[sortBy])).limit(pageSize).offset(offset),
+        tdb.select(invoiceListColumns).from(schema.invoices).where(whereClause).orderBy(orderFn(INVOICES_SORTABLE[sortBy])).limit(pageSize).offset(offset),
       ]);
       total = countResult[0].value;
       pageMeta = { page, pageSize };
@@ -603,6 +606,39 @@ router.get('/invoices', withTenantDb, async (req: any, res) => {
       amountPaid: inv.amountPaid ? Number(inv.amountPaid) : undefined,
     }));
     res.json(paged ? { rows, total, ...pageMeta! } : rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// The signed ZATCA UBL XML for one invoice, fetched on demand by InvoiceViewScreen's "View
+// XML" / "Download XML" buttons. It is deliberately NOT part of GET /invoices or /api/state
+// (see src/db/invoiceColumns.ts) — ~17 KB per invoice used to ride along with every row
+// whether or not anyone opened it. Same read permission and ownership scoping as the list.
+router.get('/invoices/:id/xml', withTenantDb, async (req: any, res) => {
+  try {
+    const tdb = tenantDb();
+    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+    if (!permissions.invoice.read.enabled) return res.status(403).json({ error: 'Forbidden' });
+
+    const conditions = [eq(schema.invoices.id, req.params.id), eq(schema.invoices.companyId, req.targetCompanyId)];
+    if (req.user.role !== 'admin' && !req.user.isSuperAdmin) {
+      conditions.push(eq(schema.invoices.createdById, req.user.id));
+    }
+    const [invoice] = await tdb.select({
+      invoiceNumber: schema.invoices.invoiceNumber,
+      branchId: schema.invoices.branchId,
+      xmlContent: schema.invoices.xmlContent,
+      xmlContentZ: schema.invoices.xmlContentZ,
+    }).from(schema.invoices).where(and(...conditions));
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+    if (!branchAccessOk(req, invoice.branchId)) return res.status(403).json({ error: 'Forbidden: you are not assigned to this branch.' });
+    const xml = readInvoiceXml(invoice);
+    if (!xml) return res.status(404).json({ error: 'No ZATCA XML has been generated for this invoice.' });
+
+    res.setHeader('Content-Type', 'text/xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(xml);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -685,6 +721,18 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
       if (!permissions.invoice.update.enabled) return res.status(403).json({ error: 'Forbidden' });
     } else if (!permissions.invoice.create.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
+    }
+
+    // A Credit Note/Debit Note may ONLY be created through the dedicated POST
+    // /invoices/:id/note route below, which applies the correct reversal ledger posting,
+    // restocking, and reversal voucher — this generic upsert route has none of that and
+    // would otherwise silently accept a client-supplied documentType, insert a row that
+    // LOOKS like a Credit Note (right documentType/originalInvoiceId) but posts it to the
+    // ledger as a normal sale (AR/Revenue/VAT all in the wrong direction). Found live
+    // during this session's stress testing — a malformed request (never sent by the real
+    // UI, which only ever calls /note for this) hit exactly this gap.
+    if (invData.documentType === 'CreditNote' || invData.documentType === 'DebitNote') {
+      return res.status(400).json({ error: 'A Credit Note or Debit Note can only be created via the dedicated note-issuance endpoint, not this route.' });
     }
 
     invData.companyId = req.targetCompanyId;
@@ -842,7 +890,7 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     const lineSlabRows = lineSlabIds.length > 0 ? await tdb.select().from(schema.taxSlabs).where(inArray(schema.taxSlabs.id, lineSlabIds as string[])) : [];
     const lineSlabPercentageById = new Map(lineSlabRows.map((s: any) => [s.id, Number(s.percentage)]));
 
-    const { grandTotal } = computeInvoiceServerTotals(items || [], headerPercentage, Number(invData.discountPercentage || 0), lineSlabPercentageById);
+    const { discountedSubtotal, taxAmount, grandTotal } = computeInvoiceServerTotals(items || [], headerPercentage, Number(invData.discountPercentage || 0), lineSlabPercentageById);
     if (grandTotal <= 0) {
       const err: any = new Error('The invoice net total must be greater than 0.');
       err.status = 400;
@@ -885,6 +933,9 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     const savedInvoiceId = newInvoice.id;
 
     // 4. Insert/Update Items
+    // Accumulated across every stock-item line into ONE combined COGS entry (row 1a of
+    // the Phase 1 ledger design) — not one journal entry per line.
+    let cogsTotal = 0;
     if (items && items.length > 0) {
       const invoiceZatcaCodeById = await loadZatcaCodesByUnitId(tdb, items);
       for (const item of items) {
@@ -916,6 +967,8 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
           const [product] = await tdb.select({
             averageSalePrice: schema.productsServices.averageSalePrice,
             totalQuantitySold: schema.productsServices.totalQuantitySold,
+            averageCost: schema.productsServices.averageCost,
+            itemKind: schema.productsServices.itemKind,
           }).from(schema.productsServices).where(eq(schema.productsServices.id, item.productId)).for('update');
           if (product) {
             const priorQty = Number(product.totalQuantitySold || 0);
@@ -927,6 +980,14 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
             await tdb.update(schema.productsServices)
               .set({ averageSalePrice: String(newAvg), totalQuantitySold: String(round2(newQty)) })
               .where(eq(schema.productsServices.id, item.productId));
+            // COGS (Phase 1 ledger, row 1a) — only a true stock item ('item' kind) has a
+            // physical cost basis to release; a service line has none. Uses the product's
+            // CURRENT averageCost, same figure Item Profitability already reads — GRN
+            // receipts feed it, sales never do, so reading it here (before or after this
+            // sale) gives the same, correct value.
+            if (product.itemKind === 'item') {
+              cogsTotal = round2(cogsTotal + soldQty * Number(product.averageCost || 0));
+            }
           }
           await deductStockForSale(tdb, companyId, item.productId, Number(item.quantity), newInvoice.id, invoiceValues.createdAt as Date, invData.warehouseId, item.unitOfMeasureId);
         }
@@ -938,6 +999,49 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
       ...invData,
       invoiceNumber: newInvoice.invoiceNumber,
     }, user.id);
+
+    // Phase 1 ledger postings (rows 1, 1a, 1b of the Procurement Ledger Review's
+    // posting-rules table) — true new-invoice creation only. An edit to an existing,
+    // not-yet-submitted invoice does not re-sync the ledger in this phase (a known,
+    // deliberate Phase 1 scope boundary — full edit-reversal support is a later phase).
+    if (isNewInvoice) {
+      await postJournalEntry(tdb, {
+        companyId, branchId: invData.branchId, date: invData.date,
+        referenceType: 'Invoice', referenceId: newInvoice.id,
+        description: `Invoice ${newInvoice.invoiceNumber} raised`,
+        createdById: user.id,
+        lines: [
+          { accountKey: 'AR', debit: grandTotal },
+          { accountKey: 'SALES_REVENUE', credit: discountedSubtotal },
+          ...(taxAmount > 0 ? [{ accountKey: 'VAT_OUTPUT', credit: taxAmount }] : []),
+        ],
+      });
+      if (cogsTotal > 0) {
+        await postJournalEntry(tdb, {
+          companyId, branchId: invData.branchId, date: invData.date,
+          referenceType: 'Invoice', referenceId: newInvoice.id,
+          description: `Cost of goods sold for invoice ${newInvoice.invoiceNumber}`,
+          createdById: user.id,
+          lines: [
+            { accountKey: 'COGS', debit: cogsTotal },
+            { accountKey: 'INVENTORY', credit: cogsTotal },
+          ],
+        });
+      }
+      const amountPaidNow = round2(Number(invData.amountPaid || 0));
+      if (amountPaidNow > 0) {
+        await postJournalEntry(tdb, {
+          companyId, branchId: invData.branchId, date: invData.date,
+          referenceType: 'Invoice', referenceId: newInvoice.id,
+          description: `Payment received at creation for invoice ${newInvoice.invoiceNumber}`,
+          createdById: user.id,
+          lines: [
+            { accountKey: 'BANK', debit: amountPaidNow, bankId: invData.bankId },
+            { accountKey: 'AR', credit: amountPaidNow },
+          ],
+        });
+      }
+    }
 
     // Auto-process ZATCA Phase 2 E-Invoicing clearance/reporting — deferred until this
     // request's transaction has genuinely committed (runAfterTenantCommit), since
@@ -1112,6 +1216,17 @@ router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
       await postCreditNoteReversalVoucher(tdb, originalInvoiceId, companyId, original.date, user.id);
     }
 
+    // Phase 1 ledger posting (row 4) — a Credit Note is MVP-scope a full reversal (every
+    // line mirrored verbatim, see this route's own file comment), so reversing every
+    // journal entry tied to the ORIGINAL invoice achieves exactly the right financial
+    // effect: Entry A (revenue/AR/VAT), Entry B (COGS/Inventory) if a stock item was
+    // sold, and any Entry C/row-2 payments, all in one call — the same mechanism
+    // /invoices/:id/cancel already uses. The original invoice's own status/paymentStatus
+    // stay untouched (unchanged, existing behavior) — this only affects the ledger.
+    if (type === 'CreditNote') {
+      await reverseAllEntriesFor(tdb, companyId, 'Invoice', originalInvoiceId, original.date, `Credit Note ${noteNumber} issued against invoice ${original.invoiceNumber}`, user.id);
+    }
+
     if (savedNoteId) {
       runAfterTenantCommit(() => {
         processInvoiceZatca(savedNoteId).catch(err => {
@@ -1273,6 +1388,18 @@ router.post('/invoices/:id/paid', withTenantDb, async (req: any, res) => {
     createdVoucher = voucher;
     paidInvoiceNumber = invoice.invoiceNumber;
 
+    // Phase 1 ledger posting (row 2) — mirrors the Receipt voucher just created.
+    await postJournalEntry(tdb, {
+      companyId: invoice.companyId, branchId: invoice.branchId, date: paymentDate,
+      referenceType: 'Invoice', referenceId: id,
+      description: `Payment received for invoice ${invoice.invoiceNumber}`,
+      createdById: req.user.id,
+      lines: [
+        { accountKey: 'BANK', debit: amountToPost, bankId: targetBankId },
+        { accountKey: 'AR', credit: amountToPost },
+      ],
+    });
+
     recordAuditLog(req, 'RECORD_INVOICE_PAYMENT', 'invoice', id, {
       invoiceNumber: paidInvoiceNumber,
       voucherNumber: createdVoucher?.voucherNumber,
@@ -1387,6 +1514,12 @@ router.post('/invoices/:id/cancel', withTenantDb, async (req: any, res) => {
       ...invoice,
       status: 'Cancelled',
     }, req.user.id);
+
+    // Phase 1 ledger posting (row 3) — reverses EVERY non-reversed journal entry for
+    // this invoice (Entry A, Entry B if a stock item was sold, and every Entry C/row-2
+    // payment), not just the first one found. This is what structurally closes the
+    // "only reverses the first voucher" bug class (Findings 7/8 in the review).
+    await reverseAllEntriesFor(tdb, invoice.companyId, 'Invoice', id, new Date().toISOString().slice(0, 10), `Invoice ${invoice.invoiceNumber} cancelled`, req.user.id);
 
     const cancelledInvoiceNumber = invoice.invoiceNumber;
     const cancelledDocType = invoice.documentType;
@@ -1695,6 +1828,13 @@ router.post('/recurring-postings', withTenantDb, async (req: any, res) => {
 
     const expNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'expense', dateStr, null);
     const expenseId = generateId();
+    // Same choke-point every other document-creation route uses — recurring templates
+    // carry no branch of their own, so this was previously left null entirely (a
+    // pre-existing gap: these expenses were invisible to branch-scoped reports).
+    const branchId = await resolveDocumentBranchId(req, undefined);
+    const finalPaymentStatus = postType === 'Accrual' ? 'Unpaid' : paymentStatus;
+    const amountPaid = postType === 'Actual' && paymentStatus === 'Paid' ? amount
+      : postType === 'Actual' && paymentStatus === 'Partially Paid' ? amount : 0;
 
     await tdb.insert(schema.expenses).values({
       id: expenseId,
@@ -1703,13 +1843,15 @@ router.post('/recurring-postings', withTenantDb, async (req: any, res) => {
       vendorId: template.vendorId,
       taxSlabId: template.taxSlabId,
       bankId,
-      paymentStatus: postType === 'Accrual' ? 'Unpaid' : paymentStatus,
+      paymentStatus: finalPaymentStatus,
+      amountPaid: String(amountPaid),
       paymentDate: (postType === 'Actual' && paymentStatus === 'Paid') ? new Date(dateStr) : null,
       description: `Posted for ${monthId}`, // Simplified
       amount: String(amount),
       status: 'Active',
       type: postType,
       companyId,
+      branchId,
       createdById: req.user.id,
       createdAt: new Date(),
     });
@@ -1727,22 +1869,55 @@ router.post('/recurring-postings', withTenantDb, async (req: any, res) => {
       set: { status: postType === 'Actual' ? 'Posted as Actual' : 'Posted as Accrual', expenseId }
     });
 
-    // 4. Generate Voucher if Actual & Paid
-    if (postType === 'Actual' && paymentStatus === 'Paid') {
-      const voucherNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'voucher', dateStr, null);
-      await tdb.insert(schema.vouchers).values({
-        id: generateId(),
-        voucherNumber,
-        type: 'Payment',
+    // 4. Voucher (Payment, if any cash actually moved) — same shared path every other
+    // Expense-creation call site uses (see this route's own top-of-file comment on why
+    // that consolidation matters: this route used to hand-roll its own voucher insert,
+    // which is exactly what let recurring/accrual expenses bypass ledger posting below).
+    await syncVoucherForExpense(tdb, expenseId, companyId, {
+      paymentStatus: finalPaymentStatus,
+      status: 'Active',
+      amountPaid,
+      amount,
+      date: dateStr,
+      bankId,
+      branchId,
+      description: `Posted for ${monthId}`,
+      expenseNumber: expNumber,
+    }, req.user.id);
+
+    // 5. Phase 2 ledger posting (rows 5/5a) — Dr Direct OpEx (or Fixed Assets) + Dr VAT
+    // Input / Cr AP for the full amount, then Dr AP / Cr Bank for whatever was paid now.
+    const [taxSlab] = template.taxSlabId ? await tdb.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, template.taxSlabId)) : [undefined];
+    const taxPct = taxSlab ? Number(taxSlab.percentage) : 0;
+    const grossAmount = round2(Number(amount));
+    const { netAmount, taxAmount } = splitExpenseTaxInclusiveAmount(grossAmount, taxPct);
+    await postJournalEntry(tdb, {
+      companyId,
+      branchId,
+      date: dateStr,
+      referenceType: 'Expense',
+      referenceId: expenseId,
+      description: `Expense ${expNumber} raised`,
+      createdById: req.user.id,
+      lines: [
+        { accountKey: 'DIRECT_OPEX', debit: netAmount },
+        ...(taxAmount > 0 ? [{ accountKey: 'VAT_INPUT', debit: taxAmount }] : []),
+        { accountKey: 'AP', credit: grossAmount },
+      ],
+    });
+    if (amountPaid > 0) {
+      await postJournalEntry(tdb, {
+        companyId,
+        branchId,
         date: dateStr,
-        bankId,
-        amount: String(amount),
-        description: `Payment voucher for ${expNumber}`,
         referenceType: 'Expense',
         referenceId: expenseId,
-        companyId: companyId,
+        description: `Payment at creation for expense ${expNumber}`,
         createdById: req.user.id,
-        createdAt: new Date(),
+        lines: [
+          { accountKey: 'AP', debit: round2(amountPaid) },
+          { accountKey: 'BANK', credit: round2(amountPaid), bankId },
+        ],
       });
     }
 
@@ -1779,6 +1954,11 @@ router.post('/settle-accrual', withTenantDb, async (req: any, res) => {
     // 3. Increment expense counter
     const expNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'expense', actualDate, null);
     const actualExpenseId = generateId();
+    // Same choke-point every other document-creation route uses — an accrual settlement
+    // previously left branchId null entirely (a pre-existing gap: these expenses were
+    // invisible to branch-scoped reports), same issue as post-recurring above.
+    const branchId = await resolveDocumentBranchId(req, undefined);
+    const amountPaidNow = paymentStatus === 'Paid' ? Number(actualAmount) : 0;
 
     // 4. Create standard Actual Expense
     await tdb.insert(schema.expenses).values({
@@ -1789,6 +1969,7 @@ router.post('/settle-accrual', withTenantDb, async (req: any, res) => {
       taxSlabId: accrualExpense.taxSlabId,
       bankId,
       paymentStatus,
+      amountPaid: String(amountPaidNow),
       paymentDate: paymentStatus === 'Paid' ? new Date(actualDate) : null,
       description: `Accrual Settlement: Actual payment for "${accrualExpense.description}"`,
       amount: String(actualAmount),
@@ -1798,6 +1979,7 @@ router.post('/settle-accrual', withTenantDb, async (req: any, res) => {
       createdById: req.user.id,
       createdAt: new Date(),
       companyId,
+      branchId,
     });
 
     // 5. Mark Accrual as Settled
@@ -1813,22 +1995,62 @@ router.post('/settle-accrual', withTenantDb, async (req: any, res) => {
       .set({ status: 'Accrual Settled' })
       .where(eq(schema.recurringPostings.expenseId, accrualExpenseId));
 
-    // 7. Generate Voucher if Paid
-    if (paymentStatus === 'Paid') {
-      const voucherNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'voucher', actualDate, null);
-      await tdb.insert(schema.vouchers).values({
-        id: generateId(),
-        voucherNumber,
-        type: 'Payment',
+    // 7. Voucher (Payment, if paid now) — same shared path every other Expense-creation
+    // call site uses; see post-recurring's own comment above for why this consolidation
+    // matters (this route used to hand-roll its own voucher insert too).
+    await syncVoucherForExpense(tdb, actualExpenseId, companyId, {
+      paymentStatus,
+      status: 'Active',
+      amountPaid: amountPaidNow,
+      amount: Number(actualAmount),
+      date: actualDate,
+      bankId,
+      branchId,
+      description: `Accrual Settlement: Actual payment for "${accrualExpense.description}"`,
+      expenseNumber: expNumber,
+    }, req.user.id);
+
+    // 8. Reverse the ORIGINAL accrual's own ledger entry first — without this, both the
+    // provisional accrual (Dr OpEx/Cr AP posted when it was first accrued) and this real
+    // Actual settlement would sit in the ledger at once, double-booking the same
+    // real-world expense (confirmed live: an accrued 575 SAR rent, settled at the same
+    // 575, otherwise leaves DIRECT_OPEX/AP overstated by the full accrued amount).
+    // Standard accrual accounting: the estimate is reversed the moment the real invoice
+    // is known, and only the real amount ever nets into the books.
+    await reverseAllEntriesFor(tdb, companyId, 'Expense', accrualExpenseId, actualDate, `Accrual "${accrualExpense.description}" settled by ${expNumber}`, req.user.id);
+
+    // 9. Phase 2 ledger posting (rows 5/5a) for this real Actual expense.
+    const [taxSlab] = accrualExpense.taxSlabId ? await tdb.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, accrualExpense.taxSlabId)) : [undefined];
+    const taxPct = taxSlab ? Number(taxSlab.percentage) : 0;
+    const grossAmount = round2(Number(actualAmount));
+    const { netAmount, taxAmount } = splitExpenseTaxInclusiveAmount(grossAmount, taxPct);
+    await postJournalEntry(tdb, {
+      companyId,
+      branchId,
+      date: actualDate,
+      referenceType: 'Expense',
+      referenceId: actualExpenseId,
+      description: `Expense ${expNumber} raised`,
+      createdById: req.user.id,
+      lines: [
+        { accountKey: 'DIRECT_OPEX', debit: netAmount },
+        ...(taxAmount > 0 ? [{ accountKey: 'VAT_INPUT', debit: taxAmount }] : []),
+        { accountKey: 'AP', credit: grossAmount },
+      ],
+    });
+    if (amountPaidNow > 0) {
+      await postJournalEntry(tdb, {
+        companyId,
+        branchId,
         date: actualDate,
-        bankId,
-        amount: String(actualAmount),
-        description: `Payment voucher for actual settlement of accrual ${accrualExpense.expenseNumber}`,
         referenceType: 'Expense',
         referenceId: actualExpenseId,
+        description: `Payment at creation for expense ${expNumber}`,
         createdById: req.user.id,
-        createdAt: new Date(),
-        companyId,
+        lines: [
+          { accountKey: 'AP', debit: round2(amountPaidNow) },
+          { accountKey: 'BANK', credit: round2(amountPaidNow), bankId },
+        ],
       });
     }
 

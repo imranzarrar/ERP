@@ -3,7 +3,7 @@ import { useTranslation, usePermissions } from '../hooks';
 import { DatabaseState } from '../dbStore';
 import { getMonthToDateRange } from '../dateUtils';
 import { Printer, Filter } from 'lucide-react';
-import { useReportViewer, ViewReportButton, ReportPlaceholder, ReportStatusStrip, ReportPager } from './ReportViewControls';
+import { useReportViewer, ViewReportButton, ReportPlaceholder, ReportStatusStrip, ReportPager, ExportExcelButton } from './ReportViewControls';
 
 type ReportType = 'SalesRegister' | 'ItemWiseSales' | 'CustomerStatement' | 'QuotationConversion' | 'SalesByStaff' | 'PosShiftSummary';
 
@@ -133,12 +133,15 @@ export default function SalesReportsModule({ db, defaultReportType, onPrintDoc }
               instead of cramming into one row on a narrow screen. */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-4.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
             <h3 className="text-sm font-extrabold text-slate-900">{t(REPORT_LABELS[reportType])}</h3>
-            <button
-              onClick={handlePrint}
-              className="bg-slate-900 hover:bg-slate-950 text-white font-extrabold rounded-xl px-4 py-2 text-xs transition-all duration-150 flex items-center justify-center gap-1.5 shadow-md shrink-0 hover:shadow-lg"
-            >
-              <Printer className="w-4 h-4 text-indigo-400" /> {t('Export Statement (Print)')}
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              <ExportExcelButton url={viewed ? viewer.appliedKey : null} disabled={isStale || viewer.loading} t={t} />
+              <button
+                onClick={handlePrint}
+                className="bg-slate-900 hover:bg-slate-950 text-white font-extrabold rounded-xl px-4 py-2 text-xs transition-all duration-150 flex items-center justify-center gap-1.5 shadow-md shrink-0 hover:shadow-lg"
+              >
+                <Printer className="w-4 h-4 text-indigo-400" /> {t('Export Statement (Print)')}
+              </button>
+            </div>
           </div>
 
           {/* Dynamic Filter Panel — 1 column on mobile, up to 4 on desktop (same

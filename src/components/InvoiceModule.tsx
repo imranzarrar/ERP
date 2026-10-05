@@ -10,6 +10,7 @@ import ItemCatalogSearch from './ItemCatalogSearch';
 import PartySearchSelect from './PartySearchSelect';
 import { usePaginatedList } from '../usePaginatedList';
 import { RowNumberTd, PaginationFooter } from './PaginationControls';
+import { handleLineItemGridKeyDown, handleFormSaveShortcut } from '../lineItemKeyboardNav';
 import {
   Plus,
   Trash,
@@ -267,7 +268,16 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
      // 0 = Both, 1 = Sales, 2 = Purchase — exclude only Purchase-only; Both/Sales show here.
      return isCompMatch && p.salesPurchaseFlow !== 2;
    });
-   const rows: (typeof baseProducts[number] & { unitOfMeasureId?: string | null; conversionFactor?: number })[] = [...baseProducts];
+   // Each product row from db.products carries its own unit_of_measure_id at runtime (a
+   // display-only pointer to the product's default named unit — see schema.ts's own
+   // comment on productsServices.unitOfMeasureId), even though it's absent from the
+   // ProductService TS type. Left as-is, that truthy value would leak onto this BASE row
+   // and get treated by onSelectItem below as a packaging-unit selection, sending a
+   // unitOfMeasureId the server can't find in productUnitConversions (it's not a
+   // packaging conversion) — explicitly cleared here so only real packaging rows
+   // (pushed below) ever carry one.
+   const rows: (typeof baseProducts[number] & { unitOfMeasureId?: string | null; conversionFactor?: number })[] =
+     baseProducts.map(p => ({ ...p, unitOfMeasureId: undefined }));
    for (const puc of (db.productUnitConversions || [])) {
      if (puc.isActive === false) continue;
      const product = baseProducts.find(p => p.id === puc.productId);
@@ -499,7 +509,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  // Collected" is now the same Paid-uses-grandTotal-else-amountPaid logic, correctly signed.
  // paidCount/pendingCount were added alongside the pagination migration so these KPI cards
  // no longer depend on the (now removed) full client-side invoices list.
- const [invoiceKpis, setInvoiceKpis] = React.useState({ totalInvoiced: 0, totalCollected: 0, paidCount: 0, pendingCount: 0 });
+ const [invoiceKpis, setInvoiceKpis] = React.useState({ totalInvoiced: 0, totalCollected: 0, paidCount: 0, pendingCount: 0, pendingBalance: 0 });
  React.useEffect(() => {
    if (!db.selectedCompanyId) return;
    let cancelled = false;
@@ -514,7 +524,10 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  const kpiTotalInvoiced = invoiceKpis.totalInvoiced;
  const kpiTotalCollected = invoiceKpis.totalCollected;
 
- const kpiPendingBalance = kpiTotalInvoiced - kpiTotalCollected;
+ // Never totalInvoiced - totalCollected — see computeInvoiceKpis's own comment for why
+ // that subtraction breaks as soon as a Credit Note is in the mix (its paymentStatus
+ // never reflects the real cash refund against an already-fully-collected original).
+ const kpiPendingBalance = invoiceKpis.pendingBalance;
  const kpiPaidCount = invoiceKpis.paidCount;
  const kpiPendingCount = invoiceKpis.pendingCount;
 
@@ -917,7 +930,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
 
  {/* CREATE FORM VIEW */}
  {view === 'create' && (
- <form onSubmit={handleSaveInvoice} className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 sm:p-5 space-y-4">
+ <form onSubmit={handleSaveInvoice} onKeyDown={handleFormSaveShortcut} className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 sm:p-5 space-y-4">
  <div className="flex justify-between items-center bg-slate-50/80 rounded-xl px-3.5 py-2 border border-slate-200/60">
  <div className="flex items-center gap-2.5 flex-wrap">
  <h3 className="font-extrabold text-xs text-slate-800 uppercase tracking-wider">{t('Draft & Issue Sales Invoice')}</h3>
@@ -1144,7 +1157,10 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  <th className="py-2.5 px-3 text-center w-12"></th>
  </tr>
  </thead>
- <tbody className="divide-y divide-slate-100">
+ <tbody
+ className="divide-y divide-slate-100"
+ onKeyDown={(e) => handleLineItemGridKeyDown(e, { onAddRow: handleAddLineItem, onRemoveRow: handleRemoveLineItem })}
+ >
  {formItems.map((item, idx) => {
  const lineNetCost = Math.max(0, (item.unitCost || 0) - (item.discountAmount || 0));
  const lineTotal = lineNetCost * (item.quantity || 1);
@@ -1263,8 +1279,11 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  >
  <Plus className="w-3.5 h-3.5" /> {t('Add Line Item')}
  </button>
+ <div className="flex items-center gap-4">
+ <span className="hidden sm:inline text-[10px] text-slate-400 font-medium">{t('Tip: Enter moves to the next field (adds a row at the end) · Alt+Backspace removes a row · Ctrl+S saves')}</span>
  <div className="text-xs font-semibold text-slate-500">
  {t("Total Items:")} <span className="text-slate-900 font-bold">{formItems.length}</span>
+ </div>
  </div>
  </div>
  </div>

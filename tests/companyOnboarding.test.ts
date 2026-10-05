@@ -156,6 +156,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Invoice/expense/GRN postings write ledger rows that reference these users and banks; they must go first.
+  await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, superAdminHomeCompanyId));
+  await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, superAdminHomeCompanyId));
   // Tear down anything approve() created, deepest-dependency-first. Onboarding-request
   // rows must go before companies — createdCompanyId FKs into companies.
   await db.delete(schema.companyOnboardingRequests).where(like(schema.companyOnboardingRequests.companyName, 'Onboarding Test Co %'));
@@ -429,8 +432,9 @@ describe('POST /api/admin/onboarding-requests/:id/approve', () => {
     expect(taxSlab?.isDefault).toBe(true);
     const [warehouse] = await db.select().from(schema.warehouses).where(eq(schema.warehouses.companyId, body.companyId));
     expect(warehouse?.isCompanyDefault).toBe(true);
-    const [template] = await db.select().from(schema.documentTemplates).where(eq(schema.documentTemplates.companyId, body.companyId));
-    expect(template?.isActive).toBe(true);
+    const templates = await db.select().from(schema.documentTemplates).where(eq(schema.documentTemplates.companyId, body.companyId));
+    // "Detailed Compact (A4)" is the starter template pre-selected (isActive) in the Print dialog.
+    expect(templates.filter(t => t.isActive).map(t => t.name)).toEqual(['Detailed Compact (A4)']);
     const [month] = await db.select().from(schema.fiscalMonths).where(eq(schema.fiscalMonths.companyId, body.companyId));
     expect(month?.status).toBe('Open');
 

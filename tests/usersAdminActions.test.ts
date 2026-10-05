@@ -96,6 +96,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Invoice/expense/GRN postings write ledger rows that reference these users and banks; they must go first.
+  await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, companyAId));
+  await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, companyAId));
+  await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, companyBId));
+  await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, companyBId));
   // Login/actions write audit_logs rows referencing these users, so that must go first.
   await db.delete(schema.auditLogs).where(eq(schema.auditLogs.userId, ownerUserId));
   await db.delete(schema.auditLogs).where(eq(schema.auditLogs.userId, otherCompanyUserId));

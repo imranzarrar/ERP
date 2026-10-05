@@ -1,6 +1,7 @@
 import express from 'express';
 import { hasPermission } from '../lib/authz.js';
 import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
+import { sendReportExcel } from '../lib/excelExport.js';
 import {
   computeDashboardSummary,
   computeTrialBalance,
@@ -66,18 +67,29 @@ function resolveBranchIds(req: any): string[] | null {
 const MAX_EXPORT_ROWS = 50000;
 const PAGE_SIZE_OPTIONS = { min: 10, max: 500, default: 100 };
 function readPaging(req: any): { all: boolean; page: number; pageSize: number } {
-  const all = req.query?.all === 'true';
+  // An Excel export always means every matching row, not one on-screen page — same
+  // reasoning as Print's own `all=true`, just triggered by ?format=xlsx instead.
+  const all = req.query?.all === 'true' || req.query?.format === 'xlsx';
   const page = Math.max(1, parseInt(String(req.query?.page ?? '1'), 10) || 1);
   const pageSize = Math.min(PAGE_SIZE_OPTIONS.max, Math.max(PAGE_SIZE_OPTIONS.min, parseInt(String(req.query?.pageSize ?? PAGE_SIZE_OPTIONS.default), 10) || PAGE_SIZE_OPTIONS.default));
   return { all, page, pageSize };
 }
+// Filename for a ?format=xlsx download — derived from the route path itself
+// (/reports/sales-register -> sales-register.xlsx) so no call site needs to name it.
+function xlsxFilename(req: any): string {
+  return `${String(req.path).replace(/^\/?reports\//, '').replace(/\//g, '-') || 'report'}.xlsx`;
+}
 function sendReport(req: any, res: any, result: any) {
   const key = Array.isArray(result?.rows) ? 'rows' : Array.isArray(result?.entries) ? 'entries' : null;
-  if (!key || result.pagination) return res.json(result);
+  if (!key || result.pagination) {
+    if (req.query?.format === 'xlsx') return sendReportExcel(res, xlsxFilename(req), result);
+    return res.json(result);
+  }
   const { all, page, pageSize } = readPaging(req);
   const total = result[key].length;
   if (all) {
     if (total > MAX_EXPORT_ROWS) return res.status(413).json({ error: `This report has ${total} rows — too many to print at once. Narrow the filters (dates, customer, warehouse) and try again.` });
+    if (req.query?.format === 'xlsx') return sendReportExcel(res, xlsxFilename(req), result);
     return res.json(result);
   }
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -149,7 +161,9 @@ router.get('/reports/trial-balance', withTenantDb, async (req: any, res) => {
     if (!companyId) return res.status(400).json({ error: 'No company selected.' });
     const { startDate, endDate } = req.query;
     if (!startDate || !endDate) return res.status(400).json({ error: 'startDate and endDate are required.' });
-    res.json(await computeTrialBalance(tenantDb(), companyId, String(startDate), String(endDate)));
+    const result = await computeTrialBalance(tenantDb(), companyId, String(startDate), String(endDate));
+    if (req.query?.format === 'xlsx') return sendReportExcel(res, xlsxFilename(req), result);
+    res.json(result);
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
   }
@@ -163,7 +177,9 @@ router.get('/reports/profit-loss', withTenantDb, async (req: any, res) => {
     const { startDate, endDate, basis } = req.query;
     if (!startDate || !endDate) return res.status(400).json({ error: 'startDate and endDate are required.' });
     const resolvedBasis = basis === 'Cash' ? 'Cash' : 'Accrual';
-    res.json(await computeProfitLoss(tenantDb(), companyId, String(startDate), String(endDate), resolvedBasis));
+    const result = await computeProfitLoss(tenantDb(), companyId, String(startDate), String(endDate), resolvedBasis, { branchIds: resolveBranchIds(req) });
+    if (req.query?.format === 'xlsx') return sendReportExcel(res, xlsxFilename(req), result);
+    res.json(result);
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
   }
@@ -176,7 +192,9 @@ router.get('/reports/balance-sheet', withTenantDb, async (req: any, res) => {
     if (!companyId) return res.status(400).json({ error: 'No company selected.' });
     const { asOfDate } = req.query;
     if (!asOfDate) return res.status(400).json({ error: 'asOfDate is required.' });
-    res.json(await computeBalanceSheet(tenantDb(), companyId, String(asOfDate)));
+    const result = await computeBalanceSheet(tenantDb(), companyId, String(asOfDate));
+    if (req.query?.format === 'xlsx') return sendReportExcel(res, xlsxFilename(req), result);
+    res.json(result);
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
   }
@@ -342,7 +360,9 @@ router.get('/reports/stock-movement-ledger', withTenantDb, async (req: any, res)
     const { startDate, endDate, warehouseId, productId } = req.query;
     if (!startDate || !endDate) return res.status(400).json({ error: 'startDate and endDate are required.' });
     const paging = readPaging(req);
-    res.json(await computeStockMovementLedger(tenantDb(), companyId, String(startDate), String(endDate), (warehouseId ? String(warehouseId) : 'ALL') as any, (productId ? String(productId) : 'ALL') as any, { branchIds: resolveBranchIds(req) }, paging.all ? undefined : { page: paging.page, pageSize: paging.pageSize }, MAX_EXPORT_ROWS));
+    const result = await computeStockMovementLedger(tenantDb(), companyId, String(startDate), String(endDate), (warehouseId ? String(warehouseId) : 'ALL') as any, (productId ? String(productId) : 'ALL') as any, { branchIds: resolveBranchIds(req) }, paging.all ? undefined : { page: paging.page, pageSize: paging.pageSize }, MAX_EXPORT_ROWS);
+    if (req.query?.format === 'xlsx') return sendReportExcel(res, xlsxFilename(req), result);
+    res.json(result);
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
   }

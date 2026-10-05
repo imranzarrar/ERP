@@ -142,6 +142,11 @@ beforeAll(async () => {
 }, 30000);
 
 afterAll(async () => {
+  // Invoice/expense/GRN postings write ledger rows that reference these users and banks; they must go first.
+  await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, companyAId));
+  await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, companyAId));
+  await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, companyBId));
+  await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, companyBId));
   await db.delete(schema.vouchers).where(eq(schema.vouchers.companyId, companyAId));
   await db.delete(schema.vouchers).where(eq(schema.vouchers.companyId, companyBId));
   await db.delete(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, invoiceAId));
@@ -174,7 +179,7 @@ describe('Phase 2 server-side financial reports — correctness and cross-compan
     const sessionId = await login(usernameA);
     const { status, body } = await api(sessionId, '/reports/trial-balance?startDate=2026-08-01&endDate=2026-08-31');
     expect(status).toBe(200);
-    expect(body.totalSalesRev).toBe(200);
+    expect(body.totalSalesRev).toBe(180); // net of the 10% header discount (200 - 20), same figure the ledger books to Sales Revenue
     expect(body.totalPurchaseExp).toBe(50);
     const ar = body.ledgers.find((l: any) => l.name === 'Accounts Receivable');
     const ap = body.ledgers.find((l: any) => l.name === 'Accounts Payable');
@@ -247,6 +252,6 @@ describe('Phase 2 server-side financial reports — correctness and cross-compan
     const { status, body } = await api(sessionId, `/reports/trial-balance?startDate=2026-08-01&endDate=2026-08-31&companyId=${companyBId}`);
     expect(status).toBe(200);
     // Still Company A's own numbers, proving the companyId query param was ignored.
-    expect(body.totalSalesRev).toBe(200);
+    expect(body.totalSalesRev).toBe(180); // net of the 10% header discount (200 - 20), same figure the ledger books to Sales Revenue
   });
 });

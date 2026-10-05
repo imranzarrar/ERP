@@ -576,6 +576,9 @@ export interface Invoice {
   currentInvoiceHash?: string;
   previousInvoiceHash?: string;
   qrCodeContent?: string;
+  // The signed XML itself is not carried on list/state rows (~17 KB each) — only this flag;
+  // fetch it on demand from GET /api/transactions/invoices/:id/xml.
+  hasXml?: boolean;
   xmlContent?: string;
   clearanceTimestamp?: string;
   zatcaValidationResults?: any[];
@@ -876,6 +879,10 @@ export interface GoodsReceiptNote {
 export interface PurchaseBill {
   id: string;
   billNumber: string;
+  // The vendor's own bill/invoice reference number — distinct from billNumber above
+  // (this system's own auto-generated sequence). Optional at creation, can be added
+  // later while the bill is still Unpaid.
+  vendorBillNumber?: string;
   vendorId: string;
   date: string;
   dueDate?: string;

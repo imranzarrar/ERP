@@ -110,6 +110,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Invoice/expense/GRN postings write ledger rows that reference these users and banks; they must go first.
+  await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, companyId));
+  await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, companyId));
   // Belt-and-suspenders: delete every invoice_items row touching either this company's
   // invoices or this test's product directly (a Credit Note's copied line items carry the
   // same productId as the original, so a plain invoiceId-only sweep can miss rows if the

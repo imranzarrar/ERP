@@ -57,6 +57,8 @@
 - `deploy/deploy.sh` — the repeatable pull → build → reload script, run on the VPS. Tags the pre-deploy commit automatically for rollback and warns (without blocking) if the schema changed.
 - `deploy/rollback.sh` — revert to the most recent auto-tagged rollback point (or an explicit commit/tag) and reload. Never touches the database.
 - `deploy/backup-db.sh` — nightly `pg_dump` with 14-day rotation; the crontab line to schedule it is in a comment at the bottom of the file (not wired in automatically).
+- `deploy/db-tunnel.sh` — run on your OWN machine (not the VPS) to open an SSH tunnel to production Postgres for ad-hoc access from a local client (`psql`, DBeaver, pgAdmin) without ever exposing Postgres on the VPS's public interface. See Part 3f below.
+- `deploy/maintenance-mode.sh` + `deploy/maintenance.html` + `deploy/nginx-snippets/erp-maintenance.conf` — a real "system unavailable" page served by Nginx itself (works even if the Node app or Postgres is down). Needs a one-time manual wiring step — see Part 3g below.
 - `deploy/nginx.erp.conf.template` — the Nginx reverse-proxy + SSL server block template. Not active yet (no domain) — its own header comment has the exact activation steps for when one is added.
 - `deploy/app.secrets.production.example` — a template (not real secrets) listing every env var this app actually reads today, required vs optional.
 - `.claude/skills/hostinger-deploy/SKILL.md` — the guardrails for any future session acting on this: never auto-run `db:push`, never deploy without the user explicitly asking, secrets never touch git, confirm before anything destructive/hard-to-reverse on the live server, VPS access model.
@@ -97,3 +99,31 @@ Two separate times a slowdown blamed on the release was the user's own connectio
 - `deploy.sh` exits early ("Already up to date") if the code was already pulled by hand — then the build/reload never ran. If unsure, run `npm run build && pm2 reload deploy/ecosystem.config.cjs`.
 - New shell scripts checked in from Windows lose their executable bit; run them with `bash deploy/<script>.sh` (or `git update-index --chmod=+x`).
 - After a deploy, users with a stale cached page may see a blank screen once; a hard refresh (Ctrl+Shift+R) or "Clear site data" fixes it.
+
+### 3f. Ad-hoc production Postgres access from a local machine
+
+Postgres on the VPS stays bound to `127.0.0.1` (confirmed via `sudo ss -tlnp | grep 5432`) and is never exposed publicly — port 5432 is not, and must never be, opened in `ufw`. For a one-off local query or inspection, tunnel instead of exposing anything: `bash deploy/db-tunnel.sh` (run locally, not on the VPS) forwards `localhost:5433` to the VPS's `localhost:5432` over the existing SSH access, then connect with `psql -h localhost -p 5433 -U <SQL_USER> -d <SQL_DB_NAME>` (credentials from `app.secrets` on the VPS). The SSH process **is** the tunnel — closing that terminal kills it; use `--background` to keep it alive after closing the window.
+
+### 3g. Showing a "system unavailable for maintenance" page
+
+For real downtime (a VPS reboot test, a risky migration, anything where the app or Postgres might actually be stopped), an in-app banner can't help — if the app can't boot, there's nothing left to render one. Instead, `deploy/maintenance.html` is a static page served directly by **Nginx**, independent of the Node app.
+
+**One-time setup** (per site, do this once): add a single line to the live HTTPS server block in `/etc/nginx/sites-enabled/<name>` (NOT the plain `:80` redirect block), right after its `server_name` line:
+```
+include snippets/erp-maintenance.conf;
+```
+Then install the snippet and validate before reloading:
+```
+sudo mkdir -p /etc/nginx/snippets
+sudo install -m 644 deploy/nginx-snippets/erp-maintenance.conf /etc/nginx/snippets/erp-maintenance.conf
+sudo nginx -t && sudo systemctl reload nginx
+```
+This step is manual rather than sed-automated (unlike `nginx-tuning.sh`'s inserts) because the target line (the SSL block's `server_name`, not the `:80` one) is easy to get right by eye but risky to guess reliably by pattern in someone else's Certbot-managed config.
+
+**Day to day, after that's wired in:**
+```
+bash deploy/maintenance-mode.sh on       # show deploy/maintenance.html (HTTP 503) to everyone
+bash deploy/maintenance-mode.sh off      # resume normal traffic
+bash deploy/maintenance-mode.sh status   # check which state it's in
+```
+It just creates/removes a sentinel file (`deploy/MAINTENANCE_ON`, gitignored) that the Nginx snippet checks, then runs `nginx -t` before reloading — never touches PM2 or Postgres. To keep your own access while maintenance is on, uncomment and edit the bypass-IP line in `erp-maintenance.conf` and reload.

@@ -26,6 +26,8 @@ export default function InvoiceViewScreen({ db, invoiceId, onBack, onPrintDoc, o
   const [triggerError, setTriggerError] = React.useState<string | null>(null);
   const [triggerSuccessMsg, setTriggerSuccessMsg] = React.useState<string | null>(null);
   const [showXml, setShowXml] = React.useState(false);
+  const [xmlText, setXmlText] = React.useState<string | null>(null);
+  const [xmlLoading, setXmlLoading] = React.useState(false);
   const [noteReason, setNoteReason] = React.useState('');
   const [showNoteForm, setShowNoteForm] = React.useState(false);
   const [showPayForm, setShowPayForm] = React.useState(false);
@@ -198,9 +200,39 @@ export default function InvoiceViewScreen({ db, invoiceId, onBack, onPrintDoc, o
     }
   };
 
-  const handleDownloadXml = () => {
-    if (!inv.xmlContent) return;
-    const blob = new Blob([inv.xmlContent], { type: 'text/xml' });
+  // The signed XML isn't part of db.invoices (it would add ~17 KB per invoice to every
+  // /api/state load) — fetched on demand, fresh each time so a resubmitted invoice never
+  // shows a stale document.
+  const fetchXml = async (): Promise<string | null> => {
+    setXmlLoading(true);
+    try {
+      const res = await fetch(`/api/transactions/invoices/${inv.id}/xml`, { credentials: 'include' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Failed to load XML (${res.status})`);
+      }
+      return await res.text();
+    } catch (err: any) {
+      setTriggerError(err.message || 'Failed to load XML.');
+      return null;
+    } finally {
+      setXmlLoading(false);
+    }
+  };
+
+  const handleViewXml = async () => {
+    if (xmlLoading) return;
+    const xml = await fetchXml();
+    if (xml === null) return;
+    setXmlText(xml);
+    setShowXml(true);
+  };
+
+  const handleDownloadXml = async () => {
+    if (xmlLoading) return;
+    const xml = await fetchXml();
+    if (xml === null) return;
+    const blob = new Blob([xml], { type: 'text/xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -385,10 +417,10 @@ export default function InvoiceViewScreen({ db, invoiceId, onBack, onPrintDoc, o
             )}
 
             <div className="flex gap-1.5">
-              <button onClick={() => setShowXml(true)} disabled={!inv.xmlContent} className="flex-1 text-xs font-bold border border-slate-200 rounded-lg py-1.5 hover:bg-slate-50 inline-flex items-center justify-center gap-1.5 disabled:opacity-40">
+              <button onClick={handleViewXml} disabled={!inv.hasXml || xmlLoading} className="flex-1 text-xs font-bold border border-slate-200 rounded-lg py-1.5 hover:bg-slate-50 inline-flex items-center justify-center gap-1.5 disabled:opacity-40">
                 <Code className="w-3.5 h-3.5" />{t('View signed XML')}
               </button>
-              <button onClick={handleDownloadXml} disabled={!inv.xmlContent} title={t('Download XML File')} className="text-xs font-bold border border-slate-200 rounded-lg py-1.5 px-2 hover:bg-slate-50 inline-flex items-center justify-center disabled:opacity-40">
+              <button onClick={handleDownloadXml} disabled={!inv.hasXml || xmlLoading} title={t('Download XML File')} className="text-xs font-bold border border-slate-200 rounded-lg py-1.5 px-2 hover:bg-slate-50 inline-flex items-center justify-center disabled:opacity-40">
                 <Download className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -459,13 +491,13 @@ export default function InvoiceViewScreen({ db, invoiceId, onBack, onPrintDoc, o
       </div>
 
       {showXml && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setShowXml(false)}>
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => { setShowXml(false); setXmlText(null); }}>
           <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[80vh] overflow-auto p-5" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-3">
               <p className="font-bold text-slate-900 inline-flex items-center gap-1.5"><ShieldCheck className="w-4 h-4 text-indigo-600" />{t('Signed XML')}</p>
-              <button onClick={() => setShowXml(false)} className="text-slate-400 hover:text-slate-700 text-sm font-bold">{t('Close')}</button>
+              <button onClick={() => { setShowXml(false); setXmlText(null); }} className="text-slate-400 hover:text-slate-700 text-sm font-bold">{t('Close')}</button>
             </div>
-            <pre className="text-[11px] bg-slate-50 rounded-xl p-3 overflow-auto whitespace-pre-wrap">{inv.xmlContent}</pre>
+            <pre className="text-[11px] bg-slate-50 rounded-xl p-3 overflow-auto whitespace-pre-wrap">{xmlText}</pre>
           </div>
         </div>
       )}

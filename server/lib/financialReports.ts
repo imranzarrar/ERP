@@ -115,6 +115,17 @@ export interface TrialBalanceFigures {
 
 // Ports ReportViewer.tsx's getTrialBalance (~145-221) — same account derivation (no
 // formal chart-of-accounts in this app), same account lines, no row cap.
+// Bank balances stay company-wide (bank accounts aren't branch-owned entities in this
+// schema, same convention every other report using computeAllBankBalances already
+// follows) — only the invoice/expense/voucher-derived lines are branch-scoped.
+// No branchIds opts here, deliberately: unlike every other report in this module, a
+// Trial Balance must balance (total debits === total credits), and this app's chart of
+// accounts (systemAccounts) is genuinely company-wide, not branch-mapped — Bank balance
+// (computeAllBankBalances, below) and Paid-in Capital have no per-branch attribution at
+// all. Filtering only the AR/AP/Revenue/Expense lines by branch while Bank stays at its
+// full company total would silently break Debit=Credit for any branch other than "All" —
+// worse than not offering the filter. See ReportViewer.tsx's "Filter Branch" dropdown,
+// which correctly never lists this report type.
 export async function computeTrialBalance(executor: any, companyId: string, startDate: string, endDate: string): Promise<TrialBalanceFigures> {
   const bankBalances = await computeAllBankBalances(executor, companyId);
   const bankDetails: TrialBalanceLedgerLine[] = bankBalances.map(b => ({
@@ -136,15 +147,34 @@ export async function computeTrialBalance(executor: any, companyId: string, star
   for (const inv of invoicesInRange) {
     const totals = totalsByInvoiceId.get(inv.id)!;
     const sign = invoiceSign(inv);
-    totalSalesRev = round2(totalSalesRev + totals.itemsSubtotal * sign);
+    // discountedSubtotal (net of BOTH line-item and header discount), not itemsSubtotal
+    // (net of line-item discount only) — the latter silently overstated revenue by the
+    // header discount amount for any header-discounted invoice.
+    totalSalesRev = round2(totalSalesRev + totals.discountedSubtotal * sign);
     totalVATCollected = round2(totalVATCollected + totals.taxAmount * sign);
   }
 
-  const unpaidInvoicesInRange = invoicesInRange.filter(inv => inv.paymentStatus === 'Unpaid');
+  // Excludes CreditNote rows entirely and includes 'Partially Paid' — matches
+  // computeDashboardSummary's already-correct pendingCollection pattern above. A Credit
+  // Note's own paymentStatus is a meaningless leftover default (POST /invoices/:id/paid
+  // refuses to ever pay one, so it never legitimately transitions), and summing it here
+  // by its own status — rather than netting it against the specific original invoice it
+  // was issued against — let a credit note against an ALREADY-FULLY-PAID invoice (which
+  // contributes 0 either way, correctly excluded below) instead subtract its amount from
+  // some completely unrelated customer's outstanding balance, corrupting the company-wide
+  // total and breaking Debit=Credit. Live-confirmed: a 372.60 credit note against a fully
+  // paid invoice silently reduced an unrelated unpaid invoice's 1150.00 balance to 777.40.
+  // Excluding CreditNote/DebitNote here also means their own remaining-balance netting
+  // against a still-outstanding original invoice isn't handled — a known, narrower gap
+  // than the one this fixes, left for when partial-credit-against-unpaid-invoice
+  // reporting is actually built.
+  const unpaidInvoicesInRange = invoicesInRange.filter(inv =>
+    inv.documentType !== 'CreditNote' && (inv.paymentStatus === 'Unpaid' || inv.paymentStatus === 'Partially Paid')
+  );
   let accountsReceivable = 0;
   for (const inv of unpaidInvoicesInRange) {
     const totals = totalsByInvoiceId.get(inv.id)!;
-    accountsReceivable = round2(accountsReceivable + totals.grandTotal * invoiceSign(inv));
+    accountsReceivable = round2(accountsReceivable + (totals.grandTotal - Number(inv.amountPaid || 0)) * invoiceSign(inv));
   }
 
   const expensesInRange = await executor.select().from(schema.expenses).where(and(
@@ -160,7 +190,30 @@ export async function computeTrialBalance(executor: any, companyId: string, star
     const amount = Number(exp.amount);
     if (exp.classification === 'Asset') totalFixedAssets = round2(totalFixedAssets + amount);
     else totalPurchaseExp = round2(totalPurchaseExp + amount);
-    if (exp.paymentStatus === 'Unpaid') accountsPayable = round2(accountsPayable + amount);
+    // Same fix as computeOutstanding's matching comment: 'Unpaid' only (missing
+    // 'Partially Paid'), the full amount instead of the real remaining balance, and no
+    // exclusion for a settled Accrual (whose own paymentStatus never changes on
+    // settlement) all independently overstated this figure — the same "Unpaid only"
+    // AR bug already found and fixed on the Invoice side this session, recurring here
+    // on the Expense side.
+    if (!(exp.type === 'Accrual' && exp.accrualSettled) && (exp.paymentStatus === 'Unpaid' || exp.paymentStatus === 'Partially Paid')) {
+      accountsPayable = round2(accountsPayable + (amount - Number(exp.amountPaid || 0)));
+    }
+  }
+
+  // Accounts Payable also owes whatever's still unpaid on a Purchase Bill (Phase 3) —
+  // found missing here during this session's report reconciliation: the ledger's own AP
+  // account already combines both Expense (row 5) and Purchase Bill (row 9) postings,
+  // but this figure only ever summed expenses, silently understating AP once any bill
+  // went unpaid. purchaseBills.date is a timestamp column (unlike expenses' text date).
+  const billsInRange = await executor.select().from(schema.purchaseBills).where(and(
+    eq(schema.purchaseBills.companyId, companyId),
+    ne(schema.purchaseBills.status, 'Cancelled'),
+    gte(schema.purchaseBills.date, new Date(startDate + 'T00:00:00.000Z')),
+    lte(schema.purchaseBills.date, new Date(endDate + 'T23:59:59.999Z')),
+  ));
+  for (const bill of billsInRange) {
+    accountsPayable = round2(accountsPayable + (Number(bill.grandTotal) - Number(bill.amountPaid || 0)));
   }
 
   const capitalVouchers = await executor.select().from(schema.vouchers).where(and(
@@ -193,6 +246,7 @@ export interface InvestorShare { name: string; profitPercentage: number; shareAm
 export interface ProfitLossFigures {
   accountingBasis: 'Accrual' | 'Cash';
   totalRevenue: number;
+  costOfGoodsSold: number;
   totalExpenses: number;
   netProfit: number;
   operatingInflows: number;
@@ -205,21 +259,22 @@ export interface ProfitLossFigures {
 
 // Ports ReportViewer.tsx's getProfitLossData (~494-592) — same Accrual/Cash basis
 // branching and cash-flow breakdown, no row cap.
-export async function computeProfitLoss(executor: any, companyId: string, startDate: string, endDate: string, basis: 'Accrual' | 'Cash'): Promise<ProfitLossFigures> {
-  const periodVouchers = await executor.select().from(schema.vouchers).where(and(
+export async function computeProfitLoss(executor: any, companyId: string, startDate: string, endDate: string, basis: 'Accrual' | 'Cash', opts: ReportScopeOpts = { branchIds: null }): Promise<ProfitLossFigures> {
+  const branchOk = makeBranchOk(opts.branchIds);
+  const periodVouchers = (await executor.select().from(schema.vouchers).where(and(
     eq(schema.vouchers.companyId, companyId),
     gte(schema.vouchers.date, startDate),
     lte(schema.vouchers.date, endDate),
-  ));
+  ))).filter((v: any) => branchOk(v.branchId));
 
   let totalRevenue = 0;
   if (basis === 'Accrual') {
-    const revenueInvoices = await executor.select().from(schema.invoices).where(and(
+    const revenueInvoices = (await executor.select().from(schema.invoices).where(and(
       eq(schema.invoices.companyId, companyId),
       eq(schema.invoices.status, 'Active'),
       gte(schema.invoices.date, startDate),
       lte(schema.invoices.date, endDate),
-    ));
+    ))).filter((inv: any) => branchOk(inv.branchId));
     const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, revenueInvoices);
     for (const inv of revenueInvoices) {
       totalRevenue = round2(totalRevenue + totalsByInvoiceId.get(inv.id)!.grandTotal * invoiceSign(inv));
@@ -232,11 +287,38 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
 
   // Expense rows needed either way: Accrual basis sums them directly; Cash basis needs
   // each expense's own classification to tell an OpEx payment from a CapEx one.
-  const periodExpenses: any[] = await executor.select().from(schema.expenses).where(and(
+  const periodExpenses: any[] = (await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId),
     eq(schema.expenses.status, 'Active'),
-  ));
+  ))).filter((exp: any) => branchOk(exp.branchId));
   const expenseById = new Map(periodExpenses.map(e => [e.id, e]));
+
+  // Cost of Goods Sold — found missing entirely from this report: every stock-tracked
+  // sale already posts Dr COGS / Cr INVENTORY at the invoice's own historical cost
+  // (server/routes/transactions.ts, Phase 1 ledger posting), correctly reversed by a
+  // Credit Note, but this function never read it — Net Profit silently included Revenue
+  // with no corresponding cost for whatever inventory was actually sold to generate it,
+  // for any company selling physical goods (a pure-services company was unaffected,
+  // since it has nothing posted to COGS at all). Read from the ledger, not recomputed
+  // independently, for the same reason every other figure in this module does: it's
+  // already the audited source of truth, and it captures each sale's cost AT THE TIME of
+  // sale rather than today's average cost. Applied to both bases — see the Cash-basis
+  // branch below for why.
+  const cogsLines = await executor.select({
+    debit: schema.journalLines.debit, credit: schema.journalLines.credit,
+    date: schema.journalEntries.date, branchId: schema.journalEntries.branchId,
+  })
+    .from(schema.journalLines)
+    .innerJoin(schema.journalEntries, eq(schema.journalLines.journalEntryId, schema.journalEntries.id))
+    .where(and(
+      eq(schema.journalLines.companyId, companyId),
+      eq(schema.journalLines.accountKey, 'COGS'),
+      gte(schema.journalEntries.date, startDate),
+      lte(schema.journalEntries.date, endDate),
+    ));
+  const costOfGoodsSold = round2(cogsLines
+    .filter((l: any) => branchOk(l.branchId))
+    .reduce((sum: number, l: any) => sum + (Number(l.debit) - Number(l.credit)), 0));
 
   let totalExpenses = 0;
   if (basis === 'Accrual') {
@@ -256,7 +338,7 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
       }, 0));
   }
 
-  const netProfit = round2(totalRevenue - totalExpenses);
+  const netProfit = round2(totalRevenue - costOfGoodsSold - totalExpenses);
 
   const operatingInflows = round2(periodVouchers
     .filter(v => v.referenceType === 'Invoice' && v.type === 'Receipt')
@@ -291,7 +373,7 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
   }));
 
   return {
-    accountingBasis: basis, totalRevenue, totalExpenses, netProfit,
+    accountingBasis: basis, totalRevenue, costOfGoodsSold, totalExpenses, netProfit,
     operatingInflows, operatingOutflows, investingOutflows, financingInflows, netCashFlow,
     investorShares,
   };
@@ -317,13 +399,24 @@ export interface BalanceSheetFigures {
 // row cap. Retained earnings comes from fiscalMonths.closedPnL, which after the
 // month-close fix below is itself always server-computed — no double-counting of the
 // same discount/tax-blindness bug this module fixes elsewhere.
+// No branchIds opts — same reasoning as computeTrialBalance above: Bank balance and
+// Retained Earnings have no per-branch attribution in this schema, so a "branch Balance
+// Sheet" would show a non-zero balanceCheck (Assets != Liabilities+Equity) for anything
+// but "All Branches". A branch-level AR/AP breakdown belongs in a list report (e.g.
+// Outstanding), not this balancing statement.
 export async function computeBalanceSheet(executor: any, companyId: string, asOfDate: string): Promise<BalanceSheetFigures> {
   const bankBalances = await computeAllBankBalances(executor, companyId);
   const bankBalance = round2(bankBalances.reduce((sum, b) => sum + b.balance, 0));
 
+  // ne(documentType, 'CreditNote') — see computeTrialBalance's matching comment for the
+  // live-confirmed incident: a Credit Note's own paymentStatus is a meaningless leftover
+  // default, and summing it here by its own status (rather than netting it against the
+  // specific original invoice it targets) let it subtract from an unrelated customer's
+  // balance instead.
   const unpaidInvoices = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId),
     eq(schema.invoices.status, 'Active'),
+    ne(schema.invoices.documentType, 'CreditNote'),
     lte(schema.invoices.date, asOfDate),
     inArray(schema.invoices.paymentStatus, ['Unpaid', 'Partially Paid']),
   ));
@@ -334,13 +427,27 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
     accountsReceivable = round2(accountsReceivable + (total - Number(inv.amountPaid || 0)) * invoiceSign(inv));
   }
 
-  const unpaidExpenses = await executor.select().from(schema.expenses).where(and(
+  const unpaidExpenses = (await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId),
     eq(schema.expenses.status, 'Active'),
     lte(schema.expenses.date, asOfDate),
     inArray(schema.expenses.paymentStatus, ['Unpaid', 'Partially Paid']),
+  ))).filter((exp: any) => !(exp.type === 'Accrual' && exp.accrualSettled));
+  // Excludes a settled Accrual — see computeOutstanding's matching comment for the live-
+  // confirmed incident this closes: its own paymentStatus never changes on settlement.
+  let accountsPayable = round2(unpaidExpenses.reduce((sum, exp) => sum + (Number(exp.amount) - Number(exp.amountPaid || 0)), 0));
+
+  // Also owes whatever's still unpaid on a Purchase Bill (Phase 3) — same gap, same fix,
+  // as computeTrialBalance's matching comment: the ledger's own AP account already
+  // combines Expense and Purchase Bill postings, this figure silently didn't.
+  const unpaidBills = await executor.select().from(schema.purchaseBills).where(and(
+    eq(schema.purchaseBills.companyId, companyId),
+    ne(schema.purchaseBills.status, 'Cancelled'),
+    lte(schema.purchaseBills.date, new Date(asOfDate + 'T23:59:59.999Z')),
   ));
-  const accountsPayable = round2(unpaidExpenses.reduce((sum, exp) => sum + (Number(exp.amount) - Number(exp.amountPaid || 0)), 0));
+  for (const bill of unpaidBills) {
+    accountsPayable = round2(accountsPayable + (Number(bill.grandTotal) - Number(bill.amountPaid || 0)));
+  }
 
   const inventoryStocks: any[] = await executor.select().from(schema.inventoryStocks).where(eq(schema.inventoryStocks.companyId, companyId));
   const productIds = Array.from(new Set(inventoryStocks.map(s => s.productId))) as string[];
@@ -406,7 +513,13 @@ export async function computeMonthPnL(executor: any, companyId: string, monthId:
     eq(schema.expenses.companyId, companyId),
     eq(schema.expenses.status, 'Active'),
   ));
-  const expensesInMonth = monthExpenses.filter(exp => exp.date.startsWith(monthId));
+  // Excludes a settled Accrual — otherwise a real expense accrued in one entry and
+  // settled (via its own separate Actual expense row) in the same month would be
+  // counted twice in a PERMANENTLY WRITTEN closed-month P&L figure (this function feeds
+  // POST /transactions/months's closedPnL). Same root cause as computeOutstanding's
+  // matching fix: a settled Accrual's own paymentStatus/date never change, so it must be
+  // excluded explicitly rather than inferred from status.
+  const expensesInMonth = monthExpenses.filter(exp => exp.date.startsWith(monthId) && !(exp.type === 'Accrual' && exp.accrualSettled));
   let paidExpenses = 0;
   let totalExpenses = 0;
   for (const exp of expensesInMonth) {
@@ -415,9 +528,31 @@ export async function computeMonthPnL(executor: any, companyId: string, monthId:
     if (exp.paymentStatus === 'Paid') paidExpenses = round2(paidExpenses + amount);
   }
 
+  // Cost of Goods Sold — same gap, same fix, as computeProfitLoss's matching comment:
+  // every stock-tracked sale posts Dr COGS / Cr INVENTORY to the ledger, but this
+  // PERMANENTLY WRITTEN closed-month figure never read it, overstating a real, filed
+  // month's net profit (and, downstream, the Balance Sheet's Retained Earnings) for any
+  // company selling physical goods. `monthId` is 'YYYY-MM' — bounded to that calendar month.
+  const monthStart = `${monthId}-01`;
+  const monthEnd = new Date(Number(monthId.slice(0, 4)), Number(monthId.slice(5, 7)), 0).toISOString().slice(0, 10);
+  const cogsLines = await executor.select({ debit: schema.journalLines.debit, credit: schema.journalLines.credit })
+    .from(schema.journalLines)
+    .innerJoin(schema.journalEntries, eq(schema.journalLines.journalEntryId, schema.journalEntries.id))
+    .where(and(
+      eq(schema.journalLines.companyId, companyId),
+      eq(schema.journalLines.accountKey, 'COGS'),
+      gte(schema.journalEntries.date, monthStart),
+      lte(schema.journalEntries.date, monthEnd),
+    ));
+  const costOfGoodsSold = round2(cogsLines.reduce((sum: number, l: any) => sum + (Number(l.debit) - Number(l.credit)), 0));
+
   return {
-    paid: { revenue: paidRevenue, expenses: paidExpenses, net: round2(paidRevenue - paidExpenses) },
-    includingPending: { revenue: totalRevenue, expenses: totalExpenses, net: round2(totalRevenue - totalExpenses) },
+    // "Paid" (cash-collected) revenue has no clean COGS-matching convention in this
+    // simplified model (COGS posts at sale, not at collection) — subtracted from both
+    // views the same way, consistent with treating it as a period cost that already
+    // happened, same reasoning as computeProfitLoss applying it to both bases.
+    paid: { revenue: paidRevenue, expenses: paidExpenses, net: round2(paidRevenue - costOfGoodsSold - paidExpenses) },
+    includingPending: { revenue: totalRevenue, expenses: totalExpenses, net: round2(totalRevenue - costOfGoodsSold - totalExpenses) },
   };
 }
 
@@ -434,6 +569,7 @@ export interface DashboardSummary {
   totalExpenseActual: number;
   totalExpenseAccrual: number;
   totalAssetCapEx: number;
+  costOfGoodsSold: number;
   netProfit: number;
   netProfitMargin: number;
   totalBankCapital: number;
@@ -555,7 +691,25 @@ export async function computeDashboardSummary(
     .filter(exp => exp.status === 'Active' && exp.classification === 'Asset')
     .reduce((sum, exp) => sum + Number(exp.amount), 0));
 
-  const netProfit = round2(totalSales - totalExpenseActual);
+  // Cost of Goods Sold — same gap, same fix, as computeProfitLoss's matching comment:
+  // this KPI card's Net Profit never read it, overstating profit for any company selling
+  // physical goods (the first number a user sees on login).
+  const cogsLines = await executor.select({
+    debit: schema.journalLines.debit, credit: schema.journalLines.credit, branchId: schema.journalEntries.branchId,
+  })
+    .from(schema.journalLines)
+    .innerJoin(schema.journalEntries, eq(schema.journalLines.journalEntryId, schema.journalEntries.id))
+    .where(and(
+      eq(schema.journalLines.companyId, companyId),
+      eq(schema.journalLines.accountKey, 'COGS'),
+      gte(schema.journalEntries.date, startDate),
+      lte(schema.journalEntries.date, endDate),
+    ));
+  const costOfGoodsSold = round2(cogsLines
+    .filter((l: any) => branchOk(l.branchId))
+    .reduce((sum: number, l: any) => sum + (Number(l.debit) - Number(l.credit)), 0));
+
+  const netProfit = round2(totalSales - costOfGoodsSold - totalExpenseActual);
   const netProfitMargin = totalSales > 0 ? round2((netProfit / totalSales) * 100) : 0;
 
   const bankBalances = await computeAllBankBalances(executor, companyId);
@@ -665,7 +819,7 @@ export async function computeDashboardSummary(
 
   return {
     totalSales, pendingCollection, receivedSales,
-    totalExpenseActual, totalExpenseAccrual, totalAssetCapEx,
+    totalExpenseActual, totalExpenseAccrual, totalAssetCapEx, costOfGoodsSold,
     netProfit, netProfitMargin, totalBankCapital,
     pendingInvoicesTotal: round2(pendingInvoiceRows.reduce((s, r) => s + r.amount, 0)),
     pendingInvoicesOnTime, pendingInvoicesAging, pendingInvoicesOverdue, pendingInvoiceRows,
@@ -935,7 +1089,7 @@ export interface InvoiceKpiFilters {
 // dbStore.ts's getInvoiceSign comment documents as already fixed in Dashboard/
 // ReportViewer/SalesReportsModule, just missed here; (2) "Total Collected" only ever
 // used it for a Paid invoice's own believed-full amount).
-export async function computeInvoiceKpis(executor: any, companyId: string, filters: InvoiceKpiFilters, opts: ReportScopeOpts): Promise<{ totalInvoiced: number; totalCollected: number; paidCount: number; pendingCount: number }> {
+export async function computeInvoiceKpis(executor: any, companyId: string, filters: InvoiceKpiFilters, opts: ReportScopeOpts): Promise<{ totalInvoiced: number; totalCollected: number; paidCount: number; pendingCount: number; pendingBalance: number }> {
   const branchOk = makeBranchOk(opts.branchIds);
   const conditions = [eq(schema.invoices.companyId, companyId)];
   if (filters.startDate) conditions.push(gte(schema.invoices.date, filters.startDate));
@@ -961,6 +1115,7 @@ export async function computeInvoiceKpis(executor: any, companyId: string, filte
   const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, activeInvoices);
   let totalInvoiced = 0;
   let totalCollected = 0;
+  let pendingBalance = 0;
   let paidCount = 0;
   let pendingCount = 0;
   for (const inv of activeInvoices) {
@@ -971,8 +1126,20 @@ export async function computeInvoiceKpis(executor: any, companyId: string, filte
     totalCollected = round2(totalCollected + collectedForThisInvoice * sign);
     if (inv.paymentStatus === 'Paid') paidCount++;
     else if (inv.paymentStatus === 'Unpaid' || inv.paymentStatus === 'Partially Paid') pendingCount++;
+    // Computed independently, never as totalInvoiced - totalCollected — see
+    // computeTrialBalance's matching comment for why that subtraction breaks the moment
+    // a Credit Note is in the mix: a CreditNote reduces totalInvoiced (correctly, via
+    // sign) but its own paymentStatus/amountPaid never reflects the real cash refund
+    // against the ALREADY-fully-collected original invoice, so the derived "pending"
+    // manufactures a phantom unpaid balance that doesn't correspond to any real unpaid
+    // invoice. Excluding CreditNote/DebitNote here and summing the genuine per-invoice
+    // remaining balance (matching computeBalanceSheet's own accountsReceivable) is the
+    // only correct way to compute this.
+    if (inv.documentType !== 'CreditNote' && (inv.paymentStatus === 'Unpaid' || inv.paymentStatus === 'Partially Paid')) {
+      pendingBalance = round2(pendingBalance + (grandTotal - Number(inv.amountPaid || 0)));
+    }
   }
-  return { totalInvoiced, totalCollected, paidCount, pendingCount };
+  return { totalInvoiced, totalCollected, paidCount, pendingCount, pendingBalance };
 }
 
 // Ports QuotationModule.tsx's kpiTotalValue/kpiConvertedValue/kpiConvertedQuotes.length/
@@ -1414,7 +1581,7 @@ export async function computeBankLedger(executor: any, companyId: string, bankId
   return { rows, bankName, openingBalance, endingBalance: rows.length ? rows[rows.length - 1].runningBalance : openingBalance, totalDebit, totalCredit };
 }
 
-export interface OutstandingRow { id: string; type: 'Invoice' | 'Expense'; docNumber: string; date: string; contactName: string; total: number; paid: number; outstanding: number; paymentStatus: string; referenceId: string; }
+export interface OutstandingRow { id: string; type: 'Invoice' | 'Expense' | 'PurchaseBill'; docNumber: string; date: string; contactName: string; total: number; paid: number; outstanding: number; paymentStatus: string; referenceId: string; }
 // Credit Notes are never outstanding receivables, so excluded entirely.
 export async function computeOutstanding(executor: any, companyId: string, startDate: string | null, endDate: string | null, customerId: string | 'ALL', vendorId: string | 'ALL', opts: ReportScopeOpts) {
   const branchOk = makeBranchOk(opts.branchIds);
@@ -1423,11 +1590,26 @@ export async function computeOutstanding(executor: any, companyId: string, start
     eq(schema.invoices.companyId, companyId), eq(schema.invoices.status, 'Active'), inArray(schema.invoices.paymentStatus, ['Unpaid', 'Partially Paid']),
   ))).filter((i: any) => i.documentType !== 'CreditNote' && branchOk(i.branchId) && inRange(i.date) && (customerId === 'ALL' || i.customerId === customerId));
   const totals = await computeInvoiceTotalsMap(executor, invs);
+  // A settled Accrual keeps its own paymentStatus at 'Unpaid' forever (only
+  // accrualSettled/settledExpenseId change on settlement — see settle-accrual's own
+  // comment) — the real liability moves to its separate Actual expense row instead.
+  // Without excluding accrualSettled accruals here, a settled accrual stayed listed as
+  // still-outstanding forever, live-confirmed against a real accrual settled through the
+  // UI: the same "a document's own status field doesn't reflect an out-of-band state
+  // change" bug class already found and fixed for Credit Notes in the Invoice-side
+  // reports this session.
   const exps: any[] = (await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId), eq(schema.expenses.status, 'Active'), inArray(schema.expenses.paymentStatus, ['Unpaid', 'Partially Paid']),
-  ))).filter((e: any) => branchOk(e.branchId) && inRange(e.date) && (vendorId === 'ALL' || e.vendorId === vendorId));
+  ))).filter((e: any) => !(e.type === 'Accrual' && e.accrualSettled) && branchOk(e.branchId) && inRange(e.date) && (vendorId === 'ALL' || e.vendorId === vendorId));
+  // Purchase Bills (Phase 3) are also a payable, alongside Expenses — found missing here
+  // during this session's report reconciliation (the ledger's own AP account already
+  // combines both; this list never did). purchaseBills.date is a timestamp column, so
+  // it's normalized to 'YYYY-MM-DD' before the same string-based inRange/sort helpers run.
+  const bills: any[] = (await executor.select().from(schema.purchaseBills).where(and(
+    eq(schema.purchaseBills.companyId, companyId), ne(schema.purchaseBills.status, 'Cancelled'),
+  ))).filter((b: any) => Number(b.grandTotal) - Number(b.amountPaid || 0) > 0 && branchOk(b.branchId) && inRange(new Date(b.date).toISOString().slice(0, 10)) && (vendorId === 'ALL' || b.vendorId === vendorId));
   const cIds = Array.from(new Set(invs.map(i => i.customerId).filter(Boolean))) as string[];
-  const vIds = Array.from(new Set(exps.map(e => e.vendorId).filter(Boolean))) as string[];
+  const vIds = Array.from(new Set([...exps.map(e => e.vendorId), ...bills.map(b => b.vendorId)].filter(Boolean))) as string[];
   const custs: any[] = cIds.length ? await executor.select().from(schema.customers).where(inArray(schema.customers.id, cIds)) : [];
   const vends: any[] = vIds.length ? await executor.select().from(schema.vendors).where(inArray(schema.vendors.id, vIds)) : [];
   const cName = new Map<string, string>(custs.map(c => [c.id, c.name])); const vName = new Map<string, string>(vends.map(v => [v.id, v.name]));
@@ -1440,9 +1622,13 @@ export async function computeOutstanding(executor: any, companyId: string, start
     const total = Number(e.amount); const paid = Number(e.amountPaid || 0);
     return { id: e.id, type: 'Expense' as const, docNumber: e.expenseNumber, date: e.date, contactName: vName.get(e.vendorId) || 'Cash Vendor', total, paid, outstanding: round2(total - paid), paymentStatus: e.paymentStatus, referenceId: e.id };
   }).sort(byDate);
+  const billRows: OutstandingRow[] = bills.map(b => {
+    const total = Number(b.grandTotal); const paid = Number(b.amountPaid || 0);
+    return { id: b.id, type: 'PurchaseBill' as const, docNumber: b.vendorBillNumber || b.billNumber, date: new Date(b.date).toISOString().slice(0, 10), contactName: vName.get(b.vendorId) || 'Cash Vendor', total, paid, outstanding: round2(total - paid), paymentStatus: b.status, referenceId: b.id };
+  }).sort(byDate);
   const totalReceivable = round2(invRows.reduce((s, r) => s + r.outstanding, 0));
-  const totalPayable = round2(expRows.reduce((s, r) => s + r.outstanding, 0));
-  return { rows: [...invRows, ...expRows], invoiceCount: invRows.length, expenseCount: expRows.length, totalReceivable, totalPayable, netOutstanding: round2(totalReceivable - totalPayable) };
+  const totalPayable = round2([...expRows, ...billRows].reduce((s, r) => s + r.outstanding, 0));
+  return { rows: [...invRows, ...expRows, ...billRows], invoiceCount: invRows.length, expenseCount: expRows.length, billCount: billRows.length, totalReceivable, totalPayable, netOutstanding: round2(totalReceivable - totalPayable) };
 }
 
 // Same per-investor split P&L computes inline, standalone.

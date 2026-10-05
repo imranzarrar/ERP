@@ -464,7 +464,8 @@ export async function migrateDataToPostgres(data: any, ctx: MigrateContext = {})
         if (inv.icv != null) rec.icv = inv.icv;
         if (inv.previousInvoiceHash) rec.previousInvoiceHash = inv.previousInvoiceHash;
         if (inv.currentInvoiceHash) rec.currentInvoiceHash = inv.currentInvoiceHash;
-        if (inv.xmlContent) rec.xmlContent = inv.xmlContent;
+        // xmlContent is deliberately NOT accepted from the client: the signed XML is written only by
+        // processInvoiceZatca (see server/lib/zatca/xmlStorage.ts) and never travels to the browser.
         if (inv.qrCodeContent) rec.qrCodeContent = inv.qrCodeContent;
         if (inv.clearanceTimestamp) rec.clearanceTimestamp = new Date(inv.clearanceTimestamp);
         if (inv.zatcaValidationResults) rec.zatcaValidationResults = inv.zatcaValidationResults;
@@ -755,6 +756,35 @@ export async function migrateDataToPostgres(data: any, ctx: MigrateContext = {})
     // 21. Goods Receipt Notes & Items
     if (data.goodsReceiptNotes?.length) {
       const scoped = await scopeAndAuthorizeRecords(schema.goodsReceiptNotes, data.goodsReceiptNotes, { ctx, requiredPermission: 'inventory.access', tableName: 'goodsReceiptNotes', skipped });
+      // A brand-new GRN with no items would silently create a bare header with zero rows
+      // in goods_receipt_note_items — no error, no stock movement, nothing — unlike the
+      // real POST /goods-receipt-notes route, which requires at least one item up front
+      // and rejects the request otherwise. Live-confirmed: this exact gap produced real
+      // zero-item GRNs (a bill raised against one then computes SAR 0.00, with nothing
+      // indicating anything is wrong) via this sync path (Force Push to Cloud / Import
+      // Backup / Import Pasted JSON in Admin Settings), whenever the pushed blob's GRN
+      // entry lacked its `items` array. This throws the same way that route does —
+      // rejecting the whole sync with a visible error — rather than silently dropping the
+      // bad record via the `skipped` mechanism used elsewhere in this file: `skipped` is
+      // never read by any caller (confirmed — no client code inspects it), so a silent
+      // skip here would reproduce the exact "nothing tells you anything went wrong"
+      // failure mode this fix exists to close, just one layer deeper. An already-existing
+      // GRN resyncing just its header fields (items omitted, e.g. a partial state push) is
+      // unaffected — this only rejects creating a NEW one with no items, same as the real
+      // route only checks this at creation.
+      const existingGrnIds = new Set<string>(
+        scoped.length
+          ? (await db.select({ id: schema.goodsReceiptNotes.id }).from(schema.goodsReceiptNotes)
+              .where(inArray(schema.goodsReceiptNotes.id, scoped.map((g: any) => g.id).filter(Boolean))))
+              .map((r: any) => r.id)
+          : []
+      );
+      const invalidGrn = scoped.find((g: any) => !existingGrnIds.has(g.id) && !g.items?.length);
+      if (invalidGrn) {
+        const err: any = new Error(`Goods receipt note "${invalidGrn.grnNumber || invalidGrn.id}" has no items — a warehouse and at least one received item are required.`);
+        err.status = 400;
+        throw err;
+      }
       const grnRecords = [];
       const itemRecords = [];
       for (const grn of scoped) {

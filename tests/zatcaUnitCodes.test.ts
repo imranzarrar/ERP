@@ -6,6 +6,7 @@ import path from 'path';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { generateId } from '../src/id.js';
+import { readInvoiceXml } from '../server/lib/zatca/xmlStorage.js';
 
 // Real integration tests against the already-running dev server (npm run dev on
 // localhost:3000) + real Postgres state, matching this project's established no-mocks
@@ -88,6 +89,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // The invoice-posting ledger (journal_entries/journal_lines) references this company's users and
+  // bank accounts, so its rows have to go before those can be deleted.
+  await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, companyId));
+  await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, companyId));
   for (const invId of createdInvoiceIds) {
     await db.delete(schema.vouchers).where(eq(schema.vouchers.referenceId, invId));
     await db.delete(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, invId));
@@ -199,8 +204,8 @@ describe('Unit code flows from product through invoice into the real ZATCA XML',
     // unitCode, not the old hardcoded 'PCE' for every line.
     await new Promise((r) => setTimeout(r, 800));
     const [invoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invId));
-    expect(invoice.xmlContent).toBeTruthy();
-    const xml = invoice.xmlContent as string;
+    const xml = readInvoiceXml(invoice) as string;
+    expect(xml).toBeTruthy();
 
     for (const u of unitDefs) {
       expect(xml).toContain(`unitCode="${u.code}"`);

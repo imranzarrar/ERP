@@ -1,5 +1,5 @@
 import React from 'react';
-import { Eye, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Eye, Loader2, ChevronLeft, ChevronRight, FileSpreadsheet } from 'lucide-react';
 
 // Shared "View Report" plumbing for every report screen (Sales/Purchase/Inventory/Financial).
 // A report never loads on open or on a filter change — the user sets filters, then clicks
@@ -139,6 +139,69 @@ export function ViewReportButton({ onView, loading, stale, disabled, t }: ViewRe
         {t('View Report')}
       </button>
     </div>
+  );
+}
+
+interface ExportExcelButtonProps {
+  // The exact URL last viewed (viewer.appliedKey for a server-backed report) — null/undefined
+  // hides the button entirely rather than showing it disabled, since an in-browser-only
+  // report (no server endpoint to hit with &format=xlsx) has nothing to export this way.
+  url: string | null | undefined;
+  disabled?: boolean;
+  t: (key: string) => string;
+}
+
+// Sits next to the Print button on every server-backed report screen. Reuses the exact
+// same URL the report was last viewed with (already carries every filter/date/branch the
+// user applied) — the server (?format=xlsx, see server/routes/reports.ts) fetches every
+// matching row itself, same as Print's own fetchAll(), so this never re-derives filters or
+// re-fetches client-side.
+//
+// Deliberately fetch+blob, not a plain <a href> navigation: a top-level navigation to this
+// URL was live-confirmed to drop the session cookie and 401 in this app's dev environment
+// (the cookie is minted `secure: true; sameSite: 'none'`, which behaves inconsistently for
+// a bare top-level GET depending on how the page is hosted) while every other request on
+// this same screen already goes through `fetch`, which correctly sends it — so this reuses
+// that same proven path instead of a second, less reliable one.
+export function ExportExcelButton({ url, disabled, t }: ExportExcelButtonProps) {
+  const [downloading, setDownloading] = React.useState(false);
+  if (!url) return null;
+  const href = `${url}${url.includes('?') ? '&' : '?'}format=xlsx`;
+  const handleClick = async () => {
+    setDownloading(true);
+    try {
+      const res = await fetch(href, { credentials: 'include' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Export failed (${res.status})`);
+      }
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = /filename="([^"]+)"/.exec(disposition);
+      const filename = match ? match[1] : 'report.xlsx';
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (e: any) {
+      window.alert(e?.message || t('Failed to load report'));
+    } finally {
+      setDownloading(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={disabled || downloading}
+      className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-extrabold rounded-xl px-4 py-2 text-xs transition-all duration-150 flex items-center justify-center gap-1.5 shadow-md shrink-0 hover:shadow-lg"
+    >
+      {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />} {t('Export Excel')}
+    </button>
   );
 }
 

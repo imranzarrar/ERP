@@ -149,6 +149,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Invoice/expense/GRN postings write ledger rows that reference these users and banks; they must go first.
+  for (const ledgerCid of [companyId, noWarehouseCompanyId]) {
+    await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, ledgerCid));
+    await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, ledgerCid));
+  }
   for (const cid of [companyId, noWarehouseCompanyId]) {
     // Invoices (and their items) first — a converted invoice's originQuotationId FK
     // blocks deleting its source quotation while the invoice still exists.
@@ -657,6 +662,9 @@ describe('POST /api/branches/backfill-unassigned', () => {
   });
 
   afterAll(async () => {
+    // Invoice/expense/GRN postings write ledger rows that reference these users and banks; they must go first.
+    await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, backfillCompanyId));
+    await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, backfillCompanyId));
     await db.delete(schema.quotations).where(eq(schema.quotations.companyId, backfillCompanyId));
     await db.delete(schema.warehouses).where(eq(schema.warehouses.companyId, backfillCompanyId));
     await db.delete(schema.branches).where(eq(schema.branches.companyId, backfillCompanyId));

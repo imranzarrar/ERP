@@ -68,6 +68,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Invoice/expense/GRN postings write ledger rows that reference these users and banks; they must go first.
+  await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, companyAId));
+  await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, companyAId));
+  await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, companyBId));
+  await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, companyBId));
   await db.delete(schema.productWarehouses).where(eq(schema.productWarehouses.companyId, companyAId));
   await db.delete(schema.productUnitConversions).where(eq(schema.productUnitConversions.companyId, companyAId));
   // No productModifierGroups/modifierChoices/modifierGroups rows are ever created by this

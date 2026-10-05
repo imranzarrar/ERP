@@ -97,6 +97,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Invoice/expense/GRN postings write ledger rows that reference these users and banks; they must go first.
+  await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, companyId));
+  await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, companyId));
   if (createdInvoiceId) {
     // Paying an invoice creates a receipt voucher against the bank — must go before the
     // bank account is deleted below, same ordering posSaleZatcaPipeline.test.ts uses.

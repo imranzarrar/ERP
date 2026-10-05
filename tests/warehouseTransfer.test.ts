@@ -170,6 +170,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Invoice/expense/GRN postings write ledger rows that reference these users and banks; they must go first.
+  for (const ledgerCid of [companyId, otherCompanyId]) {
+    await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, ledgerCid));
+    await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, ledgerCid));
+  }
   // Delete child rows via their own parent-id column (neither item table carries
   // companyId directly), then parents, then everything else — order matters for FKs.
   for (const cid of [companyId, otherCompanyId]) {

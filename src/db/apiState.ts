@@ -5,6 +5,7 @@ import { logoPlaceholderUrl } from '../../server/lib/companyLogo.js';
 import fs from 'fs';
 import path from 'path';
 import { DEFAULT_LIST_LIMIT } from '../../server/lib/pagination.js';
+import { invoiceListColumns } from './invoiceColumns.js';
 
 export async function getFullState(companyId?: string | null) {
   try {
@@ -71,7 +72,7 @@ export async function getFullState(companyId?: string | null) {
     const quotationItems = quotationIds.length ? await db.select().from(schema.quotationItems).where(inArray(schema.quotationItems.quotationId, quotationIds)) : [];
 
     const invoices = companyId
-      ? await db.select().from(schema.invoices).where(eq(schema.invoices.companyId, companyId)).orderBy(desc(schema.invoices.createdAt)).limit(DEFAULT_LIST_LIMIT)
+      ? await db.select(invoiceListColumns).from(schema.invoices).where(eq(schema.invoices.companyId, companyId)).orderBy(desc(schema.invoices.createdAt)).limit(DEFAULT_LIST_LIMIT)
       : [];
     const invoiceIds = invoices.map(i => i.id);
     const invoiceItems = invoiceIds.length ? await db.select().from(schema.invoiceItems).where(inArray(schema.invoiceItems.invoiceId, invoiceIds)) : [];

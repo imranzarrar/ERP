@@ -104,6 +104,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Invoice/expense/GRN postings write ledger rows that reference these users and banks; they must go first.
+  for (const ledgerCid of [companyId, emptyCompanyId, seededCompanyId]) {
+    await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, ledgerCid));
+    await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, ledgerCid));
+  }
   for (const cid of [companyId, emptyCompanyId, seededCompanyId]) {
     const invoices = await db.select({ id: schema.invoices.id }).from(schema.invoices).where(eq(schema.invoices.companyId, cid));
     for (const inv of invoices) {

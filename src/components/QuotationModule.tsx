@@ -8,6 +8,7 @@ import ItemCatalogSearch from './ItemCatalogSearch';
 import PartySearchSelect from './PartySearchSelect';
 import { usePaginatedList } from '../usePaginatedList';
 import { RowNumberTh, RowNumberTd, PaginationFooter } from './PaginationControls';
+import { handleLineItemGridKeyDown, handleFormSaveShortcut } from '../lineItemKeyboardNav';
 import {
   FileText,
   Plus,
@@ -223,7 +224,12 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
      // 0 = Both, 1 = Sales, 2 = Purchase — exclude only Purchase-only; Both/Sales show here.
      return isCompMatch && p.salesPurchaseFlow !== 2;
    });
-   const rows: (typeof baseProducts[number] & { unitOfMeasureId?: string | null; conversionFactor?: number })[] = [...baseProducts];
+   // See InvoiceModule.tsx's matching salesProducts memo: db.products rows carry a
+   // runtime unit_of_measure_id (display-only default-unit pointer) that must be cleared
+   // on base rows, or onSelectItem below would mistake a base-unit pick for a packaging
+   // selection and send a unitOfMeasureId the server can't resolve.
+   const rows: (typeof baseProducts[number] & { unitOfMeasureId?: string | null; conversionFactor?: number })[] =
+     baseProducts.map(p => ({ ...p, unitOfMeasureId: undefined }));
    for (const puc of (db.productUnitConversions || [])) {
      if (puc.isActive === false) continue;
      const product = baseProducts.find(p => p.id === puc.productId);
@@ -918,7 +924,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
 
  {/* CREATE & EDIT FORM VIEW */}
  {(view === 'create' || view === 'edit') && (
- <form onSubmit={runGuarded(handleSaveQuotation)} className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 sm:p-5 space-y-4">
+ <form onSubmit={runGuarded(handleSaveQuotation)} onKeyDown={handleFormSaveShortcut} className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 sm:p-5 space-y-4">
  <div className="flex justify-between items-center bg-slate-50/80 rounded-xl px-3.5 py-2 border border-slate-200/60">
  <div className="flex items-center gap-2.5 flex-wrap">
  <h3 className="font-extrabold text-xs text-slate-800 uppercase tracking-wider">
@@ -1040,7 +1046,10 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  <th className="py-2.5 px-3 text-center w-12"></th>
  </tr>
  </thead>
- <tbody className="divide-y divide-slate-100">
+ <tbody
+ className="divide-y divide-slate-100"
+ onKeyDown={(e) => handleLineItemGridKeyDown(e, { onAddRow: handleAddLineItem, onRemoveRow: handleRemoveLineItem })}
+ >
  {formItems.map((item, idx) => {
  const lineNetCost = Math.max(0, (item.unitCost || 0) - (item.discountAmount || 0));
  const lineTotal = lineNetCost * (item.quantity || 1);
@@ -1153,8 +1162,11 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  >
  <Plus className="w-3.5 h-3.5" /> {t('Add Line Item')}
  </button>
+ <div className="flex items-center gap-4">
+ <span className="hidden sm:inline text-[10px] text-slate-400 font-medium">{t('Tip: Enter moves to the next field (adds a row at the end) · Alt+Backspace removes a row · Ctrl+S saves')}</span>
  <div className="text-xs font-semibold text-slate-500">
  {t("Total Items:")} <span className="text-slate-900 font-bold">{formItems.length}</span>
+ </div>
  </div>
  </div>
  </div>

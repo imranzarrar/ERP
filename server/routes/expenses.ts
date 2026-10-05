@@ -2,7 +2,8 @@ import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, and, asc, desc, inArray, sql, count, gte, lte, ne } from 'drizzle-orm';
-import { validateTransactionDate, syncVoucherForExpense, round2, computePaymentStatus, assertQuarterNotFiled, cancelExpense } from '../lib/businessLogic.js';
+import { validateTransactionDate, syncVoucherForExpense, round2, computePaymentStatus, assertQuarterNotFiled, cancelExpense, splitExpenseTaxInclusiveAmount } from '../lib/businessLogic.js';
+import { postJournalEntry } from '../lib/ledger.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { normalizePermissions } from '../../src/types.js';
 import { parseLimitOffset, parsePageSort, wantsPaged } from '../lib/pagination.js';
@@ -188,6 +189,45 @@ router.post('/', withTenantDb, async (req: any, res) => {
 
     await syncVoucherForExpense(tdb, expenseId, data.companyId, data, req.user.id);
 
+    // Phase 2 ledger posting (rows 5/5a) — gated to genuinely new expenses only, same
+    // deliberate Phase 1 scope boundary as Invoice creation: an edit to an existing,
+    // not-yet-cancelled expense does not re-sync the ledger in this phase.
+    if (isNew) {
+      const [taxSlab] = data.taxSlabId ? await tdb.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, data.taxSlabId)) : [undefined];
+      const taxPct = taxSlab ? Number(taxSlab.percentage) : 0;
+      const { netAmount, taxAmount } = splitExpenseTaxInclusiveAmount(totalAmount, taxPct);
+      const expenseAccountKey = data.classification === 'Asset' ? 'FIXED_ASSETS' : 'DIRECT_OPEX';
+      await postJournalEntry(tdb, {
+        companyId: data.companyId,
+        branchId: data.branchId,
+        date: data.date,
+        referenceType: 'Expense',
+        referenceId: expenseId,
+        description: `Expense ${data.expenseNumber} raised`,
+        createdById: req.user.id,
+        lines: [
+          { accountKey: expenseAccountKey, debit: netAmount },
+          ...(taxAmount > 0 ? [{ accountKey: 'VAT_INPUT', debit: taxAmount }] : []),
+          { accountKey: 'AP', credit: totalAmount },
+        ],
+      });
+      if (paidAmount > 0) {
+        await postJournalEntry(tdb, {
+          companyId: data.companyId,
+          branchId: data.branchId,
+          date: data.date,
+          referenceType: 'Expense',
+          referenceId: expenseId,
+          description: `Payment at creation for expense ${data.expenseNumber}`,
+          createdById: req.user.id,
+          lines: [
+            { accountKey: 'AP', debit: paidAmount },
+            { accountKey: 'BANK', credit: paidAmount, bankId: data.bankId },
+          ],
+        });
+      }
+    }
+
     recordAuditLog(req, isNew ? 'CREATE_EXPENSE' : 'UPDATE_EXPENSE', 'expense', expenseId, {
       expenseNumber: data.expenseNumber,
       billNumber: data.billNumber,
@@ -302,6 +342,22 @@ router.post('/:id/pay', withTenantDb, async (req: any, res) => {
         branchId: expense.branchId,
       }).returning();
       createdVoucher = voucher;
+
+      // Phase 2 ledger posting (row 6) — only when a real Payment voucher was just
+      // created above (Actual type only, matching that same gate exactly).
+      await postJournalEntry(tdb, {
+        companyId,
+        branchId: expense.branchId,
+        date,
+        referenceType: 'Expense',
+        referenceId: id,
+        description: `Payment for expense ${expense.expenseNumber} (installment)`,
+        createdById: req.user.id,
+        lines: [
+          { accountKey: 'AP', debit: amountToPost },
+          { accountKey: 'BANK', credit: amountToPost, bankId: targetBankId },
+        ],
+      });
     }
     paidExpenseNumber = expense.expenseNumber;
 

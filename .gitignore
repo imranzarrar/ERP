@@ -18,6 +18,10 @@ app.secrets
 *.sql
 db-backups/
 
+# runtime sentinel file for deploy/maintenance-mode.sh — created/removed on the VPS only,
+# never meant to be committed
+deploy/MAINTENANCE_ON
+
 # Claude Code scratch output (throwaway test artifacts, not project source)
 .claude/scratch/
 

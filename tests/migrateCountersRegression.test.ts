@@ -59,6 +59,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Invoice/expense/GRN postings write ledger rows that reference these users and banks; they must go first.
+  await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, companyId));
+  await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, companyId));
   await db.delete(schema.auditLogs).where(eq(schema.auditLogs.companyId, companyId));
   // Also by userId directly, matching the pattern other test files already use — the
   // audit interceptor's own write is fire-and-forget (never awaited by the request that

@@ -1,8 +1,10 @@
 import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
-import { eq, and, isNull, inArray } from 'drizzle-orm';
+import { eq, and, isNull, inArray, ne } from 'drizzle-orm';
 import { round2, round4, writeStockLedgerEntry, assertQuarterNotFiled, assertProductsOwnedByCompany, validateTransactionDate } from '../lib/businessLogic.js';
+import { postJournalEntry, reverseAllEntriesFor } from '../lib/ledger.js';
+import { createPurchaseBillForGrns, payPurchaseBillInFull, normalizePurchaseBillForClient } from '../lib/purchasing.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { hasPermission, resolveDocumentBranchId, branchAccessOk, branchAccessOkViaWarehouse } from '../lib/authz.js';
 import { toBaseQuantity, toBaseUnitCost } from '../lib/uomConversion.js';
@@ -313,6 +315,22 @@ router.post('/goods-receipt-notes', withTenantDb, async (req: any, res) => {
     if (grnData.isDsd && !grnData.vendorId) {
       return res.status(400).json({ error: 'A vendor must be selected for a direct shop delivery.' });
     }
+    // "Vendor paid in full at delivery" — the common SME case where a small vendor hands
+    // over their bill and is paid cash on the spot. Both fields are mandatory only for
+    // this path (a manually-created Bill can add its own Vendor Bill # later, and never
+    // has to be paid immediately at all) — enforced here, before any DB work, same as
+    // every other up-front validation in this route.
+    if (grnData.autoPostBillPaid) {
+      if (!hasPermission(req.user, 'purchaseBills.create')) {
+        return res.status(403).json({ error: 'Forbidden: you do not have permission to create purchase bills.' });
+      }
+      if (!String(grnData.vendorBillNumber || '').trim()) {
+        return res.status(400).json({ error: 'Vendor Bill # is required to auto-post a paid bill.' });
+      }
+      if (!grnData.billBankId) {
+        return res.status(400).json({ error: 'A bank/cash account is required to auto-post a paid bill.' });
+      }
+    }
     const companyId = req.targetCompanyId;
     const tdb = tenantDb();
 
@@ -326,6 +344,11 @@ router.post('/goods-receipt-notes', withTenantDb, async (req: any, res) => {
     }
 
     let updatedPurchaseOrder: { id: string; status: string } | null = null;
+    // Accumulated inside the items loop below, for item.itemKind==='item' lines only —
+    // Row 8's ledger posting (Dr Inventory / Cr GR/IR Clearing), the same tax-exclusive
+    // qty × unitCost value the averageCost fold already uses, so the ledger and the
+    // product's own weighted-average agree on what this receipt was actually worth.
+    let grnInventoryValue = 0;
 
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
     // request in one transaction; every row lock below still applies within it.
@@ -480,6 +503,8 @@ router.post('/goods-receipt-notes', withTenantDb, async (req: any, res) => {
       await tdb.update(schema.productsServices)
         .set({ averageCost: String(newAvg), totalQuantityPurchased: String(round2(newQty)) })
         .where(eq(schema.productsServices.id, item.productId));
+
+      grnInventoryValue = round2(grnInventoryValue + round2(baseQtyReceived * baseUnitCost));
     }
 
     // Determine the linked PO's fulfillment status from actual received-vs-ordered
@@ -524,9 +549,55 @@ router.post('/goods-receipt-notes', withTenantDb, async (req: any, res) => {
       updatedPurchaseOrder = { id: linkedPo.id, status: newStatus };
     }
 
+    // Phase 3 ledger posting (row 8) — Dr Inventory / Cr GR/IR Clearing, tax-exclusive.
+    // Skipped entirely when every line was a service (grnInventoryValue stays 0) — a
+    // service line never touches inventoryStocks either, same no-op convention.
+    if (grnInventoryValue > 0) {
+      await postJournalEntry(tdb, {
+        companyId,
+        branchId: grnWarehouse?.branchId || null,
+        date: (newGrn.date as Date).toISOString().slice(0, 10),
+        referenceType: 'Grn',
+        referenceId: grnId,
+        description: `Goods receipt ${grnNumber} received`,
+        createdById: req.user.id,
+        lines: [
+          { accountKey: 'INVENTORY', debit: grnInventoryValue },
+          { accountKey: 'GR_IR_CLEARING', credit: grnInventoryValue },
+        ],
+      });
+    }
+
+    // GRN "auto-post Bill, paid at delivery" — same shared functions the standalone
+    // POST /purchase-bills and POST /purchase-bills/:id/pay routes use (createPurchaseBillForGrns
+    // / payPurchaseBillInFull), so there is exactly one place rows 9 and 10 are ever
+    // posted from. Runs inside this same transaction: if either step fails, the GRN
+    // itself (and its row-8 posting above) rolls back too, rather than leaving a
+    // received-but-half-billed receipt behind.
+    let autoPostedBill: any = null;
+    if (grnData.autoPostBillPaid) {
+      const bill = await createPurchaseBillForGrns(tdb, {
+        companyId,
+        grnIds: [grnId],
+        branchId: grnWarehouse?.branchId || null,
+        bankId: grnData.billBankId,
+        dueDate: null,
+        vendorBillNumber: grnData.vendorBillNumber,
+        userId: req.user.id,
+      });
+      const { bill: paidBill } = await payPurchaseBillInFull(tdb, {
+        companyId,
+        billId: bill.id,
+        date: new Date().toISOString().slice(0, 10),
+        bankId: grnData.billBankId,
+        userId: req.user.id,
+      });
+      autoPostedBill = paidBill;
+    }
+
     const created = { ...newGrn, items: insertedItems };
 
-    res.json({ success: true, goodsReceiptNote: created, updatedPurchaseOrder });
+    res.json({ success: true, goodsReceiptNote: created, updatedPurchaseOrder, purchaseBill: autoPostedBill });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
   }
@@ -571,13 +642,29 @@ router.post('/goods-receipt-notes/:id/reverse', withTenantDb, async (req: any, r
       err.status = 400;
       throw err;
     }
+    // Closes a known guard gap (row 12 of the posting-rules design): once a GRN has been
+    // billed, its GR/IR Clearing entry has already been cleared into AP/VAT Input by the
+    // Bill (row 9) — reversing the GRN's own entry underneath that would leave GR/IR
+    // Clearing permanently unbalanced. Purchase Return (row 13) is the correct path for
+    // a billed receipt; a reversal is only ever the right tool while still unbilled,
+    // same reasoning Bill cancellation already applies (Unpaid-only).
+    if (grn.isBilled) {
+      const err: any = new Error('This receipt has already been billed and cannot be reversed — issue a Purchase Return instead.');
+      err.status = 400;
+      throw err;
+    }
 
     const items = await tdb.select().from(schema.goodsReceiptNoteItems).where(eq(schema.goodsReceiptNoteItems.grnId, id));
 
     for (const item of items) {
-      const [product] = await tdb.select({ itemKind: schema.productsServices.itemKind })
-        .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
+      const [product] = await tdb.select({
+        itemKind: schema.productsServices.itemKind,
+        averageCost: schema.productsServices.averageCost,
+        totalQuantityPurchased: schema.productsServices.totalQuantityPurchased,
+      }).from(schema.productsServices).where(eq(schema.productsServices.id, item.productId)).for('update');
       if (!product || product.itemKind !== 'item') continue;
+
+      const baseQtyReceived = await toBaseQuantity(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReceived));
 
       const batchCondition = item.batchNumber
         ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
@@ -591,7 +678,6 @@ router.post('/goods-receipt-notes/:id/reverse', withTenantDb, async (req: any, r
         ))
         .for('update');
       if (existingStock) {
-        const baseQtyReceived = await toBaseQuantity(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReceived));
         const priorQty = Number(existingStock.quantity);
         const newQty = round2(priorQty - baseQtyReceived);
         await tdb.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
@@ -602,12 +688,30 @@ router.post('/goods-receipt-notes/:id/reverse', withTenantDb, async (req: any, r
           batchNumber: item.batchNumber || null,
         });
       }
+
+      // Unwind this line's own contribution from the weighted-average cost — same
+      // exact-mirror-of-the-fold approach as the Purchase Return route above, valued at
+      // THIS GRN item's own unitCost (this reversal is only ever reachable while
+      // unbilled, so no Purchase Return can have already unwound part of this same line).
+      const baseUnitCost = await toBaseUnitCost(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.unitCost));
+      const priorTotalQty = Number(product.totalQuantityPurchased || 0);
+      const priorAvg = Number(product.averageCost || 0);
+      const newTotalQty = round2(priorTotalQty - baseQtyReceived);
+      const newAvg = newTotalQty > 0 ? round4((priorTotalQty * priorAvg - baseQtyReceived * baseUnitCost) / newTotalQty) : priorAvg;
+      await tdb.update(schema.productsServices)
+        .set({ averageCost: String(newAvg), totalQuantityPurchased: String(Math.max(0, newTotalQty)) })
+        .where(eq(schema.productsServices.id, item.productId));
     }
 
     const [reversedGrn] = await tdb.update(schema.goodsReceiptNotes)
       .set({ isReversed: true })
       .where(eq(schema.goodsReceiptNotes.id, id))
       .returning();
+
+    // Phase 3 ledger posting (row 12) — reverses row 8's entry in full (this route is
+    // now unreachable once billed, so there is always exactly one un-reversed entry to
+    // find here).
+    await reverseAllEntriesFor(tdb, companyId, 'Grn', id, new Date().toISOString().slice(0, 10), `Goods receipt ${grn.grnNumber} reversed`, req.user.id);
 
     let updatedPurchaseOrder: { id: string; status: string } | null = null;
     if (grn.purchaseOrderId) {
@@ -1316,85 +1420,31 @@ router.post('/purchase-bills', withTenantDb, async (req: any, res) => {
     // scenario, unlike the invoice/expense sites which validate a client-chosen date.
     await assertQuarterNotFiled(new Date().toISOString().slice(0, 10), companyId);
 
-    const grns: any[] = [];
-    let vendorId: string | null = null;
-    for (const grnId of billData.grnIds) {
-      const [grn] = await tdb.select().from(schema.goodsReceiptNotes)
-        .where(and(eq(schema.goodsReceiptNotes.id, grnId), eq(schema.goodsReceiptNotes.companyId, companyId)))
-        .for('update');
-      if (!grn) {
-        const err: any = new Error(`Goods receipt note ${grnId} not found.`);
-        err.status = 404;
-        throw err;
-      }
-      if (grn.isReversed) {
-        const err: any = new Error(`Goods receipt note ${grn.grnNumber} has been reversed and cannot be billed.`);
-        err.status = 400;
-        throw err;
-      }
-      if (grn.isBilled) {
-        const err: any = new Error(`Goods receipt note ${grn.grnNumber} has already been billed.`);
-        err.status = 400;
-        throw err;
-      }
-      if (vendorId === null) {
-        vendorId = grn.vendorId;
-      } else if (vendorId !== grn.vendorId) {
-        const err: any = new Error('All referenced goods receipt notes must be from the same vendor.');
-        err.status = 400;
-        throw err;
-      }
-      grns.push(grn);
-    }
-
-    const grnItems = await tdb.select().from(schema.goodsReceiptNoteItems)
-      .where(inArray(schema.goodsReceiptNoteItems.grnId, grns.map(g => g.id)));
-
-    let subTotal = 0;
-    let taxTotal = 0;
-    for (const item of grnItems) {
-      const lineSubtotal = round2(Number(item.quantityReceived) * Number(item.unitCost));
-      const lineTax = round2(lineSubtotal * (Number(item.taxRate || 0) / 100));
-      subTotal = round2(subTotal + lineSubtotal);
-      taxTotal = round2(taxTotal + lineTax);
-    }
-    const grandTotal = round2(subTotal + taxTotal);
-
-    const billNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'bill', new Date().toISOString().slice(0, 10), billBranchId);
-    const billId = generateId();
-
-    const [newBill] = await tdb.insert(schema.purchaseBills).values({
-      id: billId,
-      billNumber,
-      vendorId: vendorId!,
-      date: new Date(),
-      dueDate: billData.dueDate ? new Date(billData.dueDate) : null,
-      grnIds: grns.map(g => g.id).join(','),
-      subTotal: String(subTotal),
-      taxTotal: String(taxTotal),
-      grandTotal: String(grandTotal),
-      status: 'Unpaid',
-      amountPaid: '0',
-      bankId: billData.bankId || null,
+    // Vendor Bill # is optional here (can be added later via PUT /purchase-bills/:id
+    // while still Unpaid) — only the GRN auto-post-bill flow requires it upfront, since
+    // that's the moment the vendor's paper bill is actually in hand.
+    const newBill = await createPurchaseBillForGrns(tdb, {
       companyId,
+      grnIds: billData.grnIds,
       branchId: billBranchId,
-    }).returning();
+      bankId: billData.bankId,
+      dueDate: billData.dueDate,
+      vendorBillNumber: billData.vendorBillNumber,
+      userId: req.user.id,
+    });
 
-    await tdb.update(schema.goodsReceiptNotes)
-      .set({ isBilled: true })
-      .where(inArray(schema.goodsReceiptNotes.id, grns.map(g => g.id)));
-
-    const created = newBill;
-
-    res.json({ success: true, purchaseBill: created });
+    res.json({ success: true, purchaseBill: newBill });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
   }
 });
 
-// Edit a Bill's due date / bank — only while Unpaid (nothing else is safe to change once
-// money may have moved against it, and the GRN linkage/totals are the 3-way-match record,
-// not something an edit should be able to quietly rewrite).
+// Edit a Bill's due date / bank / vendor bill # — only while Unpaid (nothing else is
+// safe to change once money may have moved against it, and the GRN linkage/totals are
+// the 3-way-match record, not something an edit should be able to quietly rewrite).
+// vendorBillNumber is the one field this route exists to let arrive late: it's optional
+// at creation time (POST /purchase-bills) but can be filled in here once the vendor's
+// paper bill is actually in hand.
 router.put('/purchase-bills/:id', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'purchaseBills.update')) {
@@ -1441,12 +1491,13 @@ router.put('/purchase-bills/:id', withTenantDb, async (req: any, res) => {
       .set({
         dueDate: billData?.dueDate !== undefined ? (billData.dueDate ? new Date(billData.dueDate) : null) : bill.dueDate,
         bankId: billData?.bankId !== undefined ? billData.bankId : bill.bankId,
+        vendorBillNumber: billData?.vendorBillNumber !== undefined ? billData.vendorBillNumber : bill.vendorBillNumber,
       })
       .where(eq(schema.purchaseBills.id, id))
       .returning();
     const updated = newBill;
 
-    res.json({ success: true, purchaseBill: updated });
+    res.json({ success: true, purchaseBill: normalizePurchaseBillForClient(updated) });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
   }
@@ -1465,10 +1516,9 @@ router.post('/purchase-bills/:id/pay', withTenantDb, async (req: any, res) => {
     const tdb = tenantDb();
 
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
-    // request in one transaction; the row lock below still applies within it.
+    // request in one transaction; payPurchaseBillInFull takes its own row lock within it.
     const [bill] = await tdb.select().from(schema.purchaseBills)
-      .where(and(eq(schema.purchaseBills.id, id), eq(schema.purchaseBills.companyId, companyId)))
-      .for('update');
+      .where(and(eq(schema.purchaseBills.id, id), eq(schema.purchaseBills.companyId, companyId)));
     if (!bill) {
       const err: any = new Error('Purchase bill not found.');
       err.status = 404;
@@ -1479,98 +1529,35 @@ router.post('/purchase-bills/:id/pay', withTenantDb, async (req: any, res) => {
       err.status = 403;
       throw err;
     }
-    if (bill.status === 'Cancelled') {
-      const err: any = new Error('Cancelled bills cannot be paid.');
-      err.status = 400;
-      throw err;
-    }
-    if (bill.status === 'Paid') {
-      const err: any = new Error('Bill is already fully paid.');
-      err.status = 400;
-      throw err;
-    }
-
-    const targetBankId = bankId || bill.bankId;
-    if (!targetBankId) {
-      const err: any = new Error('A bank account is required to record this payment.');
-      err.status = 400;
-      throw err;
-    }
     // A client-supplied bankId must actually belong to this company — otherwise a
     // malformed/malicious request could post a disbursement against another tenant's
     // bank account.
     if (bankId) {
       const [targetBank] = await tdb.select({ id: schema.bankAccounts.id }).from(schema.bankAccounts)
-        .where(and(eq(schema.bankAccounts.id, targetBankId), eq(schema.bankAccounts.companyId, companyId)));
+        .where(and(eq(schema.bankAccounts.id, bankId), eq(schema.bankAccounts.companyId, companyId)));
       if (!targetBank) {
         const err: any = new Error('Selected bank account was not found for this company.');
         err.status = 400;
         throw err;
       }
     }
-    const currentPaid = round2(Number(bill.amountPaid || 0));
-    const totalAmount = round2(Number(bill.grandTotal));
-    const remaining = round2(totalAmount - currentPaid);
-
-    const paymentAmount = amount !== undefined ? Number(amount) : undefined;
-    let amountToPost = remaining;
-    if (paymentAmount !== undefined) {
-      if (isNaN(paymentAmount) || paymentAmount <= 0) {
-        const err: any = new Error('Payment amount must be greater than zero.');
-        err.status = 400;
-        throw err;
-      }
-      if (paymentAmount > remaining + 0.01) {
-        const err: any = new Error(`Payment amount (${paymentAmount}) exceeds the remaining balance (${remaining}).`);
-        err.status = 400;
-        throw err;
-      }
-      amountToPost = Math.min(paymentAmount, remaining);
-    }
-    if (amountToPost <= 0) {
-      const err: any = new Error('No remaining balance to pay.');
-      err.status = 400;
-      throw err;
-    }
-
-    const newPaidAmount = round2(currentPaid + amountToPost);
-    const newStatus = newPaidAmount >= totalAmount - 0.01 ? 'Paid' : 'Partially Paid';
-
-    // The bill's own bankId is left as originally assigned — each installment's real
-    // disbursing bank is recorded on its own Payment voucher below instead, the same
-    // way the invoice/expense payment routes now work.
-    const [newBill] = await tdb.update(schema.purchaseBills).set({
-      amountPaid: String(newPaidAmount),
-      status: newStatus,
-    }).where(eq(schema.purchaseBills.id, id)).returning();
 
     const voucherDate = date || new Date().toISOString().split('T')[0];
-    const voucherNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'voucher', voucherDate, bill.branchId);
-    const [voucher] = await tdb.insert(schema.vouchers).values({
-      id: generateId(),
-      voucherNumber,
-      type: 'Payment',
-      date: voucherDate,
-      bankId: targetBankId,
-      amount: String(amountToPost),
-      description: `Payment voucher for purchase bill ${bill.billNumber} (${amountToPost.toFixed(2)})`,
-      referenceType: 'PurchaseBill',
-      referenceId: id,
-      createdById: req.user.id,
-      createdAt: new Date(),
+    const { bill: newBill, voucher } = await payPurchaseBillInFull(tdb, {
       companyId,
-      // Always the bill's own branch, never independently picked.
-      branchId: bill.branchId,
-    }).returning();
-
-    const updatedBill = { bill: newBill, voucher };
+      billId: id,
+      date: voucherDate,
+      bankId,
+      amount: amount !== undefined ? Number(amount) : undefined,
+      userId: req.user.id,
+    });
 
     // Same shape as create/edit's own response (`purchaseBill: <row>`, raw from
     // .returning()) — the client mirrors the server's own computed amountPaid/status
     // instead of re-deriving that arithmetic itself. `voucher` lets the client
     // immediately open a printable payment receipt — see DocumentRenderer.tsx's
     // renderVoucher, the same one ReportViewer.tsx's voucher register already prints from.
-    res.json({ success: true, purchaseBill: updatedBill.bill, voucher: updatedBill.voucher });
+    res.json({ success: true, purchaseBill: newBill, voucher });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
   }
@@ -1608,6 +1595,23 @@ router.patch('/purchase-bills/:id/cancel', withTenantDb, async (req: any, res) =
       err.status = 400;
       throw err;
     }
+    // A Bill that already had a Purchase Return posted against one of its GRNs cannot be
+    // cancelled outright: cancellation reverses entry 9's ORIGINAL full amount (the
+    // return already reduced both the ledger's AP balance and this bill's own stored
+    // total independently), and reversing the original on top of that would leave a
+    // dangling AP balance with no bill left to net against — live-confirmed while
+    // verifying this exact sequence. A Purchase Return is itself the correction
+    // mechanism; cancelling on top of one is not a supported combination.
+    const billGrnIds = bill.grnIds.split(',').filter(Boolean);
+    if (billGrnIds.length > 0) {
+      const [existingReturn] = await tdb.select({ id: schema.purchaseReturns.id }).from(schema.purchaseReturns)
+        .where(and(inArray(schema.purchaseReturns.grnId, billGrnIds), eq(schema.purchaseReturns.status, 'Active')));
+      if (existingReturn) {
+        const err: any = new Error('This bill already has a Purchase Return recorded against it and cannot be cancelled. The return is the correct way to reduce what is owed.');
+        err.status = 400;
+        throw err;
+      }
+    }
     // Cancelling is an edit to this bill, same as its creation already blocks once its
     // quarter has been filed with ZATCA (a filed return's reported input VAT would
     // otherwise silently go stale).
@@ -1624,9 +1628,13 @@ router.patch('/purchase-bills/:id/cancel', withTenantDb, async (req: any, res) =
         .where(inArray(schema.goodsReceiptNotes.id, grnIds));
     }
 
+    // Phase 3 ledger posting (row 11) — reverses entry 9's three lines in full (Unpaid
+    // only, already enforced above, so there is never a payment entry to worry about here).
+    await reverseAllEntriesFor(tdb, companyId, 'PurchaseBill', id, new Date().toISOString().slice(0, 10), `Purchase Bill ${bill.billNumber} cancelled`, req.user.id);
+
     const updated = newBill;
 
-    res.json({ success: true, purchaseBill: updated });
+    res.json({ success: true, purchaseBill: normalizePurchaseBillForClient(updated) });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
   }
@@ -1640,8 +1648,10 @@ router.patch('/purchase-bills/:id/cancel', withTenantDb, async (req: any, res) =
 // against the GRN's own remaining-returnable quantity above, not against current on-hand
 // (some of the original receipt may have already been sold elsewhere), so clamping the
 // resulting on-hand at 0 would silently lose that real deficit, same reasoning as
-// deductStockForSale in businessLogic.ts. Deliberately does NOT unwind averageCost, same
-// forward-only philosophy as GRN reversal.
+// deductStockForSale in businessLogic.ts. DOES unwind averageCost (and GRN reversal,
+// below, does too) — found missing during this session's report reconciliation: without
+// it, the Balance Sheet's qty*averageCost inventory figure silently drifted away from
+// the ledger's own (specific-cost) INVENTORY account on every return.
 router.post('/purchase-returns', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'purchaseReturns.create')) {
@@ -1750,12 +1760,48 @@ router.post('/purchase-returns', withTenantDb, async (req: any, res) => {
     }));
     const insertedItems = await tdb.insert(schema.purchaseReturnItems).values(itemRows).returning();
 
+    // Accumulated for row 13's ledger posting below — purchaseReturnItems carries no
+    // cost of its own (only quantity/batch/unit), so each returned line's value is
+    // looked up from the ORIGINAL GRN item it corresponds to (same productId+batch),
+    // converted to base-unit terms exactly like the GRN receipt itself was.
+    let returnValue = 0;
+    let returnTax = 0;
+
     for (const item of returnData.items) {
-      const [product] = await tdb.select({ itemKind: schema.productsServices.itemKind })
-        .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
+      const [product] = await tdb.select({
+        itemKind: schema.productsServices.itemKind,
+        averageCost: schema.productsServices.averageCost,
+        totalQuantityPurchased: schema.productsServices.totalQuantityPurchased,
+      }).from(schema.productsServices).where(eq(schema.productsServices.id, item.productId)).for('update');
       if (!product || product.itemKind !== 'item') continue;
 
       const baseQtyReturned = await toBaseQuantity(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReturned));
+
+      const grnItem = grnItems.find((gi: any) => gi.productId === item.productId && (gi.batchNumber || '') === (item.batchNumber || ''));
+      if (grnItem) {
+        const baseUnitCost = await toBaseUnitCost(tdb, item.productId, grnItem.unitOfMeasureId, companyId, Number(grnItem.unitCost));
+        const lineValue = round2(baseQtyReturned * baseUnitCost);
+        returnValue = round2(returnValue + lineValue);
+        returnTax = round2(returnTax + round2(lineValue * (Number(grnItem.taxRate || 0) / 100)));
+
+        // Unwind this return's exact contribution from the weighted-average cost — the
+        // mirror image of the GRN receipt's own fold (this file, ~line 495-505). Same
+        // totalQuantityPurchased-as-weight convention, run backwards, valued at THIS
+        // return's own originating GRN line's unit cost (never today's average) — the
+        // same specific-cost basis the ledger's own INVENTORY account already uses for
+        // this line (Row 13, below). Without this, averageCost only ever goes up
+        // (documented forward-only behavior), so the Balance Sheet's qty*averageCost
+        // inventory figure would silently drift away from the ledger's own INVENTORY
+        // balance on every return — found during this session's report reconciliation.
+        const priorQty = Number(product.totalQuantityPurchased || 0);
+        const priorAvg = Number(product.averageCost || 0);
+        const newQty = round2(priorQty - baseQtyReturned);
+        const newAvg = newQty > 0 ? round4((priorQty * priorAvg - baseQtyReturned * baseUnitCost) / newQty) : priorAvg;
+        await tdb.update(schema.productsServices)
+          .set({ averageCost: String(newAvg), totalQuantityPurchased: String(Math.max(0, newQty)) })
+          .where(eq(schema.productsServices.id, item.productId));
+      }
+
       const batchCondition = item.batchNumber
         ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
         : isNull(schema.inventoryStocks.batchNumber);
@@ -1778,6 +1824,56 @@ router.post('/purchase-returns', withTenantDb, async (req: any, res) => {
           batchNumber: item.batchNumber || null,
         });
       }
+    }
+
+    // Phase 3 ledger posting (row 13) — branches on the GRN's billing state at return
+    // time. Unbilled: no VAT was ever claimed, so only Inventory/GR-IR Clearing move.
+    // Billed: the input-VAT claim on goods no longer held must be given back too, and
+    // the debit side depends on whether the vendor still owes it (AP, if the bill isn't
+    // fully paid yet) or whether the company is now owed a refund/credit instead
+    // (Vendor Credit Receivable, once the bill was already paid in full).
+    if (returnValue > 0) {
+      let debitAccountKey = 'GR_IR_CLEARING';
+      let debitAmount = returnValue;
+      let includeVat = false;
+      if (grn.isBilled) {
+        includeVat = true;
+        const vendorBills = await tdb.select().from(schema.purchaseBills)
+          .where(and(eq(schema.purchaseBills.companyId, companyId), eq(schema.purchaseBills.vendorId, grn.vendorId), ne(schema.purchaseBills.status, 'Cancelled')));
+        const owningBill = vendorBills.find((b: any) => (b.grnIds || '').split(',').includes(grn.id));
+        const billFullyPaid = owningBill?.status === 'Paid';
+        debitAccountKey = billFullyPaid ? 'VENDOR_CREDIT_RECEIVABLE' : 'AP';
+        debitAmount = round2(returnValue + returnTax);
+
+        // Reduce the owning Bill's own stored totals to match what AP was just reduced
+        // by — without this, the Bill still shows its full original grandTotal as owed
+        // even though this return already reduced the real liability, and
+        // payPurchaseBillInFull's "remaining" math would let the company overpay the
+        // vendor by the returned amount. Only when the vendor still owes it (not the
+        // Vendor-Credit-Receivable case, where the original bill genuinely was paid in
+        // full and stays as paid history).
+        if (owningBill && !billFullyPaid) {
+          await tdb.update(schema.purchaseBills).set({
+            subTotal: String(round2(Math.max(0, Number(owningBill.subTotal) - returnValue))),
+            taxTotal: String(round2(Math.max(0, Number(owningBill.taxTotal) - returnTax))),
+            grandTotal: String(round2(Math.max(0, Number(owningBill.grandTotal) - debitAmount))),
+          }).where(eq(schema.purchaseBills.id, owningBill.id));
+        }
+      }
+      await postJournalEntry(tdb, {
+        companyId,
+        branchId: returnWarehouse?.branchId || null,
+        date: (newReturn.date as Date).toISOString().slice(0, 10),
+        referenceType: 'PurchaseReturn',
+        referenceId: returnId,
+        description: `Purchase Return ${returnNumber} against GRN ${grn.grnNumber}`,
+        createdById: req.user.id,
+        lines: [
+          { accountKey: debitAccountKey, debit: debitAmount },
+          { accountKey: 'INVENTORY', credit: returnValue },
+          ...(includeVat && returnTax > 0 ? [{ accountKey: 'VAT_INPUT', credit: returnTax }] : []),
+        ],
+      });
     }
 
     const created = { ...newReturn, items: insertedItems };
@@ -1875,6 +1971,11 @@ router.patch('/purchase-returns/:id/cancel', withTenantDb, async (req: any, res)
       .where(eq(schema.purchaseReturns.id, id))
       .returning();
     const updated = newReturn;
+
+    // Ledger posting: reverses row 13's entry in full — a cancelled return already rolls
+    // the physical stock back above, so the ledger must follow it or Inventory/GR-IR/AP/
+    // Vendor Credit would be left permanently out of step with what's actually on hand.
+    await reverseAllEntriesFor(tdb, companyId, 'PurchaseReturn', id, new Date().toISOString().slice(0, 10), `Purchase Return ${ret.returnNumber} cancelled`, req.user.id);
 
     res.json({ success: true, purchaseReturn: updated });
   } catch (error: any) {

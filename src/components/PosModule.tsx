@@ -338,7 +338,12 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
   // into search resolves straight to the carton tile. Same flattening approach as
   // InvoiceModule.tsx/QuotationModule.tsx's salesProducts memo.
   const posCatalogTiles = React.useMemo(() => {
-    const tiles: (ProductService & { unitOfMeasureId?: string | null; conversionFactor?: number })[] = [...products];
+    // See InvoiceModule.tsx's matching salesProducts memo: db.products rows carry a
+    // runtime unit_of_measure_id (display-only default-unit pointer) that must be cleared
+    // on base tiles, or picking a base-unit tile would be mistaken for a packaging
+    // selection and send a unitOfMeasureId the server can't resolve.
+    const tiles: (ProductService & { unitOfMeasureId?: string | null; conversionFactor?: number })[] =
+      products.map((p: ProductService) => ({ ...p, unitOfMeasureId: undefined }));
     for (const puc of (db.productUnitConversions || [])) {
       if (puc.isActive === false) continue;
       const product = products.find((p: ProductService) => p.id === puc.productId);

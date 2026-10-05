@@ -109,12 +109,27 @@ mkdir -p deploy/logs
 
 echo "==> Starting under PM2 (cluster, 2 instances)"
 pm2 start deploy/ecosystem.config.cjs
-pm2 save
 
 echo ""
-echo "==> One more manual step: make PM2 survive a reboot."
-echo "Run the command 'pm2 startup' prints below, exactly as shown (it needs sudo):"
-pm2 startup || true
+echo "==> Registering PM2 to start on boot (systemd), as $(whoami)"
+echo "Real incident on this project: 'pm2 startup' must be run AS the deploy user, not root —"
+echo "run as root it registers root's (empty) process list instead of this one. The EUID check"
+echo "at the top of this script already guarantees we're not root here."
+PM2_STARTUP_LINE=$(pm2 startup systemd -u "$(whoami)" --hp "$HOME" 2>&1 | grep -E '^sudo ' || true)
+if [ -n "$PM2_STARTUP_LINE" ]; then
+  echo "Running: $PM2_STARTUP_LINE"
+  eval "$PM2_STARTUP_LINE"
+else
+  echo "Could not auto-detect the printed sudo command — run 'pm2 startup' by hand and follow it." >&2
+fi
+
+pm2 save
+
+if systemctl is-enabled "pm2-$(whoami)" >/dev/null 2>&1; then
+  echo "PM2 boot service: $(systemctl is-enabled "pm2-$(whoami)")"
+else
+  echo "WARNING: could not confirm pm2-$(whoami).service is enabled — check manually." >&2
+fi
 
 echo ""
 echo "==> Done. The app should now be reachable at http://<VPS_IP>:3000"

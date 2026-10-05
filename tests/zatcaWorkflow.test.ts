@@ -5,6 +5,7 @@ import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { generateId } from '../src/id.js';
 import { INITIAL_PREVIOUS_INVOICE_HASH } from '../server/lib/zatca/hashChain.js';
+import { readInvoiceXml } from '../server/lib/zatca/xmlStorage.js';
 
 // Real integration tests against the already-running dev server (npm run dev on
 // localhost:3000), matching how every ZATCA fix this session was actually verified —
@@ -112,6 +113,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // The invoice-posting ledger (journal_entries/journal_lines) references this company's users and
+  // bank accounts, so its rows have to go before those can be deleted.
+  await db.delete(schema.journalLines).where(eq(schema.journalLines.companyId, companyId));
+  await db.delete(schema.journalEntries).where(eq(schema.journalEntries.companyId, companyId));
   for (const invId of createdInvoiceIds) {
     await db.delete(schema.vouchers).where(eq(schema.vouchers.referenceId, invId));
     await db.delete(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, invId));
@@ -327,7 +332,7 @@ describe('QR code generated even when ZATCA is disabled (Phase 1 compliance prev
     expect(invoice.qrCodeContent).toBeTruthy();
     expect(typeof invoice.qrCodeContent).toBe('string');
     expect(invoice.qrCodeContent!.length).toBeGreaterThan(0);
-    expect(invoice.xmlContent).toBeTruthy();
+    expect(readInvoiceXml(invoice)).toBeTruthy();
 
     // Critical constraint: the DISABLED-path preview must NEVER reserve/persist a
     // real hash-chain position — icv/previousInvoiceHash must stay unset (null/0) so
@@ -446,13 +451,13 @@ describe('Resubmission identity: fresh mint vs safe reuse of ICV/UUID/PIH', () =
     const invId = await createCompleteInvoice();
     const [before] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invId));
     expect(before.zatcaStatus).toBe('NOT_SUBMITTED');
-    const issueTimeBefore = before.xmlContent!.match(/<cbc:IssueTime>([^<]+)<\/cbc:IssueTime>/)?.[1];
+    const issueTimeBefore = readInvoiceXml(before)!.match(/<cbc:IssueTime>([^<]+)<\/cbc:IssueTime>/)?.[1];
     expect(issueTimeBefore).toBeTruthy();
 
     const { status } = await api(`/api/zatca/submit-invoice/${invId}`, { method: 'POST' });
     expect(status).toBe(200);
     const [after] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invId));
-    const issueTimeAfter = after.xmlContent!.match(/<cbc:IssueTime>([^<]+)<\/cbc:IssueTime>/)?.[1];
+    const issueTimeAfter = readInvoiceXml(after)!.match(/<cbc:IssueTime>([^<]+)<\/cbc:IssueTime>/)?.[1];
     expect(issueTimeAfter).toBe(issueTimeBefore);
   });
 

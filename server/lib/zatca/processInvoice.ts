@@ -9,6 +9,7 @@ import { validateBuyerFields } from './validators.js';
 import { normalizeZatcaUnitCode } from '../../../src/zatcaUnitCodes.js';
 import { decryptPrivateKey } from './keyEncryption.js';
 import crypto from 'crypto';
+import { xmlColumnsForWrite } from './xmlStorage.js';
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -312,7 +313,7 @@ export async function processInvoiceZatca(invoiceId: string) {
         .set({
           invoiceTypeCode,
           uuid: invoiceUuid,
-          xmlContent: previewDoc.signedXmlContent,
+          ...xmlColumnsForWrite(previewDoc.signedXmlContent),
           qrCodeContent: previewDoc.qrCodeBase64,
           zatcaStatus: 'DISABLED',
           zatcaValidationResults: [{ code: 'ZATCA_DISABLED', message: 'ZATCA integration is disabled for this company.' }] as any,
@@ -452,7 +453,7 @@ export async function processInvoiceZatca(invoiceId: string) {
           icv,
           previousInvoiceHash: pih,
           currentInvoiceHash: zatcaDoc.invoiceHashBase64,
-          xmlContent: zatcaDoc.signedXmlContent,
+          ...xmlColumnsForWrite(zatcaDoc.signedXmlContent),
           qrCodeContent: zatcaDoc.qrCodeBase64,
         })
         .where(eq(schema.invoices.id, invoiceId));
@@ -515,7 +516,7 @@ export async function processInvoiceZatca(invoiceId: string) {
         icv,
         previousInvoiceHash: pih,
         currentInvoiceHash: zatcaDoc.invoiceHashBase64,
-        xmlContent: zatcaDoc.signedXmlContent,
+        ...xmlColumnsForWrite(zatcaDoc.signedXmlContent),
         qrCodeContent: zatcaDoc.qrCodeBase64,
         zatcaStatus: finalStatus,
         zatcaValidationResults: apiResult.validationResults as any,

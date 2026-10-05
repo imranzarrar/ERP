@@ -96,19 +96,19 @@ export async function provisionStarterResources(tx: any, params: { companyId: st
 
   // Three starter templates, matching handleAddCompany's own list exactly (kept in sync
   // by hand — see that function's comment on why these two provisioning paths stay
-  // separate code rather than merging). "Compact A4" is the only one marked isActive
-  // (the pre-selected default in the Print dialog's template dropdown); the other two
-  // stay saved and immediately selectable from that same dropdown without an admin
-  // needing to build them from scratch. schema.documentTemplates' unique_active_template
-  // index only forbids two ACTIVE templates for the same (companyId, language) pair, so
-  // this is safe even though "Compact A4 Arabic" and "Detailed Compact (A4)" both share
-  // the English-language uniqueness scope's sibling rules — only "Compact A4" is active.
+  // separate code rather than merging). "Detailed Compact (A4)" is the only English one
+  // marked isActive (the pre-selected default in the Print dialog's template dropdown);
+  // "Compact A4" and "Compact A4 Arabic" stay saved and immediately selectable from that
+  // same dropdown without an admin needing to build them from scratch.
+  // schema.documentTemplates' unique_active_template index only forbids two ACTIVE
+  // templates for the same (companyId, language) pair — "Compact A4" and "Detailed
+  // Compact (A4)" are both English, so exactly one of them may be active.
   await tx.insert(schema.documentTemplates).values({
     id: generateId(),
     name: 'Compact A4',
     language: 'English',
     pageSize: '8.27in x 11.69in (A4)',
-    isActive: true,
+    isActive: false,
     printHeader: true,
     printFooter: true,
     printLogo: true,
@@ -138,7 +138,7 @@ export async function provisionStarterResources(tx: any, params: { companyId: st
     name: 'Detailed Compact (A4)',
     language: 'English',
     pageSize: '8.27in x 11.69in (A4)',
-    isActive: false,
+    isActive: true,
     printHeader: true,
     printFooter: true,
     printLogo: true,
