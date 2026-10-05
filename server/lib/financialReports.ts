@@ -82,18 +82,18 @@ async function computeInvoiceTotalsMap(executor: any, invoices: (typeof schema.i
 
 // --- Bank balances ---------------------------------------------------------
 
-export interface BankBalance { bankId: string; bankName: string; balance: number; }
+export interface BankBalance { bankId: string; bankName: string; balance: number; openingBalance: number; }
 
 // Ports src/dbStore.ts's generateBankLedger's running-balance logic, scoped by companyId
 // with no row cap, computing only the ending balance — every caller in this module only
 // ever needs the final number, never the ledger rows themselves (ReportViewer.tsx's own
 // Bank Ledger report view is untouched and keeps using the existing client-side function).
-export async function computeAllBankBalances(executor: any, companyId: string): Promise<BankBalance[]> {
+export async function computeAllBankBalances(executor: any, companyId: string, asOfDate?: string): Promise<BankBalance[]> {
   const banks = await executor.select().from(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, companyId));
   if (banks.length === 0) return [];
   const bankIds = banks.map(b => b.id);
   const vouchers = await executor.select().from(schema.vouchers).where(
-    and(eq(schema.vouchers.companyId, companyId), inArray(schema.vouchers.bankId, bankIds))
+    and(eq(schema.vouchers.companyId, companyId), inArray(schema.vouchers.bankId, bankIds), ...(asOfDate ? [lte(schema.vouchers.date, asOfDate)] : []))
   );
   const vouchersByBankId = new Map<string, typeof vouchers>();
   for (const v of vouchers) {
@@ -119,7 +119,7 @@ export async function computeAllBankBalances(executor: any, companyId: string): 
         else balance += amount;
       }
     }
-    return { bankId: bank.id, bankName: bank.bankName, balance: round2(balance) };
+    return { bankId: bank.id, bankName: bank.bankName, balance: round2(balance), openingBalance: round2(Number(bank.openingBalance)) };
   });
 }
 
@@ -139,140 +139,56 @@ export interface TrialBalanceFigures {
   totalPurchaseExp: number;
 }
 
-// Ports ReportViewer.tsx's getTrialBalance (~145-221) — same account derivation (no
-// formal chart-of-accounts in this app), same account lines, no row cap.
-// Bank balances stay company-wide (bank accounts aren't branch-owned entities in this
-// schema, same convention every other report using computeAllBankBalances already
-// follows) — only the invoice/expense/voucher-derived lines are branch-scoped.
-// No branchIds opts here, deliberately: unlike every other report in this module, a
-// Trial Balance must balance (total debits === total credits), and this app's chart of
-// accounts (systemAccounts) is genuinely company-wide, not branch-mapped — Bank balance
-// (computeAllBankBalances, below) and Paid-in Capital have no per-branch attribution at
-// all. Filtering only the AR/AP/Revenue/Expense lines by branch while Bank stays at its
-// full company total would silently break Debit=Credit for any branch other than "All" —
-// worse than not offering the filter. See ReportViewer.tsx's "Filter Branch" dropdown,
-// which correctly never lists this report type.
+// A real Trial Balance: it balances (total debits = total credits) because it lists EVERY account.
+//   * Balance accounts are "as of" the end date, with exactly the Balance Sheet's figures: banks, receivables,
+//     inventory, fixed assets, VAT input, payables, VAT output.
+//   * Profit & loss accounts are for the period (start..end): sales, cost of goods sold, operating expenses.
+//   * Equity: capital paid in (Equity vouchers up to the end date), the banks' opening balances, and Opening
+//     Retained Earnings = the profit earned BEFORE the period starts (zero for a period that starts at the
+//     beginning of the books). That last line is what lets a period that does not begin on day one still balance.
+// Before this the statement omitted Inventory, Cost of Goods Sold, opening balances and prior profit, and mixed
+// period flows with balances, so it never balanced. No branchIds opts here, deliberately: the chart of accounts
+// is company-wide (Bank, Capital have no per-branch attribution), so a "branch trial balance" cannot balance.
 export async function computeTrialBalance(executor: any, companyId: string, startDate: string, endDate: string): Promise<TrialBalanceFigures> {
-  const bankBalances = await computeAllBankBalances(executor, companyId);
-  const bankDetails: TrialBalanceLedgerLine[] = bankBalances.map(b => ({
-    name: `Cash/Bank - ${b.bankName}`,
-    debit: b.balance >= 0 ? b.balance : 0,
-    credit: b.balance < 0 ? Math.abs(b.balance) : 0,
-  }));
+  const side = (name: string, signedDebit: number): TrialBalanceLedgerLine =>
+    ({ name, debit: signedDebit > 0 ? round2(signedDebit) : 0, credit: signedDebit < 0 ? round2(-signedDebit) : 0 });
 
-  const invoicesInRange = await executor.select().from(schema.invoices).where(and(
-    eq(schema.invoices.companyId, companyId),
-    eq(schema.invoices.status, 'Active'),
-    gte(schema.invoices.date, startDate),
-    lte(schema.invoices.date, endDate),
-  ));
-  const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, invoicesInRange);
-
-  let totalSalesRev = 0;
-  let totalVATCollected = 0;
-  for (const inv of invoicesInRange) {
-    const totals = totalsByInvoiceId.get(inv.id)!;
-    const sign = invoiceSign(inv);
-    // discountedSubtotal (net of BOTH line-item and header discount), not itemsSubtotal
-    // (net of line-item discount only) — the latter silently overstated revenue by the
-    // header discount amount for any header-discounted invoice.
-    totalSalesRev = round2(totalSalesRev + totals.discountedSubtotal * sign);
-    totalVATCollected = round2(totalVATCollected + totals.taxAmount * sign);
-  }
-
-  // Excludes CreditNote rows entirely and includes 'Partially Paid' — matches
-  // computeDashboardSummary's already-correct pendingCollection pattern above. A Credit
-  // Note's own paymentStatus is a meaningless leftover default (POST /invoices/:id/paid
-  // refuses to ever pay one, so it never legitimately transitions), and summing it here
-  // by its own status — rather than netting it against the specific original invoice it
-  // was issued against — let a credit note against an ALREADY-FULLY-PAID invoice (which
-  // contributes 0 either way, correctly excluded below) instead subtract its amount from
-  // some completely unrelated customer's outstanding balance, corrupting the company-wide
-  // total and breaking Debit=Credit. Live-confirmed: a 372.60 credit note against a fully
-  // paid invoice silently reduced an unrelated unpaid invoice's 1150.00 balance to 777.40.
-  // Excluding CreditNote/DebitNote here also means their own remaining-balance netting
-  // against a still-outstanding original invoice isn't handled — a known, narrower gap
-  // than the one this fixes, left for when partial-credit-against-unpaid-invoice
-  // reporting is actually built.
-  const creditedIds = await creditedOriginalIds(executor, companyId);
-  const unpaidInvoicesInRange = invoicesInRange.filter(inv =>
-    inv.documentType !== 'CreditNote' && !creditedIds.has(inv.id) && (inv.paymentStatus === 'Unpaid' || inv.paymentStatus === 'Partially Paid')
-  );
-  let accountsReceivable = 0;
-  for (const inv of unpaidInvoicesInRange) {
-    const totals = totalsByInvoiceId.get(inv.id)!;
-    accountsReceivable = round2(accountsReceivable + (totals.grandTotal - Number(inv.amountPaid || 0)) * invoiceSign(inv));
-  }
-
-  const expensesInRange = await executor.select().from(schema.expenses).where(and(
-    eq(schema.expenses.companyId, companyId),
-    eq(schema.expenses.status, 'Active'),
-    gte(schema.expenses.date, startDate),
-    lte(schema.expenses.date, endDate),
-  ));
-  let totalPurchaseExp = 0;
-  let totalFixedAssets = 0;
-  let accountsPayable = 0;
-  let expenseVatInput = 0;
-  const tbPctBySlab = await taxPercentageBySlabId(executor, companyId);
-  for (const exp of expensesInRange) {
-    const amount = Number(exp.amount);
-    const parts = expenseParts(exp, tbPctBySlab);
-    // Net of recoverable VAT; the VAT itself is shown on its own VAT Input line below.
-    if (exp.classification === 'Asset') totalFixedAssets = round2(totalFixedAssets + parts.netAmount);
-    else totalPurchaseExp = round2(totalPurchaseExp + parts.netAmount);
-    if (!(exp.type === 'Accrual' && exp.accrualSettled)) expenseVatInput = round2(expenseVatInput + parts.taxAmount);
-    // Same fix as computeOutstanding's matching comment: 'Unpaid' only (missing
-    // 'Partially Paid'), the full amount instead of the real remaining balance, and no
-    // exclusion for a settled Accrual (whose own paymentStatus never changes on
-    // settlement) all independently overstated this figure — the same "Unpaid only"
-    // AR bug already found and fixed on the Invoice side this session, recurring here
-    // on the Expense side.
-    if (!(exp.type === 'Accrual' && exp.accrualSettled) && (exp.paymentStatus === 'Unpaid' || exp.paymentStatus === 'Partially Paid')) {
-      accountsPayable = round2(accountsPayable + (amount - Number(exp.amountPaid || 0)));
-    }
-  }
-
-  // Accounts Payable also owes whatever's still unpaid on a Purchase Bill (Phase 3) —
-  // found missing here during this session's report reconciliation: the ledger's own AP
-  // account already combines both Expense (row 5) and Purchase Bill (row 9) postings,
-  // but this figure only ever summed expenses, silently understating AP once any bill
-  // went unpaid. purchaseBills.date is a timestamp column (unlike expenses' text date).
-  const billsInRange = await executor.select().from(schema.purchaseBills).where(and(
-    eq(schema.purchaseBills.companyId, companyId),
-    ne(schema.purchaseBills.status, 'Cancelled'),
-    gte(schema.purchaseBills.date, new Date(startDate + 'T00:00:00.000Z')),
-    lte(schema.purchaseBills.date, new Date(endDate + 'T23:59:59.999Z')),
-  ));
-  for (const bill of billsInRange) {
-    accountsPayable = round2(accountsPayable + (Number(bill.grandTotal) - Number(bill.amountPaid || 0)));
-  }
-  const billVatInput = (await computeBillInputVat(executor, companyId, startDate, endDate)).vat;
-  const totalVatInput = round2(expenseVatInput + billVatInput);
+  const bs = await computeBalanceSheet(executor, companyId, endDate);
+  const bankBalances = await computeAllBankBalances(executor, companyId, endDate);
+  const periodPl = await computeProfitLoss(executor, companyId, startDate, endDate, 'Accrual');
+  const dayBefore = new Date(new Date(startDate + 'T00:00:00.000Z').getTime() - 86400000).toISOString().slice(0, 10);
+  const openingProfit = startDate > '1900-01-02'
+    ? (await computeProfitLoss(executor, companyId, '1900-01-01', dayBefore, 'Accrual')).netProfit
+    : 0;
 
   const capitalVouchers = await executor.select().from(schema.vouchers).where(and(
     eq(schema.vouchers.companyId, companyId),
     eq(schema.vouchers.referenceType, 'Equity'),
-    gte(schema.vouchers.date, startDate),
     lte(schema.vouchers.date, endDate),
   ));
-  const totalCapital = round2(capitalVouchers.reduce((sum, v) => sum + Number(v.amount), 0));
+  const totalCapital = round2(capitalVouchers.reduce((sum: number, v: any) =>
+    sum + (v.type === 'Receipt' ? Number(v.amount) : v.type === 'Reversal' ? -Number(v.amount) : 0), 0));
+  const openingBalances = round2(bankBalances.reduce((sum, b) => sum + b.openingBalance, 0));
 
   const ledgers: TrialBalanceLedgerLine[] = [
-    ...bankDetails,
-    { name: 'Accounts Receivable', debit: accountsReceivable, credit: 0 },
-    { name: 'Accounts Payable', debit: 0, credit: accountsPayable },
-    { name: 'Sales Revenue', debit: 0, credit: totalSalesRev },
-    { name: 'Capitalized Fixed Assets', debit: totalFixedAssets, credit: 0 },
-    { name: 'Direct Operating Expenses', debit: totalPurchaseExp, credit: 0 },
-    { name: 'VAT Input (Recoverable)', debit: totalVatInput, credit: 0 },
-    { name: 'VAT Collected (Output Tax)', debit: 0, credit: totalVATCollected },
-    { name: "Shareholders' Paid-in Capital", debit: 0, credit: totalCapital },
+    ...bankBalances.map(b => side(`Cash/Bank - ${b.bankName}`, b.balance)),
+    side('Accounts Receivable', bs.accountsReceivable),
+    side('Inventory', bs.inventoryValue),
+    side('Capitalized Fixed Assets', bs.fixedAssets),
+    side('VAT Input (Recoverable)', bs.vatInputRecoverable),
+    side('Accounts Payable', -bs.accountsPayable),
+    side('VAT Collected (Output Tax)', -bs.vatOutputPayable),
+    side("Shareholders' Paid-in Capital", -totalCapital),
+    side('Opening Balance Equity', -openingBalances),
+    side('Retained Earnings (Opening)', -openingProfit),
+    side('Sales Revenue', -periodPl.totalRevenue),
+    side('Cost of Goods Sold', periodPl.costOfGoodsSold),
+    side('Direct Operating Expenses', periodPl.totalExpenses),
   ];
   const totalDebits = round2(ledgers.reduce((sum, l) => sum + l.debit, 0));
   const totalCredits = round2(ledgers.reduce((sum, l) => sum + l.credit, 0));
 
-  return { ledgers, totalDebits, totalCredits, totalSalesRev, totalPurchaseExp };
+  return { ledgers, totalDebits, totalCredits, totalSalesRev: periodPl.totalRevenue, totalPurchaseExp: periodPl.totalExpenses };
 }
 
 // --- Profit & Loss -----------------------------------------------------------
@@ -479,7 +395,7 @@ export interface BalanceSheetFigures {
 // but "All Branches". A branch-level AR/AP breakdown belongs in a list report (e.g.
 // Outstanding), not this balancing statement.
 export async function computeBalanceSheet(executor: any, companyId: string, asOfDate: string): Promise<BalanceSheetFigures> {
-  const bankBalances = await computeAllBankBalances(executor, companyId);
+  const bankBalances = await computeAllBankBalances(executor, companyId, asOfDate);
   const bankBalance = round2(bankBalances.reduce((sum, b) => sum + b.balance, 0));
 
   // ne(documentType, 'CreditNote') — see computeTrialBalance's matching comment for the
@@ -859,7 +775,9 @@ export async function computeDashboardSummary(
     .filter(exp => exp.status === 'Active' && exp.type === 'Actual' && exp.classification !== 'Asset')
     .reduce((sum, exp) => sum + expenseParts(exp, dashPctBySlab).netAmount, 0));
   const netProfit = round2(netSalesExVat - costOfGoodsSold - netExpenseActual);
-  const netProfitMargin = totalSales > 0 ? round2((netProfit / totalSales) * 100) : 0;
+  // Margin is profit over TAX-EXCLUSIVE sales (the same basis as the profit itself); dividing by the VAT-inclusive
+  // 'Gross Month Sales' understated it.
+  const netProfitMargin = netSalesExVat > 0 ? round2((netProfit / netSalesExVat) * 100) : 0;
 
   const bankBalances = await computeAllBankBalances(executor, companyId);
   const activeBankIds = new Set((await executor.select({ id: schema.bankAccounts.id })
@@ -1051,8 +969,11 @@ export async function computeCustomerStatement(executor: any, companyId: string,
   ))).filter(inv => branchOk(inv.branchId));
   const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, custInvoices);
   const invoiceIds = custInvoices.map(i => i.id);
+  // Receipts AND Reversals: a Reversal against an invoice is money handed back to the customer (the refund on a
+  // Credit Note), which puts the balance back up. Leaving it out made a credited, refunded invoice look like the
+  // customer was still owed the money.
   const receipts = invoiceIds.length ? (await executor.select().from(schema.vouchers).where(and(
-    eq(schema.vouchers.companyId, companyId), eq(schema.vouchers.type, 'Receipt'), eq(schema.vouchers.referenceType, 'Invoice'),
+    eq(schema.vouchers.companyId, companyId), inArray(schema.vouchers.type, ['Receipt', 'Reversal']), eq(schema.vouchers.referenceType, 'Invoice'),
     inArray(schema.vouchers.referenceId, invoiceIds),
   ))).filter(v => branchOk(v.branchId)) : [];
 
@@ -1062,7 +983,10 @@ export async function computeCustomerStatement(executor: any, companyId: string,
     if (inv.documentType === 'CreditNote') entries.push({ date: inv.date, type: 'Credit Note', docNumber: inv.invoiceNumber, debit: 0, credit: total });
     else entries.push({ date: inv.date, type: 'Invoice', docNumber: inv.invoiceNumber, debit: total, credit: 0 });
   }
-  for (const v of receipts) entries.push({ date: v.date, type: 'Receipt', docNumber: v.voucherNumber, debit: 0, credit: Number(v.amount) });
+  for (const v of receipts) {
+    if (v.type === 'Reversal') entries.push({ date: v.date, type: 'Refund', docNumber: v.voucherNumber, debit: Number(v.amount), credit: 0 });
+    else entries.push({ date: v.date, type: 'Receipt', docNumber: v.voucherNumber, debit: 0, credit: Number(v.amount) });
+  }
   entries.sort((a, b) => a.date.localeCompare(b.date));
 
   let running = 0;
@@ -1166,11 +1090,23 @@ export async function computePurchaseRegister(executor: any, companyId: string, 
     eq(schema.expenses.companyId, companyId), gte(schema.expenses.date, startDate), lte(schema.expenses.date, endDate),
   ));
   const filtered = expensesInRange.filter(exp => branchOk(exp.branchId) && (vendorId === 'ALL' || exp.vendorId === vendorId));
-  const vendorIds = Array.from(new Set(filtered.map(e => e.vendorId).filter(Boolean))) as string[];
+  // Purchase Bills are purchases too (the vendor statement and the VAT register already include them); the
+  // register listed expenses only, so goods bought through GRN -> Bill never showed up in it.
+  const billsInRange: any[] = (await executor.select().from(schema.purchaseBills).where(and(
+    eq(schema.purchaseBills.companyId, companyId),
+    gte(schema.purchaseBills.date, new Date(startDate + 'T00:00:00.000Z')),
+    lte(schema.purchaseBills.date, new Date(endDate + 'T23:59:59.999Z')),
+  ))).filter((b: any) => branchOk(b.branchId) && (vendorId === 'ALL' || b.vendorId === vendorId));
+  const vendorIds = Array.from(new Set([...filtered.map(e => e.vendorId), ...billsInRange.map(b => b.vendorId)].filter(Boolean))) as string[];
   const vendors = vendorIds.length ? await executor.select().from(schema.vendors).where(inArray(schema.vendors.id, vendorIds)) : [];
-  const vendorNameById = new Map(vendors.map(v => [v.id, v.name]));
-  const rows: PurchaseRegisterRow[] = filtered
-    .map(exp => ({ expenseNumber: exp.expenseNumber, date: exp.date, vendorName: vendorNameById.get(exp.vendorId) || 'Vendor', status: exp.status, paymentStatus: exp.paymentStatus, totalAmount: Number(exp.amount) }))
+  const vendorNameById = new Map<string, string>(vendors.map((v: any) => [v.id, v.name] as [string, string]));
+  const billRows: PurchaseRegisterRow[] = billsInRange.map((b: any) => ({
+    expenseNumber: b.billNumber, date: b.date.toISOString().slice(0, 10), vendorName: vendorNameById.get(b.vendorId) || 'Vendor',
+    status: b.status === 'Cancelled' ? 'Cancelled' : 'Active', paymentStatus: b.status === 'Cancelled' ? 'Cancelled' : b.status,
+    totalAmount: Number(b.grandTotal),
+  }));
+  const rows: PurchaseRegisterRow[] = [...billRows, ...filtered
+    .map(exp => ({ expenseNumber: exp.expenseNumber, date: exp.date, vendorName: vendorNameById.get(exp.vendorId) || 'Vendor', status: exp.status, paymentStatus: exp.paymentStatus, totalAmount: Number(exp.amount) }))]
     .sort((a, b) => a.date.localeCompare(b.date));
   const totalAmount = round2(rows.filter(r => r.status === 'Active').reduce((s, r) => s + r.totalAmount, 0));
   return { rows, totalAmount };

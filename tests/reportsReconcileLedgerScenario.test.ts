@@ -167,6 +167,89 @@ describe('reports reconcile with source documents (GRN, bill, credit note, refun
     expect(reg.rows.some((r: any) => String(r.documentNumber).startsWith('BILL-'))).toBe(true);
   });
 
+  it('Trial Balance balances (debits = credits) for the whole period AND for a period starting later', async () => {
+    const tbFull = (await api(`/api/reports/trial-balance?startDate=${today}&endDate=${today}`)).body;
+    expect(near(tbFull.totalDebits, tbFull.totalCredits)).toBe(true);
+    const line = (tb: any, name: string) => tb.ledgers.find((l: any) => l.name === name);
+    expect(line(tbFull, 'Inventory').debit).toBe(180);
+    expect(line(tbFull, 'Cost of Goods Sold').debit).toBe(20);
+    expect(line(tbFull, 'Direct Operating Expenses').debit).toBe(100);
+    expect(line(tbFull, 'Capitalized Fixed Assets').debit).toBe(200);
+    expect(line(tbFull, 'VAT Input (Recoverable)').debit).toBe(75);
+    expect(line(tbFull, 'VAT Collected (Output Tax)').credit).toBe(7.5);
+    expect(line(tbFull, 'Sales Revenue').credit).toBe(50);
+    expect(line(tbFull, 'Retained Earnings (Opening)').debit + line(tbFull, 'Retained Earnings (Opening)').credit).toBe(0);
+
+    // A period that starts AFTER everything happened: no P&L in the period, all of the profit is opening
+    // retained earnings (here a loss of 70, so it sits on the debit side) and the statement still balances.
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const tbLater = (await api(`/api/reports/trial-balance?startDate=${tomorrow}&endDate=${tomorrow}`)).body;
+    expect(near(tbLater.totalDebits, tbLater.totalCredits)).toBe(true);
+    expect(line(tbLater, 'Sales Revenue').credit).toBe(0);
+    expect(line(tbLater, 'Retained Earnings (Opening)').debit).toBe(70);
+  });
+
+  it('every financial report route answers (all 28), none errors on a real book', async () => {
+    const q = `startDate=${today}&endDate=${today}`;
+    const paths = ['sales-vat', 'purchase-vat', 'vat-return-summary', 'bank-ledger', 'outstanding', 'investor-profit-share',
+      'fiscal-month-closing-history', 'dashboard-summary', 'trial-balance', 'profit-loss', 'balance-sheet', 'sales-register',
+      'item-wise-sales', 'customer-statement', 'quotation-conversion', 'sales-by-staff', 'pos-shift-summary', 'purchase-register',
+      'vendor-statement', 'stock-valuation', 'item-profitability', 'low-stock', 'stock-take-variance-history',
+      'stock-movement-ledger', 'warehouse-transfer-reconciliation', 'invoice-kpis', 'quotation-kpis', 'investor-contributions'];
+    for (const name of paths) {
+      const extra = name === 'customer-statement' ? `&customerId=${customerId}` : name === 'vendor-statement' ? `&vendorId=${vendorId}` : '';
+      const r = await api(`/api/reports/${name}?${q}&asOfDate=${today}${extra}`);
+      expect(r.status, `${name} should answer 200`).toBe(200);
+    }
+  });
+
+  it('every register, statement and ledger agrees with the documents and with the statements above', async () => {
+    const q = `startDate=${today}&endDate=${today}`;
+    const g = async (name: string, extra = '') => (await api(`/api/reports/${name}?${q}&asOfDate=${today}${extra}`)).body;
+
+    // Customer statement: B still owes 37.50. A was paid, credited and REFUNDED (nets to zero); D was credited unpaid.
+    const cs = await g('customer-statement', `&customerId=${customerId}`);
+    expect(cs.endingBalance).toBe(37.5);
+    expect(cs.entries.some((e: any) => e.type === 'Refund' && e.debit === 115)).toBe(true);
+
+    // Vendor statement: only the unpaid capex (230) is owed; the bill and expense X are settled.
+    expect((await g('vendor-statement', `&vendorId=${vendorId}`)).endingBalance).toBe(230);
+
+    // Bank ledger: opening 0, receipts 135 in, 460 out (refund 115 + bill 230 + expense 115), ending -325.
+    const bl = await g('bank-ledger');
+    expect(bl.openingBalance).toBe(0);
+    expect(bl.totalDebit).toBe(135);
+    expect(bl.totalCredit).toBe(460);
+    expect(bl.endingBalance).toBe(-325);
+
+    // Registers.
+    expect((await g('sales-register')).totalSales).toBe(57.5);
+    const sv = await g('sales-vat');
+    expect(sv.totals.subtotal).toBe(50);
+    expect(sv.totals.taxAmount).toBe(7.5);
+    const pv = await g('purchase-vat');
+    expect(pv.totals.subtotal).toBe(500);            // bill 200 + expense X 100 + capex 200
+    expect(pv.totals.taxAmount).toBe(75);
+    const pr = await g('purchase-register');
+    expect(pr.totalAmount).toBe(575);                // 345 of expenses + the 230 bill that used to be missing
+    expect(pr.rows.some((r: any) => String(r.expenseNumber).startsWith('BILL-'))).toBe(true);
+    expect(pr.totalAmount).toBe(pv.totals.grandTotal);   // the two purchase views now agree
+
+    // Outstanding, dashboard.
+    const ot = await g('outstanding');
+    expect(ot.totalReceivable).toBe(37.5);
+    expect(ot.totalPayable).toBe(230);
+    expect(ot.netOutstanding).toBe(-192.5);
+    const ds = await g('dashboard-summary');
+    expect(ds.netProfit).toBe(-70);
+    expect(ds.netProfitMargin).toBe(-140);           // -70 on TAX-EXCLUSIVE sales of 50 (not -121.74 on the VAT-inclusive 57.50)
+
+    // Sales by staff / item-wise sales net credit notes out.
+    expect((await g('sales-by-staff')).totalRevenue).toBe(57.5);
+    expect((await g('item-wise-sales')).totalRevenue).toBe(50);
+    expect((await g('stock-valuation')).totalValue).toBe(180);
+  });
+
   it('The LEDGER itself (journal lines) agrees with the documents and with every report', async () => {
     const lines = await db.select().from(schema.journalLines).where(eq(schema.journalLines.companyId, companyId)) as any[];
     const net = (key: string) => Math.round(lines.filter(l => l.accountKey === key).reduce((n, l) => n + Number(l.debit) - Number(l.credit), 0) * 100) / 100;

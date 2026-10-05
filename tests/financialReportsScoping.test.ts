@@ -192,6 +192,7 @@ describe('Phase 2 server-side financial reports — correctness and cross-compan
     // Company B's numbers (5000 subtotal, 5750 grand total) must never appear here.
     expect(body.totalSalesRev).not.toBe(5000);
     expect(ar.debit).not.toBe(5750);
+    expect(Math.abs(body.totalDebits - body.totalCredits)).toBeLessThan(0.011); // a real trial balance balances
   });
 
   it("Trial Balance: Company B's figures are correct and never include Company A's amounts", async () => {
@@ -203,6 +204,7 @@ describe('Phase 2 server-side financial reports — correctness and cross-compan
     expect(body.totalPurchaseExp).toBe(260.87); // net of the 15% recoverable VAT (300 gross)
     const ar = body.ledgers.find((l: any) => l.name === 'Accounts Receivable');
     expect(ar.debit).toBe(5750);
+    expect(Math.abs(body.totalDebits - body.totalCredits)).toBeLessThan(0.011);
     const capital = body.ledgers.find((l: any) => l.name === "Shareholders' Paid-in Capital");
     expect(capital.credit).toBe(0);
   });

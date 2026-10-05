@@ -681,7 +681,7 @@ const getFiscalMonthClosingHistoryData = () => ({ months: (vd.rows || []) as any
  <tbody>
  {ledgers.map((l, i) => (
  <tr key={i} className="border-b border-slate-100 hover:bg-slate-50/20 text-slate-700">
- <td className="p-3 font-semibold">{l.name}</td>
+ <td className="p-3 font-semibold">{l.name.startsWith('Cash/Bank - ') ? `${t('Cash/Bank')} - ${l.name.slice('Cash/Bank - '.length)}` : t(l.name)}</td>
  <td className="p-3 text-end font-mono font-bold text-indigo-600">
  {l.debit > 0 ? `${currencySymbol} ${l.debit.toFixed(2)}` : '-'}
  </td>

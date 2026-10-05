@@ -281,6 +281,18 @@ export const SEED_RECURRING: RecurringExpenseTemplate[] = [
 
 
 export const SEED_TRANSLATIONS: TranslationItem[] = [
+  { id: '019fa55c-7000-7000-8000-00000000f006', key: 'Cash/Bank', en: 'Cash/Bank', ar: 'النقد/البنك', ur: 'نقد/بینک' },
+  { id: '019fa55c-7000-7000-8000-00000000f007', key: 'Accounts Receivable', en: 'Accounts Receivable', ar: 'الذمم المدينة', ur: 'قابل وصول اکاؤنٹس' },
+  { id: '019fa55c-7000-7000-8000-00000000f008', key: 'Inventory', en: 'Inventory', ar: 'المخزون', ur: 'انوینٹری' },
+  { id: '019fa55c-7000-7000-8000-00000000f009', key: 'Capitalized Fixed Assets', en: 'Capitalized Fixed Assets', ar: 'الأصول الثابتة المرسملة', ur: 'سرمایہ کاری شدہ مستقل اثاثے' },
+  { id: '019fa55c-7000-7000-8000-00000000f010', key: 'Accounts Payable', en: 'Accounts Payable', ar: 'الذمم الدائنة', ur: 'قابل ادائیگی اکاؤنٹس' },
+  { id: '019fa55c-7000-7000-8000-00000000f011', key: 'VAT Collected (Output Tax)', en: 'VAT Collected (Output Tax)', ar: 'ضريبة القيمة المضافة المحصلة (ضريبة المخرجات)', ur: 'وصول شدہ ویٹ (آؤٹ پٹ ٹیکس)' },
+  { id: '019fa55c-7000-7000-8000-00000000f012', key: 'Shareholders\' Paid-in Capital', en: 'Shareholders\' Paid-in Capital', ar: 'رأس المال المدفوع للمساهمين', ur: 'شیئر ہولڈرز کا ادا شدہ سرمایہ' },
+  { id: '019fa55c-7000-7000-8000-00000000f013', key: 'Opening Balance Equity', en: 'Opening Balance Equity', ar: 'حقوق الملكية للأرصدة الافتتاحية', ur: 'ابتدائی بیلنس ایکویٹی' },
+  { id: '019fa55c-7000-7000-8000-00000000f014', key: 'Retained Earnings (Opening)', en: 'Retained Earnings (Opening)', ar: 'الأرباح المحتجزة (افتتاحي)', ur: 'برقرار رکھی گئی کمائی (ابتدائی)' },
+  { id: '019fa55c-7000-7000-8000-00000000f015', key: 'Sales Revenue', en: 'Sales Revenue', ar: 'إيرادات المبيعات', ur: 'فروخت کی آمدنی' },
+  { id: '019fa55c-7000-7000-8000-00000000f016', key: 'Cost of Goods Sold', en: 'Cost of Goods Sold', ar: 'تكلفة البضاعة المباعة', ur: 'فروخت شدہ مال کی لاگت' },
+  { id: '019fa55c-7000-7000-8000-00000000f017', key: 'Direct Operating Expenses', en: 'Direct Operating Expenses', ar: 'مصروفات التشغيل المباشرة', ur: 'براہ راست آپریشنل اخراجات' },
   { id: '019fa55c-7000-7000-8000-00000000f005', key: 'Refundable', en: 'Refundable', ar: 'قابل للاسترداد', ur: 'قابل واپسی' },
   { id: '019fa55c-7000-7000-8000-00000000f001', key: 'Fixed Assets', en: 'Fixed Assets', ar: 'الأصول الثابتة', ur: 'اثاثے (مستقل اثاثہ جات)' },
   { id: '019fa55c-7000-7000-8000-00000000f002', key: 'VAT Input (Recoverable)', en: 'VAT Input (Recoverable)', ar: 'ضريبة المدخلات (قابلة للاسترداد)', ur: 'ان پٹ ویٹ (قابل واپسی)' },
