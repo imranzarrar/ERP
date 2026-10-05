@@ -1,33 +1,35 @@
 #!/usr/bin/env bash
-# One-command production release — run ON THE VPS as the deploy user, from the repo root, in a
-# real terminal (not piped), after the commit has been pushed to the git remote:
+# One-command production release — run ON THE VPS as the deploy user, in a real terminal, after the
+# commit has been pushed to the git remote:
 #
-#   bash deploy/release.sh              # run the whole release
+#   cd ~/apps/erp && git pull --ff-only && bash deploy/release.sh
+#
+# (the pull is only needed to fetch this script itself the first time; it is harmless afterwards)
+#
 #   bash deploy/release.sh --dry-run    # preflight only: show what would be deployed, change nothing
-#   bash deploy/release.sh --from 4     # resume at step 4 after fixing a failure (see STEPS below)
-#   bash deploy/release.sh --only 8     # run just one step (e.g. re-run the ledger checks after the smoke test)
+#   bash deploy/release.sh --from 4     # resume at step 4 after fixing a failure
+#   bash deploy/release.sh --only 8     # run just one step (e.g. re-run the ledger checks later)
 #
-# It chains the steps that used to be pasted by hand: backup -> maintenance page on -> pull/build/
-# reload -> db:push -> RLS policies + checks -> chart-of-accounts seed -> XML compression backfill ->
-# ledger sanity checks -> maintenance page off.
+# STEPS: 1 backup   2 pull + build (site stays up)   3 maintenance wiring + ON (self-verified)
+#        4 db:push (YOU review)   5 RLS   6 seed accounts   7 compress XML   8 ledger checks
+#        9 reload app + health check + maintenance OFF
 #
-# Deliberate human gate (per docs/deployment-plan.md's guardrails): db:push against production is
-# NEVER automatic. Step 4 shows drizzle-kit's own plan and waits for you to review it and answer
-# "yes" afterwards. Everything else is automatic and stops at the first failure.
+# The ONLY question it asks is step 4: db:push against production is never automatic (see
+# docs/deployment-plan.md's guardrails) — it prints drizzle's plan and waits for you to read it and
+# type "yes". Everything else runs by itself and stops at the first failure.
 #
-# Failure behaviour: the maintenance page is turned on early and is only turned off at the very
-# end, after every check has passed. If anything fails, it STAYS ON — customers see the
-# maintenance page, not a half-migrated app. Fix the cause, then re-run with --from <step>.
-# Code rollback (does not touch the database; the schema changes in this release are additive):
-#   bash deploy/rollback.sh        (to the most recent pre-deploy-* tag; if you pulled early, name the
-#   previously-live commit instead:  bash deploy/rollback.sh <commit>)
-#
-# STEPS: 1 backup  2 maintenance on  3 pull+build  4 db:push  5 RLS  6 seed accounts
-#        7 compress XML  8 ledger checks  9 reload + maintenance off
+# Failure behaviour: the maintenance page goes on at step 3 and only comes off at the very end, after
+# every check has passed. If anything fails it STAYS ON — customers see the maintenance page, not a
+# half-migrated app. Fix the cause, then resume with --from <step>.
+# Code rollback (never touches the database; this release's schema changes are additive):
+#   bash deploy/rollback.sh <commit>    # <commit> = what was live before; 998feb4 for the first ledger release
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR"
+
+SITE_FILE="${ERP_NGINX_SITE:-/etc/nginx/sites-enabled/warraq}"
+SITE_DOMAIN="${ERP_DOMAIN:-warraq.compbrain.io}"
 
 FROM=1
 ONLY=0
@@ -50,11 +52,11 @@ on_exit() {
   if [ "$FINISHED" != "1" ] && [ "$DRY_RUN" != "1" ]; then
     echo ""
     echo "!! Release did NOT finish."
-    if [ "$MAINTENANCE_TOUCHED" = "1" ] || [ "$FROM" -gt 2 ]; then
+    if [ "$MAINTENANCE_TOUCHED" = "1" ] || [ "$FROM" -gt 3 ]; then
       echo "!! Maintenance mode has been LEFT ON (customers see the maintenance page)."
     fi
     echo "!! Fix the cause above, then resume with:  bash deploy/release.sh --from <step>"
-    echo "!! To undo the code change:  bash deploy/rollback.sh   (database changes here are additive)"
+    echo "!! To undo the code change:  bash deploy/rollback.sh <previous-commit>   (database changes here are additive)"
   fi
 }
 trap on_exit EXIT
@@ -64,7 +66,7 @@ say() { echo ""; echo "==> $*"; }
 confirm() {
   local answer
   read -r -p "$1 [type yes to continue]: " answer
-  [ "$answer" = "yes" ] || die "Not confirmed — stopping. Nothing further was run."
+  [ "$answer" = "yes" ] || die "Not confirmed — stopping."
 }
 
 read_secret() {
@@ -78,6 +80,44 @@ q() { # read-only SQL, single value
   PGPASSWORD="$(read_secret SQL_PASSWORD)" psql -h "$(read_secret SQL_HOST)" -U "$(read_secret SQL_USER)" -d "$(read_secret SQL_DB_NAME)" -At -c "$1"
 }
 
+# Line number of the `server_name <domain>;` that belongs to the HTTPS (listen 443) server block.
+# Prints nothing if it can't be found unambiguously.
+https_server_name_line() {
+  local file="$1" domain="$2" l443 start line
+  l443="$(grep -n 'listen[[:space:]].*443' "$file" | head -n1 | cut -d: -f1)"
+  [ -n "$l443" ] || return 0
+  start="$(awk -v n="$l443" '/^[[:space:]]*server[[:space:]]*\{/ && NR<n {s=NR} END{print s}' "$file")"
+  [ -n "$start" ] || return 0
+  line="$(awk -v s="$start" -v n="$l443" -v d="$domain" 'NR>s && NR<n && $0 ~ "server_name[[:space:]]+" d ";" {print NR; exit}' "$file")"
+  printf '%s' "$line"
+}
+
+# Makes sure Nginx actually serves the maintenance page when the flag is on (a one-time wiring that
+# was missing: without it, "maintenance ON" silently does nothing). Idempotent.
+ensure_maintenance_wired() {
+  sudo mkdir -p /etc/nginx/snippets
+  sudo install -m 644 deploy/nginx-snippets/erp-maintenance.conf /etc/nginx/snippets/erp-maintenance.conf
+  if sudo grep -qs "erp-maintenance" "$SITE_FILE"; then
+    echo "Nginx already includes the maintenance snippet."
+  else
+    [ -f "$SITE_FILE" ] || die "Nginx site file not found: $SITE_FILE (set ERP_NGINX_SITE to override)."
+    local line backup
+    line="$(https_server_name_line "$SITE_FILE" "$SITE_DOMAIN")"
+    [ -n "$line" ] || die "Could not find the HTTPS server_name line for $SITE_DOMAIN in $SITE_FILE."
+    backup="$HOME/nginx-site-backup-$(date +%Y%m%d-%H%M%S)"
+    sudo cp "$SITE_FILE" "$backup"
+    echo "Backed up $SITE_FILE -> $backup; adding the include after line $line"
+    sudo sed -i "${line}a\\    include snippets/erp-maintenance.conf;" "$SITE_FILE"
+    if ! sudo nginx -t; then
+      sudo cp "$backup" "$SITE_FILE"
+      die "nginx -t failed — original config restored from $backup."
+    fi
+    sudo systemctl reload nginx
+  fi
+  sudo -u www-data test -r "$REPO_DIR/deploy/maintenance.html" \
+    || die "Nginx (www-data) cannot read $REPO_DIR/deploy/maintenance.html — the home-directory permissions block it."
+}
+
 # ---------- preflight (always runs) ----------
 say "Preflight"
 [ "$(id -un)" = "deploy" ] || die "Run as the deploy user (su - deploy) — PM2 keeps a separate process list per OS user."
@@ -87,15 +127,15 @@ say "Preflight"
 git fetch origin
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 AHEAD="$(git rev-list --count HEAD..@{upstream})"
-echo "Branch: $BRANCH   Commits to deploy: $AHEAD"
+echo "Branch: $BRANCH   Commits to deploy: $AHEAD   (HEAD now: $(git rev-parse --short HEAD))"
 git log --oneline HEAD..@{upstream} | head -20
-if [ "$AHEAD" = "0" ] && [ "$ONLY" = "0" ] && [ "$FROM" -le 3 ]; then
-  echo "(already at the latest commit — the build in step 3 still runs, so this is fine)"
+[ "$AHEAD" != "0" ] || echo "(already at the latest commit — the build in step 2 still runs, so this is fine)"
+if [ "$DRY_RUN" = "1" ]; then
+  if [ -f "$SITE_FILE" ]; then
+    if sudo grep -qs "erp-maintenance" "$SITE_FILE"; then echo "Maintenance wiring: already in place."; else echo "Maintenance wiring: MISSING — step 3 will add it (after backing up the Nginx config)."; fi
+  fi
+  say "Dry run only — nothing changed."; FINISHED=1; exit 0
 fi
-if git diff --name-only HEAD @{upstream} -- src/db/schema.ts | grep -q .; then
-  echo "src/db/schema.ts changes in this release -> step 4 (db:push) will show a plan to review."
-fi
-if [ "$DRY_RUN" = "1" ]; then say "Dry run only — nothing changed."; FINISHED=1; exit 0; fi
 
 if should_run 1; then
   say "[1/9] Database backup"
@@ -103,23 +143,25 @@ if should_run 1; then
 fi
 
 if should_run 2; then
-  say "[2/9] Maintenance page ON"
-  confirm "This will show the maintenance page to ALL users until the end of the release. Proceed?"
-  bash deploy/maintenance-mode.sh on
-  MAINTENANCE_TOUCHED=1
-fi
-
-if should_run 3; then
-  say "[3/9] Pull and build (always builds — safe even if you already ran git pull)"
+  say "[2/9] Pull and build (site stays up; always builds, even if you already pulled)"
   BEFORE_COMMIT="$(git rev-parse HEAD)"
-  echo "Tagging $BEFORE_COMMIT as a rollback point"
   git tag -f "pre-deploy-$(date +%Y%m%d-%H%M%S)" "$BEFORE_COMMIT" >/dev/null
   git merge --ff-only "@{upstream}"
   echo "Now at: $(git rev-parse HEAD)"
   npm ci
   npm run build
-  # The app itself is reloaded in step 9, AFTER the schema is updated, so the new code never
-  # runs against the old schema.
+  # The app itself is reloaded in step 9, AFTER the schema is updated, so the new code never runs
+  # against the old schema.
+fi
+
+if should_run 3; then
+  say "[3/9] Maintenance page: make sure Nginx serves it, switch it ON, and prove it works"
+  ensure_maintenance_wired
+  bash deploy/maintenance-mode.sh on
+  MAINTENANCE_TOUCHED=1
+  CODE="$(curl -sk -o /dev/null -w '%{http_code}' --resolve "$SITE_DOMAIN:443:127.0.0.1" "https://$SITE_DOMAIN/" || true)"
+  echo "Public site now answers HTTP $CODE (want 503)"
+  [ "$CODE" = "503" ] || die "The maintenance page is not being served (got HTTP $CODE) — stopping BEFORE touching the database."
 fi
 
 if should_run 4; then
@@ -169,16 +211,23 @@ if should_run 8; then
 fi
 
 if should_run 9; then
-  say "[9/9] Reload app on the final schema, then maintenance OFF"
+  say "[9/9] Reload the app on the final schema, health-check it, then maintenance OFF"
   pm2 reload deploy/ecosystem.config.cjs
+  sleep 5
   pm2 status
-  confirm "pm2 shows the app online? Turn the maintenance page OFF and reopen the site?"
+  HEALTH="000"
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    HEALTH="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/health || true)"
+    [ "$HEALTH" = "200" ] && break
+    sleep 3
+  done
+  echo "App health check: HTTP $HEALTH (want 200)"
+  [ "$HEALTH" = "200" ] || die "The app is not answering healthy after reload — maintenance page left ON."
   bash deploy/maintenance-mode.sh off
   git tag -f last-release HEAD >/dev/null
 fi
 
 FINISHED=1
 say "Release complete."
-echo "Now smoke-test in a TEST company (not the live one): paid invoice, part-paid invoice, credit note,"
-echo "cancellation, GRN. Then re-run the ledger checks:  bash deploy/release.sh --only 8"
-echo "Rollback if needed:  bash deploy/rollback.sh"
+echo "Next: log in to a TEST company and try a paid invoice, a part-paid invoice, a credit note,"
+echo "a cancellation and a GRN; then re-run the ledger checks any time with:  bash deploy/release.sh --only 8"
