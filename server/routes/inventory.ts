@@ -1859,6 +1859,16 @@ router.post('/purchase-returns', withTenantDb, async (req: any, res) => {
             grandTotal: String(round2(Math.max(0, Number(owningBill.grandTotal) - debitAmount))),
           }).where(eq(schema.purchaseBills.id, owningBill.id));
         }
+        // Record the input-VAT adjustment on the return itself, so the VAT return books it in THIS return's
+        // period whether or not the bill's own totals were reduced above (they are not when it was paid).
+        if (owningBill) {
+          await tdb.update(schema.purchaseReturns).set({
+            billId: owningBill.id,
+            netAdjustment: String(returnValue),
+            inputVatAdjustment: String(returnTax),
+            billTotalsReduced: !billFullyPaid,
+          }).where(eq(schema.purchaseReturns.id, returnId));
+        }
       }
       await postJournalEntry(tdb, {
         companyId,
@@ -1971,6 +1981,21 @@ router.patch('/purchase-returns/:id/cancel', withTenantDb, async (req: any, res)
       .where(eq(schema.purchaseReturns.id, id))
       .returning();
     const updated = newReturn;
+
+    // Cancelling gives the goods back to the vendor's bill: if this return had reduced the owning bill's
+    // stored totals, restore them (stock and the ledger were already being rolled back; the bill was left
+    // understated, so its payable disagreed with the ledger's AP).
+    if (ret.billTotalsReduced && ret.billId) {
+      const [bill] = await tdb.select().from(schema.purchaseBills).where(eq(schema.purchaseBills.id, ret.billId)).for('update');
+      if (bill) {
+        const net = Number(ret.netAdjustment || 0), vat = Number(ret.inputVatAdjustment || 0);
+        await tdb.update(schema.purchaseBills).set({
+          subTotal: String(round2(Number(bill.subTotal) + net)),
+          taxTotal: String(round2(Number(bill.taxTotal) + vat)),
+          grandTotal: String(round2(Number(bill.grandTotal) + net + vat)),
+        }).where(eq(schema.purchaseBills.id, bill.id));
+      }
+    }
 
     // Ledger posting: reverses row 13's entry in full — a cancelled return already rolls
     // the physical stock back above, so the ledger must follow it or Inventory/GR-IR/AP/

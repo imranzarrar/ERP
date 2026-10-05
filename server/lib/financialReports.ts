@@ -1,3 +1,4 @@
+import { computeBillInputVat } from './inputVat.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, and, gte, lte, lt, ne, inArray, asc, sql } from 'drizzle-orm';
 import { round2, computeInvoiceServerTotals, splitExpenseTaxInclusiveAmount } from './businessLogic.js';
@@ -243,11 +244,10 @@ export async function computeTrialBalance(executor: any, companyId: string, star
     gte(schema.purchaseBills.date, new Date(startDate + 'T00:00:00.000Z')),
     lte(schema.purchaseBills.date, new Date(endDate + 'T23:59:59.999Z')),
   ));
-  let billVatInput = 0;
   for (const bill of billsInRange) {
     accountsPayable = round2(accountsPayable + (Number(bill.grandTotal) - Number(bill.amountPaid || 0)));
-    billVatInput = round2(billVatInput + Number(bill.taxTotal || 0));
   }
+  const billVatInput = (await computeBillInputVat(executor, companyId, startDate, endDate)).vat;
   const totalVatInput = round2(expenseVatInput + billVatInput);
 
   const capitalVouchers = await executor.select().from(schema.vouchers).where(and(
@@ -558,7 +558,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   const expenseVatInput = allExpenses
     .filter(e => !(e.type === 'Accrual' && e.accrualSettled))
     .reduce((sum, e) => sum + expenseParts(e, bsPctBySlab).taxAmount, 0);
-  const vatInputRecoverable = round2(unpaidBills.reduce((sum: number, b: any) => sum + Number(b.taxTotal || 0), 0) + expenseVatInput);
+  const vatInputRecoverable = round2((await computeBillInputVat(executor, companyId, '1900-01-01', asOfDate)).vat + expenseVatInput);
 
   const allInvoicesToDate: any[] = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId),
@@ -1681,11 +1681,8 @@ export async function computePurchaseVatRegister(executor: any, companyId: strin
     gte(schema.expenses.date, startDate), lte(schema.expenses.date, endDate),
   ));
   const filtered = exps.filter(e => !(e.type === 'Accrual' && e.accrualSettled) && branchOk(e.branchId) && (vendorId === 'ALL' || e.vendorId === vendorId));
-  const bills: any[] = (await executor.select().from(schema.purchaseBills).where(and(
-    eq(schema.purchaseBills.companyId, companyId), ne(schema.purchaseBills.status, 'Cancelled'),
-    gte(schema.purchaseBills.date, new Date(startDate + 'T00:00:00.000Z')),
-    lte(schema.purchaseBills.date, new Date(endDate + 'T23:59:59.999Z')),
-  ))).filter(b => branchOk(b.branchId) && (vendorId === 'ALL' || b.vendorId === vendorId));
+  const billInputVat = await computeBillInputVat(executor, companyId, startDate, endDate);
+  const bills: any[] = billInputVat.lines.filter(l => (l.kind === 'Return' || branchOk(l.branchId)) && (vendorId === 'ALL' || l.vendorId === vendorId));
   const slabs: any[] = await executor.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.companyId, companyId));
   const rateBySlab = new Map<string, number>(slabs.map(s => [s.id, Number(s.percentage)]));
   const vIds = Array.from(new Set([...filtered.map(e => e.vendorId), ...bills.map(b => b.vendorId)].filter(Boolean))) as string[];
@@ -1697,10 +1694,11 @@ export async function computePurchaseVatRegister(executor: any, companyId: strin
     return { documentNumber: e.expenseNumber, date: e.date, partyName: v?.name || 'Cash Vendor', vatNumber: v?.vatNumber || 'N/A',
       subtotal, taxAmount: round2(amount - subtotal), grandTotal: round2(amount) };
   });
+  // Bills at their original amounts, and Purchase Returns as NEGATIVE lines in the period they happened.
   const billRows: VatRegisterRow[] = bills.map(b => {
     const v = vendById.get(b.vendorId);
-    return { documentNumber: b.billNumber, date: b.date.toISOString().slice(0, 10), partyName: v?.name || 'Cash Vendor', vatNumber: v?.vatNumber || 'N/A',
-      subtotal: round2(Number(b.subTotal)), taxAmount: round2(Number(b.taxTotal)), grandTotal: round2(Number(b.grandTotal)) };
+    return { documentNumber: b.documentNumber, date: b.date, partyName: v?.name || 'Cash Vendor', vatNumber: v?.vatNumber || 'N/A',
+      subtotal: b.subtotal, taxAmount: b.vat, grandTotal: b.gross };
   });
   const rows = [...expenseRows, ...billRows].sort((a, b) => a.date.localeCompare(b.date) || a.documentNumber.localeCompare(b.documentNumber));
   return { rows, totals: sumVat(rows), count: rows.length };

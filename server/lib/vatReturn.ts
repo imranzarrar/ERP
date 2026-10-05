@@ -1,3 +1,4 @@
+import { computeBillInputVat } from './inputVat.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, and, gte, lte, ne, inArray } from 'drizzle-orm';
 import { round2, computeInvoiceServerTotals } from './businessLogic.js';
@@ -123,22 +124,12 @@ export async function computeVatReturnFigures(executor: any, companyId: string, 
     expenseVat = round2(expenseVat + tax);
   }
 
-  // --- Purchases side, part 2: Purchase Bills in the quarter (already carry their own subTotal/taxTotal, no back-calc needed) ---
-  // purchaseBills.date is a timestamp column (unlike invoices/expenses' text 'YYYY-MM-DD'
-  // dates), and bill creation always sets date: new Date() — no client-supplied bill date
-  // exists today (server/routes/inventory.ts). Query with Date-object bounds accordingly.
-  const billsInRange = await executor.select().from(schema.purchaseBills).where(and(
-    eq(schema.purchaseBills.companyId, companyId),
-    ne(schema.purchaseBills.status, 'Cancelled'),
-    gte(schema.purchaseBills.date, new Date(startDate + 'T00:00:00.000Z')),
-    lte(schema.purchaseBills.date, new Date(endDate + 'T23:59:59.999Z'))
-  ));
-  let billSubtotal = 0;
-  let billVat = 0;
-  for (const bill of billsInRange) {
-    billSubtotal = round2(billSubtotal + Number(bill.subTotal));
-    billVat = round2(billVat + Number(bill.taxTotal));
-  }
+  // --- Purchases side, part 2: Purchase Bills at their original amounts in the quarter of the bill's date,
+  // less any Purchase Returns made in THIS quarter (each return's VAT adjustment belongs to its own period) ---
+  const bills = await computeBillInputVat(executor, companyId, startDate, endDate);
+  const billSubtotal = bills.subtotal;
+  const billVat = bills.vat;
+  const billsInRange = { length: bills.billCount };
 
   const purchasesSubtotal = round2(expenseSubtotal + billSubtotal);
   const inputVat = round2(expenseVat + billVat);

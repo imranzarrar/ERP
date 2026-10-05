@@ -1963,6 +1963,14 @@ export const purchaseReturns = pgTable('purchase_returns', {
   date: timestamp('date').notNull(),
   notes: text('notes'),
   status: text('status').default('Active').notNull(), // 'Active', 'Cancelled'
+  // Input-VAT bookkeeping, set only when the GRN was already BILLED at return time (see
+  // server/lib/inputVat.ts): the owning bill, the net value and VAT given back, and whether the bill's own
+  // stored totals were reduced to match (only when the bill was not yet fully paid). The VAT return
+  // records this adjustment in the RETURN's tax period, and cancelling the return restores the bill.
+  billId: uuid('bill_id').references(() => purchaseBills.id),
+  netAdjustment: decimal('net_adjustment', { precision: 14, scale: 2 }),
+  inputVatAdjustment: decimal('input_vat_adjustment', { precision: 14, scale: 2 }),
+  billTotalsReduced: boolean('bill_totals_reduced').default(false).notNull(),
   companyId: uuid('company_id').notNull().references(() => companies.id),
 }, (table) => ({
   companyIdIdx: index('purchase_returns_company_id_idx').on(table.companyId),
