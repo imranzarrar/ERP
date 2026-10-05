@@ -65,7 +65,7 @@ const inv = (qty: number, paid: number) => ({ invoiceData: {
 } });
 
 describe('reports reconcile with source documents (GRN, bill, credit note, refund, cancellation)', () => {
-  let invA: string, billId: string;
+  let invA: string, billId: string, invD: string;
 
   it('builds the book through the real routes', async () => {
     const grn = await post('/api/inventory/goods-receipt-notes', { grnData: { isDsd: true, vendorId, warehouseId, receivedBy: 'Test', items: [{ productId, quantityReceived: 10, unitCost: 20, taxRate: 15 }] } });
@@ -81,6 +81,10 @@ describe('reports reconcile with source documents (GRN, bill, credit note, refun
     const c = await post('/api/transactions/invoices', inv(1, 0)); expect(c.status).toBe(200);
     expect((await post(`/api/transactions/invoices/${c.body.invoiceId}/cancel`, {})).status).toBe(200);
     expect((await post(`/api/transactions/invoices/${invA}/note`, { type: 'CreditNote', reason: 'Reconcile test' })).status).toBe(200);
+    // D: raised UNPAID and then credited in full — it must leave no receivable behind anywhere (the credit
+    // note reverses it, so nothing is owed), and everything else below must be unaffected by it.
+    const d = await post('/api/transactions/invoices', inv(1, 0)); expect(d.status).toBe(200); invD = d.body.invoiceId;
+    expect((await post(`/api/transactions/invoices/${d.body.invoiceId}/note`, { type: 'CreditNote', reason: 'Credited while unpaid' })).status).toBe(200);
   }, 60000);
 
   it('P&L: revenue excludes VAT, credited and cancelled sales net out, COGS comes from the ledger', async () => {
@@ -118,9 +122,46 @@ describe('reports reconcile with source documents (GRN, bill, credit note, refun
     expect(near(bs.balanceCheck, 0)).toBe(true);
   });
 
+  it('Invoice KPI cards: refunded money is not "collected", credited invoices are not pending (the 773% bug)', async () => {
+    const { body } = await api(`/api/reports/invoice-kpis?startDate=${today}&endDate=${today}`);
+    // Invoiced: A 115 - CN 115 + B 57.50 + D 57.50 - CN 57.50 = 57.50 (cancelled C excluded)
+    expect(body.totalInvoiced).toBe(57.5);
+    // Collected: A 115 - 115 refunded + B 20 = 20  (it used to report 135, ie. 235% of invoiced)
+    expect(body.totalCollected).toBe(20);
+    // Only B is genuinely outstanding; D (credited while unpaid) is not.
+    expect(body.pendingBalance).toBe(37.5);
+    expect(body.pendingCount).toBe(1);
+  });
+
+  it('Outstanding report and dashboard show only the genuinely unpaid invoice', async () => {
+    const out = (await api(`/api/reports/outstanding?startDate=${today}&endDate=${today}`)).body;
+    expect(out.totalReceivable).toBe(37.5);
+    const dash = (await api(`/api/reports/dashboard-summary?startDate=${today}&endDate=${today}`)).body;
+    expect(dash.pendingCollection).toBe(37.5);
+  });
+
   it('Dashboard Net Profit is built from tax-exclusive sales (gross sales card unchanged)', async () => {
     const { body } = await api(`/api/reports/dashboard-summary?startDate=${today}&endDate=${today}`);
     expect(body.totalSales).toBe(57.5);              // "Gross Month Sales" stays VAT-inclusive
     expect(body.netProfit).toBe(30);
+  });
+  it('A credit note never pays out more than the customer actually paid', async () => {
+    const vouchersFor = async (invoiceId: string) =>
+      (await db.select().from(schema.vouchers).where(eq(schema.vouchers.referenceId, invoiceId))) as any[];
+    const bankBefore = (await api(`/api/reports/balance-sheet?asOfDate=${today}`)).body.bankBalance;
+
+    // D was credited while UNPAID: nothing was received, so there is no refund voucher at all.
+    expect(await vouchersFor(invD)).toHaveLength(0);
+
+    // E: part-paid (20 of 57.50) and then credited — the refund is exactly the 20 received, not 57.50.
+    const e = await post('/api/transactions/invoices', inv(1, 20)); expect(e.status).toBe(200);
+    expect((await post(`/api/transactions/invoices/${e.body.invoiceId}/note`, { type: 'CreditNote', reason: 'Credited while part-paid' })).status).toBe(200);
+    const ev = await vouchersFor(e.body.invoiceId);
+    expect(ev.filter(v => v.type === 'Receipt').reduce((n, v) => n + Number(v.amount), 0)).toBe(20);
+    expect(ev.filter(v => v.type === 'Reversal').reduce((n, v) => n + Number(v.amount), 0)).toBe(20);
+
+    // Net effect on the bank of receiving and refunding E is exactly zero.
+    const bankAfter = (await api(`/api/reports/balance-sheet?asOfDate=${today}`)).body.bankBalance;
+    expect(bankAfter).toBe(bankBefore);
   });
 });

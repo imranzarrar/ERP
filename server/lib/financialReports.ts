@@ -18,6 +18,19 @@ function invoiceSign(inv: { documentType?: string | null }): number {
   return inv.documentType === 'CreditNote' ? -1 : 1;
 }
 
+// Ids of invoices that have been reversed by an active Credit Note. A Credit Note here is a full
+// reversal of its original (see POST /invoices/:id/note), so such an invoice has NO remaining
+// receivable — even when it was unpaid or part-paid when credited, in which case its own paymentStatus
+// still reads Unpaid/Partially Paid and every "outstanding" sum would otherwise keep counting it.
+async function creditedOriginalIds(executor: any, companyId: string): Promise<Set<string>> {
+  const rows = await executor.select({ originalId: schema.invoices.originalInvoiceId }).from(schema.invoices).where(and(
+    eq(schema.invoices.companyId, companyId),
+    eq(schema.invoices.documentType, 'CreditNote'),
+    eq(schema.invoices.status, 'Active'),
+  ));
+  return new Set(rows.map((r: any) => r.originalId).filter(Boolean));
+}
+
 interface InvoiceTotals { itemsSubtotal: number; headerDiscount: number; discountedSubtotal: number; taxAmount: number; grandTotal: number; }
 
 // Shared by every function below that needs per-invoice totals — fetches items + tax
@@ -168,8 +181,9 @@ export async function computeTrialBalance(executor: any, companyId: string, star
   // against a still-outstanding original invoice isn't handled — a known, narrower gap
   // than the one this fixes, left for when partial-credit-against-unpaid-invoice
   // reporting is actually built.
+  const creditedIds = await creditedOriginalIds(executor, companyId);
   const unpaidInvoicesInRange = invoicesInRange.filter(inv =>
-    inv.documentType !== 'CreditNote' && (inv.paymentStatus === 'Unpaid' || inv.paymentStatus === 'Partially Paid')
+    inv.documentType !== 'CreditNote' && !creditedIds.has(inv.id) && (inv.paymentStatus === 'Unpaid' || inv.paymentStatus === 'Partially Paid')
   );
   let accountsReceivable = 0;
   for (const inv of unpaidInvoicesInRange) {
@@ -446,13 +460,14 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   // default, and summing it here by its own status (rather than netting it against the
   // specific original invoice it targets) let it subtract from an unrelated customer's
   // balance instead.
-  const unpaidInvoices = await executor.select().from(schema.invoices).where(and(
+  const bsCreditedIds = await creditedOriginalIds(executor, companyId);
+  const unpaidInvoices = (await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId),
     eq(schema.invoices.status, 'Active'),
     ne(schema.invoices.documentType, 'CreditNote'),
     lte(schema.invoices.date, asOfDate),
     inArray(schema.invoices.paymentStatus, ['Unpaid', 'Partially Paid']),
-  ));
+  ))).filter((inv: any) => !bsCreditedIds.has(inv.id));
   const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, unpaidInvoices);
   let accountsReceivable = 0;
   for (const inv of unpaidInvoices) {
@@ -727,8 +742,9 @@ export async function computeDashboardSummary(
     eq(schema.invoices.status, 'Active'),
     ne(schema.invoices.documentType, 'CreditNote'),
   ));
+  const dashCreditedIds = await creditedOriginalIds(executor, companyId);
   const unpaidInvoices = allUnpaidInvoices.filter(inv =>
-    branchOk(inv.branchId) && (!opts.restrictToUserId || inv.createdById === opts.restrictToUserId)
+    !dashCreditedIds.has(inv.id) && branchOk(inv.branchId) && (!opts.restrictToUserId || inv.createdById === opts.restrictToUserId)
   );
   const unpaidTotalsByInvoiceId = await computeInvoiceTotalsMap(executor, unpaidInvoices);
   let pendingCollection = 0;
@@ -1206,6 +1222,17 @@ export async function computeInvoiceKpis(executor: any, companyId: string, filte
   // KPI cards only ever count Active documents, same as activeInvoices in the original.
   const activeInvoices = candidates.filter(inv => inv.status === 'Active');
   const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, activeInvoices);
+  // A Credit Note reverses its original in full: whatever the customer had paid on it is handed back
+  // (a Reversal voucher), so it must come off "Total Collected". It was left on, which is how a credited
+  // 1,092.50 invoice kept counting as collected revenue and pushed Collection Rate past 700%.
+  const creditNoteOriginalIds = Array.from(new Set(activeInvoices
+    .filter(inv => inv.documentType === 'CreditNote' && inv.originalInvoiceId)
+    .map(inv => inv.originalInvoiceId))) as string[];
+  const originals: any[] = creditNoteOriginalIds.length
+    ? await executor.select().from(schema.invoices).where(and(eq(schema.invoices.companyId, companyId), inArray(schema.invoices.id, creditNoteOriginalIds)))
+    : [];
+  const originalPaidById = new Map(originals.map((o: any) => [o.id, Number(o.amountPaid || 0)]));
+  const kpiCreditedIds = await creditedOriginalIds(executor, companyId);
   let totalInvoiced = 0;
   let totalCollected = 0;
   let pendingBalance = 0;
@@ -1215,10 +1242,15 @@ export async function computeInvoiceKpis(executor: any, companyId: string, filte
     const sign = invoiceSign(inv);
     const grandTotal = totalsByInvoiceId.get(inv.id)!.grandTotal;
     totalInvoiced = round2(totalInvoiced + grandTotal * sign);
-    const collectedForThisInvoice = inv.paymentStatus === 'Paid' ? grandTotal : Number(inv.amountPaid || 0);
+    // A Credit Note's own paymentStatus/amountPaid are meaningless leftovers; what it really does to cash is
+    // refund the original's paid amount.
+    const collectedForThisInvoice = inv.documentType === 'CreditNote'
+      ? (originalPaidById.get(inv.originalInvoiceId) || 0)
+      : (inv.paymentStatus === 'Paid' ? grandTotal : Number(inv.amountPaid || 0));
     totalCollected = round2(totalCollected + collectedForThisInvoice * sign);
+    const alreadyCredited = kpiCreditedIds.has(inv.id);
     if (inv.paymentStatus === 'Paid') paidCount++;
-    else if (inv.paymentStatus === 'Unpaid' || inv.paymentStatus === 'Partially Paid') pendingCount++;
+    else if (inv.documentType !== 'CreditNote' && !alreadyCredited && (inv.paymentStatus === 'Unpaid' || inv.paymentStatus === 'Partially Paid')) pendingCount++;
     // Computed independently, never as totalInvoiced - totalCollected — see
     // computeTrialBalance's matching comment for why that subtraction breaks the moment
     // a Credit Note is in the mix: a CreditNote reduces totalInvoiced (correctly, via
@@ -1228,7 +1260,7 @@ export async function computeInvoiceKpis(executor: any, companyId: string, filte
     // invoice. Excluding CreditNote/DebitNote here and summing the genuine per-invoice
     // remaining balance (matching computeBalanceSheet's own accountsReceivable) is the
     // only correct way to compute this.
-    if (inv.documentType !== 'CreditNote' && (inv.paymentStatus === 'Unpaid' || inv.paymentStatus === 'Partially Paid')) {
+    if (inv.documentType !== 'CreditNote' && !alreadyCredited && (inv.paymentStatus === 'Unpaid' || inv.paymentStatus === 'Partially Paid')) {
       pendingBalance = round2(pendingBalance + (grandTotal - Number(inv.amountPaid || 0)));
     }
   }
@@ -1679,9 +1711,10 @@ export interface OutstandingRow { id: string; type: 'Invoice' | 'Expense' | 'Pur
 export async function computeOutstanding(executor: any, companyId: string, startDate: string | null, endDate: string | null, customerId: string | 'ALL', vendorId: string | 'ALL', opts: ReportScopeOpts) {
   const branchOk = makeBranchOk(opts.branchIds);
   const inRange = (d: string) => (!startDate || d >= startDate) && (!endDate || d <= endDate);
+  const outstandingCreditedIds = await creditedOriginalIds(executor, companyId);
   const invs: any[] = (await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId), eq(schema.invoices.status, 'Active'), inArray(schema.invoices.paymentStatus, ['Unpaid', 'Partially Paid']),
-  ))).filter((i: any) => i.documentType !== 'CreditNote' && branchOk(i.branchId) && inRange(i.date) && (customerId === 'ALL' || i.customerId === customerId));
+  ))).filter((i: any) => i.documentType !== 'CreditNote' && !outstandingCreditedIds.has(i.id) && branchOk(i.branchId) && inRange(i.date) && (customerId === 'ALL' || i.customerId === customerId));
   const totals = await computeInvoiceTotalsMap(executor, invs);
   // A settled Accrual keeps its own paymentStatus at 'Unpaid' forever (only
   // accrualSettled/settledExpenseId change on settlement — see settle-accrual's own
