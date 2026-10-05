@@ -277,12 +277,26 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
     ))).filter((inv: any) => branchOk(inv.branchId));
     const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, revenueInvoices);
     for (const inv of revenueInvoices) {
-      totalRevenue = round2(totalRevenue + totalsByInvoiceId.get(inv.id)!.grandTotal * invoiceSign(inv));
+      // Revenue is the tax-EXCLUSIVE, post-header-discount amount: the VAT on a sale is collected on
+      // the tax authority's behalf (a liability, shown on the Balance Sheet), never income. Using the
+      // VAT-inclusive grandTotal here overstated Net Profit by the output VAT of every sale.
+      totalRevenue = round2(totalRevenue + totalsByInvoiceId.get(inv.id)!.discountedSubtotal * invoiceSign(inv));
     }
   } else {
-    totalRevenue = round2(periodVouchers
-      .filter(v => v.referenceType === 'Invoice' && v.type === 'Receipt')
-      .reduce((sum, v) => sum + Number(v.amount), 0));
+    // Cash basis: customer receipts net of refunds (a Reversal voucher is money handed back), scaled to
+    // each invoice's tax-exclusive share so VAT is excluded here too.
+    const cashVouchers = periodVouchers.filter((v: any) => v.referenceType === 'Invoice' && (v.type === 'Receipt' || v.type === 'Reversal'));
+    const cashInvoiceIds = Array.from(new Set(cashVouchers.map((v: any) => v.referenceId))) as string[];
+    const cashInvoices = cashInvoiceIds.length
+      ? await executor.select().from(schema.invoices).where(and(eq(schema.invoices.companyId, companyId), inArray(schema.invoices.id, cashInvoiceIds)))
+      : [];
+    const cashTotals = await computeInvoiceTotalsMap(executor, cashInvoices);
+    const exVatShare = (invoiceId: string) => {
+      const t = cashTotals.get(invoiceId);
+      return t && t.grandTotal > 0 ? t.discountedSubtotal / t.grandTotal : 1;
+    };
+    totalRevenue = round2(cashVouchers.reduce((sum: number, v: any) =>
+      sum + (v.type === 'Receipt' ? 1 : -1) * Number(v.amount) * exVatShare(v.referenceId), 0));
   }
 
   // Expense rows needed either way: Accrual basis sums them directly; Cash basis needs
@@ -343,13 +357,24 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
   const operatingInflows = round2(periodVouchers
     .filter(v => v.referenceType === 'Invoice' && v.type === 'Receipt')
     .reduce((sum, v) => sum + Number(v.amount), 0));
-  const operatingOutflows = round2(periodVouchers
+  // Outflows = operating expense payments (net of their reversals) + money handed back to customers
+  // (a Reversal voucher against an Invoice — a cancelled invoice's refund or a Credit Note's) + payments
+  // on Purchase Bills (net of their reversals). The last two used to be missing entirely, so Net Cash
+  // Flow was overstated by every refund and every supplier payment.
+  const expenseOutflows = round2(periodVouchers
     .filter(v => v.referenceType === 'Expense' && (v.type === 'Payment' || v.type === 'Reversal'))
     .reduce((sum, v) => {
       const exp = expenseById.get(v.referenceId);
       if (exp && exp.classification !== 'Asset') return sum + (v.type === 'Payment' ? Number(v.amount) : -Number(v.amount));
       return sum;
     }, 0));
+  const customerRefunds = round2(periodVouchers
+    .filter(v => v.referenceType === 'Invoice' && v.type === 'Reversal')
+    .reduce((sum, v) => sum + Number(v.amount), 0));
+  const billPayments = round2(periodVouchers
+    .filter(v => v.referenceType === 'PurchaseBill' && (v.type === 'Payment' || v.type === 'Reversal'))
+    .reduce((sum, v) => sum + (v.type === 'Payment' ? Number(v.amount) : -Number(v.amount)), 0));
+  const operatingOutflows = round2(expenseOutflows + customerRefunds + billPayments);
   const investingOutflows = round2(periodVouchers
     .filter(v => v.referenceType === 'Expense' && (v.type === 'Payment' || v.type === 'Reversal'))
     .reduce((sum, v) => {
@@ -386,11 +411,19 @@ export interface BalanceSheetFigures {
   bankBalance: number;
   accountsReceivable: number;
   inventoryValue: number;
+  // Capitalised (Asset-classified) expenses, and the VAT paid on Purchase Bills that is recoverable from
+  // the tax authority — both are assets that were missing, which is part of why the sheet didn't balance.
+  fixedAssets: number;
+  vatInputRecoverable: number;
   totalAssets: number;
   accountsPayable: number;
+  // Output VAT on sales (net of Credit Notes) — collected on the authority's behalf, so a liability.
+  vatOutputPayable: number;
   totalLiabilities: number;
   capitalContributed: number;
   retainedEarnings: number;
+  // Profit of every month not yet closed (closed months' profit is already in retainedEarnings).
+  currentPeriodEarnings: number;
   totalEquity: number;
   balanceCheck: number;
 }
@@ -458,8 +491,62 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
     return sum + Number(s.quantity || 0) * cost;
   }, 0));
 
-  const totalAssets = round2(bankBalance + accountsReceivable + inventoryValue);
-  const totalLiabilities = accountsPayable;
+  // --- Items the sheet previously omitted (each is also why it did not balance) ---
+  const closedMonthRows = await executor.select().from(schema.fiscalMonths).where(and(
+    eq(schema.fiscalMonths.companyId, companyId),
+    eq(schema.fiscalMonths.status, 'Closed'),
+  ));
+  const closedMonthIds = new Set<string>(closedMonthRows
+    .filter((m: any) => m.closedPnL && (!m.closedAt || m.closedAt <= `${asOfDate}T23:59:59`))
+    .map((m: any) => m.id));
+  const monthIsOpen = (isoDate: string) => !closedMonthIds.has(String(isoDate).slice(0, 7));
+
+  const allExpenses: any[] = await executor.select().from(schema.expenses).where(and(
+    eq(schema.expenses.companyId, companyId),
+    eq(schema.expenses.status, 'Active'),
+    lte(schema.expenses.date, asOfDate),
+  ));
+  const fixedAssets = round2(allExpenses
+    .filter(e => e.classification === 'Asset')
+    .reduce((sum, e) => sum + Number(e.amount), 0));
+
+  const vatInputRecoverable = round2(unpaidBills.reduce((sum: number, b: any) => sum + Number(b.taxTotal || 0), 0));
+
+  const allInvoicesToDate: any[] = await executor.select().from(schema.invoices).where(and(
+    eq(schema.invoices.companyId, companyId),
+    eq(schema.invoices.status, 'Active'),
+    lte(schema.invoices.date, asOfDate),
+  ));
+  const allInvoiceTotals = await computeInvoiceTotalsMap(executor, allInvoicesToDate);
+  const vatOutputPayable = round2(allInvoicesToDate.reduce((sum: number, inv: any) =>
+    sum + allInvoiceTotals.get(inv.id)!.taxAmount * invoiceSign(inv), 0));
+
+  // Profit of months that are not closed yet, built the same way computeMonthPnL builds a month's figure
+  // (tax-exclusive revenue, ledger COGS, non-capital expenses, settled accruals excluded) so that when a
+  // month IS closed its profit simply moves from here into retainedEarnings with no jump in the totals.
+  const openRevenue = allInvoicesToDate
+    .filter(inv => monthIsOpen(inv.date))
+    .reduce((sum: number, inv: any) => sum + allInvoiceTotals.get(inv.id)!.discountedSubtotal * invoiceSign(inv), 0);
+  const openExpenses = allExpenses
+    .filter(e => e.classification !== 'Asset' && !(e.type === 'Accrual' && e.accrualSettled) && monthIsOpen(e.date))
+    .reduce((sum: number, e: any) => sum + Number(e.amount), 0);
+  const cogsRows = await executor.select({
+    debit: schema.journalLines.debit, credit: schema.journalLines.credit, date: schema.journalEntries.date,
+  })
+    .from(schema.journalLines)
+    .innerJoin(schema.journalEntries, eq(schema.journalLines.journalEntryId, schema.journalEntries.id))
+    .where(and(
+      eq(schema.journalLines.companyId, companyId),
+      eq(schema.journalLines.accountKey, 'COGS'),
+      lte(schema.journalEntries.date, asOfDate),
+    ));
+  const openCogs = cogsRows
+    .filter((r: any) => monthIsOpen(r.date))
+    .reduce((sum: number, r: any) => sum + (Number(r.debit) - Number(r.credit)), 0);
+  const currentPeriodEarnings = round2(openRevenue - openCogs - openExpenses);
+
+  const totalAssets = round2(bankBalance + accountsReceivable + inventoryValue + fixedAssets + vatInputRecoverable);
+  const totalLiabilities = round2(accountsPayable + vatOutputPayable);
 
   const investors = await executor.select().from(schema.investors).where(eq(schema.investors.companyId, companyId));
   const capitalContributed = round2(investors.reduce((sum, inv) => sum + Number(inv.capitalContributed || 0), 0));
@@ -471,12 +558,12 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   const retainedEarnings = round2(closedMonths
     .filter((m: any) => m.closedPnL && (!m.closedAt || m.closedAt <= `${asOfDate}T23:59:59`))
     .reduce((sum: number, m: any) => sum + Number(m.closedPnL?.netProfit || 0), 0));
-  const totalEquity = round2(capitalContributed + retainedEarnings);
+  const totalEquity = round2(capitalContributed + retainedEarnings + currentPeriodEarnings);
 
   return {
-    asOfDate, bankBalance, accountsReceivable, inventoryValue, totalAssets,
-    accountsPayable, totalLiabilities,
-    capitalContributed, retainedEarnings, totalEquity,
+    asOfDate, bankBalance, accountsReceivable, inventoryValue, fixedAssets, vatInputRecoverable, totalAssets,
+    accountsPayable, vatOutputPayable, totalLiabilities,
+    capitalContributed, retainedEarnings, currentPeriodEarnings, totalEquity,
     balanceCheck: round2(totalAssets - (totalLiabilities + totalEquity)),
   };
 }
@@ -504,9 +591,12 @@ export async function computeMonthPnL(executor: any, companyId: string, monthId:
   let paidRevenue = 0;
   let totalRevenue = 0;
   for (const inv of invoicesInMonth) {
-    const grandTotal = totalsByInvoiceId.get(inv.id)!.grandTotal;
-    totalRevenue = round2(totalRevenue + grandTotal);
-    if (inv.paymentStatus === 'Paid') paidRevenue = round2(paidRevenue + grandTotal);
+    // Tax-exclusive revenue (VAT is a liability, not income), and a Credit Note SUBTRACTS — it used to be
+    // added at its positive value, so a credited sale counted twice in the permanently written figure.
+    const revenue = totalsByInvoiceId.get(inv.id)!.discountedSubtotal * invoiceSign(inv);
+    totalRevenue = round2(totalRevenue + revenue);
+    // A Credit Note reduces both views; a normal invoice counts toward "paid" only once fully paid.
+    if (inv.documentType === 'CreditNote' || inv.paymentStatus === 'Paid') paidRevenue = round2(paidRevenue + revenue);
   }
 
   const monthExpenses = await executor.select().from(schema.expenses).where(and(
@@ -622,8 +712,11 @@ export async function computeDashboardSummary(
   const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, activeMonthInvoices);
 
   let totalSales = 0;
+  let netSalesExVat = 0;
   for (const inv of activeMonthInvoices) {
     totalSales = round2(totalSales + totalsByInvoiceId.get(inv.id)!.grandTotal * invoiceSign(inv));
+    // Net Profit must be built from tax-exclusive sales — the VAT in "Gross Month Sales" is not income.
+    netSalesExVat = round2(netSalesExVat + totalsByInvoiceId.get(inv.id)!.discountedSubtotal * invoiceSign(inv));
   }
 
   // Pending Collection is company-wide (not period-filtered) — same as Dashboard.tsx's
@@ -709,7 +802,7 @@ export async function computeDashboardSummary(
     .filter((l: any) => branchOk(l.branchId))
     .reduce((sum: number, l: any) => sum + (Number(l.debit) - Number(l.credit)), 0));
 
-  const netProfit = round2(totalSales - costOfGoodsSold - totalExpenseActual);
+  const netProfit = round2(netSalesExVat - costOfGoodsSold - totalExpenseActual);
   const netProfitMargin = totalSales > 0 ? round2((netProfit / totalSales) * 100) : 0;
 
   const bankBalances = await computeAllBankBalances(executor, companyId);

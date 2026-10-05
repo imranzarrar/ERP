@@ -212,11 +212,11 @@ describe('Phase 2 server-side financial reports — correctness and cross-compan
     const sessionId = await login(usernameA);
     const { status, body } = await api(sessionId, '/reports/profit-loss?startDate=2026-08-01&endDate=2026-08-31&basis=Accrual');
     expect(status).toBe(200);
-    // grandTotal (207, after the 10% header discount) is what feeds revenue here, not the
-    // undiscounted 220 — proves computeInvoiceServerTotals's discountPercentage is applied.
-    expect(body.totalRevenue).toBe(207);
+    // Revenue is the tax-EXCLUSIVE amount after the 10% header discount: items subtotal 200 - 20 header discount = 180 (the 27 VAT is a liability, not income). This proves
+    // computeInvoiceServerTotals's discountPercentage is applied AND that VAT is left out of revenue.
+    expect(body.totalRevenue).toBe(180);
     expect(body.totalExpenses).toBe(50);
-    expect(body.netProfit).toBe(157);
+    expect(body.netProfit).toBe(130);
   });
 
   it('Balance Sheet: Accounts Receivable/Payable are correct and isolated per company', async () => {

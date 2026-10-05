@@ -281,6 +281,10 @@ export const SEED_RECURRING: RecurringExpenseTemplate[] = [
 
 
 export const SEED_TRANSLATIONS: TranslationItem[] = [
+  { id: '019fa55c-7000-7000-8000-00000000f001', key: 'Fixed Assets', en: 'Fixed Assets', ar: 'الأصول الثابتة', ur: 'اثاثے (مستقل اثاثہ جات)' },
+  { id: '019fa55c-7000-7000-8000-00000000f002', key: 'VAT Input (Recoverable)', en: 'VAT Input (Recoverable)', ar: 'ضريبة المدخلات (قابلة للاسترداد)', ur: 'ان پٹ ویٹ (قابل واپسی)' },
+  { id: '019fa55c-7000-7000-8000-00000000f003', key: 'VAT Output (Payable)', en: 'VAT Output (Payable)', ar: 'ضريبة المخرجات (مستحقة الدفع)', ur: 'آؤٹ پٹ ویٹ (قابل ادائیگی)' },
+  { id: '019fa55c-7000-7000-8000-00000000f004', key: 'Current Period Earnings', en: 'Current Period Earnings', ar: 'أرباح الفترة الحالية', ur: 'موجودہ مدت کی کمائی' },
   { id: '019fa55c-622a-70f7-9839-3eb7b72ed284', key: 'Operations & Commerce', en: 'Operations & Commerce', ar: 'العمليات والتجارة', ur: 'آپریشنز اور تجارت' },
   { id: '019fa55c-622a-7d38-9c51-752bb7ae31f7', key: 'Command Center', en: 'Command Center', ar: 'مركز القيادة', ur: 'کمانڈ سنٹر' },
   { id: '019fa55c-622a-7acc-ac2c-049aebefd8c6', key: 'Quotation Book', en: 'Quotation Book', ar: 'دفتر عروض الأسعار', ur: 'اقتباسات کی کتاب' },
