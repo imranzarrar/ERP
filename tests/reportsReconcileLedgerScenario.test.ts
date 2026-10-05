@@ -83,6 +83,11 @@ describe('reports reconcile with source documents (GRN, bill, credit note, refun
     expect((await post(`/api/transactions/invoices/${invA}/note`, { type: 'CreditNote', reason: 'Reconcile test' })).status).toBe(200);
     // D: raised UNPAID and then credited in full — it must leave no receivable behind anywhere (the credit
     // note reverses it, so nothing is owed), and everything else below must be unaffected by it.
+    // Expenses are stored VAT-inclusive (15% slab): X = 115 gross (100 net + 15 VAT), paid in full;
+    // Y = a 230 gross CAPITAL purchase (200 net + 30 VAT), left unpaid.
+    const expense = (amount: number, extra: any) => post('/api/expenses', { date: today, vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'RR-E', ...extra, amount });
+    expect((await expense(115, { description: 'Reconcile opex', paymentStatus: 'Paid', amountPaid: 115, paymentDate: today })).status).toBe(200);
+    expect((await expense(230, { description: 'Reconcile capex', paymentStatus: 'Unpaid', classification: 'Asset' })).status).toBe(200);
     const d = await post('/api/transactions/invoices', inv(1, 0)); expect(d.status).toBe(200); invD = d.body.invoiceId;
     expect((await post(`/api/transactions/invoices/${d.body.invoiceId}/note`, { type: 'CreditNote', reason: 'Credited while unpaid' })).status).toBe(200);
   }, 60000);
@@ -92,33 +97,36 @@ describe('reports reconcile with source documents (GRN, bill, credit note, refun
     // Surviving sale = invoice B only: 1 x 50, VAT 7.50 excluded. A is fully credited, C cancelled.
     expect(body.totalRevenue).toBe(50);
     expect(body.costOfGoodsSold).toBe(20);
-    expect(body.netProfit).toBe(30);
+    // Expense X counts at its NET 100 (the 15 VAT is recoverable, not a cost); the capex is not an expense.
+    expect(body.totalExpenses).toBe(100);
+    expect(body.netProfit).toBe(-70);
   });
 
   it('Cash flow: refunds and supplier payments are outflows; net equals the real bank movement', async () => {
     const pl = (await api(`/api/reports/profit-loss?startDate=${today}&endDate=${today}&basis=Accrual`)).body;
     expect(pl.operatingInflows).toBe(135);          // 115 (A) + 20 (B)
-    expect(pl.operatingOutflows).toBe(345);         // 115 refund on A's credit note + 230 bill payment
-    expect(pl.netCashFlow).toBe(-210);
+    expect(pl.operatingOutflows).toBe(460);         // 115 refund on A's credit note + 230 bill payment + 115 expense X (gross cash)
+    expect(pl.netCashFlow).toBe(-325);
     const bs = (await api(`/api/reports/balance-sheet?asOfDate=${today}`)).body;
-    expect(bs.bankBalance).toBe(-210);              // cash really moved by exactly the reported net cash flow
+    expect(bs.bankBalance).toBe(-325);              // cash really moved by exactly the reported net cash flow
   });
 
   it('Cash-basis P&L: receipts net of refunds, tax-exclusive', async () => {
     const { body } = await api(`/api/reports/profit-loss?startDate=${today}&endDate=${today}&basis=Cash`);
     // receipts 115 + 20, refund -115 => 20 gross collected; B's ex-VAT share of its 20 is 20/1.15
     expect(near(body.totalRevenue, 20 / 1.15)).toBe(true);
+    expect(near(body.totalExpenses, 100)).toBe(true);   // the 115 paid is 100 net + 15 recoverable VAT
   });
 
   it('Balance Sheet balances and every new line reconciles to a source document', async () => {
     const { body: bs } = await api(`/api/reports/balance-sheet?asOfDate=${today}`);
     expect(bs.accountsReceivable).toBe(37.5);        // B: 57.50 - 20
-    expect(bs.accountsPayable).toBe(0);              // bill paid
+    expect(bs.accountsPayable).toBe(230);            // bill paid; the unpaid capex (230 gross) is owed
     expect(bs.inventoryValue).toBe(180);             // 10 bought - 1 sold net of A's return = 9 x 20
-    expect(bs.vatInputRecoverable).toBe(30);         // VAT on the bill
+    expect(bs.vatInputRecoverable).toBe(75);         // 30 on the bill + 15 on expense X + 30 on the capex
     expect(bs.vatOutputPayable).toBe(7.5);           // B's VAT; A's reversed by its credit note, C cancelled
-    expect(bs.currentPeriodEarnings).toBe(30);       // 50 revenue - 20 cost, month still open
-    expect(bs.fixedAssets).toBe(0);
+    expect(bs.currentPeriodEarnings).toBe(-70);      // 50 revenue - 20 cost - 100 net opex, month still open
+    expect(bs.fixedAssets).toBe(200);                // capex at NET, its VAT is in VAT Input
     expect(near(bs.balanceCheck, 0)).toBe(true);
   });
 
@@ -143,8 +151,57 @@ describe('reports reconcile with source documents (GRN, bill, credit note, refun
   it('Dashboard Net Profit is built from tax-exclusive sales (gross sales card unchanged)', async () => {
     const { body } = await api(`/api/reports/dashboard-summary?startDate=${today}&endDate=${today}`);
     expect(body.totalSales).toBe(57.5);              // "Gross Month Sales" stays VAT-inclusive
-    expect(body.netProfit).toBe(30);
+    expect(body.netProfit).toBe(-70);
   });
+  it('The LEDGER itself (journal lines) agrees with the documents and with every report', async () => {
+    const lines = await db.select().from(schema.journalLines).where(eq(schema.journalLines.companyId, companyId)) as any[];
+    const net = (key: string) => Math.round(lines.filter(l => l.accountKey === key).reduce((n, l) => n + Number(l.debit) - Number(l.credit), 0) * 100) / 100;
+    const entries = await db.select().from(schema.journalEntries).where(eq(schema.journalEntries.companyId, companyId)) as any[];
+
+    // Every entry balances, and so does the book as a whole.
+    for (const e of entries) {
+      const own = lines.filter(l => l.journalEntryId === e.id);
+      expect(near(own.reduce((n, l) => n + Number(l.debit) - Number(l.credit), 0), 0)).toBe(true);
+    }
+    expect(near(lines.reduce((n, l) => n + Number(l.debit) - Number(l.credit), 0), 0)).toBe(true);
+
+    // Account balances equal what the documents say...
+    expect(net('AR')).toBe(37.5);
+    expect(net('SALES_REVENUE')).toBe(-50);       // credit
+    expect(net('VAT_OUTPUT')).toBe(-7.5);         // credit
+    expect(net('COGS')).toBe(20);
+    expect(net('INVENTORY')).toBe(180);
+    expect(net('GR_IR_CLEARING')).toBe(0);        // goods received were all billed
+    expect(net('AP')).toBe(-230);                 // the unpaid capex; bill and expense X fully settled
+    expect(net('VAT_INPUT')).toBe(75);
+    expect(net('DIRECT_OPEX')).toBe(100);
+    expect(net('FIXED_ASSETS')).toBe(200);
+    expect(net('BANK')).toBe(-325);
+
+    // ...and equal the (document-computed) reports, so the two independent methods cross-check each other.
+    const bs = (await api(`/api/reports/balance-sheet?asOfDate=${today}`)).body;
+    expect(net('AR')).toBe(bs.accountsReceivable);
+    expect(net('INVENTORY')).toBe(bs.inventoryValue);
+    expect(-net('AP')).toBe(bs.accountsPayable);
+    expect(net('VAT_INPUT')).toBe(bs.vatInputRecoverable);
+    expect(-net('VAT_OUTPUT')).toBe(bs.vatOutputPayable);
+    expect(net('FIXED_ASSETS')).toBe(bs.fixedAssets);
+    expect(net('BANK')).toBe(bs.bankBalance);
+    expect(near(net('ROUNDING_ADJUSTMENT'), 0)).toBe(true);
+  });
+
+  it('Stock register: every movement matches the documents and the on-hand quantity', async () => {
+    const moves = await db.select().from(schema.stockLedgerTransactions).where(eq(schema.stockLedgerTransactions.companyId, companyId)) as any[];
+    const qty = (type: string) => moves.filter(m => m.transactionType === type).reduce((n, m) => n + Number(m.quantityChange), 0);
+    expect(qty('GRN')).toBe(10);
+    // Sold: A 2, B 1, C 1, D 1 = 5; put back: C's cancellation 1, A's credit note 2, D's credit note 1 = 4.
+    expect(qty('Sale')).toBe(-1);
+    const stock = (await db.select().from(schema.inventoryStocks).where(eq(schema.inventoryStocks.companyId, companyId))) as any[];
+    const onHand = stock.reduce((n, r) => n + Number(r.quantity), 0);
+    expect(onHand).toBe(9);                        // 10 received - 1 net sold (invoice B)
+    expect(near(onHand * 20, (await api(`/api/reports/stock-valuation`)).body.totalValue)).toBe(true);
+  });
+
   it('A credit note never pays out more than the customer actually paid', async () => {
     const vouchersFor = async (invoiceId: string) =>
       (await db.select().from(schema.vouchers).where(eq(schema.vouchers.referenceId, invoiceId))) as any[];

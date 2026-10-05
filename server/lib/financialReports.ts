@@ -1,6 +1,6 @@
 import * as schema from '../../src/db/schema.js';
 import { eq, and, gte, lte, lt, ne, inArray, asc, sql } from 'drizzle-orm';
-import { round2, computeInvoiceServerTotals } from './businessLogic.js';
+import { round2, computeInvoiceServerTotals, splitExpenseTaxInclusiveAmount } from './businessLogic.js';
 
 // Real, server-side financial-report calculations — one function per report, each scoped
 // by companyId (+ a date range / customer / vendor / investor / shift id where relevant),
@@ -29,6 +29,18 @@ async function creditedOriginalIds(executor: any, companyId: string): Promise<Se
     eq(schema.invoices.status, 'Active'),
   ));
   return new Set(rows.map((r: any) => r.originalId).filter(Boolean));
+}
+
+// An expense is stored as ONE tax-inclusive amount plus a tax slab. The VAT inside it is recoverable input
+// VAT (the VAT return claims it back and the ledger posts it to VAT Input), so profit reports must count
+// only the NET amount as cost — counting the gross understated profit by the recoverable VAT. Cash and
+// payables figures stay GROSS: that is the money that actually moves / is actually owed.
+async function taxPercentageBySlabId(executor: any, companyId: string): Promise<Map<string, number>> {
+  const rows = await executor.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.companyId, companyId));
+  return new Map(rows.map((r: any) => [r.id, Number(r.percentage)]));
+}
+function expenseParts(exp: any, pctBySlab: Map<string, number>): { netAmount: number; taxAmount: number } {
+  return splitExpenseTaxInclusiveAmount(Number(exp.amount), pctBySlab.get(exp.taxSlabId) ?? 0);
 }
 
 interface InvoiceTotals { itemsSubtotal: number; headerDiscount: number; discountedSubtotal: number; taxAmount: number; grandTotal: number; }
@@ -200,10 +212,15 @@ export async function computeTrialBalance(executor: any, companyId: string, star
   let totalPurchaseExp = 0;
   let totalFixedAssets = 0;
   let accountsPayable = 0;
+  let expenseVatInput = 0;
+  const tbPctBySlab = await taxPercentageBySlabId(executor, companyId);
   for (const exp of expensesInRange) {
     const amount = Number(exp.amount);
-    if (exp.classification === 'Asset') totalFixedAssets = round2(totalFixedAssets + amount);
-    else totalPurchaseExp = round2(totalPurchaseExp + amount);
+    const parts = expenseParts(exp, tbPctBySlab);
+    // Net of recoverable VAT; the VAT itself is shown on its own VAT Input line below.
+    if (exp.classification === 'Asset') totalFixedAssets = round2(totalFixedAssets + parts.netAmount);
+    else totalPurchaseExp = round2(totalPurchaseExp + parts.netAmount);
+    if (!(exp.type === 'Accrual' && exp.accrualSettled)) expenseVatInput = round2(expenseVatInput + parts.taxAmount);
     // Same fix as computeOutstanding's matching comment: 'Unpaid' only (missing
     // 'Partially Paid'), the full amount instead of the real remaining balance, and no
     // exclusion for a settled Accrual (whose own paymentStatus never changes on
@@ -226,9 +243,12 @@ export async function computeTrialBalance(executor: any, companyId: string, star
     gte(schema.purchaseBills.date, new Date(startDate + 'T00:00:00.000Z')),
     lte(schema.purchaseBills.date, new Date(endDate + 'T23:59:59.999Z')),
   ));
+  let billVatInput = 0;
   for (const bill of billsInRange) {
     accountsPayable = round2(accountsPayable + (Number(bill.grandTotal) - Number(bill.amountPaid || 0)));
+    billVatInput = round2(billVatInput + Number(bill.taxTotal || 0));
   }
+  const totalVatInput = round2(expenseVatInput + billVatInput);
 
   const capitalVouchers = await executor.select().from(schema.vouchers).where(and(
     eq(schema.vouchers.companyId, companyId),
@@ -245,6 +265,7 @@ export async function computeTrialBalance(executor: any, companyId: string, star
     { name: 'Sales Revenue', debit: 0, credit: totalSalesRev },
     { name: 'Capitalized Fixed Assets', debit: totalFixedAssets, credit: 0 },
     { name: 'Direct Operating Expenses', debit: totalPurchaseExp, credit: 0 },
+    { name: 'VAT Input (Recoverable)', debit: totalVatInput, credit: 0 },
     { name: 'VAT Collected (Output Tax)', debit: 0, credit: totalVATCollected },
     { name: "Shareholders' Paid-in Capital", debit: 0, credit: totalCapital },
   ];
@@ -320,6 +341,7 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
     eq(schema.expenses.status, 'Active'),
   ))).filter((exp: any) => branchOk(exp.branchId));
   const expenseById = new Map(periodExpenses.map(e => [e.id, e]));
+  const plPctBySlab = await taxPercentageBySlabId(executor, companyId);
 
   // Cost of Goods Sold — found missing entirely from this report: every stock-tracked
   // sale already posts Dr COGS / Cr INVENTORY at the invoice's own historical cost
@@ -355,13 +377,18 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
       exp.date >= startDate && exp.date <= endDate &&
       (exp.type === 'Accrual' || (exp.type === 'Actual' && !exp.originAccrualId))
     );
-    totalExpenses = round2(opExInRange.reduce((sum, exp) => sum + Number(exp.amount), 0));
+    totalExpenses = round2(opExInRange.reduce((sum, exp) => sum + expenseParts(exp, plPctBySlab).netAmount, 0));
   } else {
+    // Cash basis: each payment counts for its NET share (the recoverable VAT in it is not a cost).
     totalExpenses = round2(periodVouchers
       .filter(v => v.referenceType === 'Expense' && (v.type === 'Payment' || v.type === 'Reversal'))
       .reduce((sum, v) => {
         const exp = expenseById.get(v.referenceId);
-        if (exp && exp.classification !== 'Asset') return sum + (v.type === 'Payment' ? Number(v.amount) : -Number(v.amount));
+        if (exp && exp.classification !== 'Asset') {
+          const gross = Number(exp.amount);
+          const share = gross > 0 ? expenseParts(exp, plPctBySlab).netAmount / gross : 1;
+          return sum + (v.type === 'Payment' ? 1 : -1) * Number(v.amount) * share;
+        }
         return sum;
       }, 0));
   }
@@ -521,11 +548,17 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
     eq(schema.expenses.status, 'Active'),
     lte(schema.expenses.date, asOfDate),
   ));
+  const bsPctBySlab = await taxPercentageBySlabId(executor, companyId);
   const fixedAssets = round2(allExpenses
     .filter(e => e.classification === 'Asset')
-    .reduce((sum, e) => sum + Number(e.amount), 0));
+    .reduce((sum, e) => sum + expenseParts(e, bsPctBySlab).netAmount, 0));
 
-  const vatInputRecoverable = round2(unpaidBills.reduce((sum: number, b: any) => sum + Number(b.taxTotal || 0), 0));
+  // Recoverable VAT = the VAT on Purchase Bills + the VAT inside every (non-settled-accrual) expense —
+  // the same set the VAT return claims.
+  const expenseVatInput = allExpenses
+    .filter(e => !(e.type === 'Accrual' && e.accrualSettled))
+    .reduce((sum, e) => sum + expenseParts(e, bsPctBySlab).taxAmount, 0);
+  const vatInputRecoverable = round2(unpaidBills.reduce((sum: number, b: any) => sum + Number(b.taxTotal || 0), 0) + expenseVatInput);
 
   const allInvoicesToDate: any[] = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId),
@@ -544,7 +577,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
     .reduce((sum: number, inv: any) => sum + allInvoiceTotals.get(inv.id)!.discountedSubtotal * invoiceSign(inv), 0);
   const openExpenses = allExpenses
     .filter(e => e.classification !== 'Asset' && !(e.type === 'Accrual' && e.accrualSettled) && monthIsOpen(e.date))
-    .reduce((sum: number, e: any) => sum + Number(e.amount), 0);
+    .reduce((sum: number, e: any) => sum + expenseParts(e, bsPctBySlab).netAmount, 0);
   const cogsRows = await executor.select({
     debit: schema.journalLines.debit, credit: schema.journalLines.credit, date: schema.journalEntries.date,
   })
@@ -627,8 +660,10 @@ export async function computeMonthPnL(executor: any, companyId: string, monthId:
   const expensesInMonth = monthExpenses.filter(exp => exp.date.startsWith(monthId) && !(exp.type === 'Accrual' && exp.accrualSettled));
   let paidExpenses = 0;
   let totalExpenses = 0;
+  const monthPctBySlab = await taxPercentageBySlabId(executor, companyId);
   for (const exp of expensesInMonth) {
-    const amount = Number(exp.amount);
+    // Net of recoverable VAT — this figure is written permanently on month close.
+    const amount = expenseParts(exp, monthPctBySlab).netAmount;
     totalExpenses = round2(totalExpenses + amount);
     if (exp.paymentStatus === 'Paid') paidExpenses = round2(paidExpenses + amount);
   }
@@ -818,7 +853,12 @@ export async function computeDashboardSummary(
     .filter((l: any) => branchOk(l.branchId))
     .reduce((sum: number, l: any) => sum + (Number(l.debit) - Number(l.credit)), 0));
 
-  const netProfit = round2(netSalesExVat - costOfGoodsSold - totalExpenseActual);
+  // Cards that show money out keep the gross amounts; profit uses the net-of-recoverable-VAT cost.
+  const dashPctBySlab = await taxPercentageBySlabId(executor, companyId);
+  const netExpenseActual = round2(monthExpenses
+    .filter(exp => exp.status === 'Active' && exp.type === 'Actual' && exp.classification !== 'Asset')
+    .reduce((sum, exp) => sum + expenseParts(exp, dashPctBySlab).netAmount, 0));
+  const netProfit = round2(netSalesExVat - costOfGoodsSold - netExpenseActual);
   const netProfitMargin = totalSales > 0 ? round2((netProfit / totalSales) * 100) : 0;
 
   const bankBalances = await computeAllBankBalances(executor, companyId);

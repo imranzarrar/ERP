@@ -180,7 +180,7 @@ describe('Phase 2 server-side financial reports — correctness and cross-compan
     const { status, body } = await api(sessionId, '/reports/trial-balance?startDate=2026-08-01&endDate=2026-08-31');
     expect(status).toBe(200);
     expect(body.totalSalesRev).toBe(180); // net of the 10% header discount (200 - 20), same figure the ledger books to Sales Revenue
-    expect(body.totalPurchaseExp).toBe(50);
+    expect(body.totalPurchaseExp).toBe(43.48); // net of the 15% recoverable VAT (50 gross)
     const ar = body.ledgers.find((l: any) => l.name === 'Accounts Receivable');
     const ap = body.ledgers.find((l: any) => l.name === 'Accounts Payable');
     const vat = body.ledgers.find((l: any) => l.name === 'VAT Collected (Output Tax)');
@@ -200,7 +200,7 @@ describe('Phase 2 server-side financial reports — correctness and cross-compan
     const { status, body } = await api(sessionId, '/reports/trial-balance?startDate=2026-08-01&endDate=2026-08-31');
     expect(status).toBe(200);
     expect(body.totalSalesRev).toBe(5000);
-    expect(body.totalPurchaseExp).toBe(300);
+    expect(body.totalPurchaseExp).toBe(260.87); // net of the 15% recoverable VAT (300 gross)
     const ar = body.ledgers.find((l: any) => l.name === 'Accounts Receivable');
     expect(ar.debit).toBe(5750);
     const capital = body.ledgers.find((l: any) => l.name === "Shareholders' Paid-in Capital");
@@ -215,8 +215,8 @@ describe('Phase 2 server-side financial reports — correctness and cross-compan
     // Revenue is the tax-EXCLUSIVE amount after the 10% header discount: items subtotal 200 - 20 header discount = 180 (the 27 VAT is a liability, not income). This proves
     // computeInvoiceServerTotals's discountPercentage is applied AND that VAT is left out of revenue.
     expect(body.totalRevenue).toBe(180);
-    expect(body.totalExpenses).toBe(50);
-    expect(body.netProfit).toBe(130);
+    expect(body.totalExpenses).toBe(43.48); // 50 gross less 6.52 recoverable VAT
+    expect(body.netProfit).toBe(136.52);
   });
 
   it('Balance Sheet: Accounts Receivable/Payable are correct and isolated per company', async () => {
