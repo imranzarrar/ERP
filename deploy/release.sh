@@ -19,9 +19,10 @@
 # end, after every check has passed. If anything fails, it STAYS ON — customers see the
 # maintenance page, not a half-migrated app. Fix the cause, then re-run with --from <step>.
 # Code rollback (does not touch the database; the schema changes in this release are additive):
-#   bash deploy/rollback.sh
+#   bash deploy/rollback.sh        (to the most recent pre-deploy-* tag; if you pulled early, name the
+#   previously-live commit instead:  bash deploy/rollback.sh <commit>)
 #
-# STEPS: 1 backup  2 maintenance on  3 deploy code  4 db:push  5 RLS  6 seed accounts
+# STEPS: 1 backup  2 maintenance on  3 pull+build  4 db:push  5 RLS  6 seed accounts
 #        7 compress XML  8 ledger checks  9 reload + maintenance off
 set -euo pipefail
 
@@ -89,7 +90,7 @@ AHEAD="$(git rev-list --count HEAD..@{upstream})"
 echo "Branch: $BRANCH   Commits to deploy: $AHEAD"
 git log --oneline HEAD..@{upstream} | head -20
 if [ "$AHEAD" = "0" ] && [ "$ONLY" = "0" ] && [ "$FROM" -le 3 ]; then
-  echo "(nothing new to pull — steps 4-9 can still be run with --from 4)"
+  echo "(already at the latest commit — the build in step 3 still runs, so this is fine)"
 fi
 if git diff --name-only HEAD @{upstream} -- src/db/schema.ts | grep -q .; then
   echo "src/db/schema.ts changes in this release -> step 4 (db:push) will show a plan to review."
@@ -109,8 +110,16 @@ if should_run 2; then
 fi
 
 if should_run 3; then
-  say "[3/9] Pull, build, reload (deploy.sh tags a rollback point first)"
-  bash deploy/deploy.sh
+  say "[3/9] Pull and build (always builds — safe even if you already ran git pull)"
+  BEFORE_COMMIT="$(git rev-parse HEAD)"
+  echo "Tagging $BEFORE_COMMIT as a rollback point"
+  git tag -f "pre-deploy-$(date +%Y%m%d-%H%M%S)" "$BEFORE_COMMIT" >/dev/null
+  git merge --ff-only "@{upstream}"
+  echo "Now at: $(git rev-parse HEAD)"
+  npm ci
+  npm run build
+  # The app itself is reloaded in step 9, AFTER the schema is updated, so the new code never
+  # runs against the old schema.
 fi
 
 if should_run 4; then
@@ -165,6 +174,7 @@ if should_run 9; then
   pm2 status
   confirm "pm2 shows the app online? Turn the maintenance page OFF and reopen the site?"
   bash deploy/maintenance-mode.sh off
+  git tag -f last-release HEAD >/dev/null
 fi
 
 FINISHED=1
