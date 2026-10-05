@@ -1,3 +1,4 @@
+import { unwindAverageSalePrice } from '../lib/salesAverage.js';
 import express from 'express';
 import bcrypt from 'bcrypt';
 import { db } from '../../src/db/index.js';
@@ -491,6 +492,8 @@ router.post('/returns', withTenantDb, async (req: any, res) => {
 
       if (originalItem.productId) {
         await restockForSaleReversal(tdb, companyId, originalItem.productId, qty, noteId, new Date(), original.warehouseId, originalItem.unitOfMeasureId);
+        // Only the returned part comes out of the product's sale statistics.
+        await unwindAverageSalePrice(tdb, companyId, originalItem.productId, originalItem.unitOfMeasureId, qty, Number(originalItem.unitCost));
       }
     }
 

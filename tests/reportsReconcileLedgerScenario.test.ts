@@ -248,6 +248,10 @@ describe('reports reconcile with source documents (GRN, bill, credit note, refun
     expect((await g('sales-by-staff')).totalRevenue).toBe(57.5);
     expect((await g('item-wise-sales')).totalRevenue).toBe(50);
     expect((await g('stock-valuation')).totalValue).toBe(180);
+    // Item Profitability: A and D were credited and C cancelled, so only B's single unit still stands (it used to say 5).
+    const ip = (await g('item-profitability')).rows.find((r: any) => r.productName === 'Reconcile Item');
+    expect(ip.totalQuantitySold).toBe(1);
+    expect(ip.averageSalePrice).toBe(50);
   });
 
   it('The LEDGER itself (journal lines) agrees with the documents and with every report', async () => {

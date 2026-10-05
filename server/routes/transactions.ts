@@ -13,6 +13,7 @@ import { processInvoiceZatca } from '../lib/zatca/processInvoice.js';
 import { hasPermission, assertOwnsRow, resolveDocumentBranchId, branchAccessOk, resolveUserDiscountCap, verifyOverrideCredentials } from '../lib/authz.js';
 import { parseLimitOffset, parsePageSort, wantsPaged } from '../lib/pagination.js';
 import { invoiceListColumns } from '../../src/db/invoiceColumns.js';
+import { unwindAverageSalePrice } from '../lib/salesAverage.js';
 import { readInvoiceXml } from '../lib/zatca/xmlStorage.js';
 import { generateId } from '../../src/id.js';
 import { normalizeZatcaUnitCode } from '../../src/zatcaUnitCodes.js';
@@ -959,10 +960,10 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
 
         // Fold into the product's weighted-average sale price — only on true new-invoice
         // creation (not an edit of an existing one, and not a Credit/Debit Note, which
-        // goes through the separate /invoices/:id/note route below and deliberately
-        // doesn't touch this average — same forward-only philosophy as GRN reversal not
-        // unwinding averageCost). Only lines actually picked from the catalog carry a
-        // productId; a free-typed line simply doesn't contribute.
+        // goes through the separate /invoices/:id/note route below). A later cancel / Credit
+        // Note takes the sale back OUT again via unwindAverageSalePrice (server/lib/
+        // salesAverage.ts) — the exact inverse of this fold. Only lines actually picked from
+        // the catalog carry a productId; a free-typed line simply doesn't contribute.
         if (isNewInvoice && item.productId) {
           const [product] = await tdb.select({
             averageSalePrice: schema.productsServices.averageSalePrice,
@@ -1183,11 +1184,10 @@ router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
         // line originally sold in KGM being reversed as PCE would misrepresent what's
         // actually being credited/debited.
         unit: item.unit,
-        // Carried through for display/reporting only — deliberately does NOT fold back
-        // into averageSalePrice. Same forward-only philosophy as GRN reversal not
-        // unwinding averageCost: a moving weighted average can't be precisely reversed
-        // without replaying full history, so credits/debits are excluded from the
-        // average rather than approximated.
+        // Carried through so a Credit Note can take the returned units back out of the product's
+        // sale statistics (unwindAverageSalePrice, called where this note restocks) — it never
+        // FOLDS in as a new sale. The average is a plain quantity-weighted mean, so the
+        // reversal is exact, not an approximation.
         productId: item.productId,
         unitOfMeasureId: item.unitOfMeasureId,
       });
@@ -1201,6 +1201,8 @@ router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
       // note's own (nonexistent) concept of a warehouse.
       if (type === 'CreditNote' && item.productId) {
         await restockForSaleReversal(tdb, companyId, item.productId, Number(item.quantity), newNote.id, new Date(), original.warehouseId, item.unitOfMeasureId);
+        // The returned units were not really sold: take them back out of the product's sale statistics too.
+        await unwindAverageSalePrice(tdb, companyId, item.productId, item.unitOfMeasureId, Number(item.quantity), Number(item.unitCost));
       }
     }
 
@@ -1462,6 +1464,22 @@ router.post('/invoices/:id/cancel', withTenantDb, async (req: any, res) => {
       throw err;
     }
 
+    // A Credit Note already reversed this invoice in full (stock, ledger, refund). Cancelling it as well would put the
+    // same goods back a second time and reverse its sale statistics twice.
+    if (invoice.documentType !== 'CreditNote' && invoice.documentType !== 'DebitNote') {
+      const [existingNote] = await tdb.select({ invoiceNumber: schema.invoices.invoiceNumber }).from(schema.invoices).where(and(
+        eq(schema.invoices.companyId, invoice.companyId),
+        eq(schema.invoices.originalInvoiceId, id),
+        eq(schema.invoices.documentType, 'CreditNote'),
+        eq(schema.invoices.status, 'Active'),
+      ));
+      if (existingNote) {
+        const err: any = new Error(`This invoice has already been reversed by Credit Note ${existingNote.invoiceNumber}, so it cannot also be cancelled.`);
+        err.status = 400;
+        throw err;
+      }
+    }
+
     await tdb.update(schema.invoices).set({ status: 'Cancelled' }).where(eq(schema.invoices.id, id));
 
     // Restock — a pre-existing gap: this route never touched inventoryStocks at all, so
@@ -1476,6 +1494,7 @@ router.post('/invoices/:id/cancel', withTenantDb, async (req: any, res) => {
       for (const item of cancelledItems) {
         if (!item.productId) continue;
         await restockForSaleReversal(tdb, invoice.companyId, item.productId, Number(item.quantity), id, new Date(), invoice.warehouseId, item.unitOfMeasureId);
+        await unwindAverageSalePrice(tdb, invoice.companyId, item.productId, item.unitOfMeasureId, Number(item.quantity), Number(item.unitCost));
       }
     }
 

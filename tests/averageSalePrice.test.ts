@@ -158,9 +158,11 @@ describe('productsServices.averageSalePrice (weighted rolling average from real 
     expect(after.totalQuantitySold).toBe(before.totalQuantitySold);
   });
 
-  it('a Credit Note does not unwind the average', async () => {
+  it('a Credit Note takes its sale back out of the average, restoring the exact prior figures', async () => {
+    const [prior] = await db.select().from(schema.productsServices).where(eq(schema.productsServices.id, productId));
     const invId = await createInvoice(200, 1, true);
-    const [before] = await db.select().from(schema.productsServices).where(eq(schema.productsServices.id, productId));
+    const [during] = await db.select().from(schema.productsServices).where(eq(schema.productsServices.id, productId));
+    expect(during.totalQuantitySold).not.toBe(prior.totalQuantitySold);   // the sale was counted while it stood
 
     const { status, body } = await api(adminSessionId, `/api/transactions/invoices/${invId}/note`, {
       method: 'POST',
@@ -169,8 +171,10 @@ describe('productsServices.averageSalePrice (weighted rolling average from real 
     expect(status).toBe(200);
     createdInvoiceIds.push(body.invoiceId);
 
+    // Previously a credited sale stayed in these statistics forever ("forward-only"); the average is a plain
+    // quantity-weighted mean, so the reversal is exact.
     const [after] = await db.select().from(schema.productsServices).where(eq(schema.productsServices.id, productId));
-    expect(after.averageSalePrice).toBe(before.averageSalePrice);
-    expect(after.totalQuantitySold).toBe(before.totalQuantitySold);
+    expect(after.averageSalePrice).toBe(prior.averageSalePrice);
+    expect(after.totalQuantitySold).toBe(prior.totalQuantitySold);
   });
 });
