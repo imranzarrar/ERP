@@ -456,9 +456,22 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   const productIds = Array.from(new Set(inventoryStocks.map(s => s.productId))) as string[];
   const products: any[] = productIds.length ? await executor.select().from(schema.productsServices).where(inArray(schema.productsServices.id, productIds)) : [];
   const productById = new Map(products.map(p => [p.id, p]));
-  const inventoryValue = round2(inventoryStocks.reduce((sum, s) => {
-    const cost = Number(productById.get(s.productId)?.averageCost || 0);
-    return sum + Number(s.quantity || 0) * cost;
+  // inventoryStocks is the quantity on hand NOW. For an earlier as-of date, take back every stock movement dated after it
+  // (the stock ledger is the append-only record of each one), otherwise a Balance Sheet "as at 30 Sep" would count goods
+  // that were only received in October. Valued at the product's current average cost — the same valuation as today's figure.
+  const laterMovements: any[] = await executor.select({
+    productId: schema.stockLedgerTransactions.productId,
+    change: sql<string>`COALESCE(SUM(${schema.stockLedgerTransactions.quantityChange}), 0)`,
+  }).from(schema.stockLedgerTransactions).where(and(
+    eq(schema.stockLedgerTransactions.companyId, companyId),
+    sql`${schema.stockLedgerTransactions.date} > ${new Date(asOfDate + 'T23:59:59.999Z')}`,
+  )).groupBy(schema.stockLedgerTransactions.productId);
+  const qtyOnHandByProduct = new Map<string, number>();
+  for (const s of inventoryStocks) qtyOnHandByProduct.set(s.productId, (qtyOnHandByProduct.get(s.productId) || 0) + Number(s.quantity || 0));
+  for (const m of laterMovements) qtyOnHandByProduct.set(m.productId, (qtyOnHandByProduct.get(m.productId) || 0) - Number(m.change || 0));
+  const inventoryValue = round2(Array.from(qtyOnHandByProduct.entries()).reduce((sum, [productId, qty]) => {
+    const cost = Number(productById.get(productId)?.averageCost || 0);
+    return sum + qty * cost;
   }, 0));
 
   // --- Items the sheet previously omitted (each is also why it did not balance) ---

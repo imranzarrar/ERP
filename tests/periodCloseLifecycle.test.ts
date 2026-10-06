@@ -337,6 +337,16 @@ describe('Period-close lifecycle: every document type, closed months, a filed VA
     expect(near(bs.balanceCheck, 0)).toBe(true);
   });
 
+  it('a Balance Sheet "as at" the end of the previous quarter counts only the stock on hand THEN', async () => {
+    // A goods receipt is filed on the day it is entered (today), while the back-dated sales were filed on their own dates.
+    // So at the end of the previous quarter the register shows a net 11 units sold (credited and cancelled ones already
+    // back in) before any of this test's stock had been received: the sheet must not pretend today's 15 units were there.
+    const asOfPrev = await rep('balance-sheet', `asOfDate=${prevRange.endDate}`);
+    const now = await rep('balance-sheet', `asOfDate=${today}`);
+    expect(now.inventoryValue).toBe(150);
+    expect(asOfPrev.inventoryValue).toBe(-110);
+  });
+
   it('Trial Balance balances for every period ending today, and its opening retained earnings follow the closes', async () => {
     const full = await rep('trial-balance', range(d1(1), today));
     const curOnly = await rep('trial-balance', range(`${CUR}-01`, today));
