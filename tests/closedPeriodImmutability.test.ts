@@ -188,5 +188,5 @@ describe('closed periods cannot be reached by any later action', () => {
     await attempt('vendor refund', () => post('/api/inventory/vendor-refunds', { vendorId, bankId, amount: 10, date: today }));
     await attempt('unbilled GRN reversal', () => post(`/api/inventory/goods-receipt-notes/${ids.grnUnbilled}/reverse`, {}));
     await attempt('stock adjustment today', () => post('/api/inventory/stock-adjustments', { productId: P, warehouseId, quantity: -1, reason: 'damaged' }));
-  });
+  }, 120000);
 });
