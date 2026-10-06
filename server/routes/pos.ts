@@ -1,4 +1,6 @@
 import { unwindAverageSalePrice } from '../lib/salesAverage.js';
+import { postJournalEntry } from '../lib/ledger.js';
+import { toBaseQuantity } from '../lib/uomConversion.js';
 import express from 'express';
 import bcrypt from 'bcrypt';
 import { db } from '../../src/db/index.js';
@@ -428,7 +430,8 @@ router.post('/returns', withTenantDb, async (req: any, res) => {
       const originalItem = originalItemById.get(itemId)!;
       return { unitCost: Number(originalItem.unitCost), quantity: qty, discountAmount: 0, taxSlabId: originalItem.taxSlabId };
     });
-    const refundAmount = computeInvoiceServerTotals(returnedLineItems, headerPercentage, originalDiscountPercentage, lineSlabPercentageById).grandTotal;
+    const returnedTotals = computeInvoiceServerTotals(returnedLineItems, headerPercentage, originalDiscountPercentage, lineSlabPercentageById);
+    const refundAmount = returnedTotals.grandTotal;
 
     // A POS return happens now — the return receipt/credit note is always dated with
     // today's system date, never backdated to the original sale's date (that's a
@@ -497,10 +500,57 @@ router.post('/returns', withTenantDb, async (req: any, res) => {
       }
     }
 
+    let refundBankId: string | undefined;
     if (Number(original.amountPaid) > 0 && refundAmount > 0) {
-      await postCreditNoteReversalVoucher(tdb, invoiceId, companyId, todayStr, req.user.id, {
+      const refund = await postCreditNoteReversalVoucher(tdb, invoiceId, companyId, todayStr, req.user.id, {
         amount: refundAmount,
         creditNoteNumber: noteNumber,
+      });
+      refundBankId = refund?.refundBankId;
+    }
+
+    // Ledger — this route never posted anything, so a POS return left the ledger holding the whole original sale, and the
+    // cost of the units that came back to stock was never released: inventory went up with no matching profit. Posts, for
+    // exactly the returned part: (1) the sale reversed (revenue, VAT and receivable), (2) the cash handed back, and
+    // (3) the cost of the returned units back out of cost of goods sold into inventory.
+    await postJournalEntry(tdb, {
+      companyId, branchId: original.branchId, date: todayStr,
+      referenceType: 'CreditNote', referenceId: noteId,
+      description: `POS return ${noteNumber} against invoice ${original.invoiceNumber}`,
+      createdById: req.user.id,
+      lines: [
+        { accountKey: 'SALES_REVENUE', debit: returnedTotals.discountedSubtotal },
+        ...(returnedTotals.taxAmount > 0 ? [{ accountKey: 'VAT_OUTPUT', debit: returnedTotals.taxAmount }] : []),
+        { accountKey: 'AR', credit: returnedTotals.grandTotal },
+      ],
+    });
+    if (refundBankId) {
+      await postJournalEntry(tdb, {
+        companyId, branchId: original.branchId, date: todayStr,
+        referenceType: 'CreditNote', referenceId: noteId,
+        description: `Refund for POS return ${noteNumber}`,
+        createdById: req.user.id,
+        lines: [{ accountKey: 'AR', debit: refundAmount }, { accountKey: 'BANK', credit: refundAmount, bankId: refundBankId }],
+      });
+    }
+    let returnedCost = 0;
+    for (const [itemId, qty] of requestedByItemId.entries()) {
+      const originalItem = originalItemById.get(itemId)!;
+      if (!originalItem.productId) continue;
+      const [product] = await tdb.select({ itemKind: schema.productsServices.itemKind, averageCost: schema.productsServices.averageCost })
+        .from(schema.productsServices).where(eq(schema.productsServices.id, originalItem.productId));
+      if (product?.itemKind !== 'item') continue;
+      const baseQty = await toBaseQuantity(tdb, originalItem.productId, originalItem.unitOfMeasureId, companyId, qty);
+      returnedCost += baseQty * Number(product.averageCost || 0);
+    }
+    returnedCost = Math.round((returnedCost + Number.EPSILON) * 100) / 100;
+    if (returnedCost > 0) {
+      await postJournalEntry(tdb, {
+        companyId, branchId: original.branchId, date: todayStr,
+        referenceType: 'CreditNote', referenceId: noteId,
+        description: `Cost of goods returned with POS return ${noteNumber}`,
+        createdById: req.user.id,
+        lines: [{ accountKey: 'INVENTORY', debit: returnedCost }, { accountKey: 'COGS', credit: returnedCost }],
       });
     }
 

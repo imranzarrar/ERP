@@ -281,6 +281,7 @@ export const SEED_RECURRING: RecurringExpenseTemplate[] = [
 
 
 export const SEED_TRANSLATIONS: TranslationItem[] = [
+  { id: '019fa55c-7000-7000-8000-00000000f018', key: 'Goods Received Not Billed', en: 'Goods Received Not Billed', ar: 'بضاعة مستلمة غير مفوترة', ur: 'وصول شدہ مال، بل ابھی درج نہیں' },
   { id: '019fa55c-7000-7000-8000-00000000f006', key: 'Cash/Bank', en: 'Cash/Bank', ar: 'النقد/البنك', ur: 'نقد/بینک' },
   { id: '019fa55c-7000-7000-8000-00000000f007', key: 'Accounts Receivable', en: 'Accounts Receivable', ar: 'الذمم المدينة', ur: 'قابل وصول اکاؤنٹس' },
   { id: '019fa55c-7000-7000-8000-00000000f008', key: 'Inventory', en: 'Inventory', ar: 'المخزون', ur: 'انوینٹری' },

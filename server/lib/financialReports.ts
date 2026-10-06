@@ -178,6 +178,7 @@ export async function computeTrialBalance(executor: any, companyId: string, star
     side('VAT Input (Recoverable)', bs.vatInputRecoverable),
     side('Accounts Payable', -bs.accountsPayable),
     side('VAT Collected (Output Tax)', -bs.vatOutputPayable),
+    side('Goods Received Not Billed', -bs.goodsReceivedNotBilled),
     side("Shareholders' Paid-in Capital", -totalCapital),
     side('Opening Balance Equity', -openingBalances),
     side('Retained Earnings (Opening)', -openingProfit),
@@ -376,6 +377,9 @@ export interface BalanceSheetFigures {
   accountsPayable: number;
   // Output VAT on sales (net of Credit Notes) — collected on the authority's behalf, so a liability.
   vatOutputPayable: number;
+  // Goods received but not yet billed (the GR/IR clearing account): stock already sits in Inventory at cost, but the
+  // supplier's invoice has not been recorded, so there is no Accounts Payable yet — this is what is owed for it.
+  goodsReceivedNotBilled: number;
   totalLiabilities: number;
   capitalContributed: number;
   retainedEarnings: number;
@@ -500,7 +504,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
     .filter(inv => monthIsOpen(inv.date))
     .reduce((sum: number, inv: any) => sum + allInvoiceTotals.get(inv.id)!.discountedSubtotal * invoiceSign(inv), 0);
   const openExpenses = allExpenses
-    .filter(e => e.classification !== 'Asset' && !(e.type === 'Accrual' && e.accrualSettled) && monthIsOpen(e.date))
+    .filter(e => e.classification !== 'Asset' && (e.type === 'Accrual' || (e.type === 'Actual' && !e.originAccrualId)) && monthIsOpen(e.date))
     .reduce((sum: number, e: any) => sum + expenseParts(e, bsPctBySlab).netAmount, 0);
   const cogsRows = await executor.select({
     debit: schema.journalLines.debit, credit: schema.journalLines.credit, date: schema.journalEntries.date,
@@ -517,8 +521,43 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
     .reduce((sum: number, r: any) => sum + (Number(r.debit) - Number(r.credit)), 0);
   const currentPeriodEarnings = round2(openRevenue - openCogs - openExpenses);
 
+  // Goods received, not billed: every unreversed GRN still waiting for its supplier bill, at cost (tax-exclusive),
+  // less anything already returned to the supplier against it. Inventory counts these units from the day they arrive;
+  // without this liability the sheet is out by exactly their value until the bill is entered.
+  const asOfEnd = new Date(asOfDate + 'T23:59:59.999Z');
+  const unbilledGrns: any[] = await executor.select().from(schema.goodsReceiptNotes).where(and(
+    eq(schema.goodsReceiptNotes.companyId, companyId),
+    eq(schema.goodsReceiptNotes.isBilled, false),
+    eq(schema.goodsReceiptNotes.isReversed, false),
+    lte(schema.goodsReceiptNotes.date, asOfEnd),
+  ));
+  let goodsReceivedNotBilled = 0;
+  if (unbilledGrns.length > 0) {
+    const grnIds = unbilledGrns.map(g => g.id);
+    const grnItems: any[] = await executor.select().from(schema.goodsReceiptNoteItems).where(inArray(schema.goodsReceiptNoteItems.grnId, grnIds));
+    const stockProductIds = Array.from(new Set(grnItems.map(i => i.productId))) as string[];
+    const stockProducts: any[] = stockProductIds.length ? await executor.select().from(schema.productsServices).where(inArray(schema.productsServices.id, stockProductIds)) : [];
+    const isStockItem = new Set(stockProducts.filter(p => p.itemKind === 'item').map(p => p.id));
+    for (const it of grnItems) if (isStockItem.has(it.productId)) goodsReceivedNotBilled += Number(it.quantityReceived) * Number(it.unitCost);
+    const returns: any[] = await executor.select().from(schema.purchaseReturns).where(and(
+      eq(schema.purchaseReturns.companyId, companyId),
+      eq(schema.purchaseReturns.status, 'Active'),
+      inArray(schema.purchaseReturns.grnId, grnIds),
+      lte(schema.purchaseReturns.date, asOfEnd),
+    ));
+    if (returns.length > 0) {
+      const returnItems: any[] = await executor.select().from(schema.purchaseReturnItems).where(inArray(schema.purchaseReturnItems.returnId, returns.map(r => r.id)));
+      const grnIdByReturn = new Map(returns.map(r => [r.id, r.grnId]));
+      for (const ri of returnItems) {
+        const original = grnItems.find(gi => gi.grnId === grnIdByReturn.get(ri.returnId) && gi.productId === ri.productId);
+        if (original && isStockItem.has(ri.productId)) goodsReceivedNotBilled -= Number(ri.quantityReturned) * Number(original.unitCost);
+      }
+    }
+  }
+  goodsReceivedNotBilled = round2(Math.max(0, goodsReceivedNotBilled));
+
   const totalAssets = round2(bankBalance + accountsReceivable + inventoryValue + fixedAssets + vatInputRecoverable);
-  const totalLiabilities = round2(accountsPayable + vatOutputPayable);
+  const totalLiabilities = round2(accountsPayable + vatOutputPayable + goodsReceivedNotBilled);
 
   const investors = await executor.select().from(schema.investors).where(eq(schema.investors.companyId, companyId));
   const capitalContributed = round2(investors.reduce((sum, inv) => sum + Number(inv.capitalContributed || 0), 0));
@@ -534,7 +573,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
 
   return {
     asOfDate, bankBalance, accountsReceivable, inventoryValue, fixedAssets, vatInputRecoverable, totalAssets,
-    accountsPayable, vatOutputPayable, totalLiabilities,
+    accountsPayable, vatOutputPayable, goodsReceivedNotBilled, totalLiabilities,
     capitalContributed, retainedEarnings, currentPeriodEarnings, totalEquity,
     balanceCheck: round2(totalAssets - (totalLiabilities + totalEquity)),
   };
@@ -583,7 +622,11 @@ export async function computeMonthPnL(executor: any, companyId: string, monthId:
   // excluded explicitly rather than inferred from status.
   // Capital (Asset-classified) purchases are not an expense: the P&L and the Balance Sheet carry them as fixed assets,
   // so counting them here would put the Balance Sheet out by their value once this month's profit is stored.
-  const expensesInMonth = monthExpenses.filter(exp => exp.date.startsWith(monthId) && exp.classification !== 'Asset' && !(exp.type === 'Accrual' && exp.accrualSettled));
+  // Accrual basis, exactly as the P&L recognises expenses: an Accrual counts in the month it was ACCRUED, and the Actual
+  // that later settles it (originAccrualId set) is only the payment of that same cost, so it is not counted a second time
+  // in the month it is paid. (Dropping the settled accrual and counting its payment instead moved the cost into the wrong
+  // month, so a closed month stored a different profit than the P&L shows for it.)
+  const expensesInMonth = monthExpenses.filter(exp => exp.date.startsWith(monthId) && exp.classification !== 'Asset' && (exp.type === 'Accrual' || (exp.type === 'Actual' && !exp.originAccrualId)));
   let paidExpenses = 0;
   let totalExpenses = 0;
   const monthPctBySlab = await taxPercentageBySlabId(executor, companyId);
@@ -1099,7 +1142,9 @@ export async function computePurchaseRegister(executor: any, companyId: string, 
   const expensesInRange = await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId), gte(schema.expenses.date, startDate), lte(schema.expenses.date, endDate),
   ));
-  const filtered = expensesInRange.filter(exp => branchOk(exp.branchId) && (vendorId === 'ALL' || exp.vendorId === vendorId));
+  // A settled Accrual is not listed: the Actual expense that settled it is the purchase (and carries the payment), so listing
+  // both counted the same purchase twice and disagreed with the VAT register.
+  const filtered = expensesInRange.filter(exp => !(exp.type === 'Accrual' && exp.accrualSettled) && branchOk(exp.branchId) && (vendorId === 'ALL' || exp.vendorId === vendorId));
   // Purchase Bills are purchases too (the vendor statement and the VAT register already include them); the
   // register listed expenses only, so goods bought through GRN -> Bill never showed up in it.
   const billsInRange: any[] = (await executor.select().from(schema.purchaseBills).where(and(
@@ -1132,9 +1177,11 @@ export async function computeVendorStatement(executor: any, companyId: string, v
   if (!vendorId) return { entries: [], endingBalance: 0, vendorName: '' };
   const branchOk = makeBranchOk(opts.branchIds);
   const [vendor] = await executor.select().from(schema.vendors).where(eq(schema.vendors.id, vendorId));
+  // A settled Accrual is left out: the liability moved to the Actual expense that settled it (which carries the payment),
+  // so listing both counted the same debt twice and the statement ended at the cost of every settled accrual too high.
   const vendExpenses = (await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId), eq(schema.expenses.vendorId, vendorId), eq(schema.expenses.status, 'Active'),
-  ))).filter(exp => branchOk(exp.branchId));
+  ))).filter(exp => branchOk(exp.branchId) && !(exp.type === 'Accrual' && exp.accrualSettled));
   const vendBills = (await executor.select().from(schema.purchaseBills).where(and(
     eq(schema.purchaseBills.companyId, companyId), eq(schema.purchaseBills.vendorId, vendorId), ne(schema.purchaseBills.status, 'Cancelled'),
   ))).filter(b => branchOk(b.branchId));

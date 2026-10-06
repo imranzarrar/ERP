@@ -3,7 +3,7 @@ import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, and, isNull, inArray, ne } from 'drizzle-orm';
 import { round2, round4, writeStockLedgerEntry, assertQuarterNotFiled, assertProductsOwnedByCompany, validateTransactionDate } from '../lib/businessLogic.js';
-import { postJournalEntry, reverseAllEntriesFor } from '../lib/ledger.js';
+import { postJournalEntry, reverseAllEntriesFor, postInventoryAdjustment } from '../lib/ledger.js';
 import { createPurchaseBillForGrns, payPurchaseBillInFull, normalizePurchaseBillForClient } from '../lib/purchasing.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { hasPermission, resolveDocumentBranchId, branchAccessOk, branchAccessOkViaWarehouse } from '../lib/authz.js';
@@ -1337,6 +1337,7 @@ router.post('/stock-adjustments', withTenantDb, async (req: any, res) => {
     const adjustmentId = generateId();
 
     let stock;
+    let adjustedBy = 0;
     if (existingStock) {
       const priorQty = Number(existingStock.quantity);
       const newQty = round2(priorQty + delta);
@@ -1349,6 +1350,7 @@ router.post('/stock-adjustments', withTenantDb, async (req: any, res) => {
         transactionType: 'Adjustment', referenceId: adjustmentId, date: new Date(),
         quantityChange: newQty - priorQty, endingQuantity: newQty, batchNumber,
       });
+      adjustedBy = round2(newQty - priorQty);
       stock = updatedStock;
     } else {
       const [newStock] = await tdb.insert(schema.inventoryStocks).values({
@@ -1364,8 +1366,14 @@ router.post('/stock-adjustments', withTenantDb, async (req: any, res) => {
         transactionType: 'Adjustment', referenceId: adjustmentId, date: new Date(),
         quantityChange: round2(delta), endingQuantity: round2(delta), batchNumber,
       });
+      adjustedBy = round2(delta);
       stock = newStock;
     }
+
+    await postInventoryAdjustment(tdb, {
+      companyId, branchId: warehouse.branchId, date: new Date().toISOString().slice(0, 10), productId, quantityChange: adjustedBy,
+      referenceType: 'StockAdjustment', referenceId: adjustmentId, description: `Stock adjustment: ${String(reason).trim()}`, createdById: req.user.id,
+    });
 
     res.json({ success: true, inventoryStock: stock });
   } catch (error: any) {
@@ -2135,6 +2143,7 @@ router.post('/stock-takes/:id/finalize', withTenantDb, async (req: any, res) => 
     }
 
     const items = await tdb.select().from(schema.physicalStockTakeItems).where(eq(schema.physicalStockTakeItems.stockTakeId, id));
+    const [takeWarehouse] = await tdb.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses).where(eq(schema.warehouses.id, stockTake.warehouseId));
 
     for (const item of items) {
       const [product] = await tdb.select({ itemKind: schema.productsServices.itemKind })
@@ -2181,6 +2190,11 @@ router.post('/stock-takes/:id/finalize', withTenantDb, async (req: any, res) => 
         transactionType: 'StockTake', referenceId: stockTake.id, date: new Date(),
         quantityChange: round2(finalizedQty - currentQty), endingQuantity: finalizedQty,
         batchNumber: item.batchNumber || null,
+      });
+      await postInventoryAdjustment(tdb, {
+        companyId, branchId: takeWarehouse?.branchId ?? null, date: new Date().toISOString().slice(0, 10), productId: item.productId,
+        quantityChange: round2(finalizedQty - currentQty),
+        referenceType: 'StockTake', referenceId: stockTake.id, description: `Stock take variance (${stockTake.id.slice(0, 8)})`, createdById: req.user.id,
       });
     }
 

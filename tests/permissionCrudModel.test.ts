@@ -504,6 +504,8 @@ describe('Bank transfer: separate from routine account editing', () => {
     });
     expect(allowed.status).toBe(200);
 
+    // The transfer now books a ledger entry against both banks; clear those lines before the bank itself.
+    await db.delete(schema.journalLines).where(eq(schema.journalLines.bankId, destBankId));
     await db.delete(schema.vouchers).where(eq(schema.vouchers.companyId, companyId));
     await db.delete(schema.bankAccounts).where(eq(schema.bankAccounts.id, destBankId));
   });

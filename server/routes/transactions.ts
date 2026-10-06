@@ -456,11 +456,14 @@ router.post('/quotations/:id/convert', withTenantDb, async (req: any, res) => {
     // Fold each catalog-linked line into the product's weighted-average sale price —
     // this conversion always represents a genuinely new sale (a fresh invoice row, never
     // an edit), so unlike the main /invoices route there's no isNewInvoice branch needed.
+    let convertCogsTotal = 0;
     for (const item of itemsToInsert) {
       if (!item.productId) continue;
       const [product] = await tdb.select({
         averageSalePrice: schema.productsServices.averageSalePrice,
         totalQuantitySold: schema.productsServices.totalQuantitySold,
+        averageCost: schema.productsServices.averageCost,
+        itemKind: schema.productsServices.itemKind,
       }).from(schema.productsServices).where(eq(schema.productsServices.id, item.productId)).for('update');
       if (product) {
         const priorQty = Number(product.totalQuantitySold || 0);
@@ -474,6 +477,8 @@ router.post('/quotations/:id/convert', withTenantDb, async (req: any, res) => {
         await tdb.update(schema.productsServices)
           .set({ averageSalePrice: String(newAvg), totalQuantitySold: String(round2(newQty)) })
           .where(eq(schema.productsServices.id, item.productId));
+        // Cost of goods sold at the product's current average cost — same rule as POST /invoices.
+        if (product.itemKind === 'item') convertCogsTotal = round2(convertCogsTotal + soldQty * Number(product.averageCost || 0));
       }
       await deductStockForSale(tdb, companyId, item.productId, Number(item.quantity), invoiceId, newInvoice.createdAt as Date, resolvedWarehouseId, item.unitOfMeasureId);
     }
@@ -498,6 +503,45 @@ router.post('/quotations/:id/convert', withTenantDb, async (req: any, res) => {
         branchId: quotation.branchId,
       }, req.user.id);
     }
+
+    // Ledger postings and ZATCA processing — exactly what POST /invoices does for a directly created invoice. This route
+    // used to do neither: the converted invoice was missing from the ledger (receivables, revenue, VAT output, and — for a
+    // stock item — the cost of goods sold, while the stock itself did leave), and it stayed 'NOT_SUBMITTED' forever, which
+    // blocks generating the quarter's VAT return.
+    await postJournalEntry(tdb, {
+      companyId, branchId: quotation.branchId, date: invoiceDate,
+      referenceType: 'Invoice', referenceId: invoiceId,
+      description: `Invoice ${invNumber} raised`,
+      createdById: req.user.id,
+      lines: [
+        { accountKey: 'AR', debit: grandTotal },
+        { accountKey: 'SALES_REVENUE', credit: discountedSubtotal },
+        ...(taxAmount > 0 ? [{ accountKey: 'VAT_OUTPUT', credit: taxAmount }] : []),
+      ],
+    });
+    if (convertCogsTotal > 0) {
+      await postJournalEntry(tdb, {
+        companyId, branchId: quotation.branchId, date: invoiceDate,
+        referenceType: 'Invoice', referenceId: invoiceId,
+        description: `Cost of goods sold for invoice ${invNumber}`,
+        createdById: req.user.id,
+        lines: [{ accountKey: 'COGS', debit: convertCogsTotal }, { accountKey: 'INVENTORY', credit: convertCogsTotal }],
+      });
+    }
+    if (amountPaidNum > 0) {
+      await postJournalEntry(tdb, {
+        companyId, branchId: quotation.branchId, date: invoiceDate,
+        referenceType: 'Invoice', referenceId: invoiceId,
+        description: `Payment received at creation for invoice ${invNumber}`,
+        createdById: req.user.id,
+        lines: [{ accountKey: 'BANK', debit: amountPaidNum, bankId }, { accountKey: 'AR', credit: amountPaidNum }],
+      });
+    }
+    runAfterTenantCommit(() => {
+      processInvoiceZatca(invoiceId).catch(err => {
+        console.error('[Auto ZATCA Error - converted quotation]:', err);
+      });
+    });
 
     recordAuditLog(req, 'CONVERT_QUOTATION', 'quotation', id, {
       quotationNumber: convertedQuotationNumber,
@@ -1457,6 +1501,10 @@ router.post('/invoices/:id/cancel', withTenantDb, async (req: any, res) => {
     // out of every report's totals — see SalesReportsModule.tsx). POST /invoices and
     // /invoices/:id/note already enforce this; this route never did.
     await assertQuarterNotFiled(invoice.date, req.targetCompanyId);
+    // Same rule a Credit Note already enforces: the invoice's own fiscal month must still be open. Cancelling drops the
+    // invoice out of that month's reports, so doing it after the month's profit has been closed and stored would leave
+    // Retained Earnings holding revenue that no longer exists.
+    await validateTransactionDate(invoice.date, req.targetCompanyId);
 
     if (['SUBMITTING', 'CLEARED', 'REPORTED'].includes(invoice.zatcaStatus as string)) {
       const err: any = new Error('This invoice has already been submitted to ZATCA and cannot be cancelled. Issue a Credit Note instead.');
@@ -1538,7 +1586,10 @@ router.post('/invoices/:id/cancel', withTenantDb, async (req: any, res) => {
     // this invoice (Entry A, Entry B if a stock item was sold, and every Entry C/row-2
     // payment), not just the first one found. This is what structurally closes the
     // "only reverses the first voucher" bug class (Findings 7/8 in the review).
-    await reverseAllEntriesFor(tdb, invoice.companyId, 'Invoice', id, new Date().toISOString().slice(0, 10), `Invoice ${invoice.invoiceNumber} cancelled`, req.user.id);
+    // Dated at the INVOICE's own date, not today's: every report removes a cancelled invoice from the month it was dated
+    // in, so its cost of goods sold must come out of that same month. Reversing on the cancel date left the cost in the
+    // original month and a stray credit in whichever month the cancel happened to be done.
+    await reverseAllEntriesFor(tdb, invoice.companyId, 'Invoice', id, invoice.date, `Invoice ${invoice.invoiceNumber} cancelled`, req.user.id);
 
     const cancelledInvoiceNumber = invoice.invoiceNumber;
     const cancelledDocType = invoice.documentType;
@@ -1654,6 +1705,16 @@ router.post('/investors/:id/investment', withTenantDb, async (req: any, res) => 
     await tdb.update(schema.investors)
       .set({ capitalContributed: String(round2(Number(investor.capitalContributed || 0) + amountNum)) })
       .where(eq(schema.investors.id, investorId));
+
+    // Ledger: the cash came in, and the owners' capital went up by the same amount. This route recorded the receipt voucher
+    // and the investor's running total but never reached the ledger, so the ledger's Bank was short by every contribution.
+    await postJournalEntry(tdb, {
+      companyId, branchId: null, date,
+      referenceType: 'Capital', referenceId: investorId,
+      description: `Capital contribution from ${investor.name}`,
+      createdById: req.user.id,
+      lines: [{ accountKey: 'BANK', debit: amountNum, bankId }, { accountKey: 'PAID_IN_CAPITAL', credit: amountNum }],
+    });
 
     res.json({ success: true });
   } catch (error: any) {
@@ -2331,6 +2392,16 @@ router.post('/interbank-transfer', withTenantDb, async (req: any, res) => {
       createdById: req.user.id,
       createdAt: new Date(),
       companyId,
+    });
+
+    // Ledger: money moves from one bank account to the other — the company's total cash is unchanged, but each bank's own
+    // balance in the ledger must follow it.
+    await postJournalEntry(tdb, {
+      companyId, branchId: null, date: dateStr,
+      referenceType: 'Transfer', referenceId: transferId,
+      description: `Inter-bank transfer ${sourceBank.bankName} -> ${destBank.bankName}`,
+      createdById: req.user.id,
+      lines: [{ accountKey: 'BANK', debit: Number(amount), bankId: destBankId }, { accountKey: 'BANK', credit: Number(amount), bankId: sourceBankId }],
     });
 
     res.json({ success: true });

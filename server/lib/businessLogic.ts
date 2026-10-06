@@ -926,7 +926,7 @@ export async function postCreditNoteReversalVoucher(
       createdById: userId,
       createdAt: new Date(),
     });
-    return;
+    return { refundBankId: existingVoucher.bankId as string };
   }
 
   // Full credit note against the whole original invoice: reverse EVERY Receipt voucher

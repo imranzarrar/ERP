@@ -159,6 +159,30 @@ export async function reverseAllEntriesFor(
   return newIds;
 }
 
+// Stock that is lost or found without any money changing hands — a stock-take shortage, a manual adjustment — still changes
+// what the inventory is worth, so it must reach the profit and loss. Without this the units left inventory (or appeared in it)
+// and the Balance Sheet stopped balancing by exactly their cost. Valued at the product's average cost, booked to cost of goods
+// sold like every other inventory release: a shortage debits cost and credits inventory, a gain does the reverse.
+// `quantityChange` is in BASE units: negative = lost, positive = found.
+export async function postInventoryAdjustment(tx: any, input: {
+  companyId: string; branchId?: string | null; date: string; productId: string; quantityChange: number;
+  referenceType: string; referenceId: string; description: string; createdById: string;
+}): Promise<void> {
+  if (!input.quantityChange) return;
+  const [product] = await tx.select({ averageCost: schema.productsServices.averageCost })
+    .from(schema.productsServices).where(eq(schema.productsServices.id, input.productId));
+  const cost = round2(Math.abs(input.quantityChange) * Number(product?.averageCost || 0));
+  if (cost <= 0) return;
+  await postJournalEntry(tx, {
+    companyId: input.companyId, branchId: input.branchId ?? null, date: input.date,
+    referenceType: input.referenceType, referenceId: input.referenceId,
+    description: input.description, createdById: input.createdById,
+    lines: input.quantityChange < 0
+      ? [{ accountKey: 'COGS', debit: cost }, { accountKey: 'INVENTORY', credit: cost }]
+      : [{ accountKey: 'INVENTORY', debit: cost }, { accountKey: 'COGS', credit: cost }],
+  });
+}
+
 // SUM(debit) - SUM(credit) for one account, scoped to a company (and optionally a date
 // range and/or a set of branch ids, matching resolveBranchIds()' null-means-unrestricted
 // convention used everywhere else in this app). Positive = a debit balance, negative = a
