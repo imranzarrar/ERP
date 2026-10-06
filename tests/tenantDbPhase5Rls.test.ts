@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import bcrypt from 'bcrypt';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import pg from 'pg';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
@@ -94,13 +94,16 @@ afterAll(async () => {
   await db.delete(schema.stockLedgerTransactions).where(eq(schema.stockLedgerTransactions.companyId, companyBId));
   await db.delete(schema.inventoryStocks).where(eq(schema.inventoryStocks.companyId, companyAId));
   await db.delete(schema.inventoryStocks).where(eq(schema.inventoryStocks.companyId, companyBId));
-  await db.delete(schema.goodsReceiptNoteItems);
+  await db.delete(schema.goodsReceiptNoteItems).where(inArray(schema.goodsReceiptNoteItems.grnId,
+    db.select({ id: schema.goodsReceiptNotes.id }).from(schema.goodsReceiptNotes).where(inArray(schema.goodsReceiptNotes.companyId, [companyAId, companyBId]))));
   await db.delete(schema.goodsReceiptNotes).where(eq(schema.goodsReceiptNotes.companyId, companyAId));
   await db.delete(schema.goodsReceiptNotes).where(eq(schema.goodsReceiptNotes.companyId, companyBId));
-  await db.delete(schema.purchaseOrderItems);
+  await db.delete(schema.purchaseOrderItems).where(inArray(schema.purchaseOrderItems.purchaseOrderId,
+    db.select({ id: schema.purchaseOrders.id }).from(schema.purchaseOrders).where(inArray(schema.purchaseOrders.companyId, [companyAId, companyBId]))));
   await db.delete(schema.purchaseOrders).where(eq(schema.purchaseOrders.companyId, companyAId));
   await db.delete(schema.purchaseOrders).where(eq(schema.purchaseOrders.companyId, companyBId));
-  await db.delete(schema.purchaseRequisitionItems);
+  await db.delete(schema.purchaseRequisitionItems).where(inArray(schema.purchaseRequisitionItems.requisitionId,
+    db.select({ id: schema.purchaseRequisitions.id }).from(schema.purchaseRequisitions).where(inArray(schema.purchaseRequisitions.companyId, [companyAId, companyBId]))));
   await db.delete(schema.purchaseRequisitions).where(eq(schema.purchaseRequisitions.companyId, companyAId));
   await db.delete(schema.purchaseRequisitions).where(eq(schema.purchaseRequisitions.companyId, companyBId));
   await db.delete(schema.productsServices).where(eq(schema.productsServices.companyId, companyAId));

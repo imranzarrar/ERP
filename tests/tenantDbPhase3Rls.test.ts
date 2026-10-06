@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import bcrypt from 'bcrypt';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import pg from 'pg';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
@@ -99,11 +99,13 @@ afterAll(async () => {
   await db.delete(schema.vouchers).where(eq(schema.vouchers.companyId, companyAId));
   await db.delete(schema.recurringPostings).where(eq(schema.recurringPostings.companyId, companyAId));
   await db.delete(schema.recurringExpenseTemplates).where(eq(schema.recurringExpenseTemplates.companyId, companyAId));
-  await db.delete(schema.expenseItems);
+  await db.delete(schema.expenseItems).where(inArray(schema.expenseItems.expenseId,
+    db.select({ id: schema.expenses.id }).from(schema.expenses).where(inArray(schema.expenses.companyId, [companyAId, companyBId]))));
   await db.delete(schema.expenses).where(eq(schema.expenses.companyId, companyAId));
   await db.delete(schema.investors).where(eq(schema.investors.companyId, companyAId));
   await db.delete(schema.fiscalMonths).where(eq(schema.fiscalMonths.companyId, companyAId));
-  await db.delete(schema.quotationItems);
+  await db.delete(schema.quotationItems).where(inArray(schema.quotationItems.quotationId,
+    db.select({ id: schema.quotations.id }).from(schema.quotations).where(inArray(schema.quotations.companyId, [companyAId, companyBId]))));
   await db.delete(schema.quotations).where(eq(schema.quotations.companyId, companyAId));
   await db.delete(schema.quotations).where(eq(schema.quotations.companyId, companyBId));
   await db.delete(schema.customers).where(eq(schema.customers.companyId, companyAId));
