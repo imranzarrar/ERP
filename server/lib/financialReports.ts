@@ -44,6 +44,31 @@ function expenseParts(exp: any, pctBySlab: Map<string, number>): { netAmount: nu
   return splitExpenseTaxInclusiveAmount(Number(exp.amount), pctBySlab.get(exp.taxSlabId) ?? 0);
 }
 
+// A cost is recognised when it is ACCRUED; the Actual that later settles an accrual is only the payment of that same cost
+// and adds nothing. Unless the supplier asked for a different amount than was accrued: then the DIFFERENCE is a real
+// (extra, or smaller) cost that belongs to the month of the settlement. Without it the P&L silently ignored that
+// difference while the cash and the input VAT both moved, so the Balance Sheet stopped balancing by exactly that net amount.
+// Returns, per settling expense in `exps`, that net difference (negative when the supplier took less than accrued).
+async function settlementVariances(executor: any, companyId: string, exps: any[], pctBySlab: Map<string, number>): Promise<Map<string, number>> {
+  const settling = exps.filter(e => e.type === 'Actual' && e.originAccrualId);
+  const out = new Map<string, number>();
+  if (!settling.length) return out;
+  const accruals: any[] = await executor.select().from(schema.expenses).where(and(
+    eq(schema.expenses.companyId, companyId),
+    inArray(schema.expenses.id, Array.from(new Set(settling.map(e => e.originAccrualId))) as string[]),
+  ));
+  const accrualById = new Map(accruals.map(a => [a.id, a]));
+  for (const e of settling) {
+    const accrual = accrualById.get(e.originAccrualId);
+    out.set(e.id, accrual ? round2(expenseParts(e, pctBySlab).netAmount - expenseParts(accrual, pctBySlab).netAmount) : 0);
+  }
+  return out;
+}
+// What one expense contributes to the P&L (accrual basis).
+function recognisedCost(exp: any, pctBySlab: Map<string, number>, variances: Map<string, number>): number {
+  return exp.type === 'Actual' && exp.originAccrualId ? (variances.get(exp.id) ?? 0) : expenseParts(exp, pctBySlab).netAmount;
+}
+
 interface InvoiceTotals { itemsSubtotal: number; headerDiscount: number; discountedSubtotal: number; taxAmount: number; grandTotal: number; }
 
 // Shared by every function below that needs per-invoice totals — fetches items + tax
@@ -291,10 +316,10 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
   if (basis === 'Accrual') {
     const opExInRange = periodExpenses.filter(exp =>
       exp.classification !== 'Asset' &&
-      exp.date >= startDate && exp.date <= endDate &&
-      (exp.type === 'Accrual' || (exp.type === 'Actual' && !exp.originAccrualId))
+      exp.date >= startDate && exp.date <= endDate
     );
-    totalExpenses = round2(opExInRange.reduce((sum, exp) => sum + expenseParts(exp, plPctBySlab).netAmount, 0));
+    const plVariances = await settlementVariances(executor, companyId, opExInRange, plPctBySlab);
+    totalExpenses = round2(opExInRange.reduce((sum, exp) => sum + recognisedCost(exp, plPctBySlab, plVariances), 0));
   } else {
     // Cash basis: each payment counts for its NET share (the recoverable VAT in it is not a cost).
     totalExpenses = round2(periodVouchers
@@ -516,9 +541,9 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   const openRevenue = allInvoicesToDate
     .filter(inv => monthIsOpen(inv.date))
     .reduce((sum: number, inv: any) => sum + allInvoiceTotals.get(inv.id)!.discountedSubtotal * invoiceSign(inv), 0);
-  const openExpenses = allExpenses
-    .filter(e => e.classification !== 'Asset' && (e.type === 'Accrual' || (e.type === 'Actual' && !e.originAccrualId)) && monthIsOpen(e.date))
-    .reduce((sum: number, e: any) => sum + expenseParts(e, bsPctBySlab).netAmount, 0);
+  const openExpenseRows = allExpenses.filter(e => e.classification !== 'Asset' && monthIsOpen(e.date));
+  const bsVariances = await settlementVariances(executor, companyId, openExpenseRows, bsPctBySlab);
+  const openExpenses = openExpenseRows.reduce((sum: number, e: any) => sum + recognisedCost(e, bsPctBySlab, bsVariances), 0);
   const cogsRows = await executor.select({
     debit: schema.journalLines.debit, credit: schema.journalLines.credit, date: schema.journalEntries.date,
   })
@@ -639,13 +664,14 @@ export async function computeMonthPnL(executor: any, companyId: string, monthId:
   // that later settles it (originAccrualId set) is only the payment of that same cost, so it is not counted a second time
   // in the month it is paid. (Dropping the settled accrual and counting its payment instead moved the cost into the wrong
   // month, so a closed month stored a different profit than the P&L shows for it.)
-  const expensesInMonth = monthExpenses.filter(exp => exp.date.startsWith(monthId) && exp.classification !== 'Asset' && (exp.type === 'Accrual' || (exp.type === 'Actual' && !exp.originAccrualId)));
+  const expensesInMonth = monthExpenses.filter(exp => exp.date.startsWith(monthId) && exp.classification !== 'Asset');
   let paidExpenses = 0;
   let totalExpenses = 0;
   const monthPctBySlab = await taxPercentageBySlabId(executor, companyId);
+  const monthVariances = await settlementVariances(executor, companyId, expensesInMonth, monthPctBySlab);
   for (const exp of expensesInMonth) {
     // Net of recoverable VAT — this figure is written permanently on month close.
-    const amount = expenseParts(exp, monthPctBySlab).netAmount;
+    const amount = recognisedCost(exp, monthPctBySlab, monthVariances);
     totalExpenses = round2(totalExpenses + amount);
     if (exp.paymentStatus === 'Paid') paidExpenses = round2(paidExpenses + amount);
   }
@@ -837,9 +863,12 @@ export async function computeDashboardSummary(
 
   // Cards that show money out keep the gross amounts; profit uses the net-of-recoverable-VAT cost.
   const dashPctBySlab = await taxPercentageBySlabId(executor, companyId);
-  const netExpenseActual = round2(monthExpenses
-    .filter(exp => exp.status === 'Active' && exp.type === 'Actual' && exp.classification !== 'Asset')
-    .reduce((sum, exp) => sum + expenseParts(exp, dashPctBySlab).netAmount, 0));
+  // Profit is on the same accrual basis as the Profit & Loss: an expense counts when it is accrued (an Accrual) or incurred
+  // (an Actual that settles nothing), and a settlement adds only its difference from the accrual. Summing only the
+  // Actual-type rows left every unsettled accrual out of the profit and put settlements in the month they were paid.
+  const dashExpenses = monthExpenses.filter(exp => exp.status === 'Active' && exp.classification !== 'Asset');
+  const dashVariances = await settlementVariances(executor, companyId, dashExpenses, dashPctBySlab);
+  const netExpenseActual = round2(dashExpenses.reduce((sum, exp) => sum + recognisedCost(exp, dashPctBySlab, dashVariances), 0));
   const netProfit = round2(netSalesExVat - costOfGoodsSold - netExpenseActual);
   // Margin is profit over TAX-EXCLUSIVE sales (the same basis as the profit itself); dividing by the VAT-inclusive
   // 'Gross Month Sales' understated it.
