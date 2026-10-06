@@ -1,6 +1,6 @@
 import { computeBillInputVat } from './inputVat.js';
 import * as schema from '../../src/db/schema.js';
-import { eq, and, gte, lte, lt, ne, inArray, asc, sql } from 'drizzle-orm';
+import { eq, and, gte, lte, lt, ne, inArray, asc, sql, isNotNull } from 'drizzle-orm';
 import { round2, computeInvoiceServerTotals, splitExpenseTaxInclusiveAmount } from './businessLogic.js';
 
 // Real, server-side financial-report calculations — one function per report, each scoped
@@ -64,6 +64,35 @@ async function settlementVariances(executor: any, companyId: string, exps: any[]
   }
   return out;
 }
+// An Accrual is an ESTIMATE of a cost whose supplier invoice has not arrived. Input VAT is only deductible on a valid tax
+// invoice (KSA VAT Implementing Regulations, Art. 49 / 53), so an accrual carries no recoverable VAT: what is owed (and
+// what is costed) is the net amount. The real invoice that later settles it is a normal expense and claims its own VAT,
+// in its own period — which also means a later settlement can never change a quarter that was already filed.
+function liabilityAmount(exp: any, pctBySlab: Map<string, number>): number {
+  return exp.type === 'Accrual' ? expenseParts(exp, pctBySlab).netAmount : Number(exp.amount);
+}
+
+// Money a supplier owes BACK to the company: a purchase return made after the bill was paid in full (the bill's own
+// totals are left as paid history, so the refund due is not visible there). It is a receivable from the supplier —
+// presented as its own asset and not netted against Accounts Payable (IAS 1.32 / IAS 32.42: no offsetting without a
+// legally enforceable right of set-off and an intention to settle net). Gross of the VAT given back, dated by the return.
+export interface VendorCreditLine { documentNumber: string; date: string; vendorId: string; amount: number; }
+async function computeVendorCredits(executor: any, companyId: string, asOfDate: string, vendorId: string | 'ALL' = 'ALL'): Promise<{ total: number; lines: VendorCreditLine[] }> {
+  const rows: any[] = await executor.select().from(schema.purchaseReturns).where(and(
+    eq(schema.purchaseReturns.companyId, companyId),
+    eq(schema.purchaseReturns.status, 'Active'),
+    eq(schema.purchaseReturns.billTotalsReduced, false),
+    isNotNull(schema.purchaseReturns.billId),
+    isNotNull(schema.purchaseReturns.inputVatAdjustment),
+    lte(schema.purchaseReturns.date, new Date(asOfDate + 'T23:59:59.999Z')),
+  ));
+  const lines = rows.filter(r => vendorId === 'ALL' || r.vendorId === vendorId).map(r => ({
+    documentNumber: r.returnNumber, date: new Date(r.date).toISOString().slice(0, 10), vendorId: r.vendorId,
+    amount: round2(Number(r.netAdjustment || 0) + Number(r.inputVatAdjustment || 0)),
+  }));
+  return { total: round2(lines.reduce((s, l) => s + l.amount, 0)), lines };
+}
+
 // What one expense contributes to the P&L (accrual basis).
 function recognisedCost(exp: any, pctBySlab: Map<string, number>, variances: Map<string, number>): number {
   return exp.type === 'Actual' && exp.originAccrualId ? (variances.get(exp.id) ?? 0) : expenseParts(exp, pctBySlab).netAmount;
@@ -201,6 +230,7 @@ export async function computeTrialBalance(executor: any, companyId: string, star
     side('Inventory', bs.inventoryValue),
     side('Capitalized Fixed Assets', bs.fixedAssets),
     side('VAT Input (Recoverable)', bs.vatInputRecoverable),
+    side('Vendor Credit Receivable', bs.vendorCreditReceivable),
     side('Accounts Payable', -bs.accountsPayable),
     side('VAT Collected (Output Tax)', -bs.vatOutputPayable),
     side('Goods Received Not Billed', -bs.goodsReceivedNotBilled),
@@ -398,6 +428,8 @@ export interface BalanceSheetFigures {
   // the tax authority — both are assets that were missing, which is part of why the sheet didn't balance.
   fixedAssets: number;
   vatInputRecoverable: number;
+  // Refund due from suppliers for goods returned after the bill was already paid in full (a receivable, not netted into AP).
+  vendorCreditReceivable: number;
   totalAssets: number;
   accountsPayable: number;
   // Output VAT on sales (net of Credit Notes) — collected on the authority's behalf, so a liability.
@@ -463,7 +495,8 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   ))).filter((exp: any) => !(exp.type === 'Accrual' && exp.accrualSettled));
   // Excludes a settled Accrual — see computeOutstanding's matching comment for the live-
   // confirmed incident this closes: its own paymentStatus never changes on settlement.
-  let accountsPayable = round2(unpaidExpenses.reduce((sum, exp) => sum + (Number(exp.amount) - Number(exp.amountPaid || 0)), 0));
+  const apPctBySlab = await taxPercentageBySlabId(executor, companyId);
+  let accountsPayable = round2(unpaidExpenses.reduce((sum, exp) => sum + (liabilityAmount(exp, apPctBySlab) - Number(exp.amountPaid || 0)), 0));
 
   // Also owes whatever's still unpaid on a Purchase Bill (Phase 3) — same gap, same fix,
   // as computeTrialBalance's matching comment: the ledger's own AP account already
@@ -522,7 +555,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   // Recoverable VAT = the VAT on Purchase Bills + the VAT inside every (non-settled-accrual) expense —
   // the same set the VAT return claims.
   const expenseVatInput = allExpenses
-    .filter(e => !(e.type === 'Accrual' && e.accrualSettled))
+    .filter(e => e.type !== 'Accrual')
     .reduce((sum, e) => sum + expenseParts(e, bsPctBySlab).taxAmount, 0);
   const vatInputRecoverable = round2((await computeBillInputVat(executor, companyId, '1900-01-01', asOfDate)).vat + expenseVatInput);
 
@@ -594,7 +627,8 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   }
   goodsReceivedNotBilled = round2(Math.max(0, goodsReceivedNotBilled));
 
-  const totalAssets = round2(bankBalance + accountsReceivable + inventoryValue + fixedAssets + vatInputRecoverable);
+  const vendorCreditReceivable = (await computeVendorCredits(executor, companyId, asOfDate)).total;
+  const totalAssets = round2(bankBalance + accountsReceivable + inventoryValue + fixedAssets + vatInputRecoverable + vendorCreditReceivable);
   const totalLiabilities = round2(accountsPayable + vatOutputPayable + goodsReceivedNotBilled);
 
   const investors = await executor.select().from(schema.investors).where(eq(schema.investors.companyId, companyId));
@@ -610,7 +644,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   const totalEquity = round2(capitalContributed + retainedEarnings + currentPeriodEarnings);
 
   return {
-    asOfDate, bankBalance, accountsReceivable, inventoryValue, fixedAssets, vatInputRecoverable, totalAssets,
+    asOfDate, bankBalance, accountsReceivable, inventoryValue, fixedAssets, vatInputRecoverable, vendorCreditReceivable, totalAssets,
     accountsPayable, vatOutputPayable, goodsReceivedNotBilled, totalLiabilities,
     capitalContributed, retainedEarnings, currentPeriodEarnings, totalEquity,
     balanceCheck: round2(totalAssets - (totalLiabilities + totalEquity)),
@@ -1202,8 +1236,9 @@ export async function computePurchaseRegister(executor: any, companyId: string, 
     status: b.status === 'Cancelled' ? 'Cancelled' : 'Active', paymentStatus: b.status === 'Cancelled' ? 'Cancelled' : b.status,
     totalAmount: Number(b.grandTotal),
   }));
+  const regPct = await taxPercentageBySlabId(executor, companyId);
   const rows: PurchaseRegisterRow[] = [...billRows, ...filtered
-    .map(exp => ({ expenseNumber: exp.expenseNumber, date: exp.date, vendorName: vendorNameById.get(exp.vendorId) || 'Vendor', status: exp.status, paymentStatus: exp.paymentStatus, totalAmount: Number(exp.amount) }))]
+    .map(exp => ({ expenseNumber: exp.expenseNumber, date: exp.date, vendorName: vendorNameById.get(exp.vendorId) || 'Vendor', status: exp.status, paymentStatus: exp.paymentStatus, totalAmount: liabilityAmount(exp, regPct) }))]
     .sort((a, b) => a.date.localeCompare(b.date));
   const totalAmount = round2(rows.filter(r => r.status === 'Active').reduce((s, r) => s + r.totalAmount, 0));
   return { rows, totalAmount };
@@ -1238,7 +1273,10 @@ export async function computeVendorStatement(executor: any, companyId: string, v
   // Expense/Bill = debit (increases what the company owes this vendor); Payment = credit
   // (reduces it) — the reverse of computeCustomerStatement's convention, matching the
   // original client code's own debit/credit assignment exactly (getVendorStatementData).
-  const entries: Omit<StatementEntry, 'runningBalance'>[] = vendExpenses.map(exp => ({ date: exp.date, type: 'Expense', docNumber: exp.expenseNumber, debit: Number(exp.amount), credit: 0 }));
+  const stmtPct = await taxPercentageBySlabId(executor, companyId);
+  const entries: Omit<StatementEntry, 'runningBalance'>[] = vendExpenses.map(exp => ({ date: exp.date, type: 'Expense', docNumber: exp.expenseNumber, debit: liabilityAmount(exp, stmtPct), credit: 0 }));
+  // Goods returned after the bill was paid in full: the supplier owes this back, which lowers the balance on this statement.
+  for (const c of (await computeVendorCredits(executor, companyId, '9999-12-31', vendorId)).lines) entries.push({ date: c.date, type: 'Purchase Return', docNumber: c.documentNumber, debit: 0, credit: c.amount });
   for (const b of vendBills) entries.push({ date: b.date.toISOString().slice(0, 10), type: 'Purchase Bill', docNumber: b.billNumber, debit: Number(b.grandTotal), credit: 0 });
   for (const v of payments) entries.push({ date: v.date, type: 'Payment', docNumber: v.voucherNumber, debit: 0, credit: Number(v.amount) });
   entries.sort((a, b) => a.date.localeCompare(b.date));
@@ -1715,7 +1753,8 @@ export async function computePurchaseVatRegister(executor: any, companyId: strin
     eq(schema.expenses.companyId, companyId), eq(schema.expenses.status, 'Active'),
     gte(schema.expenses.date, startDate), lte(schema.expenses.date, endDate),
   ));
-  const filtered = exps.filter(e => !(e.type === 'Accrual' && e.accrualSettled) && branchOk(e.branchId) && (vendorId === 'ALL' || e.vendorId === vendorId));
+  // An Accrual has no tax invoice, so it is never on the VAT register; its settling invoice is (in its own period).
+  const filtered = exps.filter(e => e.type !== 'Accrual' && branchOk(e.branchId) && (vendorId === 'ALL' || e.vendorId === vendorId));
   const billInputVat = await computeBillInputVat(executor, companyId, startDate, endDate);
   const bills: any[] = billInputVat.lines.filter(l => (l.kind === 'Return' || branchOk(l.branchId)) && (vendorId === 'ALL' || l.vendorId === vendorId));
   const slabs: any[] = await executor.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.companyId, companyId));
@@ -1834,8 +1873,9 @@ export async function computeOutstanding(executor: any, companyId: string, start
     const total = totals.get(i.id)!.grandTotal; const paid = Number(i.amountPaid || 0);
     return { id: i.id, type: 'Invoice' as const, docNumber: i.invoiceNumber, date: i.date, contactName: cName.get(i.customerId) || 'Walk-In', total, paid, outstanding: round2(total - paid), paymentStatus: i.paymentStatus, referenceId: i.id };
   }).sort(byDate);
+  const outPct = await taxPercentageBySlabId(executor, companyId);
   const expRows: OutstandingRow[] = exps.map(e => {
-    const total = Number(e.amount); const paid = Number(e.amountPaid || 0);
+    const total = liabilityAmount(e, outPct); const paid = Number(e.amountPaid || 0);
     return { id: e.id, type: 'Expense' as const, docNumber: e.expenseNumber, date: e.date, contactName: vName.get(e.vendorId) || 'Cash Vendor', total, paid, outstanding: round2(total - paid), paymentStatus: e.paymentStatus, referenceId: e.id };
   }).sort(byDate);
   const billRows: OutstandingRow[] = bills.map(b => {

@@ -108,7 +108,7 @@ export async function computeVatReturnFigures(executor: any, companyId: string, 
     eq(schema.expenses.status, 'Active'),
     gte(schema.expenses.date, startDate),
     lte(schema.expenses.date, endDate)
-  ))).filter((e: any) => !(e.type === 'Accrual' && e.accrualSettled));
+  ))).filter((e: any) => e.type !== 'Accrual');   // an accrual has no tax invoice; its settling invoice claims the VAT in its own period
   const expenseTaxSlabIds = Array.from(new Set(expensesInRange.map(e => e.taxSlabId).filter(Boolean))) as string[];
   const expenseTaxSlabRows: any[] = expenseTaxSlabIds.length > 0 ? await executor.select().from(schema.taxSlabs).where(inArray(schema.taxSlabs.id, expenseTaxSlabIds)) : [];
   const expensePercentageById = new Map(expenseTaxSlabRows.map(s => [s.id, Number(s.percentage)]));

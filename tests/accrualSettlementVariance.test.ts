@@ -72,15 +72,27 @@ describe('settling an accrual for a different amount', () => {
     expect(pl.totalExpenses).toBe(600);
     expect(pl.netProfit).toBe(-600);
 
-    // paid 345 + 230 = 575; owed 115 (the unsettled accrual)
+    // paid 345 + 230 = 575. The unsettled accrual is owed at its NET (100): an estimate has no tax invoice, so no input VAT
+    // on it (KSA VAT Implementing Regulations Art. 49/53). Only the two real invoices claim VAT: 45 + 30.
     const bs = await rep('balance-sheet', `asOfDate=${today}`);
     expect(bs.bankBalance).toBe(-575);
-    expect(bs.accountsPayable).toBe(115);
+    expect(bs.accountsPayable).toBe(100);
+    expect(bs.vatInputRecoverable).toBe(75);
     expect(bs.currentPeriodEarnings).toBe(-600);
     expect(near(bs.balanceCheck, 0)).toBe(true);
 
     const tb = await rep('trial-balance', `startDate=${CUR}-01&endDate=${today}`);
     expect(near(tb.totalDebits, tb.totalCredits)).toBe(true);
+
+    // the VAT register and the return claim the same 75, and the unsettled accrual is not on it
+    const pv = await rep('purchase-vat', `startDate=${CUR}-01&endDate=${today}`);
+    expect(pv.totals.taxAmount).toBe(75);
+    expect(pv.count).toBe(2);
+    const vs = await rep('vat-return-summary', `startDate=${CUR}-01&endDate=${today}`);
+    expect(vs.inputVat).toBe(75);
+    // the vendor statement and outstanding report owe the same 100
+    const out = await rep('outstanding', '');
+    expect(out.totalPayable).toBe(100);
 
     // the dashboard's Net Profit is the same figure as the P&L
     const dash = await rep('dashboard-summary', `startDate=${CUR}-01&endDate=${today}`);

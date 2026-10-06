@@ -476,7 +476,7 @@ const getBalanceSheetData = () => {
     capitalContributed, retainedEarnings, totalEquity,
     // Server-only figures (see computeBalanceSheet) — this legacy client-side builder is no longer
     // the source of truth; the fields exist so both shapes satisfy the same screen.
-    fixedAssets: 0, vatInputRecoverable: 0, vatOutputPayable: 0, goodsReceivedNotBilled: 0, currentPeriodEarnings: 0,
+    fixedAssets: 0, vatInputRecoverable: 0, vendorCreditReceivable: 0, vatOutputPayable: 0, goodsReceivedNotBilled: 0, currentPeriodEarnings: 0,
     // A real chart-of-accounts would balance exactly; this derived approximation is
     // shown for transparency, not hidden — a large gap is itself a useful audit signal.
     balanceCheck: totalAssets - (totalLiabilities + totalEquity),
@@ -1488,6 +1488,7 @@ const getFiscalMonthClosingHistoryData = () => ({ months: (vd.rows || []) as any
  <div className="flex justify-between text-xs"><span className="text-slate-500">{t('Inventory Value')}</span><span className="font-bold">{currencySymbol} {data.inventoryValue.toFixed(2)}</span></div>
  <div className="flex justify-between text-xs"><span className="text-slate-500">{t('Fixed Assets')}</span><span className="font-bold">{currencySymbol} {(data.fixedAssets ?? 0).toFixed(2)}</span></div>
  <div className="flex justify-between text-xs"><span className="text-slate-500">{t('VAT Input (Recoverable)')}</span><span className="font-bold">{currencySymbol} {(data.vatInputRecoverable ?? 0).toFixed(2)}</span></div>
+ <div className="flex justify-between text-xs"><span className="text-slate-500">{t('Vendor Credit Receivable')}</span><span className="font-bold">{currencySymbol} {(data.vendorCreditReceivable ?? 0).toFixed(2)}</span></div>
  <div className="flex justify-between items-center py-2 mt-1 bg-indigo-50/60 px-3 rounded-xl"><span className="text-[10px] font-black text-indigo-900 uppercase">{t('Total Assets')}</span><span className="text-sm font-black text-indigo-700">{currencySymbol} {data.totalAssets.toFixed(2)}</span></div>
  </div>
  <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-3">

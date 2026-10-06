@@ -1979,11 +1979,14 @@ router.post('/recurring-postings', withTenantDb, async (req: any, res) => {
       referenceId: expenseId,
       description: `Expense ${expNumber} raised`,
       createdById: req.user.id,
-      lines: [
-        { accountKey: 'DIRECT_OPEX', debit: netAmount },
-        ...(taxAmount > 0 ? [{ accountKey: 'VAT_INPUT', debit: taxAmount }] : []),
-        { accountKey: 'AP', credit: grossAmount },
-      ],
+      // An accrual is an estimate with no tax invoice: net cost only, no recoverable VAT, owed at the net amount.
+      lines: postType === 'Accrual'
+        ? [{ accountKey: 'DIRECT_OPEX', debit: netAmount }, { accountKey: 'AP', credit: netAmount }]
+        : [
+            { accountKey: 'DIRECT_OPEX', debit: netAmount },
+            ...(taxAmount > 0 ? [{ accountKey: 'VAT_INPUT', debit: taxAmount }] : []),
+            { accountKey: 'AP', credit: grossAmount },
+          ],
     });
     if (amountPaid > 0) {
       await postJournalEntry(tdb, {
