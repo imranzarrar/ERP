@@ -46,8 +46,9 @@ async function simulate(seed: number) {
     await db.insert(schema.warehouses).values({ id: warehouse2Id, name: 'Second Warehouse', code: 'WH2', isActive: true, companyId, type: 'sales', isCompanyDefault: false } as any);
     const bank2Id = generateId();
     await db.insert(schema.bankAccounts).values({ id: bank2Id, bankName: 'Second Bank', accountNumber: '222', accountTitle: 'Second', openingBalance: '0', companyId, isActive: true } as any);
-    const P = generateId(), S = generateId();
+    const P = generateId(), S = generateId(), P2 = generateId();
     await db.insert(schema.productsServices).values([
+      { id: P2, name: 'Fuzz Item Two', description: 'Fuzz Item Two', unitPrice: '80', costPrice: '50', itemKind: 'item', companyId, averageCost: '0', totalQuantityPurchased: '0' },
       { id: P, name: 'Fuzz Item', description: 'Fuzz Item', unitPrice: '150', costPrice: '100', itemKind: 'item', companyId, averageCost: '0', totalQuantityPurchased: '0' },
       { id: S, name: 'Fuzz Service', description: 'Fuzz Service', unitPrice: '400', costPrice: '0', itemKind: 'service', companyId },
     ] as any);
@@ -63,6 +64,8 @@ async function simulate(seed: number) {
     };
     const rep = async (name: string, q: string) => (await call('GET', `/api/reports/${name}?${q}`)).body;
     const D = (d: number, m: string) => `${m}-${String(Math.min(d, dim(m))).padStart(2, '0')}`;
+    // a user-dated document: usually today, sometimes an earlier day of the same (open) month
+    const docDate = () => { const dd = Number(clock.slice(8, 10)); return rand() < 0.2 && dd > 1 ? `${clock.slice(0, 8)}${String(between(1, dd - 1)).padStart(2, '0')}` : clock; };
 
     // ---- state the simulation keeps about what exists ----
     const invs: any[] = [], exps: any[] = [], grns: any[] = [], bills: any[] = [], rets: any[] = [], transit: any[] = [];
@@ -113,40 +116,63 @@ async function simulate(seed: number) {
           // purchasing
           if (roll < 0.10) {
             const qty = between(3, 15);
-            const cost = pick([90, 100, 110, 120])!;
-            const r = await step(`GRN ${qty} @${cost}`, () => call('POST', '/api/inventory/goods-receipt-notes', { grnData: { isDsd: true, vendorId, warehouseId, receivedBy: 'Fuzz', items: [{ productId: P, quantityReceived: qty, unitCost: cost, taxRate: 15 }] } }), b => grns.push({ id: b.goodsReceiptNote.id, qty, returned: 0, billed: false, reversed: false, date: today }));
+            const pid = rand() < 0.65 ? P : P2;
+            const cost = pid === P ? pick([90, 100, 110, 120])! : pick([45, 50, 55])!;
+            const r = await step(`GRN ${qty} @${cost}${pid === P2 ? ' (item two)' : ''}`, () => call('POST', '/api/inventory/goods-receipt-notes', { grnData: { isDsd: true, vendorId, warehouseId, receivedBy: 'Fuzz', items: [{ productId: pid, quantityReceived: qty, unitCost: cost, taxRate: 15 }] } }), b => grns.push({ id: b.goodsReceiptNote.id, qty, returned: 0, billed: false, reversed: false, date: today, pid }));
             const g = grns[grns.length - 1];
             if (r.status === 200 && rand() < 0.75) {
-              await step('bill', () => call('POST', '/api/inventory/purchase-bills', { billData: { grnIds: [g.id], bankId, date: today, vendorBillNumber: 'F' + ops } }), b => { g.billed = true; bills.push({ id: b.purchaseBill.id, grnId: g.id, gross: Number(b.purchaseBill.grandTotal), paid: 0, date: today, cancelled: false }); });
+              await step('bill', () => call('POST', '/api/inventory/purchase-bills', { billData: { grnIds: [g.id], bankId, date: docDate(), vendorBillNumber: 'F' + ops } }), b => { g.billed = true; bills.push({ id: b.purchaseBill.id, grnId: g.id, gross: Number(b.purchaseBill.grandTotal), paid: 0, date: today, cancelled: false }); });
             }
           }
           // selling
           else if (roll < 0.30) {
-            const stock = rand() < 0.65;
-            const qty = between(1, 5);
-            const net = stock ? qty * 150 : qty * 400;
-            const gross = Math.round(net * 1.15 * 100) / 100;
+            const lines: any[] = []; const nLines = between(1, 3);
+            for (let l = 0; l < nLines; l++) {
+              const kind = pick(['stock', 'stock', 'stock2', 'service', 'typed'])!;
+              const qty = between(1, 4); const disc = rand() < 0.2 ? between(1, 8) : 0;
+              lines.push(kind === 'stock' ? { productId: P, unitCost: 150, quantity: qty, discountAmount: disc, stock: true }
+                : kind === 'stock2' ? { productId: P2, unitCost: 80, quantity: qty, discountAmount: disc, stock: true }
+                : kind === 'service' ? { productId: S, unitCost: 400, quantity: qty, discountAmount: disc, stock: false }
+                : { unitCost: 60, quantity: qty, discountAmount: disc, stock: false });
+            }
+            let net = 0, tax = 0;
+            for (const l of lines) { const base = Math.round((l.unitCost - l.discountAmount) * l.quantity * 100) / 100; net += base; tax += Math.round(base * 0.15 * 100) / 100; }
+            const gross = Math.round((net + tax) * 100) / 100;
             const paid = rand() < 0.4 ? gross : rand() < 0.5 ? Math.round(gross * 0.4 * 100) / 100 : 0;
-            const pos = stock && rand() < 0.3;
-            await step(`${pos ? 'POS' : 'invoice'} ${stock ? 'stock' : 'service'} ${qty}`, () => call('POST', '/api/transactions/invoices', { invoiceData: { date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: pos ? gross : paid, ...(pos ? { isPosSale: true } : {}), items: [{ id: generateId(), description: 'Fuzz', unitCost: stock ? 150 : 400, quantity: qty, discountAmount: 0, productId: stock ? P : S }] } }),
-              b => invs.push({ id: b.invoiceId, date: today, gross, paid: pos ? gross : paid, stock, qty, pos, cancelled: false, credited: false }));
+            const pos = lines.every(l => l.stock) && rand() < 0.3;
+            const date = docDate();
+            await step(`${pos ? 'POS' : 'invoice'} ${lines.length} line(s) ${gross}${date !== today ? ' dated ' + date : ''}`, () => call('POST', '/api/transactions/invoices', { invoiceData: { date, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: pos ? gross : paid, ...(pos ? { isPosSale: true } : {}), items: lines.map(l => ({ id: generateId(), description: l.productId ? 'Fuzz line' : 'Typed line', unitCost: l.unitCost, quantity: l.quantity, discountAmount: l.discountAmount, ...(l.productId ? { productId: l.productId } : {}) })) } }),
+              b => invs.push({ id: b.invoiceId, date, gross, paid: pos ? gross : paid, stock: lines.some(l => l.stock), pos, cancelled: false, credited: false }));
           }
-          else if (roll < 0.38) {   // collect on an unpaid invoice
+          else if (roll < 0.33) {   // a POS sale partly returned
+            const i = pick(invs.filter(x => x.pos && !x.cancelled && !x.credited && !x.returnedOnce));
+            if (i) {
+              const item = ((await db.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, i.id))) as any[])[0];
+              if (item) await step('POS partial return', () => call('POST', '/api/pos/returns', { invoiceId: i.id, items: [{ invoiceItemId: item.id, quantity: 1 }], reason: 'Fuzz return' }), () => { i.returnedOnce = true; });
+            }
+          }
+          else if (roll < 0.35) {   // quotation, converted
+            const price = between(1, 5) * 100;
+            await call('POST', '/api/transactions/quotations', { quotationData: { date: today, customerId, taxSlabId, notes: `Fuzz quote ${ops}`, status: 'Accepted', createdById: userId, items: [{ id: generateId(), description: 'Quoted', unitCost: price, quantity: 1, unit: 'PCE', productId: S }] } });
+            const q = ((await db.select().from(schema.quotations).where(eq(schema.quotations.companyId, companyId))) as any[]).find(x => x.notes === `Fuzz quote ${ops}`);
+            if (q) await step('convert quotation', () => call('POST', `/api/transactions/quotations/${q.id}/convert`, { invoiceDate: today, bankId, paymentStatus: 'Unpaid', customCustomerId: customerId, customTaxSlabId: taxSlabId }));
+          }
+          else if (roll < 0.40) {   // collect on an unpaid invoice
             const i = pick(invs.filter(x => !x.cancelled && !x.credited && x.paid < x.gross - 0.01));
             if (i) { const amt = Math.round(Math.min(i.gross - i.paid, (i.gross - i.paid) * (0.3 + rand() * 0.7)) * 100) / 100; await step(`collect ${amt}`, () => call('POST', `/api/transactions/invoices/${i.id}/paid`, { paymentDate: today, bankId, amount: amt }), () => { i.paid = Math.round((i.paid + amt) * 100) / 100; }); }
           }
-          else if (roll < 0.45) {   // credit note (any period; dated today)
+          else if (roll < 0.46) {   // credit note (any period; dated today)
             const i = pick(invs.filter(x => !x.cancelled && !x.credited && !x.pos));
             if (i) await step('credit note', () => call('POST', `/api/transactions/invoices/${i.id}/note`, { type: 'CreditNote', reason: 'Fuzz' }), () => { i.credited = true; });
           }
-          else if (roll < 0.50) {   // cancel (only unlocked ones will succeed)
+          else if (roll < 0.51) {   // cancel (only unlocked ones will succeed)
             const i = pick(invs.filter(x => !x.cancelled && !x.credited));
             if (i) await step('cancel invoice', () => call('POST', `/api/transactions/invoices/${i.id}/cancel`, {}), () => { i.cancelled = true; });
           }
           // expenses
           else if (roll < 0.62) {
             const gross = between(1, 8) * 115; const capex = rand() < 0.2; const paid = rand() < 0.5 ? gross : 0;
-            await step(`expense ${gross}${capex ? ' capex' : ''}`, () => call('POST', '/api/expenses', { date: today, vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'X' + ops, description: `Fuzz expense ${ops}`, paymentStatus: paid ? 'Paid' : 'Unpaid', amountPaid: paid, paymentDate: paid ? today : null, amount: gross, ...(capex ? { classification: 'Asset' } : {}) }), () => exps.push({ gross, paid, desc: `Fuzz expense ${ops}`, cancelled: false, reversed: false, id: '' }));
+            await step(`expense ${gross}${capex ? ' capex' : ''}`, () => call('POST', '/api/expenses', { date: docDate(), vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'X' + ops, description: `Fuzz expense ${ops}`, paymentStatus: paid ? 'Paid' : 'Unpaid', amountPaid: paid, paymentDate: paid ? today : null, amount: gross, ...(capex ? { classification: 'Asset' } : {}) }), () => exps.push({ gross, paid, desc: `Fuzz expense ${ops}`, cancelled: false, reversed: false, id: '' }));
             const e = exps[exps.length - 1];
             if (e && !e.id) { const row = ((await db.select().from(schema.expenses).where(eq(schema.expenses.companyId, companyId))) as any[]).find(x => x.description === e.desc); e.id = row?.id; }
           }
@@ -164,7 +190,7 @@ async function simulate(seed: number) {
           // vendor side
           else if (roll < 0.78) {
             const g = pick(grns.filter(x => !x.reversed && x.qty - x.returned > 0));
-            if (g) { const q = between(1, Math.min(3, g.qty - g.returned)); await step(`vendor return ${q}`, () => call('POST', '/api/inventory/purchase-returns', { returnData: { grnId: g.id, items: [{ productId: P, quantityReturned: q }] } }), b => { g.returned += q; rets.push({ id: b.purchaseReturn.id, cancelled: false }); }); }
+            if (g) { const q = between(1, Math.min(3, g.qty - g.returned)); await step(`vendor return ${q}`, () => call('POST', '/api/inventory/purchase-returns', { returnData: { grnId: g.id, items: [{ productId: g.pid, quantityReturned: q }] } }), b => { g.returned += q; rets.push({ id: b.purchaseReturn.id, cancelled: false }); }); }
           }
           else if (roll < 0.82) {
             const b = pick(bills.filter(x => !x.cancelled && x.paid < x.gross - 0.01));
@@ -192,7 +218,7 @@ async function simulate(seed: number) {
             await step('transfer', () => call('POST', '/api/transactions/interbank-transfer', { sourceBankId: fromFirst ? bankId : bank2Id, destBankId: fromFirst ? bank2Id : bankId, amount: between(1, 20) * 50, description: 'Fuzz', dateStr: today }));
           }
           else if (roll < 0.96) {
-            await step('stock adjustment', () => call('POST', '/api/inventory/stock-adjustments', { productId: P, warehouseId, quantity: rand() < 0.5 ? -between(1, 2) : between(1, 3), reason: 'Fuzz' }));
+            await step('stock adjustment', () => call('POST', '/api/inventory/stock-adjustments', { productId: pick([P, P2])!, warehouseId, quantity: rand() < 0.5 ? -between(1, 2) : between(1, 3), reason: 'Fuzz' }));
           }
           else if (roll < 0.97) {
             const w = ((await db.select().from(schema.inventoryStocks).where(eq(schema.inventoryStocks.warehouseId, warehouseId))) as any[])[0];

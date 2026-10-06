@@ -4,6 +4,7 @@ import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
 import { sendReportExcel } from '../lib/excelExport.js';
 import {
   computeDashboardSummary,
+  computeMonthPnL,
   computeTrialBalance,
   computeProfitLoss,
   computeBalanceSheet,
@@ -129,6 +130,20 @@ router.get('/reports/consistency-check', withTenantDb, async (req: any, res) => 
     if (!companyId) return res.status(400).json({ error: 'No company selected.' });
     const asOf = typeof req.query.asOfDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.asOfDate) ? req.query.asOfDate : undefined;
     res.json(await computeConsistencyCheck(tenantDb(), companyId, asOf));
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+// The month-end P&L shown in the Close Month dialog. It is the very function that writes the permanent closedPnL, so what the dialog says will be
+// archived is exactly what gets archived (the dialog used to add up the documents itself and disagreed: VAT included, credit notes added).
+router.get('/reports/month-pnl', withTenantDb, async (req: any, res) => {
+  try {
+    if (!hasPermission(req.user, 'reports.balanceSheet')) return res.status(403).json({ error: 'Forbidden' });
+    const companyId = req.targetCompanyId;
+    if (!companyId) return res.status(400).json({ error: 'No company selected.' });
+    const monthId = String(req.query.monthId || '');
+    if (!/^\d{4}-\d{2}$/.test(monthId)) return res.status(400).json({ error: 'monthId must be YYYY-MM.' });
+    res.json(await computeMonthPnL(tenantDb(), companyId, monthId));
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });
   }

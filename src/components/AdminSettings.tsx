@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation, translateMonthLabel, usePermissions } from '../hooks';
-import { DatabaseState, saveDatabase, openNewMonth, closeMonth, SEED_BANKS, SEED_TAX_SLABS, SEED_TEMPLATES, getBankBalance, checkRecurringPreconditions, calculateMonthPnL, SEED_USERS, generateId } from '../dbStore';
+import { DatabaseState, saveDatabase, openNewMonth, closeMonth, SEED_BANKS, SEED_TAX_SLABS, SEED_TEMPLATES, getBankBalance, checkRecurringPreconditions, SEED_USERS, generateId } from '../dbStore';
 import { CompanySetup, BankAccount, TaxSlab, DocumentTemplate, FiscalMonth, User, UserRole, Investor, Customer, Vendor, Role, Warehouse } from '../types';
 import { PermissionNode, buildPermissionTree, allPermissionNodeIds } from '../permissionSchema';
 import { THEME_PROFILES, applyTheme } from '../theme';
@@ -2335,6 +2335,16 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  }
  };
 
+ // The Close Month dialog shows the server's own month P&L (the same figure that is archived on close), never a client-side sum.
+ const [monthPnlData, setMonthPnlData] = React.useState<{ paid: { revenue: number; expenses: number; net: number }; includingPending: { revenue: number; expenses: number; net: number } } | null>(null);
+ React.useEffect(() => {
+ if (!isClosingMonth) { setMonthPnlData(null); return; }
+ let cancelled = false;
+ fetch(`/api/reports/month-pnl?monthId=${encodeURIComponent(isClosingMonth.id)}`).then(r => r.ok ? r.json() : null).then(d => { if (!cancelled) setMonthPnlData(d); }).catch(() => { if (!cancelled) setMonthPnlData(null); });
+ return () => { cancelled = true; };
+ }, [isClosingMonth?.id]);
+ const monthPnl = monthPnlData || { paid: { revenue: 0, expenses: 0, net: 0 }, includingPending: { revenue: 0, expenses: 0, net: 0 } };
+
  const handleInitiateClose = (m: FiscalMonth) => {
  // Run pre-condition checks
  const check = checkRecurringPreconditions(db, m.id);
@@ -2349,7 +2359,6 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
 
  const handleConfirmClose = async () => {
  if (!isClosingMonth) return;
- const pnl = calculateMonthPnL(db, isClosingMonth.id);
  const result = closeMonth(db, isClosingMonth.id, closeOption);
  if (result.error) {
  triggerError(result.error);
@@ -8530,16 +8539,16 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <div className="mt-2 space-y-1">
  <div className="flex justify-between">
  <span>{t('Total Rev:')}</span>
- <span className="font-medium text-emerald-600">{currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).paid.revenue.toFixed(2)}</span>
+ <span className="font-medium text-emerald-600">{currencySymbol} {monthPnl.paid.revenue.toFixed(2)}</span>
  </div>
  <div className="flex justify-between">
  <span>{t('Total Exp:')}</span>
- <span className="font-medium text-rose-600">{currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).paid.expenses.toFixed(2)}</span>
+ <span className="font-medium text-rose-600">{currencySymbol} {monthPnl.paid.expenses.toFixed(2)}</span>
  </div>
  <div className="flex justify-between font-bold border-t border-slate-100 pt-1 mt-1">
  <span>{t('Net P&L:')}</span>
- <span className={calculateMonthPnL(db, isClosingMonth.id).paid.net >= 0 ? 'text-emerald-700' : 'text-rose-700'}>
- {currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).paid.net.toFixed(2)}
+ <span className={monthPnl.paid.net >= 0 ? 'text-emerald-700' : 'text-rose-700'}>
+ {currencySymbol} {monthPnl.paid.net.toFixed(2)}
  </span>
  </div>
  </div>
@@ -8551,16 +8560,16 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <div className="mt-2 space-y-1">
  <div className="flex justify-between">
  <span>{t('Total Rev:')}</span>
- <span className="font-medium text-emerald-600">{currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).includingPending.revenue.toFixed(2)}</span>
+ <span className="font-medium text-emerald-600">{currencySymbol} {monthPnl.includingPending.revenue.toFixed(2)}</span>
  </div>
  <div className="flex justify-between">
  <span>{t('Total Exp:')}</span>
- <span className="font-medium text-rose-600">{currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).includingPending.expenses.toFixed(2)}</span>
+ <span className="font-medium text-rose-600">{currencySymbol} {monthPnl.includingPending.expenses.toFixed(2)}</span>
  </div>
  <div className="flex justify-between font-bold border-t border-slate-100 pt-1 mt-1">
  <span>{t('Net P&L:')}</span>
- <span className={calculateMonthPnL(db, isClosingMonth.id).includingPending.net >= 0 ? 'text-emerald-700' : 'text-rose-700'}>
- {currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).includingPending.net.toFixed(2)}
+ <span className={monthPnl.includingPending.net >= 0 ? 'text-emerald-700' : 'text-rose-700'}>
+ {currencySymbol} {monthPnl.includingPending.net.toFixed(2)}
  </span>
  </div>
  </div>
@@ -8582,7 +8591,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  />
  <div>
  <p className="text-xs font-bold text-slate-800">{t('Finalize on Option A (Paid Basis)')}</p>
- <p className="text-[10px] text-slate-500">{t('Net Profit of')} {currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).paid.net.toFixed(2)} {t('will be permanently archived.')}</p>
+ <p className="text-[10px] text-slate-500">{t('Net Profit of')} {currencySymbol} {monthPnl.paid.net.toFixed(2)} {t('will be permanently archived.')}</p>
  </div>
  </label>
 
@@ -8596,7 +8605,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  />
  <div>
  <p className="text-xs font-bold text-slate-800">{t('Finalize on Option B (Including Pending)')}</p>
- <p className="text-[10px] text-slate-500">{t('Net Profit of')} {currencySymbol} {calculateMonthPnL(db, isClosingMonth.id).includingPending.net.toFixed(2)} {t('will be permanently archived.')}</p>
+ <p className="text-[10px] text-slate-500">{t('Net Profit of')} {currencySymbol} {monthPnl.includingPending.net.toFixed(2)} {t('will be permanently archived.')}</p>
  </div>
  </label>
  </div>
@@ -8611,7 +8620,8 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  </button>
  <button
  onClick={handleConfirmClose}
- className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
+ disabled={!monthPnlData}
+ className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
  >
  {t('Permanently Lock Month')}
  </button>

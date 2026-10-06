@@ -772,8 +772,15 @@ export async function computeMonthPnL(executor: any, companyId: string, monthId:
     // added at its positive value, so a credited sale counted twice in the permanently written figure.
     const revenue = totalsByInvoiceId.get(inv.id)!.discountedSubtotal * invoiceSign(inv);
     totalRevenue = round2(totalRevenue + revenue);
-    // A Credit Note reduces both views; a normal invoice counts toward "paid" only once fully paid.
-    if (inv.documentType === 'CreditNote' || inv.paymentStatus === 'Paid') paidRevenue = round2(paidRevenue + revenue);
+    // A normal invoice counts toward "paid" only once fully paid. A Credit Note reverses its original in full, so it takes revenue
+    // back out of the paid view only when that original was counted there (paid); a credit note against an unpaid invoice cancels a
+    // receivable that was never collected, and subtracting it would show a loss that never happened.
+    if (inv.documentType === 'CreditNote') {
+      const original = monthInvoices.find((o: any) => o.id === inv.originalInvoiceId) || (inv.originalInvoiceId
+        ? (await executor.select().from(schema.invoices).where(and(eq(schema.invoices.id, inv.originalInvoiceId), eq(schema.invoices.companyId, companyId))))[0]
+        : null);
+      if (original && original.paymentStatus === 'Paid') paidRevenue = round2(paidRevenue + revenue);
+    } else if (inv.paymentStatus === 'Paid') paidRevenue = round2(paidRevenue + revenue);
   }
 
   const monthExpenses = await executor.select().from(schema.expenses).where(and(
