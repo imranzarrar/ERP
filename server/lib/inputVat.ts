@@ -37,7 +37,11 @@ export async function computeBillInputVat(executor: any, companyId: string, star
   const addBackByBill = new Map<string, { net: number; vat: number }>();
   for (const r of reducedReturns) {
     const cur = addBackByBill.get(r.billId) || { net: 0, vat: 0 };
-    addBackByBill.set(r.billId, { net: round2(cur.net + Number(r.netAdjustment || 0)), vat: round2(cur.vat + Number(r.inputVatAdjustment || 0)) });
+    // add back only what the return actually took off the bill (older rows: the whole return)
+    const net = Number(r.netAdjustment || 0), vat = Number(r.inputVatAdjustment || 0);
+    const reduction = r.billReduction != null ? Number(r.billReduction) : net + vat;
+    const vatPart = net + vat > 0 ? round2(reduction * vat / (net + vat)) : 0;
+    addBackByBill.set(r.billId, { net: round2(cur.net + (reduction - vatPart)), vat: round2(cur.vat + vatPart) });
   }
 
   const lines: BillVatLine[] = [];

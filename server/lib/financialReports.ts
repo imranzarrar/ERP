@@ -1,4 +1,5 @@
 import { computeBillInputVat } from './inputVat.js';
+import { toBaseQuantity } from './uomConversion.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, and, or, gt, gte, lte, lt, ne, inArray, asc, sql, isNotNull } from 'drizzle-orm';
 import { round2, computeInvoiceServerTotals, splitExpenseTaxInclusiveAmount } from './businessLogic.js';
@@ -117,15 +118,16 @@ async function computeVendorCredits(executor: any, companyId: string, asOfDate: 
   const rows: any[] = await executor.select().from(schema.purchaseReturns).where(and(
     eq(schema.purchaseReturns.companyId, companyId),
     eq(schema.purchaseReturns.status, 'Active'),
-    eq(schema.purchaseReturns.billTotalsReduced, false),
     isNotNull(schema.purchaseReturns.billId),
     isNotNull(schema.purchaseReturns.inputVatAdjustment),
     lte(schema.purchaseReturns.date, new Date(asOfDate + 'T23:59:59.999Z')),
   ));
   const lines = rows.filter(r => vendorId === 'ALL' || r.vendorId === vendorId).map(r => ({
     documentNumber: r.returnNumber, date: new Date(r.date).toISOString().slice(0, 10), vendorId: r.vendorId,
-    amount: round2(Number(r.netAdjustment || 0) + Number(r.inputVatAdjustment || 0)),
-  }));
+    // the part of the return that had already been paid: the whole return minus what reduced the bill (older rows: all or nothing)
+    amount: round2(Number(r.netAdjustment || 0) + Number(r.inputVatAdjustment || 0)
+      - (r.billReduction != null ? Number(r.billReduction) : (r.billTotalsReduced ? Number(r.netAdjustment || 0) + Number(r.inputVatAdjustment || 0) : 0))),
+  })).filter(l => l.amount > 0.004);
   return { total: round2(lines.reduce((s, l) => s + l.amount, 0)), lines };
 }
 
@@ -590,7 +592,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
     gt(schema.purchaseReturns.date, new Date(asOfDate + 'T23:59:59.999Z')),
   ));
   const returnedLater = new Map<string, number>();
-  for (const r of laterReducingReturns) returnedLater.set(r.billId, round2((returnedLater.get(r.billId) || 0) + Number(r.netAdjustment || 0) + Number(r.inputVatAdjustment || 0)));
+  for (const r of laterReducingReturns) returnedLater.set(r.billId, round2((returnedLater.get(r.billId) || 0) + (r.billReduction != null ? Number(r.billReduction) : Number(r.netAdjustment || 0) + Number(r.inputVatAdjustment || 0))));
   for (const bill of unpaidBills) {
     const totalThen = Number(bill.grandTotal) + (returnedLater.get(bill.id) || 0);
     const paidThen = Number(bill.amountPaid || 0) - (laterBillPayments.get(bill.id) || 0);
@@ -601,43 +603,24 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   const productIds = Array.from(new Set(inventoryStocks.map(s => s.productId))) as string[];
   const products: any[] = productIds.length ? await executor.select().from(schema.productsServices).where(inArray(schema.productsServices.id, productIds)) : [];
   const productById = new Map(products.map(p => [p.id, p]));
-  // inventoryStocks is the quantity on hand NOW. For an earlier as-of date, take back every stock movement that belongs to a
-  // LATER date (otherwise a Balance Sheet "as at 30 Sep" would count goods only received in October). The stock register files
-  // each movement under the day it PHYSICALLY happened (so today's register explains today's change in stock), which for a
-  // sale, a cancellation or a credit note is not the date the books give it. So movements entered after the cutoff are judged
-  // by the date of the document they belong to: a sale, its cancellation and its credit note all by the invoice's date, a GRN
-  // and its reversal both by the GRN's date (the received-not-billed figure already ignores a reversed GRN altogether).
-  // Valued at the product's current average cost — the same valuation as today's figure.
-  const cutoff = new Date(asOfDate + 'T23:59:59.999Z');
-  const enteredLater: any[] = await executor.select({
-    productId: schema.stockLedgerTransactions.productId,
-    type: schema.stockLedgerTransactions.transactionType,
-    referenceId: schema.stockLedgerTransactions.referenceId,
-    movementDate: schema.stockLedgerTransactions.date,
-    change: schema.stockLedgerTransactions.quantityChange,
-  }).from(schema.stockLedgerTransactions).where(and(
-    eq(schema.stockLedgerTransactions.companyId, companyId),
-    sql`${schema.stockLedgerTransactions.date} > ${cutoff}`,
-  ));
-  const saleRefs = Array.from(new Set(enteredLater.filter(m => m.type === 'Sale').map(m => m.referenceId))) as string[];
-  const grnRefs = Array.from(new Set(enteredLater.filter(m => m.type === 'GRN').map(m => m.referenceId))) as string[];
-  const invoiceDateById = new Map<string, string>(saleRefs.length
-    ? (await executor.select({ id: schema.invoices.id, date: schema.invoices.date }).from(schema.invoices).where(inArray(schema.invoices.id, saleRefs))).map((r: any) => [r.id, String(r.date).slice(0, 10)] as [string, string])
-    : []);
-  const grnDateById = new Map<string, string>(grnRefs.length
-    ? (await executor.select({ id: schema.goodsReceiptNotes.id, date: schema.goodsReceiptNotes.date }).from(schema.goodsReceiptNotes).where(inArray(schema.goodsReceiptNotes.id, grnRefs))).map((r: any) => [r.id, new Date(r.date).toISOString().slice(0, 10)] as [string, string])
-    : []);
-  const businessDate = (m: any): string =>
-    (m.type === 'Sale' ? invoiceDateById.get(m.referenceId) : m.type === 'GRN' ? grnDateById.get(m.referenceId) : undefined)
-    ?? new Date(m.movementDate).toISOString().slice(0, 10);
-  const laterMovements = enteredLater.filter(m => businessDate(m) > asOfDate);
-  const qtyOnHandByProduct = new Map<string, number>();
-  for (const s of inventoryStocks) qtyOnHandByProduct.set(s.productId, (qtyOnHandByProduct.get(s.productId) || 0) + Number(s.quantity || 0));
-  for (const m of laterMovements) qtyOnHandByProduct.set(m.productId, (qtyOnHandByProduct.get(m.productId) || 0) - Number(m.change || 0));
-  const inventoryValue = round2(Array.from(qtyOnHandByProduct.entries()).reduce((sum, [productId, qty]) => {
-    const cost = Number(productById.get(productId)?.averageCost || 0);
-    return sum + qty * cost;
-  }, 0));
+  // Inventory is carried at quantity x average cost (see postInventoryRevaluation: every stock movement keeps the ledger's Inventory equal to
+  // that). Today's figure is read from the stock; for an EARLIER date what the ledger booked to Inventory after that date is taken back out,
+  // which gives the value the stock really had then, whatever the cost was at the time.
+  const bsQtyByProduct = new Map<string, number>();
+  for (const st of inventoryStocks) bsQtyByProduct.set(st.productId, round2((bsQtyByProduct.get(st.productId) || 0) + Number(st.quantity || 0)));
+  const bsTransit = await inTransitByProduct(executor, companyId);
+  for (const [pid, q] of bsTransit) bsQtyByProduct.set(pid, round2((bsQtyByProduct.get(pid) || 0) + q));
+  const transitOnly = Array.from(bsTransit.keys()).filter(pid => !productById.has(pid));
+  if (transitOnly.length) { for (const p of await executor.select().from(schema.productsServices).where(inArray(schema.productsServices.id, transitOnly))) productById.set(p.id, p); }
+  let currentInventory = 0;
+  for (const [pid, q] of bsQtyByProduct) currentInventory = round2(currentInventory + round2(q * Number(productById.get(pid)?.averageCost || 0)));
+  const laterInventoryLines: any[] = await executor.select({ dr: schema.journalLines.debit, cr: schema.journalLines.credit })
+    .from(schema.journalLines).innerJoin(schema.journalEntries, eq(schema.journalLines.journalEntryId, schema.journalEntries.id))
+    .where(and(
+      eq(schema.journalLines.companyId, companyId), eq(schema.journalLines.accountKey, 'INVENTORY'),
+      sql`${schema.journalEntries.date} > ${asOfDate}`,
+    ));
+  const inventoryValue = round2(currentInventory - laterInventoryLines.reduce((sum: number, l: any) => sum + Number(l.dr) - Number(l.cr), 0));
 
   // --- Items the sheet previously omitted (each is also why it did not balance) ---
   const closedMonthRows = await executor.select().from(schema.fiscalMonths).where(and(
@@ -1564,8 +1547,10 @@ export async function computeStockValuation(executor: any, companyId: string, wa
   const stocks = (await executor.select().from(schema.inventoryStocks).where(eq(schema.inventoryStocks.companyId, companyId)))
     .filter(s => Number(s.quantity) !== 0 && warehouseById.has(s.warehouseId) && branchOk(warehouseById.get(s.warehouseId).branchId)
       && (warehouseId === 'ALL' || s.warehouseId === warehouseId));
-  if (stocks.length === 0) return { rows: [], totalValue: 0 };
-  const productIds = Array.from(new Set(stocks.map((s: any) => s.productId))) as string[];
+  // Goods dispatched between warehouses and not yet received are still stock: listed against their own "In transit" line.
+  const transit = warehouseId === 'ALL' ? await inTransitByProduct(executor, companyId) : new Map<string, number>();
+  if (stocks.length === 0 && transit.size === 0) return { rows: [], totalValue: 0 };
+  const productIds = Array.from(new Set([...stocks.map((s: any) => s.productId), ...transit.keys()])) as string[];
   const productRows = await executor.select().from(schema.productsServices).where(inArray(schema.productsServices.id, productIds));
   const productById = new Map<string, any>(productRows.map((p: any) => [p.id, p]));
   const rows: StockValuationRow[] = stocks.map((s: any) => {
@@ -1574,8 +1559,29 @@ export async function computeStockValuation(executor: any, companyId: string, wa
     const cost = product ? Number(product.averageCost || 0) : 0;
     const quantity = Number(s.quantity);
     return { productName: product?.name || '', warehouseName: warehouse?.name || '', quantity, unitCost: cost, value: round2(quantity * cost) };
-  }).sort((a, b) => b.value - a.value);
-  return { rows, totalValue: round2(rows.reduce((sum, r) => sum + r.value, 0)) };
+  });
+  for (const [pid, q] of transit) {
+    const product = productById.get(pid); const cost = product ? Number(product.averageCost || 0) : 0;
+    rows.push({ productName: product?.name || '', warehouseName: 'In transit', quantity: q, unitCost: cost, value: round2(q * cost) });
+  }
+  rows.sort((a, b) => b.value - a.value);
+  // The total is the value of each product's WHOLE stock rounded to the cent once (the rows above are shown per warehouse and may differ by a cent).
+  const qtyByProduct = new Map<string, number>();
+  for (const s of stocks) qtyByProduct.set(s.productId, (qtyByProduct.get(s.productId) || 0) + Number(s.quantity));
+  for (const [pid, q] of transit) qtyByProduct.set(pid, (qtyByProduct.get(pid) || 0) + q);
+  let totalValue = 0;
+  for (const [pid, q] of qtyByProduct) totalValue = round2(totalValue + round2(q * Number(productById.get(pid)?.averageCost || 0)));
+  return { rows, totalValue };
+}
+// Quantity of each product dispatched and not yet received (base units).
+async function inTransitByProduct(executor: any, companyId: string): Promise<Map<string, number>> {
+  const rows: any[] = await executor.select({ p: schema.warehouseDispatchItems.productId, q: schema.warehouseDispatchItems.quantityDispatched, uom: schema.warehouseDispatchItems.unitOfMeasureId })
+    .from(schema.warehouseDispatchItems)
+    .innerJoin(schema.warehouseDispatches, eq(schema.warehouseDispatchItems.dispatchId, schema.warehouseDispatches.id))
+    .where(and(eq(schema.warehouseDispatches.companyId, companyId), eq(schema.warehouseDispatches.status, 'Dispatched')));
+  const out = new Map<string, number>();
+  for (const r of rows) out.set(r.p, round2((out.get(r.p) || 0) + await toBaseQuantity(executor, r.p, r.uom, companyId, Number(r.q || 0))));
+  return out;
 }
 
 export interface ItemProfitabilityRow { productName: string; totalQuantitySold: number; averageCost: number; averageSalePrice: number; marginAmount: number; marginPct: number; }

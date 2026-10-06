@@ -13,6 +13,7 @@ import * as schema from '../../src/db/schema.js';
 import { eq, and, inArray, gte, lte } from 'drizzle-orm';
 import { generateId } from '../../src/id.js';
 import { round2 } from './businessLogic.js';
+import { toBaseQuantity } from './uomConversion.js';
 import { nowDate } from './clock.js';
 
 // Anything larger than this is a real bug in the calling code, not rounding noise from
@@ -182,6 +183,94 @@ export async function postInventoryAdjustment(tx: any, input: {
       ? [{ accountKey: 'COGS', debit: cost }, { accountKey: 'INVENTORY', credit: cost }]
       : [{ accountKey: 'INVENTORY', debit: cost }, { accountKey: 'COGS', credit: cost }],
   });
+}
+
+// Goods dispatched between warehouses and not yet received are still the company's stock: they have left the sending warehouse and are not in
+// the receiving one yet, so they are counted here (base units) wherever stock is valued.
+export async function inTransitQuantity(tx: any, companyId: string, productId: string): Promise<number> {
+  const rows: any[] = await tx.select({ q: schema.warehouseDispatchItems.quantityDispatched, uom: schema.warehouseDispatchItems.unitOfMeasureId })
+    .from(schema.warehouseDispatchItems)
+    .innerJoin(schema.warehouseDispatches, eq(schema.warehouseDispatchItems.dispatchId, schema.warehouseDispatches.id))
+    .where(and(
+      eq(schema.warehouseDispatches.companyId, companyId), eq(schema.warehouseDispatches.status, 'Dispatched'),
+      eq(schema.warehouseDispatchItems.productId, productId),
+    ));
+  let total = 0;
+  for (const r of rows) total += await toBaseQuantity(tx, productId, r.uom, companyId, Number(r.q || 0));
+  return round2(total);
+}
+
+// Quantity of one product the company owns: on hand across every warehouse and batch, plus goods in transit.
+export async function totalOnHand(tx: any, companyId: string, productId: string): Promise<number> {
+  const rows: any[] = await tx.select({ q: schema.inventoryStocks.quantity }).from(schema.inventoryStocks).where(and(
+    eq(schema.inventoryStocks.companyId, companyId), eq(schema.inventoryStocks.productId, productId),
+  ));
+  return round2(rows.reduce((s, r) => s + Number(r.q || 0), 0) + await inTransitQuantity(tx, companyId, productId));
+}
+
+// Quantity on hand and average cost of several products, for settleInventoryValuation (taken before a stock-moving flow, compared after).
+export async function snapshotInventory(tx: any, companyId: string, productIds: string[]): Promise<Map<string, { qty: number; avg: number; val: number }>> {
+  const out = new Map<string, { qty: number; avg: number; val: number }>();
+  for (const productId of Array.from(new Set(productIds.filter(Boolean)))) {
+    const [p] = await tx.select({ avg: schema.productsServices.averageCost, kind: schema.productsServices.itemKind }).from(schema.productsServices).where(eq(schema.productsServices.id, productId));
+    if (!p || p.kind !== 'item') continue;
+    const qty = await totalOnHand(tx, companyId, productId);
+    out.set(productId, { qty, avg: Number(p.avg || 0), val: round2(qty * Number(p.avg || 0)) });   // a product's stock is valued in WHOLE CENTS, so movements telescope exactly
+  }
+  return out;
+}
+async function inventoryNetOfEntries(tx: any, entryIds: string[]): Promise<number> {
+  if (!entryIds.length) return 0;
+  const rows: any[] = await tx.select({ dr: schema.journalLines.debit, cr: schema.journalLines.credit }).from(schema.journalLines)
+    .where(and(inArray(schema.journalLines.journalEntryId, entryIds), eq(schema.journalLines.accountKey, 'INVENTORY')));
+  return round2(rows.reduce((s, r) => s + Number(r.dr) - Number(r.cr), 0));
+}
+
+// The same rule for any flow that moves stock or changes an average cost (receipt reversal, vendor return and its cancel, credit note, cancel,
+// POS return ...): the valuation of the products touched, after the flow, less before, minus what the flow itself posted to INVENTORY (the
+// entries it created: `entryIds`) is booked to cost of goods sold, so Inventory = quantity x average cost holds after every movement.
+export async function settleInventoryValuation(tx: any, input: {
+  companyId: string; branchId?: string | null; date: string; before: Map<string, { qty: number; avg: number; val: number }>; entryIds: string[];
+  referenceType: string; referenceId: string; description: string; createdById: string;
+}): Promise<number> {
+  const after = await snapshotInventory(tx, input.companyId, Array.from(input.before.keys()));
+  let docChange = 0;
+  for (const [productId, b] of input.before) {
+    const a = after.get(productId) || b;
+    docChange += a.val - b.val;
+  }
+  const revalue = round2(docChange - await inventoryNetOfEntries(tx, input.entryIds));
+  if (Math.abs(revalue) <= 0.004) return 0;
+  await postJournalEntry(tx, {
+    companyId: input.companyId, branchId: input.branchId ?? null, date: input.date,
+    referenceType: input.referenceType, referenceId: input.referenceId, description: input.description, createdById: input.createdById,
+    lines: revalue < 0
+      ? [{ accountKey: 'COGS', debit: -revalue }, { accountKey: 'INVENTORY', credit: -revalue }]
+      : [{ accountKey: 'INVENTORY', debit: revalue }, { accountKey: 'COGS', credit: revalue }],
+  });
+  return revalue;
+}
+
+// THE INVENTORY RULE: stock is carried at quantity x weighted-average cost. A receipt (or an unwinding return) normally moves the books by exactly
+// what the route posts, but it can also change the average cost or land on a negative balance (units sold before they were ever received carry
+// cost 0 at the sale). The difference between how the stock is valued afterwards and before, less what the route itself posted, is a
+// revaluation: it goes to cost of goods sold, so the ledger's Inventory always equals quantity x average cost and the books balance.
+//   postedChange = what the route already posted to INVENTORY for this product (+ receipt value, - returned value).
+export async function postInventoryRevaluation(tx: any, input: {
+  companyId: string; branchId?: string | null; date: string; productId: string;
+  before: { qty: number; avg: number }; after: { qty: number; avg: number }; postedChange: number;
+  referenceType: string; referenceId: string; description: string; createdById: string;
+}): Promise<number> {
+  const revalue = round2(round2(input.after.qty * input.after.avg) - round2(input.before.qty * input.before.avg) - input.postedChange);
+  if (Math.abs(revalue) <= 0.004) return 0;
+  await postJournalEntry(tx, {
+    companyId: input.companyId, branchId: input.branchId ?? null, date: input.date,
+    referenceType: input.referenceType, referenceId: input.referenceId, description: input.description, createdById: input.createdById,
+    lines: revalue < 0
+      ? [{ accountKey: 'COGS', debit: -revalue }, { accountKey: 'INVENTORY', credit: -revalue }]
+      : [{ accountKey: 'INVENTORY', debit: revalue }, { accountKey: 'COGS', credit: revalue }],
+  });
+  return revalue;
 }
 
 // SUM(debit) - SUM(credit) for one account, scoped to a company (and optionally a date

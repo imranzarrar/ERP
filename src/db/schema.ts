@@ -1958,6 +1958,9 @@ export const purchaseBills = pgTable('purchase_bills', {
 
 // 8. Purchase Returns (Debit Notes)
 export const purchaseReturns = pgTable('purchase_returns', {
+  // How much of the return (gross) reduced the bill it came from. The rest of the return was ALREADY paid to the vendor and is a vendor
+  // credit receivable, never a negative payable. Null on older rows: their bill was reduced by the whole return, or not at all (billTotalsReduced).
+  billReduction: decimal('bill_reduction', { precision: 14, scale: 2 }),
   id: uuid('id').primaryKey(),
   returnNumber: text('return_number').notNull(),
   grnId: uuid('grn_id').notNull().references(() => goodsReceiptNotes.id), // Links back to receipt

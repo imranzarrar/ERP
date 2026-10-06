@@ -1,5 +1,5 @@
 import { unwindAverageSalePrice } from '../lib/salesAverage.js';
-import { postJournalEntry } from '../lib/ledger.js';
+import { postJournalEntry, snapshotInventory, settleInventoryValuation } from '../lib/ledger.js';
 import { toBaseQuantity } from '../lib/uomConversion.js';
 import express from 'express';
 import bcrypt from 'bcrypt';
@@ -478,6 +478,7 @@ router.post('/returns', withTenantDb, async (req: any, res) => {
     });
     const savedNoteId = noteId;
 
+    const posReturnBefore = await snapshotInventory(tdb, companyId, Array.from(requestedByItemId.keys()).map(id => originalItemById.get(id)!.productId).filter(Boolean));
     for (const [itemId, qty] of requestedByItemId.entries()) {
       const originalItem = originalItemById.get(itemId)!;
       await tdb.insert(schema.invoiceItems).values({
@@ -534,17 +535,9 @@ router.post('/returns', withTenantDb, async (req: any, res) => {
         lines: [{ accountKey: 'AR', debit: refundAmount }, { accountKey: 'BANK', credit: refundAmount, bankId: refundBankId }],
       });
     }
-    let returnedCost = 0;
-    for (const [itemId, qty] of requestedByItemId.entries()) {
-      const originalItem = originalItemById.get(itemId)!;
-      if (!originalItem.productId) continue;
-      const [product] = await tdb.select({ itemKind: schema.productsServices.itemKind, averageCost: schema.productsServices.averageCost })
-        .from(schema.productsServices).where(eq(schema.productsServices.id, originalItem.productId));
-      if (product?.itemKind !== 'item') continue;
-      const baseQty = await toBaseQuantity(tdb, originalItem.productId, originalItem.unitOfMeasureId, companyId, qty);
-      returnedCost += baseQty * Number(product.averageCost || 0);
-    }
-    returnedCost = Math.round((returnedCost + Number.EPSILON) * 100) / 100;
+    // The returned units re-enter stock at today's average cost: the rise in the products' valuation (whole cents) is what goes back to inventory.
+    const posReturnAfter = await snapshotInventory(tdb, companyId, Array.from(posReturnBefore.keys()));
+    const returnedCost = Math.round((Array.from(posReturnBefore).reduce((sum, [pid, b]) => sum + (posReturnAfter.get(pid)?.val ?? b.val) - b.val, 0) + Number.EPSILON) * 100) / 100;
     if (returnedCost > 0) {
       await postJournalEntry(tdb, {
         companyId, branchId: original.branchId, date: todayStr,

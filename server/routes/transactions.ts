@@ -4,7 +4,7 @@ import * as schema from '../../src/db/schema.js';
 import { eq, inArray, and, asc, desc, or, isNull, count, sql, gte, lte, ne } from 'drizzle-orm';
 import { validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, postCreditNoteReversalVoucher, round2, round4, computePaymentStatus, computeInvoiceServerTotals, deductStockForSale, restockForSaleReversal, assertQuarterNotFiled, assertQuarterNotFrozen, resolveSaleWarehouse, assertStockAvailable, assertProductsOwnedByCompany, cancelExpense, splitExpenseTaxInclusiveAmount } from '../lib/businessLogic.js';
 import { computeMonthPnL } from '../lib/financialReports.js';
-import { postJournalEntry, reverseAllEntriesFor } from '../lib/ledger.js';
+import { postJournalEntry, reverseAllEntriesFor, snapshotInventory, settleInventoryValuation } from '../lib/ledger.js';
 import { toBaseQuantity, toBaseUnitCost, loadZatcaCodesByUnitId } from '../lib/uomConversion.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { isStillChainTip, setHashChainState, ZatcaEnvironment } from '../lib/zatca/hashChain.js';
@@ -458,6 +458,7 @@ router.post('/quotations/:id/convert', withTenantDb, async (req: any, res) => {
     // this conversion always represents a genuinely new sale (a fresh invoice row, never
     // an edit), so unlike the main /invoices route there's no isNewInvoice branch needed.
     let convertCogsTotal = 0;
+    const convertValuationBefore = await snapshotInventory(tdb, companyId, itemsToInsert.map((i: any) => i.productId).filter(Boolean));
     for (const item of itemsToInsert) {
       if (!item.productId) continue;
       const [product] = await tdb.select({
@@ -482,6 +483,12 @@ router.post('/quotations/:id/convert', withTenantDb, async (req: any, res) => {
         if (product.itemKind === 'item') convertCogsTotal = round2(convertCogsTotal + soldQty * Number(product.averageCost || 0));
       }
       await deductStockForSale(tdb, companyId, item.productId, Number(item.quantity), invoiceId, newInvoice.createdAt as Date, resolvedWarehouseId, item.unitOfMeasureId);
+    }
+
+    // Cost of the stock that left = the fall in its valuation (whole cents per product), so the ledger and the stock valuation can never drift.
+    {
+      const after = await snapshotInventory(tdb, companyId, Array.from(convertValuationBefore.keys()));
+      convertCogsTotal = round2(Array.from(convertValuationBefore).reduce((sum, [pid, b]) => sum + b.val - (after.get(pid)?.val ?? b.val), 0));
     }
 
     // 7. Update Quotation Status
@@ -982,6 +989,7 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     // Accumulated across every stock-item line into ONE combined COGS entry (row 1a of
     // the Phase 1 ledger design) — not one journal entry per line.
     let cogsTotal = 0;
+    const saleValuationBefore = isNewInvoice ? await snapshotInventory(tdb, companyId, (items || []).map((i: any) => i.productId).filter(Boolean)) : null;
     if (items && items.length > 0) {
       const invoiceZatcaCodeById = await loadZatcaCodesByUnitId(tdb, items);
       for (const item of items) {
@@ -1038,6 +1046,12 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
           await deductStockForSale(tdb, companyId, item.productId, Number(item.quantity), newInvoice.id, invoiceValues.createdAt as Date, invData.warehouseId, item.unitOfMeasureId);
         }
       }
+    }
+
+    // Cost of the stock that left = the fall in its valuation (whole cents per product), so the ledger and the stock valuation can never drift.
+    if (saleValuationBefore) {
+      const after = await snapshotInventory(tdb, companyId, Array.from(saleValuationBefore.keys()));
+      cogsTotal = round2(Array.from(saleValuationBefore).reduce((sum, [pid, b]) => sum + b.val - (after.get(pid)?.val ?? b.val), 0));
     }
 
     // 5. Generate Receipt Voucher if status is Paid
@@ -1220,6 +1234,7 @@ router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
     }).returning();
 
     const savedNoteId = newNote.id;
+    const noteValuationBefore = await snapshotInventory(tdb, companyId, originalItems.map((i: any) => i.productId));
 
     for (const item of originalItems) {
       await tdb.insert(schema.invoiceItems).values({
@@ -1276,7 +1291,9 @@ router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
     // /invoices/:id/cancel already uses. The original invoice's own status/paymentStatus
     // stay untouched (unchanged, existing behavior) — this only affects the ledger.
     if (type === 'CreditNote') {
-      await reverseAllEntriesFor(tdb, companyId, 'Invoice', originalInvoiceId, issueDate, `Credit Note ${noteNumber} issued against invoice ${original.invoiceNumber}`, user.id);
+      const noteEntries = await reverseAllEntriesFor(tdb, companyId, 'Invoice', originalInvoiceId, issueDate, `Credit Note ${noteNumber} issued against invoice ${original.invoiceNumber}`, user.id);
+      // The returned units re-enter stock at today's average cost; the ledger mirrored the original sale's cost. Book the difference.
+      await settleInventoryValuation(tdb, { companyId, branchId: original.branchId, date: issueDate, before: noteValuationBefore, entryIds: noteEntries, referenceType: 'CreditNote', referenceId: newNote.id, description: `Inventory revaluation on credit note ${noteNumber}`, createdById: user.id });
     }
 
     if (savedNoteId) {
@@ -1543,8 +1560,10 @@ router.post('/invoices/:id/cancel', withTenantDb, async (req: any, res) => {
     // not-yet-handled edge case (would need to re-deduct, the opposite direction) rather
     // than something this fix should guess at; a Debit Note was never a stock reversal
     // to begin with.
+    let cancelValuationBefore: Map<string, { qty: number; avg: number; val: number }> | null = null;
     if (invoice.documentType !== 'CreditNote' && invoice.documentType !== 'DebitNote') {
       const cancelledItems = await tdb.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, id));
+      cancelValuationBefore = await snapshotInventory(tdb, invoice.companyId, cancelledItems.map((i: any) => i.productId).filter(Boolean));
       for (const item of cancelledItems) {
         if (!item.productId) continue;
         await restockForSaleReversal(tdb, invoice.companyId, item.productId, Number(item.quantity), id, nowDate(), invoice.warehouseId, item.unitOfMeasureId);
@@ -1595,7 +1614,10 @@ router.post('/invoices/:id/cancel', withTenantDb, async (req: any, res) => {
     // Dated at the INVOICE's own date, not today's: every report removes a cancelled invoice from the month it was dated
     // in, so its cost of goods sold must come out of that same month. Reversing on the cancel date left the cost in the
     // original month and a stray credit in whichever month the cancel happened to be done.
-    await reverseAllEntriesFor(tdb, invoice.companyId, 'Invoice', id, invoice.date, `Invoice ${invoice.invoiceNumber} cancelled`, req.user.id);
+    const cancelEntries = await reverseAllEntriesFor(tdb, invoice.companyId, 'Invoice', id, invoice.date, `Invoice ${invoice.invoiceNumber} cancelled`, req.user.id);
+    if (cancelValuationBefore) {
+      await settleInventoryValuation(tdb, { companyId: invoice.companyId, branchId: invoice.branchId, date: invoice.date, before: cancelValuationBefore, entryIds: cancelEntries, referenceType: 'Invoice', referenceId: id, description: `Inventory revaluation on cancelling invoice ${invoice.invoiceNumber}`, createdById: req.user.id });
+    }
 
     const cancelledInvoiceNumber = invoice.invoiceNumber;
     const cancelledDocType = invoice.documentType;
@@ -1906,7 +1928,7 @@ router.post('/recurring-postings', withTenantDb, async (req: any, res) => {
 
     const [existingPosting] = await tdb.select().from(schema.recurringPostings).where(and(eq(schema.recurringPostings.templateId, templateId), eq(schema.recurringPostings.monthId, monthId), eq(schema.recurringPostings.companyId, companyId)));
     if (existingPosting && existingPosting.status !== 'Unposted') {
-      throw new Error('This recurring template is already posted for this month.');
+      throw Object.assign(new Error('This recurring template is already posted for this month.'), { status: 400 });
     }
 
     // 2. Create Expense
@@ -2361,10 +2383,10 @@ router.post('/interbank-transfer', withTenantDb, async (req: any, res) => {
     const [sourceBank] = await tdb.select().from(schema.bankAccounts).where(and(eq(schema.bankAccounts.id, sourceBankId), eq(schema.bankAccounts.isActive, true), eq(schema.bankAccounts.companyId, companyId)));
     const [destBank] = await tdb.select().from(schema.bankAccounts).where(and(eq(schema.bankAccounts.id, destBankId), eq(schema.bankAccounts.isActive, true), eq(schema.bankAccounts.companyId, companyId)));
 
-    if (!sourceBank) throw new Error('Active source bank account not found.');
-    if (!destBank) throw new Error('Active destination bank account not found.');
-    if (sourceBankId === destBankId) throw new Error('Source and destination bank accounts must be different.');
-    if (amount <= 0) throw new Error('Transfer amount must be greater than zero.');
+    if (!sourceBank) throw Object.assign(new Error('Active source bank account not found.'), { status: 400 });
+    if (!destBank) throw Object.assign(new Error('Active destination bank account not found.'), { status: 400 });
+    if (sourceBankId === destBankId) throw Object.assign(new Error('Source and destination bank accounts must be different.'), { status: 400 });
+    if (amount <= 0) throw Object.assign(new Error('Transfer amount must be greater than zero.'), { status: 400 });
 
     // 2. Validate transaction date
     await validateTransactionDate(dateStr, companyId);

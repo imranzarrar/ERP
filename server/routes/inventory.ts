@@ -3,7 +3,7 @@ import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, and, isNull, inArray, ne } from 'drizzle-orm';
 import { round2, round4, writeStockLedgerEntry, assertQuarterNotFiled, assertQuarterNotFrozen, assertProductsOwnedByCompany, validateTransactionDate } from '../lib/businessLogic.js';
-import { postJournalEntry, reverseAllEntriesFor, postInventoryAdjustment } from '../lib/ledger.js';
+import { postJournalEntry, reverseAllEntriesFor, postInventoryAdjustment, postInventoryRevaluation, totalOnHand, snapshotInventory, settleInventoryValuation } from '../lib/ledger.js';
 import { createPurchaseBillForGrns, payPurchaseBillInFull, normalizePurchaseBillForClient } from '../lib/purchasing.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { computeVendorCreditBalance } from '../lib/financialReports.js';
@@ -351,6 +351,7 @@ router.post('/goods-receipt-notes', withTenantDb, async (req: any, res) => {
     // qty × unitCost value the averageCost fold already uses, so the ledger and the
     // product's own weighted-average agree on what this receipt was actually worth.
     let grnInventoryValue = 0;
+    const grnRevaluations: Array<{ productId: string; before: { qty: number; avg: number }; after: { qty: number; avg: number }; posted: number }> = [];
 
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
     // request in one transaction; every row lock below still applies within it.
@@ -454,6 +455,7 @@ router.post('/goods-receipt-notes', withTenantDb, async (req: any, res) => {
 
       const baseQtyReceived = await toBaseQuantity(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.quantityReceived));
       const baseUnitCost = await toBaseUnitCost(tdb, item.productId, item.unitOfMeasureId, companyId, Number(item.unitCost));
+      const qtyOnHandBefore = await totalOnHand(tdb, companyId, item.productId);
 
       const batchCondition = item.batchNumber
         ? eq(schema.inventoryStocks.batchNumber, item.batchNumber)
@@ -507,6 +509,12 @@ router.post('/goods-receipt-notes', withTenantDb, async (req: any, res) => {
         .where(eq(schema.productsServices.id, item.productId));
 
       grnInventoryValue = round2(grnInventoryValue + round2(baseQtyReceived * baseUnitCost));
+      grnRevaluations.push({
+        productId: item.productId,
+        before: { qty: qtyOnHandBefore, avg: priorAvg },
+        after: { qty: round2(qtyOnHandBefore + baseQtyReceived), avg: newAvg },
+        posted: round2(baseQtyReceived * baseUnitCost),
+      });
     }
 
     // Determine the linked PO's fulfillment status from actual received-vs-ordered
@@ -568,6 +576,15 @@ router.post('/goods-receipt-notes', withTenantDb, async (req: any, res) => {
           { accountKey: 'GR_IR_CLEARING', credit: grnInventoryValue },
         ],
       });
+      // Units sold before they were received carried cost 0; stock arriving at a new average cost revalues what was already on hand.
+      // Whatever the receipt itself did not post is booked here, so Inventory = quantity x average cost (see postInventoryRevaluation).
+      for (const rv of grnRevaluations) {
+        await postInventoryRevaluation(tdb, {
+          companyId, branchId: grnWarehouse?.branchId || null, date: nowDate().toISOString().slice(0, 10), productId: rv.productId,
+          before: rv.before, after: rv.after, postedChange: rv.posted,
+          referenceType: 'Grn', referenceId: grnId, description: `Inventory revaluation on receipt ${grnNumber}`, createdById: req.user.id,
+        });
+      }
     }
 
     // GRN "auto-post Bill, paid at delivery" — same shared functions the standalone
@@ -663,6 +680,7 @@ router.post('/goods-receipt-notes/:id/reverse', withTenantDb, async (req: any, r
     }
 
     const items = await tdb.select().from(schema.goodsReceiptNoteItems).where(eq(schema.goodsReceiptNoteItems.grnId, id));
+    const valuationBefore = await snapshotInventory(tdb, companyId, items.map((i: any) => i.productId));
 
     for (const item of items) {
       const [product] = await tdb.select({
@@ -719,7 +737,9 @@ router.post('/goods-receipt-notes/:id/reverse', withTenantDb, async (req: any, r
     // Phase 3 ledger posting (row 12) — reverses row 8's entry in full (this route is
     // now unreachable once billed, so there is always exactly one un-reversed entry to
     // find here).
-    await reverseAllEntriesFor(tdb, companyId, 'Grn', id, nowDate().toISOString().slice(0, 10), `Goods receipt ${grn.grnNumber} reversed`, req.user.id);
+    const grnReversalDate = nowDate().toISOString().slice(0, 10);
+    const grnReversalEntries = await reverseAllEntriesFor(tdb, companyId, 'Grn', id, grnReversalDate, `Goods receipt ${grn.grnNumber} reversed`, req.user.id);
+    await settleInventoryValuation(tdb, { companyId, date: grnReversalDate, before: valuationBefore, entryIds: grnReversalEntries, referenceType: 'Grn', referenceId: id, description: `Inventory revaluation on reversing receipt ${grn.grnNumber}`, createdById: req.user.id });
 
     let updatedPurchaseOrder: { id: string; status: string } | null = null;
     if (grn.purchaseOrderId) {
@@ -1056,6 +1076,9 @@ router.post('/warehouse-receivings', withTenantDb, async (req: any, res) => {
       err.status = 400;
       throw err;
     }
+    // Goods in transit are stock; if fewer arrive than left, the difference is lost stock and a cost — taken from the valuation change below.
+    const dispatchedProducts = await tdb.select({ productId: schema.warehouseDispatchItems.productId }).from(schema.warehouseDispatchItems).where(eq(schema.warehouseDispatchItems.dispatchId, receivingData.dispatchId));
+    const receivingBefore = await snapshotInventory(tdb, companyId, dispatchedProducts.map((r: any) => r.productId));
 
     // toWarehouseId is DERIVED from the already company-scoped dispatch row above, never
     // from the client — the destination was fixed at dispatch time. branchAccessOkViaWarehouse
@@ -1176,6 +1199,10 @@ router.post('/warehouse-receivings', withTenantDb, async (req: any, res) => {
     // transaction, so no concurrent request can have slipped through between the check
     // and here.
     await tdb.update(schema.warehouseDispatches).set({ status: 'Received' }).where(eq(schema.warehouseDispatches.id, receivingData.dispatchId));
+    await settleInventoryValuation(tdb, {
+      companyId, branchId: null, date: nowDate().toISOString().slice(0, 10), before: receivingBefore, entryIds: [],
+      referenceType: 'Receiving', referenceId: receivingId, description: `Transfer receipt variance for dispatch ${dispatch.dispatchNumber}`, createdById: req.user.id,
+    });
 
     const created = { ...newReceiving, items: insertedItems };
 
@@ -1304,6 +1331,7 @@ router.post('/stock-adjustments', withTenantDb, async (req: any, res) => {
     await validateTransactionDate(guardDate, companyId);
     await assertQuarterNotFiled(guardDate, companyId);
     const delta = await toBaseQuantity(tdb, productId, unitOfMeasureId, companyId, Number(quantity));
+    const adjustmentBefore = await snapshotInventory(tdb, companyId, [productId]);
 
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
     // request in one transaction; the row lock below still applies within it.
@@ -1382,8 +1410,9 @@ router.post('/stock-adjustments', withTenantDb, async (req: any, res) => {
       stock = newStock;
     }
 
-    await postInventoryAdjustment(tdb, {
-      companyId, branchId: warehouse.branchId, date: nowDate().toISOString().slice(0, 10), productId, quantityChange: adjustedBy,
+    // Stock found or lost is a gain or a cost: the change in the product's valuation (whole cents) goes to cost of goods sold.
+    await settleInventoryValuation(tdb, {
+      companyId, branchId: warehouse.branchId, date: nowDate().toISOString().slice(0, 10), before: adjustmentBefore, entryIds: [],
       referenceType: 'StockAdjustment', referenceId: adjustmentId, description: `Stock adjustment: ${String(reason).trim()}`, createdById: req.user.id,
     });
 
@@ -1896,6 +1925,7 @@ router.post('/purchase-returns', withTenantDb, async (req: any, res) => {
     // cost of its own (only quantity/batch/unit), so each returned line's value is
     // looked up from the ORIGINAL GRN item it corresponds to (same productId+batch),
     // converted to base-unit terms exactly like the GRN receipt itself was.
+    const valuationBefore = await snapshotInventory(tdb, companyId, (returnData.items || []).map((i: any) => i.productId));
     let returnValue = 0;
     let returnTax = 0;
 
@@ -1968,14 +1998,19 @@ router.post('/purchase-returns', withTenantDb, async (req: any, res) => {
       let debitAccountKey = 'GR_IR_CLEARING';
       let debitAmount = returnValue;
       let includeVat = false;
+      let billReduction = 0;
+      let vendorCreditPart = 0;
       if (grn.isBilled) {
         includeVat = true;
         const vendorBills = await tdb.select().from(schema.purchaseBills)
           .where(and(eq(schema.purchaseBills.companyId, companyId), eq(schema.purchaseBills.vendorId, grn.vendorId), ne(schema.purchaseBills.status, 'Cancelled')));
         const owningBill = vendorBills.find((b: any) => (b.grnIds || '').split(',').includes(grn.id));
-        const billFullyPaid = owningBill?.status === 'Paid';
-        debitAccountKey = billFullyPaid ? 'VENDOR_CREDIT_RECEIVABLE' : 'AP';
         debitAmount = round2(returnValue + returnTax);
+        // THE RULE: only what is still unpaid on the bill can reduce it. Whatever part of the return had ALREADY been paid to the vendor is
+        // money the vendor now owes back — a vendor credit receivable, never a negative payable. (A fully paid bill: all of it is credit.)
+        const unpaidOnBill = owningBill ? Math.max(0, round2(Number(owningBill.grandTotal) - Number(owningBill.amountPaid || 0))) : 0;
+        billReduction = owningBill ? round2(Math.min(debitAmount, unpaidOnBill)) : 0;
+        vendorCreditPart = round2(debitAmount - billReduction);
 
         // Reduce the owning Bill's own stored totals to match what AP was just reduced
         // by — without this, the Bill still shows its full original grandTotal as owed
@@ -1984,11 +2019,12 @@ router.post('/purchase-returns', withTenantDb, async (req: any, res) => {
         // vendor by the returned amount. Only when the vendor still owes it (not the
         // Vendor-Credit-Receivable case, where the original bill genuinely was paid in
         // full and stays as paid history).
-        if (owningBill && !billFullyPaid) {
+        if (owningBill && billReduction > 0.004) {
+          const taxCut = debitAmount > 0 ? round2(billReduction * returnTax / debitAmount) : 0;
           await tdb.update(schema.purchaseBills).set({
-            subTotal: String(round2(Math.max(0, Number(owningBill.subTotal) - returnValue))),
-            taxTotal: String(round2(Math.max(0, Number(owningBill.taxTotal) - returnTax))),
-            grandTotal: String(round2(Math.max(0, Number(owningBill.grandTotal) - debitAmount))),
+            subTotal: String(round2(Math.max(0, Number(owningBill.subTotal) - (billReduction - taxCut)))),
+            taxTotal: String(round2(Math.max(0, Number(owningBill.taxTotal) - taxCut))),
+            grandTotal: String(round2(Math.max(0, Number(owningBill.grandTotal) - billReduction))),
           }).where(eq(schema.purchaseBills.id, owningBill.id));
         }
         // Record the input-VAT adjustment on the return itself, so the VAT return books it in THIS return's
@@ -1998,11 +2034,12 @@ router.post('/purchase-returns', withTenantDb, async (req: any, res) => {
             billId: owningBill.id,
             netAdjustment: String(returnValue),
             inputVatAdjustment: String(returnTax),
-            billTotalsReduced: !billFullyPaid,
+            billTotalsReduced: billReduction > 0.004,
+            billReduction: String(billReduction),
           }).where(eq(schema.purchaseReturns.id, returnId));
         }
       }
-      await postJournalEntry(tdb, {
+      const returnEntryId = await postJournalEntry(tdb, {
         companyId,
         branchId: returnWarehouse?.branchId || null,
         date: (newReturn.date as Date).toISOString().slice(0, 10),
@@ -2010,12 +2047,19 @@ router.post('/purchase-returns', withTenantDb, async (req: any, res) => {
         referenceId: returnId,
         description: `Purchase Return ${returnNumber} against GRN ${grn.grnNumber}`,
         createdById: req.user.id,
-        lines: [
-          { accountKey: debitAccountKey, debit: debitAmount },
-          { accountKey: 'INVENTORY', credit: returnValue },
-          ...(includeVat && returnTax > 0 ? [{ accountKey: 'VAT_INPUT', credit: returnTax }] : []),
-        ],
+        lines: grn.isBilled
+          ? [
+              ...(billReduction > 0 ? [{ accountKey: 'AP', debit: billReduction }] : []),
+              ...(vendorCreditPart > 0 ? [{ accountKey: 'VENDOR_CREDIT_RECEIVABLE', debit: vendorCreditPart }] : []),
+              { accountKey: 'INVENTORY', credit: returnValue },
+              ...(returnTax > 0 ? [{ accountKey: 'VAT_INPUT', credit: returnTax }] : []),
+            ]
+          : [
+              { accountKey: debitAccountKey, debit: debitAmount },
+              { accountKey: 'INVENTORY', credit: returnValue },
+            ],
       });
+      await settleInventoryValuation(tdb, { companyId, branchId: returnWarehouse?.branchId || null, date: (newReturn.date as Date).toISOString().slice(0, 10), before: valuationBefore, entryIds: [returnEntryId], referenceType: 'PurchaseReturn', referenceId: returnId, description: `Inventory revaluation on return ${returnNumber}`, createdById: req.user.id });
     }
 
     const created = { ...newReturn, items: insertedItems };
@@ -2064,8 +2108,24 @@ router.patch('/purchase-returns/:id/cancel', withTenantDb, async (req: any, res)
     // quarter has been filed with ZATCA.
     await validateTransactionDate(ret.date.toISOString().slice(0, 10), companyId);   // not a closed month either
     await assertQuarterNotFrozen(ret.date.toISOString().slice(0, 10), companyId);
+    // The part of this return that had already been paid is a vendor credit. If the vendor has refunded it (or it has been used), cancelling the
+    // return would leave a refund with nothing to back it: reverse the refund first.
+    {
+      const retGross = round2(Number(ret.netAdjustment || 0) + Number(ret.inputVatAdjustment || 0));
+      const retReduction = ret.billReduction != null ? Number(ret.billReduction) : (ret.billTotalsReduced ? retGross : 0);
+      const creditPart = round2(retGross - retReduction);
+      if (creditPart > 0.004) {
+        const available = await computeVendorCreditBalance(tdb, companyId, '9999-12-31', ret.vendorId);
+        if (available + 0.004 < creditPart) {
+          const err: any = new Error('The refund for this return has already been received from the vendor. Cancel that vendor refund first, then cancel the return.');
+          err.status = 400;
+          throw err;
+        }
+      }
+    }
 
     const items = await tdb.select().from(schema.purchaseReturnItems).where(eq(schema.purchaseReturnItems.returnId, id));
+    const valuationBefore = await snapshotInventory(tdb, companyId, items.map((i: any) => i.productId));
     for (const item of items) {
       const [product] = await tdb.select({ itemKind: schema.productsServices.itemKind })
         .from(schema.productsServices).where(eq(schema.productsServices.id, item.productId));
@@ -2122,10 +2182,12 @@ router.patch('/purchase-returns/:id/cancel', withTenantDb, async (req: any, res)
       const [bill] = await tdb.select().from(schema.purchaseBills).where(eq(schema.purchaseBills.id, ret.billId)).for('update');
       if (bill) {
         const net = Number(ret.netAdjustment || 0), vat = Number(ret.inputVatAdjustment || 0);
+        const reduction = ret.billReduction != null ? Number(ret.billReduction) : round2(net + vat);   // older rows: the whole return
+        const taxPart = net + vat > 0 ? round2(reduction * vat / (net + vat)) : 0;
         await tdb.update(schema.purchaseBills).set({
-          subTotal: String(round2(Number(bill.subTotal) + net)),
-          taxTotal: String(round2(Number(bill.taxTotal) + vat)),
-          grandTotal: String(round2(Number(bill.grandTotal) + net + vat)),
+          subTotal: String(round2(Number(bill.subTotal) + (reduction - taxPart))),
+          taxTotal: String(round2(Number(bill.taxTotal) + taxPart)),
+          grandTotal: String(round2(Number(bill.grandTotal) + reduction)),
         }).where(eq(schema.purchaseBills.id, bill.id));
       }
     }
@@ -2133,7 +2195,9 @@ router.patch('/purchase-returns/:id/cancel', withTenantDb, async (req: any, res)
     // Ledger posting: reverses row 13's entry in full — a cancelled return already rolls
     // the physical stock back above, so the ledger must follow it or Inventory/GR-IR/AP/
     // Vendor Credit would be left permanently out of step with what's actually on hand.
-    await reverseAllEntriesFor(tdb, companyId, 'PurchaseReturn', id, nowDate().toISOString().slice(0, 10), `Purchase Return ${ret.returnNumber} cancelled`, req.user.id);
+    const returnCancelDate = nowDate().toISOString().slice(0, 10);
+    const returnCancelEntries = await reverseAllEntriesFor(tdb, companyId, 'PurchaseReturn', id, returnCancelDate, `Purchase Return ${ret.returnNumber} cancelled`, req.user.id);
+    await settleInventoryValuation(tdb, { companyId, date: returnCancelDate, before: valuationBefore, entryIds: returnCancelEntries, referenceType: 'PurchaseReturn', referenceId: id, description: `Inventory revaluation on cancelling return ${ret.returnNumber}`, createdById: req.user.id });
 
     res.json({ success: true, purchaseReturn: updated });
   } catch (error: any) {
@@ -2272,6 +2336,7 @@ router.post('/stock-takes/:id/finalize', withTenantDb, async (req: any, res) => 
     }
 
     const items = await tdb.select().from(schema.physicalStockTakeItems).where(eq(schema.physicalStockTakeItems.stockTakeId, id));
+    const takeBefore = await snapshotInventory(tdb, companyId, items.map((i: any) => i.productId));
     const [takeWarehouse] = await tdb.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses).where(eq(schema.warehouses.id, stockTake.warehouseId));
 
     for (const item of items) {
@@ -2320,12 +2385,12 @@ router.post('/stock-takes/:id/finalize', withTenantDb, async (req: any, res) => 
         quantityChange: round2(finalizedQty - currentQty), endingQuantity: finalizedQty,
         batchNumber: item.batchNumber || null,
       });
-      await postInventoryAdjustment(tdb, {
-        companyId, branchId: takeWarehouse?.branchId ?? null, date: nowDate().toISOString().slice(0, 10), productId: item.productId,
-        quantityChange: round2(finalizedQty - currentQty),
-        referenceType: 'StockTake', referenceId: stockTake.id, description: `Stock take variance (${stockTake.id.slice(0, 8)})`, createdById: req.user.id,
-      });
     }
+    // The count's variances (shortages are a cost, overages a gain) = the change in valuation of the products counted, in whole cents.
+    await settleInventoryValuation(tdb, {
+      companyId, branchId: takeWarehouse?.branchId ?? null, date: nowDate().toISOString().slice(0, 10), before: takeBefore, entryIds: [],
+      referenceType: 'StockTake', referenceId: stockTake.id, description: `Stock take variance (${stockTake.id.slice(0, 8)})`, createdById: req.user.id,
+    });
 
     const [updatedStockTake] = await tdb.update(schema.physicalStockTakes)
       .set({ status: 'Completed' })
