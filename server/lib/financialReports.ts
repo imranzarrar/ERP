@@ -725,7 +725,11 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   const totalLiabilities = round2(accountsPayable + vatOutputPayable + goodsReceivedNotBilled);
 
   const investors = await executor.select().from(schema.investors).where(eq(schema.investors.companyId, companyId));
-  const capitalContributed = round2(investors.reduce((sum, inv) => sum + Number(inv.capitalContributed || 0), 0));
+  // The investors' running total is as of NOW; as at an earlier date, capital paid in (or taken back) after it is not there yet.
+  const laterCapitalIn = await laterVoucherTotals(executor, companyId, 'Equity', 'Receipt', asOfDate);
+  const laterCapitalOut = await laterVoucherTotals(executor, companyId, 'Equity', 'Reversal', asOfDate);
+  const sumMap = (m: Map<string, number>) => Array.from(m.values()).reduce((a, b) => a + b, 0);
+  const capitalContributed = round2(investors.reduce((sum, inv) => sum + Number(inv.capitalContributed || 0), 0) - sumMap(laterCapitalIn) + sumMap(laterCapitalOut));
 
   const closedMonths = await executor.select().from(schema.fiscalMonths).where(and(
     eq(schema.fiscalMonths.companyId, companyId),

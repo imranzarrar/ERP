@@ -75,6 +75,10 @@ describe('Balance Sheet / Trial Balance as at a past date', () => {
     ok(await post(`/api/expenses/${opex.id}/pay`, { date: today, bankId, amount: 115 }), 'pay expense');
     const accrual = rows.find(e => e.type === 'Accrual');
     ok(await post('/api/transactions/settle-accrual', { accrualExpenseId: accrual.id, actualAmount: 230, actualDate: today, paymentStatus: 'Paid', bankId }), 'settle');
+    // an investor pays capital in this month
+    ok(await post('/api/transactions/investors', { name: 'AsAt Investor', email: 'i@example.com', phone: '1', equityPercentage: 100, profitPercentage: 100, capitalContributed: 0, isActive: true, createdAt: new Date().toISOString() }), 'investor');
+    const investorId = (await db.select().from(schema.investors).where(eq(schema.investors.companyId, companyId)))[0].id;
+    ok(await post(`/api/transactions/investors/${investorId}/investment`, { bankId, amount: 500, date: today, description: 'Capital' }), 'investment');
   });
 
   it('as at the end of the previous month: still owed 230 by the customer, 315 to suppliers (115 + the accrual at its net 200)', async () => {
@@ -84,6 +88,7 @@ describe('Balance Sheet / Trial Balance as at a past date', () => {
     expect(bs.vatInputRecoverable).toBe(15);        // only the real expense invoice, never the accrual
     expect(bs.vatOutputPayable).toBe(30);
     expect(bs.bankBalance).toBe(0);                  // nothing had been paid or collected yet
+    expect(bs.capitalContributed).toBe(0);           // and the investor had not paid anything in yet
     expect(near(bs.balanceCheck, 0)).toBe(true);
     const tb = await tbAt(pEnd);
     expect(near(tb.totalDebits, tb.totalCredits)).toBe(true);
@@ -94,7 +99,8 @@ describe('Balance Sheet / Trial Balance as at a past date', () => {
     expect(bs.accountsReceivable).toBe(0);
     expect(bs.accountsPayable).toBe(0);
     expect(bs.vatInputRecoverable).toBe(45);        // 15 + the settling invoice's 30
-    expect(bs.bankBalance).toBe(-115);               // +230 collected -115 -230 paid
+    expect(bs.bankBalance).toBe(385);                // +230 collected -115 -230 paid +500 capital
+    expect(bs.capitalContributed).toBe(500);
     expect(near(bs.balanceCheck, 0)).toBe(true);
     const tb = await tbAt(today);
     expect(near(tb.totalDebits, tb.totalCredits)).toBe(true);
