@@ -9,14 +9,18 @@
 #   bash deploy/release.sh --dry-run    # preflight only: show what would be deployed, change nothing
 #   bash deploy/release.sh --from 4     # resume at step 4 after fixing a failure
 #   bash deploy/release.sh --only 8     # run just one step (e.g. re-run the ledger checks later)
+#   bash deploy/release.sh --force-schema   # run step 4 even if schema.ts did not change
 #
 # STEPS: 1 backup   2 pull + build (site stays up)   3 maintenance wiring + ON (self-verified)
 #        4 db:push (YOU review)   5 RLS   6 seed accounts   7 compress XML   8 ledger checks
 #        9 reload app + health check + maintenance OFF
 #
-# The ONLY question it asks is step 4: db:push against production is never automatic (see
-# docs/deployment-plan.md's guardrails) — it prints drizzle's plan and waits for you to read it and
-# type "yes". Everything else runs by itself and stops at the first failure.
+# Step 4 (db:push) runs ONLY when src/db/schema.ts changed since the last successful release (the
+# `last-release` git tag). A code-only release skips it entirely and says so — the database is not
+# touched. When it does run, db:push against production is never automatic (see
+# docs/deployment-plan.md's guardrails): it prints drizzle's plan and waits for you to read it and
+# type "yes". --force-schema runs it regardless. Everything else runs by itself and stops at the
+# first failure.
 #
 # Failure behaviour: the maintenance page goes on at step 3 and only comes off at the very end, after
 # every check has passed. If anything fails it STAYS ON — customers see the maintenance page, not a
@@ -34,9 +38,11 @@ SITE_DOMAIN="${ERP_DOMAIN:-warraq.compbrain.io}"
 FROM=1
 ONLY=0
 DRY_RUN=0
+FORCE_SCHEMA=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
+    --force-schema) FORCE_SCHEMA=1 ;;
     --from) shift; FROM="${1:?--from needs a step number 1-9}" ;;
     --only) shift; ONLY="${1:?--only needs a step number 1-9}" ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
@@ -129,6 +135,18 @@ BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 AHEAD="$(git rev-list --count HEAD..@{upstream})"
 echo "Branch: $BRANCH   Commits to deploy: $AHEAD   (HEAD now: $(git rev-parse --short HEAD))"
 git log --oneline HEAD..@{upstream} | head -20
+# Did the schema change since the last successful release? Decided here, from git, BEFORE anything is merged,
+# so resuming with --from still gets the same answer. No last-release tag (or an unreadable diff) => assume yes.
+SCHEMA_CHANGED=1
+if git rev-parse -q --verify refs/tags/last-release >/dev/null; then
+  if git diff --quiet last-release "@{upstream}" -- src/db/schema.ts; then SCHEMA_CHANGED=0; fi
+fi
+[ "$FORCE_SCHEMA" = "1" ] && SCHEMA_CHANGED=1
+if [ "$SCHEMA_CHANGED" = "1" ]; then
+  echo "Schema: src/db/schema.ts CHANGED since the last release (or no last-release tag) — step 4 (db:push) will run."
+else
+  echo "Schema: src/db/schema.ts unchanged since the last release — step 4 (db:push) will be SKIPPED; the database schema is not touched."
+fi
 [ "$AHEAD" != "0" ] || echo "(already at the latest commit — the build in step 2 still runs, so this is fine)"
 if [ "$DRY_RUN" = "1" ]; then
   if [ -f "$SITE_FILE" ]; then
@@ -165,13 +183,19 @@ if should_run 3; then
 fi
 
 if should_run 4; then
-  say "[4/9] Database schema (db:push) — REVIEW THE PLAN BELOW"
-  echo "Expected for this release: ONLY additions — new tables system_accounts, journal_entries,"
-  echo "journal_lines; new nullable columns vouchers.reversal_of_voucher_id,"
-  echo "purchase_bills.vendor_bill_number, invoices.xml_content_z. Decline anything that"
-  echo "drops, renames or retypes."
-  npm run db:push
-  confirm "Did db:push finish applying ONLY additions, with no errors?"
+  if [ "$SCHEMA_CHANGED" = "0" ]; then
+    say "[4/9] Database schema: schema.ts unchanged since the last release — db:push SKIPPED (use --force-schema to run it anyway)"
+  else
+    say "[4/9] Database schema (db:push) — REVIEW THE PLAN BELOW"
+    if git rev-parse -q --verify refs/tags/last-release >/dev/null; then
+      echo "schema.ts changes since the last release:"
+      git diff --stat last-release HEAD -- src/db/schema.ts
+    fi
+    echo "Expect ONLY additions (new tables, new nullable columns). Decline anything that drops, renames or"
+    echo "retypes, and anything unrelated to the changes listed above (db:push diffs the LIVE database)."
+    npm run db:push
+    confirm "Did db:push finish applying ONLY the changes you expected, with no errors?"
+  fi
 fi
 
 if should_run 5; then
