@@ -6,6 +6,7 @@ import { round2, round4, writeStockLedgerEntry, assertQuarterNotFiled, assertPro
 import { postJournalEntry, reverseAllEntriesFor, postInventoryAdjustment } from '../lib/ledger.js';
 import { createPurchaseBillForGrns, payPurchaseBillInFull, normalizePurchaseBillForClient } from '../lib/purchasing.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
+import { computeVendorCreditBalance } from '../lib/financialReports.js';
 import { hasPermission, resolveDocumentBranchId, branchAccessOk, branchAccessOkViaWarehouse } from '../lib/authz.js';
 import { toBaseQuantity, toBaseUnitCost } from '../lib/uomConversion.js';
 import { generateId } from '../../src/id.js';
@@ -1291,6 +1292,10 @@ router.post('/stock-adjustments', withTenantDb, async (req: any, res) => {
     }
     const companyId = req.targetCompanyId;
     const tdb = tenantDb();
+    // Posts cost to the P&L dated today, so it must not land in a closed month or a quarter already filed with ZATCA.
+    const guardDate = new Date().toISOString().slice(0, 10);
+    await validateTransactionDate(guardDate, companyId);
+    await assertQuarterNotFiled(guardDate, companyId);
     const delta = await toBaseQuantity(tdb, productId, unitOfMeasureId, companyId, Number(quantity));
 
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
@@ -1513,6 +1518,106 @@ router.put('/purchase-bills/:id', withTenantDb, async (req: any, res) => {
 
 // Pay a Bill (full or partial) — same partial-payment shape as the expense/invoice payment
 // routes: caps at the remaining balance, generates a fresh Payment voucher per settlement.
+// --- Vendor refunds: the supplier paying back money for goods returned AFTER the bill was paid in full -------------------
+// The credit itself is created by POST /purchase-returns (Dr VENDOR_CREDIT_RECEIVABLE). Receiving the money clears it:
+// Dr Bank / Cr Vendor Credit Receivable. It is a cash-and-receivable movement ONLY — it never touches the P&L, the VAT
+// registers or any filed return (the VAT was corrected in the period of the return). Because it is still a dated money entry,
+// it must not be dated in a closed fiscal month or inside a VAT quarter already filed with ZATCA, and cancelling it is held to
+// the same rule (the reversal carries the original's date), so no closed period can ever be altered by a refund or its cancel.
+router.post('/vendor-refunds', withTenantDb, async (req: any, res) => {
+  try {
+    if (!hasPermission(req.user, 'purchaseBills.update')) return res.status(403).json({ error: 'Forbidden' });
+    const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
+    const { vendorId, bankId, amount, date, description } = req.body || {};
+    const refundDate = String(date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    const amt = round2(Number(amount));
+    if (!vendorId || !bankId) return res.status(400).json({ error: 'A vendor and a bank account are required.' });
+    if (!(amt > 0)) return res.status(400).json({ error: 'Refund amount must be greater than zero.' });
+
+    const [vendor] = await tdb.select({ id: schema.vendors.id }).from(schema.vendors).where(and(eq(schema.vendors.id, vendorId), eq(schema.vendors.companyId, companyId)));
+    if (!vendor) return res.status(400).json({ error: 'Vendor not found for this company.' });
+    const [bank] = await tdb.select({ id: schema.bankAccounts.id }).from(schema.bankAccounts).where(and(eq(schema.bankAccounts.id, bankId), eq(schema.bankAccounts.companyId, companyId)));
+    if (!bank) return res.status(400).json({ error: 'Selected bank account was not found for this company.' });
+
+    await validateTransactionDate(refundDate, companyId);       // existing, open, not in the future
+    await assertQuarterNotFiled(refundDate, companyId);          // not inside a quarter already filed with ZATCA
+
+    const available = await computeVendorCreditBalance(tdb, companyId, refundDate, vendorId);
+    if (amt > available + 0.01) {
+      return res.status(400).json({ error: `Refund (${amt.toFixed(2)}) exceeds the credit this vendor owes the company as of ${refundDate} (${Math.max(0, available).toFixed(2)}).` });
+    }
+
+    const voucherNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'voucher', refundDate, null);
+    const voucherId = generateId();
+    const [voucher] = await tdb.insert(schema.vouchers).values({
+      id: voucherId, voucherNumber, type: 'Receipt', date: refundDate, bankId, amount: String(amt),
+      description: description || `Refund received from vendor for returned goods (${amt.toFixed(2)})`,
+      referenceType: 'VendorRefund', referenceId: vendorId, createdById: req.user.id, createdAt: new Date(), companyId, branchId: null,
+    }).returning();
+    await postJournalEntry(tdb, {
+      companyId, branchId: null, date: refundDate, referenceType: 'VendorRefund', referenceId: voucherId,
+      description: `Vendor refund ${voucherNumber}`, createdById: req.user.id,
+      lines: [{ accountKey: 'BANK', debit: amt, bankId }, { accountKey: 'VENDOR_CREDIT_RECEIVABLE', credit: amt }],
+    });
+    res.json({ success: true, voucher: { ...voucher, amount: Number(voucher.amount), createdAt: voucher.createdAt instanceof Date ? voucher.createdAt.toISOString() : voucher.createdAt } });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+router.get('/vendor-refunds', withTenantDb, async (req: any, res) => {
+  try {
+    if (!hasPermission(req.user, 'purchaseBills.read') && !hasPermission(req.user, 'purchaseBills.update')) return res.status(403).json({ error: 'Forbidden' });
+    const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
+    const rows = await tdb.select().from(schema.vouchers).where(and(eq(schema.vouchers.companyId, companyId), eq(schema.vouchers.referenceType, 'VendorRefund')));
+    const reversed = new Set(rows.filter((v: any) => v.type === 'Reversal').map((v: any) => v.reversalOfVoucherId));
+    const vendorId = typeof req.query.vendorId === 'string' ? req.query.vendorId : null;
+    const refunds = rows.filter((v: any) => v.type === 'Receipt' && (!vendorId || v.referenceId === vendorId))
+      .map((v: any) => ({ id: v.id, voucherNumber: v.voucherNumber, date: v.date, vendorId: v.referenceId, bankId: v.bankId, amount: Number(v.amount), cancelled: reversed.has(v.id) }))
+      .sort((a: any, b: any) => b.date.localeCompare(a.date));
+    const balance = await computeVendorCreditBalance(tdb, companyId, '9999-12-31', vendorId || 'ALL');
+    res.json({ refunds, creditBalance: balance });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
+router.post('/vendor-refunds/:id/cancel', withTenantDb, async (req: any, res) => {
+  try {
+    if (!hasPermission(req.user, 'purchaseBills.update')) return res.status(403).json({ error: 'Forbidden' });
+    const companyId = req.targetCompanyId;
+    const tdb = tenantDb();
+    const [original] = await tdb.select().from(schema.vouchers).where(and(
+      eq(schema.vouchers.id, req.params.id), eq(schema.vouchers.companyId, companyId),
+      eq(schema.vouchers.referenceType, 'VendorRefund'), eq(schema.vouchers.type, 'Receipt'),
+    ));
+    if (!original) return res.status(404).json({ error: 'Vendor refund not found.' });
+    const [already] = await tdb.select({ id: schema.vouchers.id }).from(schema.vouchers).where(and(
+      eq(schema.vouchers.companyId, companyId), eq(schema.vouchers.reversalOfVoucherId, original.id),
+    ));
+    if (already) return res.status(400).json({ error: 'This refund has already been cancelled.' });
+
+    // The reversal carries the ORIGINAL's date, so cancelling a refund received in a month that has since closed (or in a
+    // filed quarter) is refused — exactly like the original could not have been entered there.
+    await validateTransactionDate(original.date, companyId);
+    await assertQuarterNotFiled(original.date, companyId);
+
+    const voucherNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'voucher', original.date, null);
+    await tdb.insert(schema.vouchers).values({
+      id: generateId(), voucherNumber, type: 'Reversal', date: original.date, bankId: original.bankId, amount: original.amount,
+      description: `Reversal of vendor refund ${original.voucherNumber}`,
+      referenceType: 'VendorRefund', referenceId: original.referenceId, createdById: req.user.id, createdAt: new Date(), companyId,
+      branchId: null, reversalOfVoucherId: original.id,
+    });
+    await reverseAllEntriesFor(tdb, companyId, 'VendorRefund', original.id, original.date, `Vendor refund ${original.voucherNumber} cancelled`, req.user.id);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
 router.post('/purchase-bills/:id/pay', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'purchaseBills.update')) {
@@ -1551,6 +1656,9 @@ router.post('/purchase-bills/:id/pay', withTenantDb, async (req: any, res) => {
     }
 
     const voucherDate = date || new Date().toISOString().split('T')[0];
+    // A payment is a dated cash entry: never into a closed fiscal month, never inside a quarter already filed with ZATCA.
+    await validateTransactionDate(voucherDate, companyId);
+    await assertQuarterNotFiled(voucherDate, companyId);
     const { bill: newBill, voucher } = await payPurchaseBillInFull(tdb, {
       companyId,
       billId: id,
@@ -1623,6 +1731,7 @@ router.patch('/purchase-bills/:id/cancel', withTenantDb, async (req: any, res) =
     // Cancelling is an edit to this bill, same as its creation already blocks once its
     // quarter has been filed with ZATCA (a filed return's reported input VAT would
     // otherwise silently go stale).
+    await validateTransactionDate(bill.date.toISOString().slice(0, 10), companyId);   // not a closed month either
     await assertQuarterNotFiled(bill.date.toISOString().slice(0, 10), companyId);
     const [newBill] = await tdb.update(schema.purchaseBills)
       .set({ status: 'Cancelled' })
@@ -1938,6 +2047,7 @@ router.patch('/purchase-returns/:id/cancel', withTenantDb, async (req: any, res)
     }
     // Cancelling is an edit to this return, same as its creation now blocks once its
     // quarter has been filed with ZATCA.
+    await validateTransactionDate(ret.date.toISOString().slice(0, 10), companyId);   // not a closed month either
     await assertQuarterNotFiled(ret.date.toISOString().slice(0, 10), companyId);
 
     const items = await tdb.select().from(schema.purchaseReturnItems).where(eq(schema.purchaseReturnItems.returnId, id));
@@ -2120,6 +2230,10 @@ router.post('/stock-takes/:id/finalize', withTenantDb, async (req: any, res) => 
     const { id } = req.params;
     const companyId = req.targetCompanyId;
     const tdb = tenantDb();
+    // Posts cost to the P&L dated today, so it must not land in a closed month or a quarter already filed with ZATCA.
+    const guardDate = new Date().toISOString().slice(0, 10);
+    await validateTransactionDate(guardDate, companyId);
+    await assertQuarterNotFiled(guardDate, companyId);
 
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
     // request in one transaction; the row lock below still applies within it.

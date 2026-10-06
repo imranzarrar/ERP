@@ -77,6 +77,28 @@ function liabilityAmount(exp: any, pctBySlab: Map<string, number>): number {
 // presented as its own asset and not netted against Accounts Payable (IAS 1.32 / IAS 32.42: no offsetting without a
 // legally enforceable right of set-off and an intention to settle net). Gross of the VAT given back, dated by the return.
 export interface VendorCreditLine { documentNumber: string; date: string; vendorId: string; amount: number; }
+// A refund received from the supplier is a Receipt voucher (referenceType 'VendorRefund', referenceId = the vendor); cancelling it
+// is a Reversal voucher that points back at it. Neither touches any P&L or VAT figure — only cash and this receivable.
+export interface VendorRefundLine { documentNumber: string; date: string; vendorId: string; type: 'Receipt' | 'Reversal'; amount: number; }
+async function computeVendorRefunds(executor: any, companyId: string, asOfDate: string, vendorId: string | 'ALL' = 'ALL'): Promise<{ total: number; lines: VendorRefundLine[] }> {
+  const rows: any[] = await executor.select().from(schema.vouchers).where(and(
+    eq(schema.vouchers.companyId, companyId),
+    eq(schema.vouchers.referenceType, 'VendorRefund'),
+    lte(schema.vouchers.date, asOfDate),
+    ...(vendorId === 'ALL' ? [] : [eq(schema.vouchers.referenceId, vendorId)]),
+  ));
+  const lines: VendorRefundLine[] = rows.filter(v => v.type === 'Receipt' || v.type === 'Reversal').map(v => ({
+    documentNumber: v.voucherNumber, date: v.date, vendorId: v.referenceId, type: v.type, amount: round2(Number(v.amount)),
+  }));
+  return { total: round2(lines.reduce((s, l) => s + (l.type === 'Receipt' ? l.amount : -l.amount), 0)), lines };
+}
+// What the supplier still owes back = refunds due from returns, less refunds already received.
+async function computeVendorCreditBalance(executor: any, companyId: string, asOfDate: string, vendorId: string | 'ALL' = 'ALL'): Promise<number> {
+  const due = await computeVendorCredits(executor, companyId, asOfDate, vendorId);
+  const received = await computeVendorRefunds(executor, companyId, asOfDate, vendorId);
+  return round2(due.total - received.total);
+}
+export { computeVendorCreditBalance };
 async function computeVendorCredits(executor: any, companyId: string, asOfDate: string, vendorId: string | 'ALL' = 'ALL'): Promise<{ total: number; lines: VendorCreditLine[] }> {
   const rows: any[] = await executor.select().from(schema.purchaseReturns).where(and(
     eq(schema.purchaseReturns.companyId, companyId),
@@ -169,7 +191,7 @@ export async function computeAllBankBalances(executor: any, companyId: string, a
         // Same convention as generateBankLedger: a Reversal against an Invoice reverses a
         // Receipt (cash out), a Reversal against anything else (Expense) reverses a
         // Payment (cash in).
-        if (v.referenceType === 'Invoice') balance -= amount;
+        if (v.referenceType === 'Invoice' || v.referenceType === 'VendorRefund') balance -= amount;
         else balance += amount;
       }
     }
@@ -367,7 +389,10 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
 
   const netProfit = round2(totalRevenue - costOfGoodsSold - totalExpenses);
 
-  const operatingInflows = round2(periodVouchers
+  const vendorRefundsReceived = round2(periodVouchers
+    .filter(v => v.referenceType === 'VendorRefund' && (v.type === 'Receipt' || v.type === 'Reversal'))
+    .reduce((sum, v) => sum + (v.type === 'Receipt' ? Number(v.amount) : -Number(v.amount)), 0));
+  const operatingInflows = round2(vendorRefundsReceived + periodVouchers
     .filter(v => v.referenceType === 'Invoice' && v.type === 'Receipt')
     .reduce((sum, v) => sum + Number(v.amount), 0));
   // Outflows = operating expense payments (net of their reversals) + money handed back to customers
@@ -627,7 +652,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   }
   goodsReceivedNotBilled = round2(Math.max(0, goodsReceivedNotBilled));
 
-  const vendorCreditReceivable = (await computeVendorCredits(executor, companyId, asOfDate)).total;
+  const vendorCreditReceivable = await computeVendorCreditBalance(executor, companyId, asOfDate);
   const totalAssets = round2(bankBalance + accountsReceivable + inventoryValue + fixedAssets + vatInputRecoverable + vendorCreditReceivable);
   const totalLiabilities = round2(accountsPayable + vatOutputPayable + goodsReceivedNotBilled);
 
@@ -1277,6 +1302,10 @@ export async function computeVendorStatement(executor: any, companyId: string, v
   const entries: Omit<StatementEntry, 'runningBalance'>[] = vendExpenses.map(exp => ({ date: exp.date, type: 'Expense', docNumber: exp.expenseNumber, debit: liabilityAmount(exp, stmtPct), credit: 0 }));
   // Goods returned after the bill was paid in full: the supplier owes this back, which lowers the balance on this statement.
   for (const c of (await computeVendorCredits(executor, companyId, '9999-12-31', vendorId)).lines) entries.push({ date: c.date, type: 'Purchase Return', docNumber: c.documentNumber, debit: 0, credit: c.amount });
+  // The supplier paying that money back clears the credit (a cancelled refund puts it back).
+  for (const r of (await computeVendorRefunds(executor, companyId, '9999-12-31', vendorId)).lines) {
+    entries.push({ date: r.date, type: r.type === 'Receipt' ? 'Vendor Refund' : 'Vendor Refund Cancelled', docNumber: r.documentNumber, debit: r.type === 'Receipt' ? r.amount : 0, credit: r.type === 'Receipt' ? 0 : r.amount });
+  }
   for (const b of vendBills) entries.push({ date: b.date.toISOString().slice(0, 10), type: 'Purchase Bill', docNumber: b.billNumber, debit: Number(b.grandTotal), credit: 0 });
   for (const v of payments) entries.push({ date: v.date, type: 'Payment', docNumber: v.voucherNumber, debit: 0, credit: Number(v.amount) });
   entries.sort((a, b) => a.date.localeCompare(b.date));
@@ -1790,7 +1819,7 @@ function voucherEffect(v: { type: string; referenceType: string; amount: any }) 
   const amount = Number(v.amount);
   if (v.type === 'Receipt' || v.type === 'TransferIn') return { debit: amount, credit: 0 };
   if (v.type === 'Payment' || v.type === 'TransferOut') return { debit: 0, credit: amount };
-  if (v.type === 'Reversal') return v.referenceType === 'Invoice' ? { debit: 0, credit: amount } : { debit: amount, credit: 0 };
+  if (v.type === 'Reversal') return v.referenceType === 'Invoice' || v.referenceType === 'VendorRefund' ? { debit: 0, credit: amount } : { debit: amount, credit: 0 };
   return { debit: 0, credit: 0 };
 }
 // Opening balance = bank opening balance + everything posted BEFORE startDate (the old

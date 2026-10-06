@@ -62,6 +62,8 @@ beforeAll(async () => {
     email: 'purchasebills@example.com', logoUrl: '', customHeader: '', customFooter: '',
     currency: 'SAR', counters: {}, zatcaEnabled: false, themeId: 'classic-executive',
   });
+  // Payments, bill cancellations and stock adjustments are dated cash/cost entries: like invoices they need an open fiscal month.
+  await db.insert(schema.fiscalMonths).values({ id: new Date().toISOString().slice(0, 7), name: 'current', status: 'Open', companyId }).onConflictDoNothing();
 
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
   adminUserId = generateId();
@@ -119,6 +121,7 @@ afterAll(async () => {
   await db.delete(schema.users).where(eq(schema.users.id, adminUserId));
   await db.delete(schema.users).where(eq(schema.users.id, staffUserId));
   await db.delete(schema.documentCounters).where(eq(schema.documentCounters.companyId, companyId));
+  await db.delete(schema.fiscalMonths).where(eq(schema.fiscalMonths.companyId, companyId));
   await db.delete(schema.companies).where(eq(schema.companies.id, companyId));
 });
 
@@ -201,7 +204,7 @@ describe('POST /api/inventory/purchase-bills/:id/pay + PATCH .../cancel', () => 
 
     const partial = await api(adminSessionId, `/api/inventory/purchase-bills/${billId}/pay`, {
       method: 'POST',
-      body: JSON.stringify({ date: '2026-01-01', amount: 400 }),
+      body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), amount: 400 }),
     });
     expect(partial.status).toBe(200);
     let [bill] = await db.select().from(schema.purchaseBills).where(eq(schema.purchaseBills.id, billId));
@@ -210,7 +213,7 @@ describe('POST /api/inventory/purchase-bills/:id/pay + PATCH .../cancel', () => 
 
     const final = await api(adminSessionId, `/api/inventory/purchase-bills/${billId}/pay`, {
       method: 'POST',
-      body: JSON.stringify({ date: '2026-01-02' }), // no amount -> pays the remainder
+      body: JSON.stringify({ date: new Date().toISOString().slice(0, 10) }), // no amount -> pays the remainder
     });
     expect(final.status).toBe(200);
     [bill] = await db.select().from(schema.purchaseBills).where(eq(schema.purchaseBills.id, billId));
@@ -230,7 +233,7 @@ describe('POST /api/inventory/purchase-bills/:id/pay + PATCH .../cancel', () => 
     });
     const { status } = await api(adminSessionId, `/api/inventory/purchase-bills/${billBody.purchaseBill.id}/pay`, {
       method: 'POST',
-      body: JSON.stringify({ date: '2026-01-01', amount: 99999 }),
+      body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), amount: 99999 }),
     });
     expect(status).toBe(400);
   });
@@ -264,7 +267,7 @@ describe('POST /api/inventory/purchase-bills/:id/pay + PATCH .../cancel', () => 
       body: JSON.stringify({ billData: { grnIds: [grnId], bankId } }),
     });
     const billId = billBody.purchaseBill.id;
-    await api(adminSessionId, `/api/inventory/purchase-bills/${billId}/pay`, { method: 'POST', body: JSON.stringify({ date: '2026-01-01', amount: 10 }) });
+    await api(adminSessionId, `/api/inventory/purchase-bills/${billId}/pay`, { method: 'POST', body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), amount: 10 }) });
 
     const { status } = await api(adminSessionId, `/api/inventory/purchase-bills/${billId}/cancel`, { method: 'PATCH' });
     expect(status).toBe(400);

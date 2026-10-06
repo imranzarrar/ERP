@@ -91,6 +91,8 @@ beforeAll(async () => {
     counters: {},
     zatcaEnabled: false,
   });
+  // Stock adjustments post cost dated today, so like invoices they need an open fiscal month.
+  await db.insert(schema.fiscalMonths).values({ id: new Date().toISOString().slice(0, 7), name: 'current', status: 'Open', companyId }).onConflictDoNothing();
 
   const passwordHash = await bcrypt.hash(TEST_PASSWORD, 10);
 
@@ -156,6 +158,7 @@ afterAll(async () => {
   await db.delete(schema.users).where(eq(schema.users.id, adminUserId));
   await db.delete(schema.users).where(eq(schema.users.id, staffUserId));
   await db.delete(schema.documentCounters).where(eq(schema.documentCounters.companyId, companyId));
+  await db.delete(schema.fiscalMonths).where(eq(schema.fiscalMonths.companyId, companyId));
   await db.delete(schema.companies).where(eq(schema.companies.id, companyId));
 });
 
