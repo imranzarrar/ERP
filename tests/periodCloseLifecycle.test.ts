@@ -61,8 +61,8 @@ const expense = async (date: string, amount: number, extra: any = {}) =>
 const grn = async (qty: number, cost: number, extra: any = {}) =>
   ok(await post('/api/inventory/goods-receipt-notes', { grnData: { isDsd: true, vendorId, warehouseId, receivedBy: 'Lifecycle', items: [{ productId: P, quantityReceived: qty, unitCost: cost, taxRate: 15 }], ...extra } }), 'grn').goodsReceiptNote.id as string;
 const bill = async (grnId: string, backdate: string) => {
-  const b = ok(await post('/api/inventory/purchase-bills', { billData: { grnIds: [grnId], bankId, vendorBillNumber: 'VB-' + generateId().slice(-4) } }), 'bill').purchaseBill;
-  await db.update(schema.purchaseBills).set({ date: new Date(backdate + 'T10:00:00.000Z') }).where(eq(schema.purchaseBills.id, b.id));   // the supplier's invoice date
+  // dated with the supplier's invoice date (mandatory on a bill)
+  const b = ok(await post('/api/inventory/purchase-bills', { billData: { grnIds: [grnId], bankId, date: backdate, vendorBillNumber: 'VB-' + generateId().slice(-4) } }), 'bill').purchaseBill;
   return b.id as string;
 };
 const payBill = async (billId: string, date: string, amount: number) => ok(await post(`/api/inventory/purchase-bills/${billId}/pay`, { date, bankId, amount }), 'bill pay');

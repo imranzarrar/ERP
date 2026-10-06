@@ -42,6 +42,8 @@ export interface CreatePurchaseBillInput {
   bankId?: string | null;
   dueDate?: string | null;
   vendorBillNumber?: string | null;
+  // The bill's own date (the supplier invoice date), YYYY-MM-DD — mandatory, validated by the caller like every other dated document.
+  date: string;
   userId: string;
 }
 
@@ -49,7 +51,12 @@ export interface CreatePurchaseBillInput {
 // entry for each referenced GRN) / Dr VAT Input (tax amount, now claimable) / Cr AP
 // (full tax-inclusive total).
 export async function createPurchaseBillForGrns(tx: any, input: CreatePurchaseBillInput) {
-  const { companyId, grnIds, branchId, bankId, dueDate, vendorBillNumber, userId } = input;
+  const { companyId, grnIds, branchId, bankId, dueDate, vendorBillNumber, userId, date } = input;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) {
+    const err: any = new Error('A bill date is required (YYYY-MM-DD).');
+    err.status = 400;
+    throw err;
+  }
   if (!grnIds || grnIds.length === 0) {
     const err: any = new Error('At least one goods receipt note must be referenced.');
     err.status = 400;
@@ -100,7 +107,7 @@ export async function createPurchaseBillForGrns(tx: any, input: CreatePurchaseBi
   }
   const grandTotal = round2(subTotal + taxTotal);
 
-  const billDateStr = new Date().toISOString().slice(0, 10);
+  const billDateStr = date;
   const billNumber = await getAndIncrementDocumentNumber(tx, companyId, 'bill', billDateStr, branchId);
   const billId = generateId();
 
@@ -109,7 +116,8 @@ export async function createPurchaseBillForGrns(tx: any, input: CreatePurchaseBi
     billNumber,
     vendorBillNumber: vendorBillNumber || null,
     vendorId: vendorId!,
-    date: new Date(),
+    // A bill entered today keeps its entry time; a back-dated one sits at noon UTC of its day.
+    date: date === new Date().toISOString().slice(0, 10) ? new Date() : new Date(date + 'T12:00:00.000Z'),
     dueDate: dueDate ? new Date(dueDate) : null,
     grnIds: grns.map((g: any) => g.id).join(','),
     subTotal: String(subTotal),

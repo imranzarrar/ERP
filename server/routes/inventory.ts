@@ -584,6 +584,7 @@ router.post('/goods-receipt-notes', withTenantDb, async (req: any, res) => {
         bankId: grnData.billBankId,
         dueDate: null,
         vendorBillNumber: grnData.vendorBillNumber,
+        date: new Date().toISOString().slice(0, 10),
         userId: req.user.id,
       });
       const { bill: paidBill } = await payPurchaseBillInFull(tdb, {
@@ -1428,10 +1429,14 @@ router.post('/purchase-bills', withTenantDb, async (req: any, res) => {
 
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
     // request in one transaction; every row lock below still applies within it.
-    // Purchase Bills always post as of today (date: new Date() below) — no client-
-    // supplied bill date exists, so this is a same-day check only, never a backdating
-    // scenario, unlike the invoice/expense sites which validate a client-chosen date.
-    await assertQuarterNotFiled(new Date().toISOString().slice(0, 10), companyId);
+    // The bill date is mandatory (the supplier's invoice date) and validated like every other dated document:
+    // an existing, open fiscal month, not in the future, not inside a VAT quarter already filed with ZATCA.
+    const billDate = String(billData.date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(billDate)) {
+      return res.status(400).json({ error: 'A bill date is required.' });
+    }
+    await validateTransactionDate(billDate, companyId);
+    await assertQuarterNotFiled(billDate, companyId);
 
     // Vendor Bill # is optional here (can be added later via PUT /purchase-bills/:id
     // while still Unpaid) — only the GRN auto-post-bill flow requires it upfront, since
@@ -1443,6 +1448,7 @@ router.post('/purchase-bills', withTenantDb, async (req: any, res) => {
       bankId: billData.bankId,
       dueDate: billData.dueDate,
       vendorBillNumber: billData.vendorBillNumber,
+      date: billDate,
       userId: req.user.id,
     });
 
@@ -1656,6 +1662,9 @@ router.post('/purchase-bills/:id/pay', withTenantDb, async (req: any, res) => {
     }
 
     const voucherDate = date || new Date().toISOString().split('T')[0];
+    if (voucherDate < new Date(bill.date).toISOString().slice(0, 10)) {
+      return res.status(400).json({ error: `A payment cannot be dated before the bill itself (${new Date(bill.date).toISOString().slice(0, 10)}).` });
+    }
     // A payment is a dated cash entry: never into a closed fiscal month, never inside a quarter already filed with ZATCA.
     await validateTransactionDate(voucherDate, companyId);
     await assertQuarterNotFiled(voucherDate, companyId);

@@ -632,20 +632,15 @@ export async function cancelExpense(tx: any, req: any, id: string, companyId: st
   // input VAT would otherwise silently go stale). Shared by both POST /expenses/:id/cancel
   // and DELETE /accruals/:id, so fixing it here covers both call sites at once.
   await assertQuarterNotFiled(expense.date, companyId);
+  // An expense whose month is already closed cannot be cancelled: cancelling drops it from its own month's figures, which
+  // would change a closed month.
+  await validateTransactionDate(expense.date, companyId);
 
-  const openMonths = await tx.select().from(schema.fiscalMonths)
-    .where(and(eq(schema.fiscalMonths.companyId, companyId), eq(schema.fiscalMonths.status, 'Open')));
-  const openMonth = openMonths.sort((a: any, b: any) => a.id.localeCompare(b.id))[0];
-  if (!openMonth) {
-    const err: any = new Error('There is no open fiscal month.');
-    err.status = 400;
-    throw err;
-  }
-
-  const todayStr = new Date().toISOString().split('T')[0];
-  const finalReversalDate = todayStr.startsWith(openMonth.id)
-    ? todayStr
-    : (expense.date.startsWith(openMonth.id) ? expense.date : openMonth.id + '-01');
+  // The reversal is posted on the day the cancellation happens (never back into the expense's own, earlier period), and
+  // that day must itself be in an open fiscal month and outside any filed VAT quarter.
+  const finalReversalDate = new Date().toISOString().split('T')[0];
+  await validateTransactionDate(finalReversalDate, companyId);
+  await assertQuarterNotFiled(finalReversalDate, companyId);
 
   await tx.update(schema.expenses).set({ status: 'Cancelled' }).where(eq(schema.expenses.id, id));
 

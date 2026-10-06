@@ -257,7 +257,7 @@ export default function InventoryModule({
 
   // Purchase Bill Form State — references one or more un-billed GRNs (the 3-way match);
   // totals are always computed server-side from those GRNs, never entered here.
-  const [billForm, setBillForm] = React.useState({ grnIds: [] as string[], dueDate: '', bankId: '', vendorBillNumber: '' });
+  const [billForm, setBillForm] = React.useState({ grnIds: [] as string[], date: new Date().toISOString().slice(0, 10), dueDate: '', bankId: '', vendorBillNumber: '' });
   const [payBillForm, setPayBillForm] = React.useState({ date: '', amount: '', bankId: '' });
 
   // Purchase Return (Debit Note) Form State
@@ -1194,13 +1194,13 @@ export default function InventoryModule({
   // referenced GRN(s), never sent from here.
   const handleCreateBill = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (billForm.grnIds.length === 0 || isSubmittingBill) return;
+    if (billForm.grnIds.length === 0 || !billForm.date || isSubmittingBill) return;
     setIsSubmittingBill(true);
     try {
       const res = await fetch('/api/inventory/purchase-bills', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ billData: { grnIds: billForm.grnIds, dueDate: billForm.dueDate || undefined, bankId: billForm.bankId || undefined, vendorBillNumber: billForm.vendorBillNumber || undefined } })
+        body: JSON.stringify({ billData: { grnIds: billForm.grnIds, date: billForm.date, dueDate: billForm.dueDate || undefined, bankId: billForm.bankId || undefined, vendorBillNumber: billForm.vendorBillNumber || undefined } })
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || t('Failed to create purchase bill.'));
@@ -1212,8 +1212,8 @@ export default function InventoryModule({
         goodsReceiptNotes: (prev.goodsReceiptNotes || []).map((g: GoodsReceiptNote) => billForm.grnIds.includes(g.id) ? { ...g, isBilled: true } : g)
       }));
       triggerSuccess(t('Purchase bill created successfully.'));
-      setBillForm({ grnIds: [], dueDate: '', bankId: '', vendorBillNumber: '' });
-      markBillClean({ grnIds: [], dueDate: '', bankId: '', vendorBillNumber: '' });
+      setBillForm({ grnIds: [], date: new Date().toISOString().slice(0, 10), dueDate: '', bankId: '', vendorBillNumber: '' });
+      markBillClean({ grnIds: [], date: new Date().toISOString().slice(0, 10), dueDate: '', bankId: '', vendorBillNumber: '' });
       setIsCreatingBill(false);
     } catch (err: any) {
       triggerError(err?.message || t('Failed to create purchase bill.'));
@@ -4455,6 +4455,11 @@ export default function InventoryModule({
                       className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
                   </div>
                   <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{t('Bill Date')}<span className="text-rose-500"> *</span></label>
+                    <input type="date" required value={billForm.date} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setBillForm({ ...billForm, date: e.target.value })}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                  </div>
+                  <div className="space-y-1">
                     <label className="text-[10px] font-bold text-gray-400 uppercase">{t('Due Date')}</label>
                     <input type="date" value={billForm.dueDate} onChange={(e) => setBillForm({ ...billForm, dueDate: e.target.value })}
                       className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
@@ -4473,7 +4478,7 @@ export default function InventoryModule({
                 <button type="button" onClick={handleCancelBillForm} className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-100 text-gray-700 transition">
                   {t('Cancel')}
                 </button>
-                <button type="submit" disabled={billForm.grnIds.length === 0 || isSubmittingBill} className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed">
+                <button type="submit" disabled={billForm.grnIds.length === 0 || !billForm.date || isSubmittingBill} className="px-5 py-2 bg-indigo-600 text-white font-medium rounded-lg text-sm shadow-sm hover:bg-indigo-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed">
                   {isSubmittingBill ? t('Creating...') : t('Create Bill')}
                 </button>
               </div>

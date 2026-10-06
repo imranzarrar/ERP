@@ -29,7 +29,7 @@ const near = (a: number, b: number) => Math.abs(a - b) < 0.011;
 
 async function billedGrn(qty: number): Promise<{ grn: string; bill: string }> {
   const g = ok(await post('/api/inventory/goods-receipt-notes', { grnData: { isDsd: true, vendorId, warehouseId, receivedBy: 'T', items: [{ productId, quantityReceived: qty, unitCost: 100, taxRate: 15 }] } }), 'grn').goodsReceiptNote.id;
-  const b = ok(await post('/api/inventory/purchase-bills', { billData: { grnIds: [g], bankId, vendorBillNumber: 'VC-' + generateId().slice(-4) } }), 'bill').purchaseBill;
+  const b = ok(await post('/api/inventory/purchase-bills', { billData: { date: new Date().toISOString().slice(0, 10), grnIds: [g], bankId, vendorBillNumber: 'VC-' + generateId().slice(-4) } }), 'bill').purchaseBill;
   return { grn: g, bill: b.id };
 }
 

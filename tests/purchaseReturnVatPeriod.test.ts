@@ -66,7 +66,7 @@ describe('Purchase return input VAT belongs to the return period', () => {
     const mk = async () => {
       const g = await post('/api/inventory/goods-receipt-notes', { grnData: { isDsd: true, vendorId, warehouseId, receivedBy: 'Test', items: [{ productId, quantityReceived: 10, unitCost: 20, taxRate: 15 }] } });
       expect(g.status).toBe(200);
-      const b = await post('/api/inventory/purchase-bills', { billData: { grnIds: [g.body.goodsReceiptNote.id], bankId, vendorBillNumber: 'RV-' + generateId().slice(-4) } });
+      const b = await post('/api/inventory/purchase-bills', { billData: { date: new Date().toISOString().slice(0, 10), grnIds: [g.body.goodsReceiptNote.id], bankId, vendorBillNumber: 'RV-' + generateId().slice(-4) } });
       expect(b.status).toBe(200);
       return { grn: g.body.goodsReceiptNote.id as string, bill: b.body.purchaseBill.id as string };
     };

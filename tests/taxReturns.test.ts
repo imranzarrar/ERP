@@ -276,7 +276,7 @@ describe('Figure correctness (Credit Note netting + Purchase Bill inclusion)', (
     expect(grn.status).toBe(200);
     const bill = await api(adminSessionId, '/api/inventory/purchase-bills', {
       method: 'POST',
-      body: JSON.stringify({ billData: { grnIds: [grn.body.goodsReceiptNote.id], bankId } }),
+      body: JSON.stringify({ billData: { date: new Date().toISOString().slice(0, 10), grnIds: [grn.body.goodsReceiptNote.id], bankId } }),
     });
     expect(bill.status).toBe(200);
     expect(Number(bill.body.purchaseBill.subTotal)).toBe(1000);
@@ -495,7 +495,7 @@ describe('Filing, permanent lock, and the filed-quarter document lock', () => {
     expect(grn2.status).toBe(200); // GRN itself is not VAT-relevant, not blocked
     const newBill = await api(adminSessionId, '/api/inventory/purchase-bills', {
       method: 'POST',
-      body: JSON.stringify({ billData: { grnIds: [grn2.body.goodsReceiptNote.id], bankId } }),
+      body: JSON.stringify({ billData: { date: new Date().toISOString().slice(0, 10), grnIds: [grn2.body.goodsReceiptNote.id], bankId } }),
     });
     expect(newBill.status).toBe(400);
     expect(newBill.body.error).toMatch(/filed with ZATCA/i);

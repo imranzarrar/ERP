@@ -70,7 +70,7 @@ describe('reports reconcile with source documents (GRN, bill, credit note, refun
   it('builds the book through the real routes', async () => {
     const grn = await post('/api/inventory/goods-receipt-notes', { grnData: { isDsd: true, vendorId, warehouseId, receivedBy: 'Test', items: [{ productId, quantityReceived: 10, unitCost: 20, taxRate: 15 }] } });
     expect(grn.status).toBe(200);
-    const bill = await post('/api/inventory/purchase-bills', { billData: { grnIds: [grn.body.goodsReceiptNote.id], bankId, vendorBillNumber: 'RR-1' } });
+    const bill = await post('/api/inventory/purchase-bills', { billData: { date: new Date().toISOString().slice(0, 10), grnIds: [grn.body.goodsReceiptNote.id], bankId, vendorBillNumber: 'RR-1' } });
     expect(bill.status).toBe(200);
     billId = bill.body.purchaseBill.id;
     expect(Number(bill.body.purchaseBill.grandTotal)).toBe(230);
