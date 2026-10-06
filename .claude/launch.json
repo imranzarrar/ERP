@@ -4,7 +4,19 @@
     {
       "name": "erp-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "erp-dev-nowatch",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "tsx",
+        "server.ts"
+      ],
       "port": 3000
     }
   ]
