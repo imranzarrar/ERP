@@ -1,6 +1,6 @@
 import { computeBillInputVat } from './inputVat.js';
 import * as schema from '../../src/db/schema.js';
-import { eq, and, gte, lte, lt, ne, inArray, asc, sql, isNotNull } from 'drizzle-orm';
+import { eq, and, or, gt, gte, lte, lt, ne, inArray, asc, sql, isNotNull } from 'drizzle-orm';
 import { round2, computeInvoiceServerTotals, splitExpenseTaxInclusiveAmount } from './businessLogic.js';
 
 // Real, server-side financial-report calculations — one function per report, each scoped
@@ -488,6 +488,18 @@ function monthClosedBy(m: { closedAt?: Date | string | null }, asOfDate: string)
 // Sheet" would show a non-zero balanceCheck (Assets != Liabilities+Equity) for anything
 // but "All Branches". A branch-level AR/AP breakdown belongs in a list report (e.g.
 // Outstanding), not this balancing statement.
+// Money paid / received AFTER the as-of date, per document. A Balance Sheet "as at" an earlier date must show what was still
+// owed THEN, so a payment made later has to be taken back out of the document's (current) amountPaid. Returns referenceId -> total.
+async function laterVoucherTotals(executor: any, companyId: string, referenceType: string, type: string, asOfDate: string): Promise<Map<string, number>> {
+  const rows: any[] = await executor.select({ referenceId: schema.vouchers.referenceId, amount: schema.vouchers.amount }).from(schema.vouchers).where(and(
+    eq(schema.vouchers.companyId, companyId), eq(schema.vouchers.referenceType, referenceType), eq(schema.vouchers.type, type),
+    sql`${schema.vouchers.date} > ${asOfDate}`,
+  ));
+  const out = new Map<string, number>();
+  for (const r of rows) out.set(r.referenceId, round2((out.get(r.referenceId) || 0) + Number(r.amount)));
+  return out;
+}
+
 export async function computeBalanceSheet(executor: any, companyId: string, asOfDate: string): Promise<BalanceSheetFigures> {
   const bankBalances = await computeAllBankBalances(executor, companyId, asOfDate);
   const bankBalance = round2(bankBalances.reduce((sum, b) => sum + b.balance, 0));
@@ -498,30 +510,55 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   // specific original invoice it targets) let it subtract from an unrelated customer's
   // balance instead.
   const bsCreditedIds = await creditedOriginalIds(executor, companyId);
+  // As at an earlier date an invoice that is fully paid NOW may still have been owing THEN, so besides today's unpaid ones,
+  // include any invoice that received a payment after the as-of date, and take those later receipts back off what it had paid.
+  const laterReceipts = await laterVoucherTotals(executor, companyId, 'Invoice', 'Receipt', asOfDate);
+  const laterReceiptIds = Array.from(laterReceipts.keys());
   const unpaidInvoices = (await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId),
     eq(schema.invoices.status, 'Active'),
     ne(schema.invoices.documentType, 'CreditNote'),
     lte(schema.invoices.date, asOfDate),
-    inArray(schema.invoices.paymentStatus, ['Unpaid', 'Partially Paid']),
+    laterReceiptIds.length
+      ? or(inArray(schema.invoices.paymentStatus, ['Unpaid', 'Partially Paid']), inArray(schema.invoices.id, laterReceiptIds))
+      : inArray(schema.invoices.paymentStatus, ['Unpaid', 'Partially Paid']),
   ))).filter((inv: any) => !bsCreditedIds.has(inv.id));
   const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, unpaidInvoices);
   let accountsReceivable = 0;
   for (const inv of unpaidInvoices) {
     const total = totalsByInvoiceId.get(inv.id)!.grandTotal;
-    accountsReceivable = round2(accountsReceivable + (total - Number(inv.amountPaid || 0)) * invoiceSign(inv));
+    const paidThen = Number(inv.amountPaid || 0) - (laterReceipts.get(inv.id) || 0);
+    accountsReceivable = round2(accountsReceivable + Math.max(0, total - paidThen) * invoiceSign(inv));
   }
 
-  const unpaidExpenses = (await executor.select().from(schema.expenses).where(and(
+  const laterExpensePayments = await laterVoucherTotals(executor, companyId, 'Expense', 'Payment', asOfDate);
+  const laterExpensePaymentIds = Array.from(laterExpensePayments.keys());
+  const expenseCandidates: any[] = await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId),
     eq(schema.expenses.status, 'Active'),
     lte(schema.expenses.date, asOfDate),
-    inArray(schema.expenses.paymentStatus, ['Unpaid', 'Partially Paid']),
-  ))).filter((exp: any) => !(exp.type === 'Accrual' && exp.accrualSettled));
+    laterExpensePaymentIds.length
+      ? or(inArray(schema.expenses.paymentStatus, ['Unpaid', 'Partially Paid']), inArray(schema.expenses.id, laterExpensePaymentIds))
+      : inArray(schema.expenses.paymentStatus, ['Unpaid', 'Partially Paid']),
+  ));
+  // A settled accrual stops being owed only from the day its settling invoice is dated: as at an earlier date it was still owed.
+  const settledAccruals: any[] = await executor.select().from(schema.expenses).where(and(
+    eq(schema.expenses.companyId, companyId), eq(schema.expenses.status, 'Active'), eq(schema.expenses.type, 'Accrual'),
+    eq(schema.expenses.accrualSettled, true), lte(schema.expenses.date, asOfDate),
+  ));
+  const settlingIds = settledAccruals.map(a => a.settledExpenseId).filter(Boolean) as string[];
+  const settlingRows: any[] = settlingIds.length ? await executor.select({ id: schema.expenses.id, date: schema.expenses.date }).from(schema.expenses).where(inArray(schema.expenses.id, settlingIds)) : [];
+  const settlingDate = new Map<string, string>(settlingRows.map(r => [r.id, String(r.date).slice(0, 10)] as [string, string]));
+  const stillOwedAccruals = settledAccruals.filter(a => (settlingDate.get(a.settledExpenseId) || '0000') > asOfDate);
+  const unpaidExpenses = [
+    ...expenseCandidates.filter((exp: any) => !(exp.type === 'Accrual' && exp.accrualSettled)),
+    ...stillOwedAccruals,
+  ];
   // Excludes a settled Accrual — see computeOutstanding's matching comment for the live-
   // confirmed incident this closes: its own paymentStatus never changes on settlement.
   const apPctBySlab = await taxPercentageBySlabId(executor, companyId);
-  let accountsPayable = round2(unpaidExpenses.reduce((sum, exp) => sum + (liabilityAmount(exp, apPctBySlab) - Number(exp.amountPaid || 0)), 0));
+  let accountsPayable = round2(unpaidExpenses.reduce((sum, exp) =>
+    sum + Math.max(0, liabilityAmount(exp, apPctBySlab) - (Number(exp.amountPaid || 0) - (laterExpensePayments.get(exp.id) || 0))), 0));
 
   // Also owes whatever's still unpaid on a Purchase Bill (Phase 3) — same gap, same fix,
   // as computeTrialBalance's matching comment: the ledger's own AP account already
@@ -531,8 +568,19 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
     ne(schema.purchaseBills.status, 'Cancelled'),
     lte(schema.purchaseBills.date, new Date(asOfDate + 'T23:59:59.999Z')),
   ));
+  // As at an earlier date: payments made later come back off what was paid, and a return made later had not yet reduced the bill.
+  const laterBillPayments = await laterVoucherTotals(executor, companyId, 'PurchaseBill', 'Payment', asOfDate);
+  const laterReducingReturns: any[] = await executor.select().from(schema.purchaseReturns).where(and(
+    eq(schema.purchaseReturns.companyId, companyId), eq(schema.purchaseReturns.status, 'Active'),
+    eq(schema.purchaseReturns.billTotalsReduced, true), isNotNull(schema.purchaseReturns.billId),
+    gt(schema.purchaseReturns.date, new Date(asOfDate + 'T23:59:59.999Z')),
+  ));
+  const returnedLater = new Map<string, number>();
+  for (const r of laterReducingReturns) returnedLater.set(r.billId, round2((returnedLater.get(r.billId) || 0) + Number(r.netAdjustment || 0) + Number(r.inputVatAdjustment || 0)));
   for (const bill of unpaidBills) {
-    accountsPayable = round2(accountsPayable + (Number(bill.grandTotal) - Number(bill.amountPaid || 0)));
+    const totalThen = Number(bill.grandTotal) + (returnedLater.get(bill.id) || 0);
+    const paidThen = Number(bill.amountPaid || 0) - (laterBillPayments.get(bill.id) || 0);
+    accountsPayable = round2(accountsPayable + (totalThen - paidThen));
   }
 
   const inventoryStocks: any[] = await executor.select().from(schema.inventoryStocks).where(eq(schema.inventoryStocks.companyId, companyId));
