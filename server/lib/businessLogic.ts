@@ -319,15 +319,6 @@ export async function deductStockForSale(tx: any, companyId: string, productId: 
 // deduction's own ledger type, just a positive quantityChange), the same convention GRN
 // reversal already uses (still 'GRN', not a separate "reversal" enum value) — see
 // server/routes/inventory.ts's GRN-reversal loop.
-// The date a stock movement is filed under in the stock ledger: the document's own date, so that a Balance Sheet or
-// Trial Balance "as at" an earlier date counts the stock that really was on hand then. A document dated today (or with
-// no usable date) keeps the exact timestamp it was entered at, so same-day ordering is unchanged.
-export function stockMovementDate(documentDate: string | null | undefined, enteredAt: Date): Date {
-  const day = String(documentDate || '').slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day >= enteredAt.toISOString().slice(0, 10)) return enteredAt;
-  return new Date(day + 'T12:00:00.000Z');
-}
-
 export async function restockForSaleReversal(tx: any, companyId: string, productId: string, quantityToRestore: number, referenceId: string, date: Date, warehouseId?: string | null, unitOfMeasureId?: string | null) {
   if (!warehouseId) return;
   const [product] = await tx.select({ itemKind: schema.productsServices.itemKind })

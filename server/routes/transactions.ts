@@ -2,7 +2,7 @@ import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, inArray, and, asc, desc, or, isNull, count, sql, gte, lte, ne } from 'drizzle-orm';
-import { validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, postCreditNoteReversalVoucher, round2, round4, computePaymentStatus, computeInvoiceServerTotals, deductStockForSale, restockForSaleReversal, stockMovementDate, assertQuarterNotFiled, resolveSaleWarehouse, assertStockAvailable, assertProductsOwnedByCompany, cancelExpense, splitExpenseTaxInclusiveAmount } from '../lib/businessLogic.js';
+import { validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, postCreditNoteReversalVoucher, round2, round4, computePaymentStatus, computeInvoiceServerTotals, deductStockForSale, restockForSaleReversal, assertQuarterNotFiled, resolveSaleWarehouse, assertStockAvailable, assertProductsOwnedByCompany, cancelExpense, splitExpenseTaxInclusiveAmount } from '../lib/businessLogic.js';
 import { computeMonthPnL } from '../lib/financialReports.js';
 import { postJournalEntry, reverseAllEntriesFor } from '../lib/ledger.js';
 import { toBaseQuantity, toBaseUnitCost, loadZatcaCodesByUnitId } from '../lib/uomConversion.js';
@@ -480,7 +480,7 @@ router.post('/quotations/:id/convert', withTenantDb, async (req: any, res) => {
         // Cost of goods sold at the product's current average cost — same rule as POST /invoices.
         if (product.itemKind === 'item') convertCogsTotal = round2(convertCogsTotal + soldQty * Number(product.averageCost || 0));
       }
-      await deductStockForSale(tdb, companyId, item.productId, Number(item.quantity), invoiceId, stockMovementDate(newInvoice.date, newInvoice.createdAt as Date), resolvedWarehouseId, item.unitOfMeasureId);
+      await deductStockForSale(tdb, companyId, item.productId, Number(item.quantity), invoiceId, newInvoice.createdAt as Date, resolvedWarehouseId, item.unitOfMeasureId);
     }
 
     // 7. Update Quotation Status
@@ -1034,7 +1034,7 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
               cogsTotal = round2(cogsTotal + soldQty * Number(product.averageCost || 0));
             }
           }
-          await deductStockForSale(tdb, companyId, item.productId, Number(item.quantity), newInvoice.id, stockMovementDate(newInvoice.date, invoiceValues.createdAt as Date), invData.warehouseId, item.unitOfMeasureId);
+          await deductStockForSale(tdb, companyId, item.productId, Number(item.quantity), newInvoice.id, invoiceValues.createdAt as Date, invData.warehouseId, item.unitOfMeasureId);
         }
       }
     }
@@ -1244,7 +1244,7 @@ router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
       // the same warehouse the stock was actually deducted from at sale time, not the
       // note's own (nonexistent) concept of a warehouse.
       if (type === 'CreditNote' && item.productId) {
-        await restockForSaleReversal(tdb, companyId, item.productId, Number(item.quantity), newNote.id, stockMovementDate(original.date, new Date()), original.warehouseId, item.unitOfMeasureId);
+        await restockForSaleReversal(tdb, companyId, item.productId, Number(item.quantity), newNote.id, new Date(), original.warehouseId, item.unitOfMeasureId);
         // The returned units were not really sold: take them back out of the product's sale statistics too.
         await unwindAverageSalePrice(tdb, companyId, item.productId, item.unitOfMeasureId, Number(item.quantity), Number(item.unitCost));
       }
@@ -1541,7 +1541,7 @@ router.post('/invoices/:id/cancel', withTenantDb, async (req: any, res) => {
       const cancelledItems = await tdb.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, id));
       for (const item of cancelledItems) {
         if (!item.productId) continue;
-        await restockForSaleReversal(tdb, invoice.companyId, item.productId, Number(item.quantity), id, stockMovementDate(invoice.date, new Date()), invoice.warehouseId, item.unitOfMeasureId);
+        await restockForSaleReversal(tdb, invoice.companyId, item.productId, Number(item.quantity), id, new Date(), invoice.warehouseId, item.unitOfMeasureId);
         await unwindAverageSalePrice(tdb, invoice.companyId, item.productId, item.unitOfMeasureId, Number(item.quantity), Number(item.unitCost));
       }
     }

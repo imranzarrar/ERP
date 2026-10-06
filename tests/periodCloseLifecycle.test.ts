@@ -347,6 +347,18 @@ describe('Period-close lifecycle: every document type, closed months, a filed VA
     expect(asOfPrev.inventoryValue).toBe(-110);
   });
 
+  it('the stock register files a cancellation / credit-note restock under TODAY (when the stock came back), not the old invoice date', async () => {
+    // I3 was sold and cancelled back in M1, I4 sold and credited in M2 — both entered today. Today's register must show the
+    // stock coming back today, so that opening + today's movements = closing; it is the Balance Sheet that dates it by invoice.
+    const rows = await db.select().from(schema.stockLedgerTransactions).where(eq(schema.stockLedgerTransactions.companyId, companyId)) as any[];
+    const restocks = rows.filter((r: any) => r.transactionType === 'Sale' && Number(r.quantityChange) > 0);
+    expect(restocks.length).toBeGreaterThanOrEqual(2);
+    for (const r of restocks) expect(new Date(r.date).toISOString().slice(0, 10)).toBe(today);
+    // and yet "as at" a date after the sale but before today, the cancelled sale nets to nothing on the sheet
+    const mid = await rep('balance-sheet', `asOfDate=${d1(25)}`);
+    expect(mid.inventoryValue).toBe(-70);   // by the 25th of M1: 5 + 2 units sold, the cancelled sale's 2 units back out again; all stock was received later
+  });
+
   it('Trial Balance balances for every period ending today, and its opening retained earnings follow the closes', async () => {
     const full = await rep('trial-balance', range(d1(1), today));
     const curOnly = await rep('trial-balance', range(`${CUR}-01`, today));

@@ -539,16 +539,36 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   const productIds = Array.from(new Set(inventoryStocks.map(s => s.productId))) as string[];
   const products: any[] = productIds.length ? await executor.select().from(schema.productsServices).where(inArray(schema.productsServices.id, productIds)) : [];
   const productById = new Map(products.map(p => [p.id, p]));
-  // inventoryStocks is the quantity on hand NOW. For an earlier as-of date, take back every stock movement dated after it
-  // (the stock ledger is the append-only record of each one), otherwise a Balance Sheet "as at 30 Sep" would count goods
-  // that were only received in October. Valued at the product's current average cost — the same valuation as today's figure.
-  const laterMovements: any[] = await executor.select({
+  // inventoryStocks is the quantity on hand NOW. For an earlier as-of date, take back every stock movement that belongs to a
+  // LATER date (otherwise a Balance Sheet "as at 30 Sep" would count goods only received in October). The stock register files
+  // each movement under the day it PHYSICALLY happened (so today's register explains today's change in stock), which for a
+  // sale, a cancellation or a credit note is not the date the books give it. So movements entered after the cutoff are judged
+  // by the date of the document they belong to: a sale, its cancellation and its credit note all by the invoice's date, a GRN
+  // and its reversal both by the GRN's date (the received-not-billed figure already ignores a reversed GRN altogether).
+  // Valued at the product's current average cost — the same valuation as today's figure.
+  const cutoff = new Date(asOfDate + 'T23:59:59.999Z');
+  const enteredLater: any[] = await executor.select({
     productId: schema.stockLedgerTransactions.productId,
-    change: sql<string>`COALESCE(SUM(${schema.stockLedgerTransactions.quantityChange}), 0)`,
+    type: schema.stockLedgerTransactions.transactionType,
+    referenceId: schema.stockLedgerTransactions.referenceId,
+    movementDate: schema.stockLedgerTransactions.date,
+    change: schema.stockLedgerTransactions.quantityChange,
   }).from(schema.stockLedgerTransactions).where(and(
     eq(schema.stockLedgerTransactions.companyId, companyId),
-    sql`${schema.stockLedgerTransactions.date} > ${new Date(asOfDate + 'T23:59:59.999Z')}`,
-  )).groupBy(schema.stockLedgerTransactions.productId);
+    sql`${schema.stockLedgerTransactions.date} > ${cutoff}`,
+  ));
+  const saleRefs = Array.from(new Set(enteredLater.filter(m => m.type === 'Sale').map(m => m.referenceId))) as string[];
+  const grnRefs = Array.from(new Set(enteredLater.filter(m => m.type === 'GRN').map(m => m.referenceId))) as string[];
+  const invoiceDateById = new Map<string, string>(saleRefs.length
+    ? (await executor.select({ id: schema.invoices.id, date: schema.invoices.date }).from(schema.invoices).where(inArray(schema.invoices.id, saleRefs))).map((r: any) => [r.id, String(r.date).slice(0, 10)] as [string, string])
+    : []);
+  const grnDateById = new Map<string, string>(grnRefs.length
+    ? (await executor.select({ id: schema.goodsReceiptNotes.id, date: schema.goodsReceiptNotes.date }).from(schema.goodsReceiptNotes).where(inArray(schema.goodsReceiptNotes.id, grnRefs))).map((r: any) => [r.id, new Date(r.date).toISOString().slice(0, 10)] as [string, string])
+    : []);
+  const businessDate = (m: any): string =>
+    (m.type === 'Sale' ? invoiceDateById.get(m.referenceId) : m.type === 'GRN' ? grnDateById.get(m.referenceId) : undefined)
+    ?? new Date(m.movementDate).toISOString().slice(0, 10);
+  const laterMovements = enteredLater.filter(m => businessDate(m) > asOfDate);
   const qtyOnHandByProduct = new Map<string, number>();
   for (const s of inventoryStocks) qtyOnHandByProduct.set(s.productId, (qtyOnHandByProduct.get(s.productId) || 0) + Number(s.quantity || 0));
   for (const m of laterMovements) qtyOnHandByProduct.set(m.productId, (qtyOnHandByProduct.get(m.productId) || 0) - Number(m.change || 0));
