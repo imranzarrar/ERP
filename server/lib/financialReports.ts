@@ -385,6 +385,14 @@ export interface BalanceSheetFigures {
   balanceCheck: number;
 }
 
+// A closed month counts toward an as-of date once it had been closed by the end of that day. fiscalMonths.closedAt
+// is a `timestamp` column, i.e. a JS Date — comparing it with `<=` to a text date is ALWAYS false (the text becomes
+// NaN), which silently left every closed month out of Retained Earnings. Compare real times.
+function monthClosedBy(m: { closedAt?: Date | string | null }, asOfDate: string): boolean {
+  if (!m.closedAt) return true;
+  return new Date(m.closedAt).getTime() <= new Date(asOfDate + 'T23:59:59.999Z').getTime();
+}
+
 // Ports ReportViewer.tsx's getBalanceSheetData (~603-653) — an as-of-date snapshot, no
 // row cap. Retained earnings comes from fiscalMonths.closedPnL, which after the
 // month-close fix below is itself always server-computed — no double-counting of the
@@ -455,7 +463,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
     eq(schema.fiscalMonths.status, 'Closed'),
   ));
   const closedMonthIds = new Set<string>(closedMonthRows
-    .filter((m: any) => m.closedPnL && (!m.closedAt || m.closedAt <= `${asOfDate}T23:59:59`))
+    .filter((m: any) => m.closedPnL && monthClosedBy(m, asOfDate))
     .map((m: any) => m.id));
   const monthIsOpen = (isoDate: string) => !closedMonthIds.has(String(isoDate).slice(0, 7));
 
@@ -520,7 +528,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
     eq(schema.fiscalMonths.status, 'Closed'),
   ));
   const retainedEarnings = round2(closedMonths
-    .filter((m: any) => m.closedPnL && (!m.closedAt || m.closedAt <= `${asOfDate}T23:59:59`))
+    .filter((m: any) => m.closedPnL && monthClosedBy(m, asOfDate))
     .reduce((sum: number, m: any) => sum + Number(m.closedPnL?.netProfit || 0), 0));
   const totalEquity = round2(capitalContributed + retainedEarnings + currentPeriodEarnings);
 
@@ -573,7 +581,9 @@ export async function computeMonthPnL(executor: any, companyId: string, monthId:
   // POST /transactions/months's closedPnL). Same root cause as computeOutstanding's
   // matching fix: a settled Accrual's own paymentStatus/date never change, so it must be
   // excluded explicitly rather than inferred from status.
-  const expensesInMonth = monthExpenses.filter(exp => exp.date.startsWith(monthId) && !(exp.type === 'Accrual' && exp.accrualSettled));
+  // Capital (Asset-classified) purchases are not an expense: the P&L and the Balance Sheet carry them as fixed assets,
+  // so counting them here would put the Balance Sheet out by their value once this month's profit is stored.
+  const expensesInMonth = monthExpenses.filter(exp => exp.date.startsWith(monthId) && exp.classification !== 'Asset' && !(exp.type === 'Accrual' && exp.accrualSettled));
   let paidExpenses = 0;
   let totalExpenses = 0;
   const monthPctBySlab = await taxPercentageBySlabId(executor, companyId);

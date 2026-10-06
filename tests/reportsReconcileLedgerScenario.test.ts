@@ -322,4 +322,34 @@ describe('reports reconcile with source documents (GRN, bill, credit note, refun
     const bankAfter = (await api(`/api/reports/balance-sheet?asOfDate=${today}`)).body.bankBalance;
     expect(bankAfter).toBe(bankBefore);
   });
+
+  it('Month-end close: the month profit moves into Retained Earnings and every statement still agrees', async () => {
+    const monthId = today.slice(0, 7);
+    const pnlBefore = (await api(`/api/reports/profit-loss?startDate=${today}&endDate=${today}&basis=Accrual`)).body;
+    const bsBefore = (await api(`/api/reports/balance-sheet?asOfDate=${today}`)).body;
+    expect(bsBefore.retainedEarnings).toBe(0);
+    expect(bsBefore.currentPeriodEarnings).toBe(pnlBefore.netProfit);
+
+    const months = await api('/api/transactions/months');
+    const row = (Array.isArray(months.body) ? months.body : months.body.rows).find((m: any) => m.id === monthId);
+    const close = await post('/api/transactions/months', { ...row, status: 'Closed', closedAt: new Date().toISOString(), closedOption: 'including_pending' });
+    expect(close.status).toBe(200);
+
+    // The stored profit equals the P&L (capital purchase excluded, VAT excluded, COGS from the ledger)...
+    const hist = (await api('/api/reports/fiscal-month-closing-history')).body.rows.find((r: any) => r.id === monthId);
+    expect(hist.closedPnL.netProfit).toBe(pnlBefore.netProfit);
+
+    // ...and now sits in Retained Earnings, with nothing left in the current period; the sheet still balances.
+    const bsAfter = (await api(`/api/reports/balance-sheet?asOfDate=${today}`)).body;
+    expect(bsAfter.retainedEarnings).toBe(pnlBefore.netProfit);
+    expect(bsAfter.currentPeriodEarnings).toBe(0);
+    expect(bsAfter.totalEquity).toBe(bsBefore.totalEquity);
+    expect(near(bsAfter.balanceCheck, 0)).toBe(true);
+
+    // The P&L for the month is unchanged by closing it, and the Trial Balance still balances.
+    const pnlAfter = (await api(`/api/reports/profit-loss?startDate=${today}&endDate=${today}&basis=Accrual`)).body;
+    expect(pnlAfter.netProfit).toBe(pnlBefore.netProfit);
+    const tb = (await api(`/api/reports/trial-balance?startDate=${today}&endDate=${today}`)).body;
+    expect(near(tb.totalDebits, tb.totalCredits)).toBe(true);
+  });
 });
