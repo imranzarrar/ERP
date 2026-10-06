@@ -18,6 +18,15 @@
         "server.ts"
       ],
       "port": 3000
+    },
+    {
+      "name": "erp-dev-clock",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set ALLOW_DEV_CLOCK=1&& npx tsx server.ts"
+      ],
+      "port": 3000
     }
   ]
 }

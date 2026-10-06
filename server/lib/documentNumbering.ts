@@ -2,6 +2,7 @@ import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, sql, desc } from 'drizzle-orm';
 import { generateId } from '../../src/id.js';
+import { nowDate } from './clock.js';
 
 // Single source of truth for "which document types exist and what's their out-of-the-box
 // default prefix" — mirrors src/permissionSchema.ts's PERMISSION_MODULES pattern exactly.
@@ -191,7 +192,7 @@ export async function previewNextDocumentNumbers(companyId: string): Promise<Rec
     .limit(1);
 
   const result: Record<string, string> = {};
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = nowDate().toISOString().slice(0, 10);
   for (const entry of DOCUMENT_TYPE_REGISTRY) {
     const rule = resolveRule(entry.key, company.numberingPolicy as any);
     const periodKey = computePeriodKey(rule.resetFrequency, todayIso);

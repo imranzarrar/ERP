@@ -13,6 +13,7 @@ import * as schema from '../../src/db/schema.js';
 import { eq, and, inArray, gte, lte } from 'drizzle-orm';
 import { generateId } from '../../src/id.js';
 import { round2 } from './businessLogic.js';
+import { nowDate } from './clock.js';
 
 // Anything larger than this is a real bug in the calling code, not rounding noise from
 // splitting a tax-exclusive-subtotal-plus-tax across several independently-round2'd
@@ -89,7 +90,7 @@ export async function postJournalEntry(tx: any, input: PostJournalEntryInput): P
     reversalOfId: input.reversalOfId || null,
     description: input.description,
     createdById: input.createdById,
-    createdAt: new Date(),
+    createdAt: nowDate(),
   });
   await tx.insert(schema.journalLines).values(realLines.map(l => ({
     id: generateId(),

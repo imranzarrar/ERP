@@ -604,6 +604,7 @@ export interface ExpenseItem {
 
 export interface Expense {
   id: string;
+  reversalOfExpenseId?: string | null; // set on a reversal document (a correction dated today for an expense of a closed month)
   expenseNumber: string; // e.g. "EXP-0001"
   date: string; // YYYY-MM-DD
   vendorId: string;

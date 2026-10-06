@@ -46,6 +46,8 @@ async function makeCompany(name: string) {
     id, name, address: 'Test Address', phone: '0000000000', email: `${id}@example.com`,
     logoUrl: '', customHeader: '', customFooter: '', currency: 'SAR', counters: {}, zatcaEnabled: false,
   });
+  // A goods receipt can only be reversed while its own fiscal month exists and is open, like any dated document.
+  await db.insert(schema.fiscalMonths).values({ id: new Date().toISOString().slice(0, 7), name: 'current', status: 'Open', companyId: id }).onConflictDoNothing();
   return id;
 }
 
@@ -117,6 +119,8 @@ afterAll(async () => {
   await db.delete(schema.auditLogs).where(eq(schema.auditLogs.companyId, companyBId));
   await db.delete(schema.users).where(eq(schema.users.companyId, companyAId));
   await db.delete(schema.users).where(eq(schema.users.companyId, companyBId));
+  await db.delete(schema.fiscalMonths).where(eq(schema.fiscalMonths.companyId, companyAId));
+  await db.delete(schema.fiscalMonths).where(eq(schema.fiscalMonths.companyId, companyBId));
   await db.delete(schema.companies).where(eq(schema.companies.id, companyAId));
   await db.delete(schema.companies).where(eq(schema.companies.id, companyBId));
 });

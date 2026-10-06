@@ -10,10 +10,11 @@ import { normalizePermissions } from '../../src/types.js';
 import { branchAccessOk, resolveDocumentBranchId, hasPermission, resolveUserPermissions } from '../lib/authz.js';
 import { generateId } from '../../src/id.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
-import { restockForSaleReversal, validateTransactionDate, assertQuarterNotFiled, postCreditNoteReversalVoucher, computeInvoiceServerTotals } from '../lib/businessLogic.js';
+import { restockForSaleReversal, validateTransactionDate, assertQuarterNotFiled, assertQuarterNotFrozen, postCreditNoteReversalVoucher, computeInvoiceServerTotals } from '../lib/businessLogic.js';
 import { processInvoiceZatca } from '../lib/zatca/processInvoice.js';
 import { recordAuditLog } from '../lib/audit.js';
 import { withTenantDb, tenantDb, runAfterTenantCommit } from '../lib/tenantDb.js';
+import { nowDate } from '../lib/clock.js';
 
 const router = express.Router();
 
@@ -150,7 +151,7 @@ router.post('/held-invoices', withTenantDb, async (req: any, res) => {
 
     await tdb.insert(schema.posHeldInvoices).values({
         ...data,
-        createdAt: data.createdAt ? new Date(data.createdAt) : new Date(),
+        createdAt: data.createdAt ? new Date(data.createdAt) : nowDate(),
     });
     res.json({ success: true });
   } catch (error: any) {
@@ -211,7 +212,7 @@ router.get('/returnable-invoices', withTenantDb, async (req: any, res) => {
     const [company] = await tdb.select({ posSettings: schema.companies.posSettings })
       .from(schema.companies).where(eq(schema.companies.id, companyId));
     const windowDays = getReturnWindowDays(company?.posSettings);
-    const cutoffDate = new Date();
+    const cutoffDate = nowDate();
     cutoffDate.setDate(cutoffDate.getDate() - windowDays);
     const cutoffDateStr = cutoffDate.toISOString().slice(0, 10);
 
@@ -355,7 +356,7 @@ router.post('/returns', withTenantDb, async (req: any, res) => {
     const [company] = await tdb.select({ posSettings: schema.companies.posSettings })
       .from(schema.companies).where(eq(schema.companies.id, companyId));
     const windowDays = getReturnWindowDays(company?.posSettings);
-    const cutoffDate = new Date();
+    const cutoffDate = nowDate();
     cutoffDate.setDate(cutoffDate.getDate() - windowDays);
     if (original.date < cutoffDate.toISOString().slice(0, 10)) {
       return res.status(400).json({ error: `This sale is outside the ${windowDays}-day return window.` });
@@ -439,12 +440,12 @@ router.post('/returns', withTenantDb, async (req: any, res) => {
     // which intentionally inherits the original invoice's date instead). If today isn't
     // in an open fiscal month, the whole return is refused here — never silently posted
     // into some other open month.
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = nowDate().toISOString().slice(0, 10);
 
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
     // request in one transaction.
     await validateTransactionDate(todayStr, companyId);
-    await assertQuarterNotFiled(todayStr, companyId);
+    await assertQuarterNotFrozen(todayStr, companyId);
 
     const noteNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'creditNote', todayStr, original.branchId);
     const savedNoteNumber = noteNumber;
@@ -461,7 +462,7 @@ router.post('/returns', withTenantDb, async (req: any, res) => {
       notes: reason || 'POS Return',
       status: 'Active',
       createdById: req.user.id,
-      createdAt: new Date(),
+      createdAt: nowDate(),
       // Inherited from the original sale so this document's own computed total (the
       // receipt, the Sales Invoices list, its ZATCA XML) matches the actual refund
       // amount above — see this block's own comment for why.
@@ -494,7 +495,7 @@ router.post('/returns', withTenantDb, async (req: any, res) => {
       });
 
       if (originalItem.productId) {
-        await restockForSaleReversal(tdb, companyId, originalItem.productId, qty, noteId, new Date(), original.warehouseId, originalItem.unitOfMeasureId);
+        await restockForSaleReversal(tdb, companyId, originalItem.productId, qty, noteId, nowDate(), original.warehouseId, originalItem.unitOfMeasureId);
         // Only the returned part comes out of the product's sale statistics.
         await unwindAverageSalePrice(tdb, companyId, originalItem.productId, originalItem.unitOfMeasureId, qty, Number(originalItem.unitCost));
       }

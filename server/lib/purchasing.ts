@@ -11,6 +11,7 @@ import { round2 } from './businessLogic.js';
 import { getAndIncrementDocumentNumber } from './documentNumbering.js';
 import { generateId } from '../../src/id.js';
 import { postJournalEntry, reverseAllEntriesFor } from './ledger.js';
+import { nowDate } from './clock.js';
 
 // Drizzle/node-postgres return decimal columns as strings and timestamp columns as Date
 // objects — fine for server-side math (everything here already goes through Number(...)/
@@ -117,7 +118,7 @@ export async function createPurchaseBillForGrns(tx: any, input: CreatePurchaseBi
     vendorBillNumber: vendorBillNumber || null,
     vendorId: vendorId!,
     // A bill entered today keeps its entry time; a back-dated one sits at noon UTC of its day.
-    date: date === new Date().toISOString().slice(0, 10) ? new Date() : new Date(date + 'T12:00:00.000Z'),
+    date: date === nowDate().toISOString().slice(0, 10) ? nowDate() : new Date(date + 'T12:00:00.000Z'),
     dueDate: dueDate ? new Date(dueDate) : null,
     grnIds: grns.map((g: any) => g.id).join(','),
     subTotal: String(subTotal),
@@ -238,7 +239,7 @@ export async function payPurchaseBillInFull(tx: any, input: PayPurchaseBillInput
     referenceType: 'PurchaseBill',
     referenceId: billId,
     createdById: userId,
-    createdAt: new Date(),
+    createdAt: nowDate(),
     companyId,
     branchId: bill.branchId,
   }).returning();

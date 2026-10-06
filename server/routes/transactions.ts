@@ -2,7 +2,7 @@ import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, inArray, and, asc, desc, or, isNull, count, sql, gte, lte, ne } from 'drizzle-orm';
-import { validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, postCreditNoteReversalVoucher, round2, round4, computePaymentStatus, computeInvoiceServerTotals, deductStockForSale, restockForSaleReversal, assertQuarterNotFiled, resolveSaleWarehouse, assertStockAvailable, assertProductsOwnedByCompany, cancelExpense, splitExpenseTaxInclusiveAmount } from '../lib/businessLogic.js';
+import { validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, postCreditNoteReversalVoucher, round2, round4, computePaymentStatus, computeInvoiceServerTotals, deductStockForSale, restockForSaleReversal, assertQuarterNotFiled, assertQuarterNotFrozen, resolveSaleWarehouse, assertStockAvailable, assertProductsOwnedByCompany, cancelExpense, splitExpenseTaxInclusiveAmount } from '../lib/businessLogic.js';
 import { computeMonthPnL } from '../lib/financialReports.js';
 import { postJournalEntry, reverseAllEntriesFor } from '../lib/ledger.js';
 import { toBaseQuantity, toBaseUnitCost, loadZatcaCodesByUnitId } from '../lib/uomConversion.js';
@@ -19,6 +19,7 @@ import { generateId } from '../../src/id.js';
 import { normalizeZatcaUnitCode } from '../../src/zatcaUnitCodes.js';
 import { recordAuditLog } from '../lib/audit.js';
 import { withTenantDb, tenantDb, runAfterTenantCommit } from '../lib/tenantDb.js';
+import { nowDate } from '../lib/clock.js';
 
 const router = express.Router();
 
@@ -203,13 +204,13 @@ router.post('/quotations', withTenantDb, async (req: any, res) => {
       ...qData,
       id: qData.id || generateId(),
       quotationNumber: qNumber,
-      createdAt: qData.createdAt ? new Date(qData.createdAt) : new Date(),
+      createdAt: qData.createdAt ? new Date(qData.createdAt) : nowDate(),
     }).onConflictDoUpdate({
       target: schema.quotations.id,
       set: {
         ...qData,
         quotationNumber: qNumber,
-        createdAt: qData.createdAt ? new Date(qData.createdAt) : new Date(),
+        createdAt: qData.createdAt ? new Date(qData.createdAt) : nowDate(),
       }
     }).returning();
     savedQuotationId = newQuotation.id;
@@ -363,7 +364,7 @@ router.post('/quotations/:id/convert', withTenantDb, async (req: any, res) => {
     // This creates a brand-new invoice, same as POST /invoices — must be blocked the
     // same way if invoiceDate falls in an already-filed quarter. This route reimplements
     // invoice creation as its own parallel path and had never picked up this check.
-    await assertQuarterNotFiled(invoiceDate, companyId);
+    await assertQuarterNotFrozen(invoiceDate, companyId);
 
     const refError = await assertDocumentRefsOwnedByCompany(tdb, companyId, {
       customerId: customCustomerId,
@@ -428,7 +429,7 @@ router.post('/quotations/:id/convert', withTenantDb, async (req: any, res) => {
       createdById: createdById,
       originQuotationId: id,
       status: 'Active',
-      createdAt: new Date(),
+      createdAt: nowDate(),
       discountPercentage: discountPctStr,
       amountPaid: amountPaidStr,
       // Inherited from the source quotation — a converted invoice belongs to whichever
@@ -915,7 +916,7 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     // 1. Business logic
     const companyId = req.targetCompanyId;
     await validateTransactionDate(invData.date, companyId);
-    await assertQuarterNotFiled(invData.date, companyId);
+    await assertQuarterNotFrozen(invData.date, companyId);
     await assertProductsOwnedByCompany(tdb, companyId, (items || []).map((it: any) => it.productId));
 
     // 2. Increment Counter if new
@@ -967,7 +968,7 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     // not a function" — reproduced live against the "UX test company" invoice-create flow.
     const invoiceValues = {
       ...invData,
-      createdAt: invData.createdAt ? new Date(invData.createdAt) : new Date(),
+      createdAt: invData.createdAt ? new Date(invData.createdAt) : nowDate(),
       paymentDate: invData.paymentDate ? new Date(invData.paymentDate) : null,
     };
     const [newInvoice] = await tdb.insert(schema.invoices).values(invoiceValues).onConflictDoUpdate({
@@ -1177,18 +1178,23 @@ router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
 
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
     // request in one transaction.
-    await validateTransactionDate(original.date, companyId);
-    await assertQuarterNotFiled(original.date, companyId);
+    // A credit note is dated the day it is ISSUED, never the original invoice's date: the original stays exactly as it was in its own
+    // period (which may be closed or already filed with ZATCA) and the correction — revenue, output VAT, stock, refund — lands in
+    // the current period. Today's month must be open and today's quarter unfiled. The original invoice's date remains reachable
+    // through originalInvoiceId.
+    const issueDate = nowDate().toISOString().slice(0, 10);
+    await validateTransactionDate(issueDate, companyId);
+    await assertQuarterNotFrozen(issueDate, companyId);
 
     const counterType = type === 'CreditNote' ? 'creditNote' : 'debitNote';
-    const noteNumber = await getAndIncrementDocumentNumber(tdb, companyId, counterType, original.date, original.branchId);
+    const noteNumber = await getAndIncrementDocumentNumber(tdb, companyId, counterType, issueDate, original.branchId);
     const savedNoteNumber = noteNumber;
     const noteId = generateId();
 
     const [newNote] = await tdb.insert(schema.invoices).values({
       id: noteId,
       invoiceNumber: noteNumber,
-      date: original.date,
+      date: issueDate,
       customerId: original.customerId,
       taxSlabId: original.taxSlabId,
       bankId: original.bankId,
@@ -1196,7 +1202,7 @@ router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
       notes: reason || '',
       status: 'Active',
       createdById: user.id,
-      createdAt: new Date(),
+      createdAt: nowDate(),
       discountPercentage: original.discountPercentage,
       amountPaid: '0',
       companyId,
@@ -1244,7 +1250,7 @@ router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
       // the same warehouse the stock was actually deducted from at sale time, not the
       // note's own (nonexistent) concept of a warehouse.
       if (type === 'CreditNote' && item.productId) {
-        await restockForSaleReversal(tdb, companyId, item.productId, Number(item.quantity), newNote.id, new Date(), original.warehouseId, item.unitOfMeasureId);
+        await restockForSaleReversal(tdb, companyId, item.productId, Number(item.quantity), newNote.id, nowDate(), original.warehouseId, item.unitOfMeasureId);
         // The returned units were not really sold: take them back out of the product's sale statistics too.
         await unwindAverageSalePrice(tdb, companyId, item.productId, item.unitOfMeasureId, Number(item.quantity), Number(item.unitCost));
       }
@@ -1259,7 +1265,7 @@ router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
     // Statement Ledger's record of the original receipt. Debit Notes represent new
     // unpaid charges, not a reversal, so they never reach here.
     if (type === 'CreditNote' && Number(original.amountPaid) > 0) {
-      await postCreditNoteReversalVoucher(tdb, originalInvoiceId, companyId, original.date, user.id);
+      await postCreditNoteReversalVoucher(tdb, originalInvoiceId, companyId, issueDate, user.id);
     }
 
     // Phase 1 ledger posting (row 4) — a Credit Note is MVP-scope a full reversal (every
@@ -1270,7 +1276,7 @@ router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
     // /invoices/:id/cancel already uses. The original invoice's own status/paymentStatus
     // stay untouched (unchanged, existing behavior) — this only affects the ledger.
     if (type === 'CreditNote') {
-      await reverseAllEntriesFor(tdb, companyId, 'Invoice', originalInvoiceId, original.date, `Credit Note ${noteNumber} issued against invoice ${original.invoiceNumber}`, user.id);
+      await reverseAllEntriesFor(tdb, companyId, 'Invoice', originalInvoiceId, issueDate, `Credit Note ${noteNumber} issued against invoice ${original.invoiceNumber}`, user.id);
     }
 
     if (savedNoteId) {
@@ -1352,7 +1358,7 @@ router.post('/invoices/:id/paid', withTenantDb, async (req: any, res) => {
       throw err;
     }
 
-    const paymentDate = req.body?.paymentDate ? String(req.body.paymentDate) : new Date().toISOString().split('T')[0];
+    const paymentDate = req.body?.paymentDate ? String(req.body.paymentDate) : nowDate().toISOString().split('T')[0];
     await validateTransactionDate(paymentDate, invoice.companyId);
 
     const invItems = await tdb.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, id));
@@ -1429,7 +1435,7 @@ router.post('/invoices/:id/paid', withTenantDb, async (req: any, res) => {
       // schema.ts's vouchers.branchId comment.
       branchId: invoice.branchId,
       createdById: req.user.id,
-      createdAt: new Date(),
+      createdAt: nowDate(),
     }).returning();
     createdVoucher = voucher;
     paidInvoiceNumber = invoice.invoiceNumber;
@@ -1500,7 +1506,7 @@ router.post('/invoices/:id/cancel', withTenantDb, async (req: any, res) => {
     // return's reported sales/VAT figures could silently go stale (cancelling drops it
     // out of every report's totals — see SalesReportsModule.tsx). POST /invoices and
     // /invoices/:id/note already enforce this; this route never did.
-    await assertQuarterNotFiled(invoice.date, req.targetCompanyId);
+    await assertQuarterNotFrozen(invoice.date, req.targetCompanyId);
     // Same rule a Credit Note already enforces: the invoice's own fiscal month must still be open. Cancelling drops the
     // invoice out of that month's reports, so doing it after the month's profit has been closed and stored would leave
     // Retained Earnings holding revenue that no longer exists.
@@ -1541,7 +1547,7 @@ router.post('/invoices/:id/cancel', withTenantDb, async (req: any, res) => {
       const cancelledItems = await tdb.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, id));
       for (const item of cancelledItems) {
         if (!item.productId) continue;
-        await restockForSaleReversal(tdb, invoice.companyId, item.productId, Number(item.quantity), id, new Date(), invoice.warehouseId, item.unitOfMeasureId);
+        await restockForSaleReversal(tdb, invoice.companyId, item.productId, Number(item.quantity), id, nowDate(), invoice.warehouseId, item.unitOfMeasureId);
         await unwindAverageSalePrice(tdb, invoice.companyId, item.productId, item.unitOfMeasureId, Number(item.quantity), Number(item.unitCost));
       }
     }
@@ -1698,7 +1704,7 @@ router.post('/investors/:id/investment', withTenantDb, async (req: any, res) => 
       referenceType: 'Equity',
       referenceId: investorId,
       createdById: req.user.id,
-      createdAt: new Date(),
+      createdAt: nowDate(),
       companyId,
     });
 
@@ -1896,6 +1902,7 @@ router.post('/recurring-postings', withTenantDb, async (req: any, res) => {
     // request in one transaction.
     // 1. Validation
     await validateTransactionDate(dateStr, companyId);
+    await assertQuarterNotFrozen(dateStr, companyId);   // a real expense (or the invoice that settles an accrual): not inside a generated or filed VAT quarter
 
     const [existingPosting] = await tdb.select().from(schema.recurringPostings).where(and(eq(schema.recurringPostings.templateId, templateId), eq(schema.recurringPostings.monthId, monthId), eq(schema.recurringPostings.companyId, companyId)));
     if (existingPosting && existingPosting.status !== 'Unposted') {
@@ -1933,7 +1940,7 @@ router.post('/recurring-postings', withTenantDb, async (req: any, res) => {
       companyId,
       branchId,
       createdById: req.user.id,
-      createdAt: new Date(),
+      createdAt: nowDate(),
     });
 
     // 3. Save Posting
@@ -2033,6 +2040,7 @@ router.post('/settle-accrual', withTenantDb, async (req: any, res) => {
 
     // 2. Validate transaction date
     await validateTransactionDate(actualDate, companyId);
+    await assertQuarterNotFrozen(actualDate, companyId);   // a real expense (or the invoice that settles an accrual): not inside a generated or filed VAT quarter
 
     // 3. Increment expense counter
     const expNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'expense', actualDate, null);
@@ -2060,7 +2068,7 @@ router.post('/settle-accrual', withTenantDb, async (req: any, res) => {
       type: 'Actual',
       originAccrualId: accrualExpenseId,
       createdById: req.user.id,
-      createdAt: new Date(),
+      createdAt: nowDate(),
       companyId,
       branchId,
     });
@@ -2376,7 +2384,7 @@ router.post('/interbank-transfer', withTenantDb, async (req: any, res) => {
       referenceType: 'Transfer',
       referenceId: transferId,
       createdById: req.user.id,
-      createdAt: new Date(),
+      createdAt: nowDate(),
       companyId,
     });
 
@@ -2393,7 +2401,7 @@ router.post('/interbank-transfer', withTenantDb, async (req: any, res) => {
       referenceType: 'Transfer',
       referenceId: transferId,
       createdById: req.user.id,
-      createdAt: new Date(),
+      createdAt: nowDate(),
       companyId,
     });
 

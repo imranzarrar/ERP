@@ -2,7 +2,7 @@ import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, and, isNull, inArray, ne } from 'drizzle-orm';
-import { round2, round4, writeStockLedgerEntry, assertQuarterNotFiled, assertProductsOwnedByCompany, validateTransactionDate } from '../lib/businessLogic.js';
+import { round2, round4, writeStockLedgerEntry, assertQuarterNotFiled, assertQuarterNotFrozen, assertProductsOwnedByCompany, validateTransactionDate } from '../lib/businessLogic.js';
 import { postJournalEntry, reverseAllEntriesFor, postInventoryAdjustment } from '../lib/ledger.js';
 import { createPurchaseBillForGrns, payPurchaseBillInFull, normalizePurchaseBillForClient } from '../lib/purchasing.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
@@ -11,6 +11,7 @@ import { hasPermission, resolveDocumentBranchId, branchAccessOk, branchAccessOkV
 import { toBaseQuantity, toBaseUnitCost } from '../lib/uomConversion.js';
 import { generateId } from '../../src/id.js';
 import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
+import { nowDate } from '../lib/clock.js';
 
 const router = express.Router();
 
@@ -43,7 +44,7 @@ router.post('/purchase-requisitions', withTenantDb, async (req: any, res) => {
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
     // request in one transaction.
     await assertProductsOwnedByCompany(tdb, companyId, prData.items.map((it: any) => it.productId));
-    const todayIso = new Date().toISOString().slice(0, 10);
+    const todayIso = nowDate().toISOString().slice(0, 10);
     const prNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'pr', todayIso, branchId);
     const prId = generateId();
 
@@ -51,7 +52,7 @@ router.post('/purchase-requisitions', withTenantDb, async (req: any, res) => {
       id: prId,
       prNumber,
       requestedBy: prData.requestedBy,
-      date: new Date(),
+      date: nowDate(),
       status: 'Pending',
       notes: prData.notes || null,
       companyId,
@@ -254,14 +255,14 @@ router.post('/purchase-orders', withTenantDb, async (req: any, res) => {
     }
     await assertProductsOwnedByCompany(tdb, companyId, poData.items.map((it: any) => it.productId));
 
-    const poNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'po', new Date().toISOString().slice(0, 10), poBranchId);
+    const poNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'po', nowDate().toISOString().slice(0, 10), poBranchId);
     const poId = generateId();
 
     const [newPo] = await tdb.insert(schema.purchaseOrders).values({
       id: poId,
       poNumber,
       vendorId: poData.vendorId,
-      date: new Date(),
+      date: nowDate(),
       status: 'Sent',
       requisitionId: poData.requisitionId || null,
       deliveryDate: poData.deliveryDate ? new Date(poData.deliveryDate) : null,
@@ -403,7 +404,7 @@ router.post('/goods-receipt-notes', withTenantDb, async (req: any, res) => {
       err.status = 403;
       throw err;
     }
-    const grnNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'grn', new Date().toISOString().slice(0, 10), grnWarehouse?.branchId || null);
+    const grnNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'grn', nowDate().toISOString().slice(0, 10), grnWarehouse?.branchId || null);
     const grnId = generateId();
 
     const [newGrn] = await tdb.insert(schema.goodsReceiptNotes).values({
@@ -412,7 +413,7 @@ router.post('/goods-receipt-notes', withTenantDb, async (req: any, res) => {
       purchaseOrderId: grnData.isDsd ? null : (grnData.purchaseOrderId || null),
       vendorId,
       warehouseId: grnData.warehouseId,
-      date: new Date(),
+      date: nowDate(),
       isDsd: !!grnData.isDsd,
       receivedBy: grnData.receivedBy,
       notes: grnData.notes || null,
@@ -584,13 +585,13 @@ router.post('/goods-receipt-notes', withTenantDb, async (req: any, res) => {
         bankId: grnData.billBankId,
         dueDate: null,
         vendorBillNumber: grnData.vendorBillNumber,
-        date: new Date().toISOString().slice(0, 10),
+        date: nowDate().toISOString().slice(0, 10),
         userId: req.user.id,
       });
       const { bill: paidBill } = await payPurchaseBillInFull(tdb, {
         companyId,
         billId: bill.id,
-        date: new Date().toISOString().slice(0, 10),
+        date: nowDate().toISOString().slice(0, 10),
         bankId: grnData.billBankId,
         userId: req.user.id,
       });
@@ -644,6 +645,11 @@ router.post('/goods-receipt-notes/:id/reverse', withTenantDb, async (req: any, r
       err.status = 400;
       throw err;
     }
+    // A receipt of a closed month (or of a quarter whose VAT return is generated/filed) is locked with that period: reversing it would
+    // drop it from that month's received-not-billed and stock figures. It is corrected the other way, with a return to the vendor dated today.
+    const grnDay = new Date(grn.date).toISOString().slice(0, 10);
+    await validateTransactionDate(grnDay, companyId);
+    await assertQuarterNotFrozen(grnDay, companyId);
     // Closes a known guard gap (row 12 of the posting-rules design): once a GRN has been
     // billed, its GR/IR Clearing entry has already been cleared into AP/VAT Input by the
     // Bill (row 9) — reversing the GRN's own entry underneath that would leave GR/IR
@@ -685,7 +691,7 @@ router.post('/goods-receipt-notes/:id/reverse', withTenantDb, async (req: any, r
         await tdb.update(schema.inventoryStocks).set({ quantity: String(newQty) }).where(eq(schema.inventoryStocks.id, existingStock.id));
         await writeStockLedgerEntry(tdb, {
           productId: item.productId, warehouseId: grn.warehouseId, companyId,
-          transactionType: 'GRN', referenceId: grn.id, date: new Date(),
+          transactionType: 'GRN', referenceId: grn.id, date: nowDate(),
           quantityChange: newQty - priorQty, endingQuantity: newQty,
           batchNumber: item.batchNumber || null,
         });
@@ -713,7 +719,7 @@ router.post('/goods-receipt-notes/:id/reverse', withTenantDb, async (req: any, r
     // Phase 3 ledger posting (row 12) — reverses row 8's entry in full (this route is
     // now unreachable once billed, so there is always exactly one un-reversed entry to
     // find here).
-    await reverseAllEntriesFor(tdb, companyId, 'Grn', id, new Date().toISOString().slice(0, 10), `Goods receipt ${grn.grnNumber} reversed`, req.user.id);
+    await reverseAllEntriesFor(tdb, companyId, 'Grn', id, nowDate().toISOString().slice(0, 10), `Goods receipt ${grn.grnNumber} reversed`, req.user.id);
 
     let updatedPurchaseOrder: { id: string; status: string } | null = null;
     if (grn.purchaseOrderId) {
@@ -927,9 +933,9 @@ router.post('/warehouse-dispatches', withTenantDb, async (req: any, res) => {
       throw err;
     }
 
-    const dispatchNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'dispatch', new Date().toISOString().slice(0, 10), fromWarehouse.branchId);
+    const dispatchNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'dispatch', nowDate().toISOString().slice(0, 10), fromWarehouse.branchId);
     const dispatchId = generateId();
-    const dispatchDate = new Date();
+    const dispatchDate = nowDate();
 
     const [newDispatch] = await tdb.insert(schema.warehouseDispatches).values({
       id: dispatchId,
@@ -1084,9 +1090,9 @@ router.post('/warehouse-receivings', withTenantDb, async (req: any, res) => {
       }
     }
 
-    const receivingNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'receiving', new Date().toISOString().slice(0, 10), toWarehouseForNumbering?.branchId || null);
+    const receivingNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'receiving', nowDate().toISOString().slice(0, 10), toWarehouseForNumbering?.branchId || null);
     const receivingId = generateId();
-    const receivingDate = new Date();
+    const receivingDate = nowDate();
 
     const [newReceiving] = await tdb.insert(schema.warehouseReceivings).values({
       id: receivingId,
@@ -1221,7 +1227,7 @@ router.post('/warehouse-dispatches/:id/cancel', withTenantDb, async (req: any, r
     }
 
     const items = await tdb.select().from(schema.warehouseDispatchItems).where(eq(schema.warehouseDispatchItems.dispatchId, id));
-    const cancelDate = new Date();
+    const cancelDate = nowDate();
 
     for (const item of items) {
       const [product] = await tdb.select({ itemKind: schema.productsServices.itemKind })
@@ -1294,7 +1300,7 @@ router.post('/stock-adjustments', withTenantDb, async (req: any, res) => {
     const companyId = req.targetCompanyId;
     const tdb = tenantDb();
     // Posts cost to the P&L dated today, so it must not land in a closed month or a quarter already filed with ZATCA.
-    const guardDate = new Date().toISOString().slice(0, 10);
+    const guardDate = nowDate().toISOString().slice(0, 10);
     await validateTransactionDate(guardDate, companyId);
     await assertQuarterNotFiled(guardDate, companyId);
     const delta = await toBaseQuantity(tdb, productId, unitOfMeasureId, companyId, Number(quantity));
@@ -1353,7 +1359,7 @@ router.post('/stock-adjustments', withTenantDb, async (req: any, res) => {
         .returning();
       await writeStockLedgerEntry(tdb, {
         productId, warehouseId, companyId,
-        transactionType: 'Adjustment', referenceId: adjustmentId, date: new Date(),
+        transactionType: 'Adjustment', referenceId: adjustmentId, date: nowDate(),
         quantityChange: newQty - priorQty, endingQuantity: newQty, batchNumber,
       });
       adjustedBy = round2(newQty - priorQty);
@@ -1369,7 +1375,7 @@ router.post('/stock-adjustments', withTenantDb, async (req: any, res) => {
       }).returning();
       await writeStockLedgerEntry(tdb, {
         productId, warehouseId, companyId,
-        transactionType: 'Adjustment', referenceId: adjustmentId, date: new Date(),
+        transactionType: 'Adjustment', referenceId: adjustmentId, date: nowDate(),
         quantityChange: round2(delta), endingQuantity: round2(delta), batchNumber,
       });
       adjustedBy = round2(delta);
@@ -1377,7 +1383,7 @@ router.post('/stock-adjustments', withTenantDb, async (req: any, res) => {
     }
 
     await postInventoryAdjustment(tdb, {
-      companyId, branchId: warehouse.branchId, date: new Date().toISOString().slice(0, 10), productId, quantityChange: adjustedBy,
+      companyId, branchId: warehouse.branchId, date: nowDate().toISOString().slice(0, 10), productId, quantityChange: adjustedBy,
       referenceType: 'StockAdjustment', referenceId: adjustmentId, description: `Stock adjustment: ${String(reason).trim()}`, createdById: req.user.id,
     });
 
@@ -1436,7 +1442,7 @@ router.post('/purchase-bills', withTenantDb, async (req: any, res) => {
       return res.status(400).json({ error: 'A bill date is required.' });
     }
     await validateTransactionDate(billDate, companyId);
-    await assertQuarterNotFiled(billDate, companyId);
+    await assertQuarterNotFrozen(billDate, companyId);
 
     // Vendor Bill # is optional here (can be added later via PUT /purchase-bills/:id
     // while still Unpaid) — only the GRN auto-post-bill flow requires it upfront, since
@@ -1536,7 +1542,7 @@ router.post('/vendor-refunds', withTenantDb, async (req: any, res) => {
     const companyId = req.targetCompanyId;
     const tdb = tenantDb();
     const { vendorId, bankId, amount, date, description } = req.body || {};
-    const refundDate = String(date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    const refundDate = String(date || nowDate().toISOString().slice(0, 10)).slice(0, 10);
     const amt = round2(Number(amount));
     if (!vendorId || !bankId) return res.status(400).json({ error: 'A vendor and a bank account are required.' });
     if (!(amt > 0)) return res.status(400).json({ error: 'Refund amount must be greater than zero.' });
@@ -1559,7 +1565,7 @@ router.post('/vendor-refunds', withTenantDb, async (req: any, res) => {
     const [voucher] = await tdb.insert(schema.vouchers).values({
       id: voucherId, voucherNumber, type: 'Receipt', date: refundDate, bankId, amount: String(amt),
       description: description || `Refund received from vendor for returned goods (${amt.toFixed(2)})`,
-      referenceType: 'VendorRefund', referenceId: vendorId, createdById: req.user.id, createdAt: new Date(), companyId, branchId: null,
+      referenceType: 'VendorRefund', referenceId: vendorId, createdById: req.user.id, createdAt: nowDate(), companyId, branchId: null,
     }).returning();
     await postJournalEntry(tdb, {
       companyId, branchId: null, date: refundDate, referenceType: 'VendorRefund', referenceId: voucherId,
@@ -1614,7 +1620,7 @@ router.post('/vendor-refunds/:id/cancel', withTenantDb, async (req: any, res) =>
     await tdb.insert(schema.vouchers).values({
       id: generateId(), voucherNumber, type: 'Reversal', date: original.date, bankId: original.bankId, amount: original.amount,
       description: `Reversal of vendor refund ${original.voucherNumber}`,
-      referenceType: 'VendorRefund', referenceId: original.referenceId, createdById: req.user.id, createdAt: new Date(), companyId,
+      referenceType: 'VendorRefund', referenceId: original.referenceId, createdById: req.user.id, createdAt: nowDate(), companyId,
       branchId: null, reversalOfVoucherId: original.id,
     });
     await reverseAllEntriesFor(tdb, companyId, 'VendorRefund', original.id, original.date, `Vendor refund ${original.voucherNumber} cancelled`, req.user.id);
@@ -1661,7 +1667,7 @@ router.post('/purchase-bills/:id/pay', withTenantDb, async (req: any, res) => {
       }
     }
 
-    const voucherDate = date || new Date().toISOString().split('T')[0];
+    const voucherDate = date || nowDate().toISOString().split('T')[0];
     if (voucherDate < new Date(bill.date).toISOString().slice(0, 10)) {
       return res.status(400).json({ error: `A payment cannot be dated before the bill itself (${new Date(bill.date).toISOString().slice(0, 10)}).` });
     }
@@ -1741,7 +1747,7 @@ router.patch('/purchase-bills/:id/cancel', withTenantDb, async (req: any, res) =
     // quarter has been filed with ZATCA (a filed return's reported input VAT would
     // otherwise silently go stale).
     await validateTransactionDate(bill.date.toISOString().slice(0, 10), companyId);   // not a closed month either
-    await assertQuarterNotFiled(bill.date.toISOString().slice(0, 10), companyId);
+    await assertQuarterNotFrozen(bill.date.toISOString().slice(0, 10), companyId);
     const [newBill] = await tdb.update(schema.purchaseBills)
       .set({ status: 'Cancelled' })
       .where(eq(schema.purchaseBills.id, id))
@@ -1756,7 +1762,7 @@ router.patch('/purchase-bills/:id/cancel', withTenantDb, async (req: any, res) =
 
     // Phase 3 ledger posting (row 11) — reverses entry 9's three lines in full (Unpaid
     // only, already enforced above, so there is never a payment entry to worry about here).
-    await reverseAllEntriesFor(tdb, companyId, 'PurchaseBill', id, new Date().toISOString().slice(0, 10), `Purchase Bill ${bill.billNumber} cancelled`, req.user.id);
+    await reverseAllEntriesFor(tdb, companyId, 'PurchaseBill', id, nowDate().toISOString().slice(0, 10), `Purchase Bill ${bill.billNumber} cancelled`, req.user.id);
 
     const updated = newBill;
 
@@ -1810,12 +1816,12 @@ router.post('/purchase-returns', withTenantDb, async (req: any, res) => {
       err.status = 400;
       throw err;
     }
-    // Purchase Returns always post as of today (date: new Date() below), same as
+    // Purchase Returns always post as of today (date: nowDate() below), same as
     // Purchase Bills — no client-supplied backdating, so this is a same-day check only.
     // This route previously had neither the open-month nor the filed-quarter check at
     // all, unlike every sibling financial-document route.
-    await validateTransactionDate(new Date().toISOString().slice(0, 10), companyId);
-    await assertQuarterNotFiled(new Date().toISOString().slice(0, 10), companyId);
+    await validateTransactionDate(nowDate().toISOString().slice(0, 10), companyId);
+    await assertQuarterNotFrozen(nowDate().toISOString().slice(0, 10), companyId);
     // Belt-and-suspenders alongside the received-quantity check below (lines ~1244-1256
     // already reject returning more than was actually received against this GRN, which
     // in practice also rejects any productId that was never received at all — but that's
@@ -1861,7 +1867,7 @@ router.post('/purchase-returns', withTenantDb, async (req: any, res) => {
     // purchaseReturns has no branchId column of its own — derived via the GRN's
     // warehouseId, same as GRN numbering above.
     const [returnWarehouse] = await tdb.select({ branchId: schema.warehouses.branchId }).from(schema.warehouses).where(eq(schema.warehouses.id, grn.warehouseId));
-    const returnNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'return', new Date().toISOString().slice(0, 10), returnWarehouse?.branchId || null);
+    const returnNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'return', nowDate().toISOString().slice(0, 10), returnWarehouse?.branchId || null);
     const returnId = generateId();
 
     const [newReturn] = await tdb.insert(schema.purchaseReturns).values({
@@ -1870,7 +1876,7 @@ router.post('/purchase-returns', withTenantDb, async (req: any, res) => {
       grnId: grn.id,
       vendorId: grn.vendorId,
       warehouseId: grn.warehouseId,
-      date: new Date(),
+      date: nowDate(),
       notes: returnData.notes || null,
       status: 'Active',
       companyId,
@@ -2057,7 +2063,7 @@ router.patch('/purchase-returns/:id/cancel', withTenantDb, async (req: any, res)
     // Cancelling is an edit to this return, same as its creation now blocks once its
     // quarter has been filed with ZATCA.
     await validateTransactionDate(ret.date.toISOString().slice(0, 10), companyId);   // not a closed month either
-    await assertQuarterNotFiled(ret.date.toISOString().slice(0, 10), companyId);
+    await assertQuarterNotFrozen(ret.date.toISOString().slice(0, 10), companyId);
 
     const items = await tdb.select().from(schema.purchaseReturnItems).where(eq(schema.purchaseReturnItems.returnId, id));
     for (const item of items) {
@@ -2097,7 +2103,7 @@ router.patch('/purchase-returns/:id/cancel', withTenantDb, async (req: any, res)
       }
       await writeStockLedgerEntry(tdb, {
         productId: item.productId, warehouseId: ret.warehouseId, companyId,
-        transactionType: 'Return', referenceId: ret.id, date: new Date(),
+        transactionType: 'Return', referenceId: ret.id, date: nowDate(),
         quantityChange: baseQtyReturned, endingQuantity: cancelEndingQty,
         batchNumber: item.batchNumber || null,
       });
@@ -2127,7 +2133,7 @@ router.patch('/purchase-returns/:id/cancel', withTenantDb, async (req: any, res)
     // Ledger posting: reverses row 13's entry in full — a cancelled return already rolls
     // the physical stock back above, so the ledger must follow it or Inventory/GR-IR/AP/
     // Vendor Credit would be left permanently out of step with what's actually on hand.
-    await reverseAllEntriesFor(tdb, companyId, 'PurchaseReturn', id, new Date().toISOString().slice(0, 10), `Purchase Return ${ret.returnNumber} cancelled`, req.user.id);
+    await reverseAllEntriesFor(tdb, companyId, 'PurchaseReturn', id, nowDate().toISOString().slice(0, 10), `Purchase Return ${ret.returnNumber} cancelled`, req.user.id);
 
     res.json({ success: true, purchaseReturn: updated });
   } catch (error: any) {
@@ -2173,14 +2179,14 @@ router.post('/stock-takes', withTenantDb, async (req: any, res) => {
       throw err;
     }
     await assertProductsOwnedByCompany(tdb, companyId, stockTakeData.items.map((it: any) => it.productId));
-    const referenceNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'stockTake', new Date().toISOString().slice(0, 10), stWarehouse?.branchId || null);
+    const referenceNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'stockTake', nowDate().toISOString().slice(0, 10), stWarehouse?.branchId || null);
     const stockTakeId = generateId();
 
     const [newStockTake] = await tdb.insert(schema.physicalStockTakes).values({
       id: stockTakeId,
       referenceNumber,
       warehouseId: stockTakeData.warehouseId,
-      date: new Date(),
+      date: nowDate(),
       status: 'Draft',
       performedBy: stockTakeData.performedBy,
       notes: stockTakeData.notes || null,
@@ -2240,7 +2246,7 @@ router.post('/stock-takes/:id/finalize', withTenantDb, async (req: any, res) => 
     const companyId = req.targetCompanyId;
     const tdb = tenantDb();
     // Posts cost to the P&L dated today, so it must not land in a closed month or a quarter already filed with ZATCA.
-    const guardDate = new Date().toISOString().slice(0, 10);
+    const guardDate = nowDate().toISOString().slice(0, 10);
     await validateTransactionDate(guardDate, companyId);
     await assertQuarterNotFiled(guardDate, companyId);
 
@@ -2310,12 +2316,12 @@ router.post('/stock-takes/:id/finalize', withTenantDb, async (req: any, res) => 
       }
       await writeStockLedgerEntry(tdb, {
         productId: item.productId, warehouseId: stockTake.warehouseId, companyId,
-        transactionType: 'StockTake', referenceId: stockTake.id, date: new Date(),
+        transactionType: 'StockTake', referenceId: stockTake.id, date: nowDate(),
         quantityChange: round2(finalizedQty - currentQty), endingQuantity: finalizedQty,
         batchNumber: item.batchNumber || null,
       });
       await postInventoryAdjustment(tdb, {
-        companyId, branchId: takeWarehouse?.branchId ?? null, date: new Date().toISOString().slice(0, 10), productId: item.productId,
+        companyId, branchId: takeWarehouse?.branchId ?? null, date: nowDate().toISOString().slice(0, 10), productId: item.productId,
         quantityChange: round2(finalizedQty - currentQty),
         referenceType: 'StockTake', referenceId: stockTake.id, description: `Stock take variance (${stockTake.id.slice(0, 8)})`, createdById: req.user.id,
       });

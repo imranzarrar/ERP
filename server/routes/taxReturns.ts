@@ -5,6 +5,7 @@ import { generateId } from '../../src/id.js';
 import { hasPermission } from '../lib/authz.js';
 import { computeVatReturnFigures, getQuarterDateRange, assertNoUnreportedZatcaInvoices } from '../lib/vatReturn.js';
 import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
+import { nowDate } from '../lib/clock.js';
 
 const router = express.Router();
 
@@ -73,7 +74,7 @@ router.post('/tax-returns/generate', withTenantDb, async (req: any, res) => {
       status: 'Generated',
       isDeleted: false,
       figuresSnapshot: figures,
-      generatedAt: new Date(),
+      generatedAt: nowDate(),
       generatedById: req.user.id,
     }).returning();
 
@@ -173,7 +174,7 @@ router.post('/tax-returns/:id/file', withTenantDb, async (req: any, res) => {
       throw err;
     }
 
-    const [updated] = await tdb.update(schema.taxReturns).set({ status: 'Filed', filedAt: new Date(), filedById: req.user.id }).where(eq(schema.taxReturns.id, id)).returning();
+    const [updated] = await tdb.update(schema.taxReturns).set({ status: 'Filed', filedAt: nowDate(), filedById: req.user.id }).where(eq(schema.taxReturns.id, id)).returning();
 
     res.json({ success: true, taxReturn: updated });
   } catch (error: any) {

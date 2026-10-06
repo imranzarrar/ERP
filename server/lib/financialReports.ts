@@ -2,6 +2,7 @@ import { computeBillInputVat } from './inputVat.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, and, or, gt, gte, lte, lt, ne, inArray, asc, sql, isNotNull } from 'drizzle-orm';
 import { round2, computeInvoiceServerTotals, splitExpenseTaxInclusiveAmount } from './businessLogic.js';
+import { nowDate } from './clock.js';
 
 // Real, server-side financial-report calculations — one function per report, each scoped
 // by companyId (+ a date range / customer / vendor / investor / shift id where relevant),
@@ -23,11 +24,14 @@ function invoiceSign(inv: { documentType?: string | null }): number {
 // reversal of its original (see POST /invoices/:id/note), so such an invoice has NO remaining
 // receivable — even when it was unpaid or part-paid when credited, in which case its own paymentStatus
 // still reads Unpaid/Partially Paid and every "outstanding" sum would otherwise keep counting it.
-async function creditedOriginalIds(executor: any, companyId: string): Promise<Set<string>> {
+// A credit note is dated the day it is issued (not the original invoice's date), so "credited" only holds from that day on:
+// pass asOfDate for an as-at figure and a credit note issued later does not yet count.
+async function creditedOriginalIds(executor: any, companyId: string, asOfDate?: string): Promise<Set<string>> {
   const rows = await executor.select({ originalId: schema.invoices.originalInvoiceId }).from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId),
     eq(schema.invoices.documentType, 'CreditNote'),
     eq(schema.invoices.status, 'Active'),
+    ...(asOfDate ? [lte(schema.invoices.date, asOfDate)] : []),
   ));
   return new Set(rows.map((r: any) => r.originalId).filter(Boolean));
 }
@@ -92,11 +96,21 @@ async function computeVendorRefunds(executor: any, companyId: string, asOfDate: 
   }));
   return { total: round2(lines.reduce((s, l) => s + (l.type === 'Receipt' ? l.amount : -l.amount), 0)), lines };
 }
-// What the supplier still owes back = refunds due from returns, less refunds already received.
+// A reversal document of an expense that had ALREADY been paid (see POST /api/expenses/:id/reverse): the paid part is carried as a negative
+// amountPaid on the reversal, and is a credit the vendor owes back until refunded. (The unpaid part just stops being payable.)
+async function computeExpenseReversalCredits(executor: any, companyId: string, asOfDate: string, vendorId: string | 'ALL' = 'ALL'): Promise<number> {
+  const rows: any[] = await executor.select().from(schema.expenses).where(and(
+    eq(schema.expenses.companyId, companyId), eq(schema.expenses.status, 'Active'), isNotNull(schema.expenses.reversalOfExpenseId),
+    lte(schema.expenses.date, asOfDate),
+  ));
+  return round2(rows.filter(r => vendorId === 'ALL' || r.vendorId === vendorId).reduce((s, r) => s + (-Number(r.amountPaid || 0)), 0));
+}
+// What the supplier still owes back = refunds due from returns and from reversed paid expenses, less refunds already received.
 async function computeVendorCreditBalance(executor: any, companyId: string, asOfDate: string, vendorId: string | 'ALL' = 'ALL'): Promise<number> {
   const due = await computeVendorCredits(executor, companyId, asOfDate, vendorId);
+  const fromExpenses = await computeExpenseReversalCredits(executor, companyId, asOfDate, vendorId);
   const received = await computeVendorRefunds(executor, companyId, asOfDate, vendorId);
-  return round2(due.total - received.total);
+  return round2(due.total + fromExpenses - received.total);
 }
 export { computeVendorCreditBalance };
 async function computeVendorCredits(executor: any, companyId: string, asOfDate: string, vendorId: string | 'ALL' = 'ALL'): Promise<{ total: number; lines: VendorCreditLine[] }> {
@@ -509,7 +523,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   // default, and summing it here by its own status (rather than netting it against the
   // specific original invoice it targets) let it subtract from an unrelated customer's
   // balance instead.
-  const bsCreditedIds = await creditedOriginalIds(executor, companyId);
+  const bsCreditedIds = await creditedOriginalIds(executor, companyId, asOfDate);
   // As at an earlier date an invoice that is fully paid NOW may still have been owing THEN, so besides today's unpaid ones,
   // include any invoice that received a payment after the as-of date, and take those later receipts back off what it had paid.
   const laterReceipts = await laterVoucherTotals(executor, companyId, 'Invoice', 'Receipt', asOfDate);
@@ -558,7 +572,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   // confirmed incident this closes: its own paymentStatus never changes on settlement.
   const apPctBySlab = await taxPercentageBySlabId(executor, companyId);
   let accountsPayable = round2(unpaidExpenses.reduce((sum, exp) =>
-    sum + Math.max(0, liabilityAmount(exp, apPctBySlab) - (Number(exp.amountPaid || 0) - (laterExpensePayments.get(exp.id) || 0))), 0));
+    sum + (() => { const owed = liabilityAmount(exp, apPctBySlab) - (Number(exp.amountPaid || 0) - (laterExpensePayments.get(exp.id) || 0)); return Number(exp.amount) < 0 ? owed : Math.max(0, owed); })(), 0));
 
   // Also owes whatever's still unpaid on a Purchase Bill (Phase 3) — same gap, same fix,
   // as computeTrialBalance's matching comment: the ledger's own AP account already
@@ -922,7 +936,7 @@ export async function computeDashboardSummary(
   );
   const unpaidTotalsByInvoiceId = await computeInvoiceTotalsMap(executor, unpaidInvoices);
   let pendingCollection = 0;
-  const today = new Date();
+  const today = nowDate();
   const pendingInvoiceRows: PendingInvoiceRow[] = [];
   const customerIds = Array.from(new Set(unpaidInvoices.map(inv => inv.customerId).filter(Boolean))) as string[];
   const customers: any[] = customerIds.length ? await executor.select().from(schema.customers).where(inArray(schema.customers.id, customerIds)) : [];

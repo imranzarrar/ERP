@@ -41,6 +41,7 @@ import companiesRouter from './server/routes/companies.js';
 import { parseImageDataUrl } from './server/lib/companyLogo.js';
 import { publicRouter as onboardingPublicRouter, adminRouter as onboardingAdminRouter } from './server/routes/onboarding.js';
 import { publicRouter as systemBannerPublicRouter, adminRouter as systemBannerAdminRouter } from './server/routes/systemBanner.js';
+import { devClockEnabled, runWithDevDate, setSessionDevDate, getSessionDevDate } from './server/lib/clock.js';
 
 async function startServer() {
   const app = express();
@@ -656,8 +657,30 @@ async function startServer() {
     }
   });
 
+  // Developer clock (see server/lib/clock.ts): only when the server was started with ALLOW_DEV_CLOCK=1 (never on the VPS). A request
+  // carrying `x-dev-date`, or whose session was given a date, sees that day as "today". Otherwise this does nothing at all.
+  if (devClockEnabled()) {
+    console.warn('[DEV CLOCK] enabled — requests may run on a simulated date. Never use this setting in production.');
+    app.use('/api', (req: any, _res: any, next: any) => {
+      const header = String(req.headers['x-dev-date'] || '');
+      const sid = String(req.headers['x-session-id'] || req.sessionID || '');
+      runWithDevDate(/^\d{4}-\d{2}-\d{2}$/.test(header) ? header : getSessionDevDate(sid), next);
+    });
+  }
+
   // Protect remaining routes
   app.use('/api', isAuthenticated);
+
+  if (devClockEnabled()) {
+    // Sets (or clears, with {date:null}) the simulated "today" for the calling login session, so the real screens can be driven on that day.
+    app.post('/api/dev/clock', (req: any, res: any) => {
+      const sid = String(req.headers['x-session-id'] || req.sessionID || '');
+      const date = req.body?.date ? String(req.body.date) : null;
+      if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+      setSessionDevDate(sid, date);
+      res.json({ date });
+    });
+  }
 
   // Persists which company a super-admin is currently viewing into the session itself,
   // so it's automatically honored by every subsequent request's isAuthenticated

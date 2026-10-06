@@ -10,6 +10,7 @@ import { branchAccessOk } from './authz.js';
 // here because both sides only touch the other's binding inside a function body
 // (never at module-eval time), which Node's ESM loader resolves correctly.
 import { reverseAllEntriesFor } from './ledger.js';
+import { nowDate } from './clock.js';
 
 // Round-half-up to 2 decimals. Applied after every intermediate step in a money
 // calculation chain (not just once at the end via .toFixed(2)) so the value written to
@@ -426,7 +427,7 @@ export async function validateTransactionDate(date: string, companyId: string) {
     throw err;
   }
   
-  const now = new Date();
+  const now = nowDate();
   const currentYear = now.getFullYear();
   const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
   const currentYearMonth = `${currentYear}-${currentMonth}`;
@@ -463,6 +464,32 @@ export async function assertQuarterNotFiled(date: string, companyId: string): Pr
     (err as any).status = 400;
     throw err;
   }
+}
+
+// A VAT quarter is frozen from the moment its return is GENERATED (not only once it is filed): the figures on that return must not
+// move, so no tax-affecting document (invoice, credit note, expense, bill, return, cancellation) may be dated in it or changed in it.
+// To change something in the quarter, delete the generated (unfiled) return first, make the change, then generate it again.
+// Plain payments and refunds do not change any tax figure and keep using assertQuarterNotFiled (filed returns only).
+export async function assertQuarterNotFrozen(date: string, companyId: string): Promise<void> {
+  const year = Number(date.slice(0, 4));
+  const month = Number(date.slice(5, 7));
+  const quarter = Math.ceil(month / 3);
+  const rows = await db.select({ referenceNumber: schema.taxReturns.referenceNumber, status: schema.taxReturns.status })
+    .from(schema.taxReturns)
+    .where(and(
+      eq(schema.taxReturns.companyId, companyId),
+      eq(schema.taxReturns.year, year),
+      eq(schema.taxReturns.quarter, quarter),
+      inArray(schema.taxReturns.status, ['Generated', 'Filed']),
+      eq(schema.taxReturns.isDeleted, false)
+    ));
+  const ret = rows.find(r => r.status === 'Filed') || rows[0];
+  if (!ret) return;
+  const err = new Error(ret.status === 'Filed'
+    ? `This date falls within ${ret.referenceNumber}, which has already been filed with ZATCA and is permanently locked. No new or edited Invoice, Credit/Debit Note, Expense, or Purchase Bill may be dated in a filed quarter.`
+    : `A VAT return (${ret.referenceNumber}) has been generated for this quarter, so its tax figures are frozen: no invoice, credit note, expense, bill or return can be added or changed in it. Delete the generated return first if you need to change something.`);
+  (err as any).status = 400;
+  throw err;
 }
 
 export async function syncVoucherForExpense(tx: any, expenseId: string, companyId: string, data: any, userId: string) {
@@ -525,7 +552,7 @@ export async function syncVoucherForExpense(tx: any, expenseId: string, companyI
         // see schema.ts's vouchers.branchId comment.
         branchId: data.branchId || null,
         createdById: userId,
-        createdAt: new Date(),
+        createdAt: nowDate(),
       });
     }
   } else {
@@ -572,7 +599,7 @@ export async function syncVoucherForExpense(tx: any, expenseId: string, companyI
         )
       );
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = nowDate().toISOString().split('T')[0];
     const todayMonthId = todayStr.slice(0, 7);
     const dataMonthId = data.date ? data.date.slice(0, 7) : '';
     const openMonthIds = new Set(openMonths.map((m: any) => m.id));
@@ -603,7 +630,7 @@ export async function syncVoucherForExpense(tx: any, expenseId: string, companyI
         branchId: original.branchId || null,
         reversalOfVoucherId: original.id,
         createdById: userId,
-        createdAt: new Date(),
+        createdAt: nowDate(),
       });
     }
   }
@@ -631,16 +658,25 @@ export async function cancelExpense(tx: any, req: any, id: string, companyId: st
   // already blocks once its quarter has been filed with ZATCA (a filed return's reported
   // input VAT would otherwise silently go stale). Shared by both POST /expenses/:id/cancel
   // and DELETE /accruals/:id, so fixing it here covers both call sites at once.
-  await assertQuarterNotFiled(expense.date, companyId);
-  // An expense whose month is already closed cannot be cancelled: cancelling drops it from its own month's figures, which
-  // would change a closed month.
-  await validateTransactionDate(expense.date, companyId);
+  if (expense.reversalOfExpenseId) { const err: any = new Error('A reversal document cannot be cancelled.'); err.status = 400; throw err; }
+  const [reversedBy] = await tx.select({ n: schema.expenses.expenseNumber }).from(schema.expenses)
+    .where(and(eq(schema.expenses.companyId, companyId), eq(schema.expenses.reversalOfExpenseId, id), eq(schema.expenses.status, 'Active')));
+  if (reversedBy) { const err: any = new Error(`This expense has already been reversed (${reversedBy.n}).`); err.status = 400; throw err; }
+  // An expense whose month is closed (or whose VAT quarter is generated/filed) is locked and cannot be cancelled: cancelling drops it from
+  // its own period's figures. The correction is a Reversal document dated today in the current period instead.
+  try {
+    await assertQuarterNotFrozen(expense.date, companyId);
+    await validateTransactionDate(expense.date, companyId);
+  } catch (lockErr: any) {
+    lockErr.message = `${lockErr.message} This expense cannot be cancelled; use "Reverse" to post a correction dated today.`;
+    throw lockErr;
+  }
 
   // The reversal is posted on the day the cancellation happens (never back into the expense's own, earlier period), and
   // that day must itself be in an open fiscal month and outside any filed VAT quarter.
-  const finalReversalDate = new Date().toISOString().split('T')[0];
+  const finalReversalDate = nowDate().toISOString().split('T')[0];
   await validateTransactionDate(finalReversalDate, companyId);
-  await assertQuarterNotFiled(finalReversalDate, companyId);
+  await assertQuarterNotFrozen(finalReversalDate, companyId);
 
   await tx.update(schema.expenses).set({ status: 'Cancelled' }).where(eq(schema.expenses.id, id));
 
@@ -737,7 +773,7 @@ export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyI
         // see schema.ts's vouchers.branchId comment.
         branchId: data.branchId || null,
         createdById: userId,
-        createdAt: new Date(),
+        createdAt: nowDate(),
       });
     }
   } else {
@@ -791,7 +827,7 @@ export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyI
         )
       );
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = nowDate().toISOString().split('T')[0];
     const todayMonthId = todayStr.slice(0, 7);
     const dataMonthId = data.date ? data.date.slice(0, 7) : '';
     const openMonthIds = new Set(openMonths.map((m: any) => m.id));
@@ -822,7 +858,7 @@ export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyI
         branchId: original.branchId || null,
         reversalOfVoucherId: original.id,
         createdById: userId,
-        createdAt: new Date(),
+        createdAt: nowDate(),
       });
     }
   }
@@ -885,7 +921,7 @@ export async function postCreditNoteReversalVoucher(
       )
     );
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = nowDate().toISOString().split('T')[0];
   const todayMonthId = todayStr.slice(0, 7);
   const creditNoteMonthId = creditNoteDate ? creditNoteDate.slice(0, 7) : '';
   const openMonthIds = new Set(openMonths.map((m: any) => m.id));
@@ -919,7 +955,7 @@ export async function postCreditNoteReversalVoucher(
       companyId: companyId,
       branchId: existingVoucher.branchId || null,
       createdById: userId,
-      createdAt: new Date(),
+      createdAt: nowDate(),
     });
     return { refundBankId: existingVoucher.bankId as string };
   }
@@ -956,7 +992,7 @@ export async function postCreditNoteReversalVoucher(
       branchId: original.branchId || null,
       reversalOfVoucherId: original.id,
       createdById: userId,
-      createdAt: new Date(),
+      createdAt: nowDate(),
     });
   }
 }

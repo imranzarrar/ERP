@@ -370,6 +370,25 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  }
  };
 
+ // Reverse expense — the correction for an expense of a closed month (which can no longer be cancelled): a new reversing document dated today.
+ const handleReverseExpense = async (expId: string) => {
+ const canReverse = userPermissions.expense.delete.enabled;
+ if (!canReverse) return triggerError('You do not have cancellation permission.');
+ try {
+ const response = await fetch(`/api/expenses/${expId}/reverse`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+ const result = await response.json();
+ if (!response.ok || result.error) {
+ triggerError(result.error || 'Failed to reverse expense.');
+ return;
+ }
+ triggerSuccess(`${t('Reversal')} ${result.reversalNumber} ${t('posted today in the current period.')}`);
+ if (onRefreshDb) await onRefreshDb();
+ expensesList.reload();
+ } catch (err: any) {
+ triggerError(err?.message || 'Failed to reverse expense — check your connection and try again.');
+ }
+ };
+
  // Cancel expense
  const handleCancelExpense = async (expId: string) => {
  const canCancel = userPermissions.expense.delete.enabled;
@@ -518,7 +537,12 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  const vend = db.vendors.find(v => v.id === exp.vendorId);
  const bank = db.banks.find(b => b.id === exp.bankId);
  const isPending = (exp.paymentStatus === 'Unpaid' || exp.paymentStatus === 'Partially Paid') && exp.status === 'Active';
- const canCancel = userPermissions.expense.delete.enabled && exp.status === 'Active';
+ const isReversalDoc = !!(exp as any).reversalOfExpenseId;
+ const canCancel = userPermissions.expense.delete.enabled && exp.status === 'Active' && !isReversalDoc;
+ // An expense of a closed month is locked: it cannot be cancelled, it is corrected with a reversing document dated today.
+ const monthOfExpense = (db.months || []).find((m: any) => m.id === String(exp.date).slice(0, 7));
+ const isLockedMonth = !!monthOfExpense && monthOfExpense.status === 'Closed';
+ const canReverse = canCancel && isLockedMonth && exp.type === 'Actual' && !exp.originAccrualId;
 
  return (
  <tr key={exp.id} className="border-b border-slate-100 hover:bg-slate-50/20">
@@ -600,7 +624,21 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  </button>
  )}
 
- {canCancel && (
+ {canReverse && (
+ <button
+ onClick={() => {
+ if (window.confirm(t('This expense belongs to a closed month and cannot be cancelled. Post a reversing document dated today in the current month instead?'))) {
+ handleReverseExpense(exp.id);
+ }
+ }}
+ className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 transition cursor-pointer inline-flex items-center gap-1 text-[11px] font-bold"
+ title={t('Reverse Expense')}
+ >
+ <AlertTriangle className="w-3.5 h-3.5" />
+ <span>{t('Reverse')}</span>
+ </button>
+ )}
+ {canCancel && !isLockedMonth && (
  <button
  onClick={() => {
  if (window.confirm('⚠️ Are you sure you want to CANCEL this expense? This action will void the expense and post a reversal voucher if it was paid. It cannot be undone!')) {

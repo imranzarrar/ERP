@@ -32,6 +32,7 @@ import {
   computeInvestorProfitShare,
   computeFiscalMonthClosingHistory,
 } from '../lib/financialReports.js';
+import { computeConsistencyCheck } from '../lib/consistencyCheck.js';
 
 const router = express.Router();
 
@@ -119,6 +120,19 @@ function financialRoute(path: string, permission: string, needsDates: boolean, r
 const str = (v: any, d = 'ALL') => (typeof v === 'string' && v ? v : d);
 financialRoute('/reports/sales-vat', 'reports.salesVat', true, (req, c, q) => computeSalesVatRegister(tenantDb(), c, String(q.startDate), String(q.endDate), str(q.customerId), { branchIds: resolveBranchIds(req) }));
 financialRoute('/reports/purchase-vat', 'reports.purchaseVat', true, (req, c, q) => computePurchaseVatRegister(tenantDb(), c, String(q.startDate), String(q.endDate), str(q.vendorId), { branchIds: resolveBranchIds(req) }));
+// Read-only health check of the whole set of reporting rules (see server/lib/consistencyCheck.ts): every rule that must always hold, with the
+// ones that do not, named. Safe to run on any company at any time.
+router.get('/reports/consistency-check', withTenantDb, async (req: any, res) => {
+  try {
+    if (!hasPermission(req.user, 'reports.balanceSheet')) return res.status(403).json({ error: 'Forbidden' });
+    const companyId = req.targetCompanyId;
+    if (!companyId) return res.status(400).json({ error: 'No company selected.' });
+    const asOf = typeof req.query.asOfDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.asOfDate) ? req.query.asOfDate : undefined;
+    res.json(await computeConsistencyCheck(tenantDb(), companyId, asOf));
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
 financialRoute('/reports/vat-return-summary', 'reports.vatReturnSummary', true, (req, c, q) => computeVatReturnSummary(tenantDb(), c, String(q.startDate), String(q.endDate), { branchIds: resolveBranchIds(req) }));
 financialRoute('/reports/bank-ledger', 'reports.bankLedger', true, (req, c, q) => computeBankLedger(tenantDb(), c, str(q.bankId), String(q.startDate), String(q.endDate), { branchIds: resolveBranchIds(req) }));
 financialRoute('/reports/outstanding', 'reports.outstanding', false, (req, c, q) => computeOutstanding(tenantDb(), c, q.startDate ? String(q.startDate) : null, q.endDate ? String(q.endDate) : null, str(q.customerId), str(q.vendorId), { branchIds: resolveBranchIds(req) }));

@@ -26,7 +26,7 @@ const prev = getQuarterDateRange(prevYear, prevQuarter as 1 | 2 | 3 | 4);
 
 let companyId: string, userId: string, sessionId: string, productId: string;
 let bankId: string, vendorId: string, warehouseId: string;
-let grn1: string, grn2: string, bill1: string, bill2: string, return1: string;
+let grn1: string, grn2: string, bill1: string, bill2: string, return1: string, curReturnId: string;
 
 async function api(path: string, init: RequestInit = {}) {
   const res = await fetch(`${BASE_URL}${path}`, { ...init, headers: { 'Content-Type': 'application/json', 'x-session-id': sessionId, ...(init.headers || {}) } });
@@ -111,12 +111,18 @@ describe('Purchase return input VAT belongs to the return period', () => {
     const g = await post('/api/tax-returns/generate', { year: curYear, quarter: curQuarter });
     expect(g.status).toBe(200);
     expect(g.body.taxReturn.figuresSnapshot.inputVat).toBe(-12);
+    curReturnId = g.body.taxReturn.id;
     const gp = await post('/api/tax-returns/generate', { year: prevYear, quarter: prevQuarter });
     expect(gp.status).toBe(200);
     expect(gp.body.taxReturn.figuresSnapshot.inputVat).toBe(60);
   });
 
   it('cancelling a return restores the bill it had reduced and removes the quarter adjustment', async () => {
+    // The current quarter's return is generated, so the quarter is frozen: the cancellation is refused until that draft is deleted.
+    const frozen = await api(`/api/inventory/purchase-returns/${return1}/cancel`, { method: 'PATCH' });
+    expect(frozen.status).toBe(400);
+    expect(frozen.body.error).toMatch(/has been generated for this quarter/i);
+    expect((await post(`/api/tax-returns/${curReturnId}/delete`, {})).status).toBe(200);
     const c = await api(`/api/inventory/purchase-returns/${return1}/cancel`, { method: 'PATCH' });
     expect(c.status).toBe(200);
     const [b1] = await db.select().from(schema.purchaseBills).where(eq(schema.purchaseBills.id, bill1));

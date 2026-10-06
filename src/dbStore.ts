@@ -281,6 +281,11 @@ export const SEED_RECURRING: RecurringExpenseTemplate[] = [
 
 
 export const SEED_TRANSLATIONS: TranslationItem[] = [
+  { id: '019fa55c-7000-7000-8000-00000000f021', key: 'Reverse', en: 'Reverse', ar: 'عكس', ur: 'الٹ دیں' },
+  { id: '019fa55c-7000-7000-8000-00000000f022', key: 'Reverse Expense', en: 'Reverse Expense', ar: 'عكس المصروف', ur: 'اخراجات الٹ دیں' },
+  { id: '019fa55c-7000-7000-8000-00000000f023', key: 'Reversal', en: 'Reversal', ar: 'قيد عكسي', ur: 'الٹ اندراج' },
+  { id: '019fa55c-7000-7000-8000-00000000f024', key: 'posted today in the current period.', en: 'posted today in the current period.', ar: 'تم ترحيله اليوم في الفترة الحالية.', ur: 'آج موجودہ مدت میں پوسٹ کر دیا گیا۔' },
+  { id: '019fa55c-7000-7000-8000-00000000f025', key: 'This expense belongs to a closed month and cannot be cancelled. Post a reversing document dated today in the current month instead?', en: 'This expense belongs to a closed month and cannot be cancelled. Post a reversing document dated today in the current month instead?', ar: 'هذا المصروف يعود إلى شهر مغلق ولا يمكن إلغاؤه. هل تريد ترحيل مستند عكسي بتاريخ اليوم في الشهر الحالي بدلاً من ذلك؟', ur: 'یہ اخراجات بند مہینے سے تعلق رکھتے ہیں اور منسوخ نہیں ہو سکتے۔ اس کے بجائے آج کی تاریخ کا الٹ اندراج موجودہ مہینے میں پوسٹ کریں؟' },
   { id: '019fa55c-7000-7000-8000-00000000f020', key: 'Bill Date', en: 'Bill Date', ar: 'تاريخ الفاتورة', ur: 'بل کی تاریخ' },
   { id: '019fa55c-7000-7000-8000-00000000f019', key: 'Vendor Credit Receivable', en: 'Vendor Credit Receivable', ar: 'أرصدة دائنة مستحقة من الموردين', ur: 'سپلائرز سے قابل وصول کریڈٹ' },
   { id: '019fa55c-7000-7000-8000-00000000f018', key: 'Goods Received Not Billed', en: 'Goods Received Not Billed', ar: 'بضاعة مستلمة غير مفوترة', ur: 'وصول شدہ مال، بل ابھی درج نہیں' },

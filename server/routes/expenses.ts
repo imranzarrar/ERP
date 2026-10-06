@@ -2,7 +2,7 @@ import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, and, asc, desc, inArray, sql, count, gte, lte, ne } from 'drizzle-orm';
-import { validateTransactionDate, syncVoucherForExpense, round2, computePaymentStatus, assertQuarterNotFiled, cancelExpense, splitExpenseTaxInclusiveAmount } from '../lib/businessLogic.js';
+import { validateTransactionDate, syncVoucherForExpense, round2, computePaymentStatus, assertQuarterNotFiled, assertQuarterNotFrozen, cancelExpense, splitExpenseTaxInclusiveAmount } from '../lib/businessLogic.js';
 import { postJournalEntry } from '../lib/ledger.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { normalizePermissions } from '../../src/types.js';
@@ -11,6 +11,7 @@ import { generateId } from '../../src/id.js';
 import { assertOwnsRow, resolveDocumentBranchId, branchAccessOk } from '../lib/authz.js';
 import { recordAuditLog } from '../lib/audit.js';
 import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
+import { nowDate } from '../lib/clock.js';
 
 const router = express.Router();
 
@@ -159,14 +160,14 @@ router.post('/', withTenantDb, async (req: any, res) => {
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
     // request in one transaction.
     await validateTransactionDate(data.date, data.companyId);
-    await assertQuarterNotFiled(data.date, data.companyId);
+    await assertQuarterNotFrozen(data.date, data.companyId);
     const isNew = !data.id;
     const expenseId = data.id || generateId();
 
     if (isNew) {
       data.expenseNumber = await getAndIncrementDocumentNumber(tdb, data.companyId, 'expense', data.date, data.branchId);
       data.createdById = req.user.id;
-      data.createdAt = new Date();
+      data.createdAt = nowDate();
     } else if (existing) {
       data.expenseNumber = existing.expenseNumber;
       data.createdById = existing.createdById;
@@ -267,6 +268,10 @@ router.post('/:id/pay', withTenantDb, async (req: any, res) => {
     if (!expense) throw new Error('Expense not found.');
     if (!branchAccessOk(req, expense.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
     if (expense.status === 'Cancelled') throw new Error('Cancelled expenses cannot be paid.');
+    if (expense.reversalOfExpenseId) throw new Error('A reversal document cannot be paid. If the vendor refunds money, record it under Vendor Refunds.');
+    const [reversedBy] = await tdb.select({ n: schema.expenses.expenseNumber }).from(schema.expenses)
+      .where(and(eq(schema.expenses.companyId, companyId), eq(schema.expenses.reversalOfExpenseId, expense.id), eq(schema.expenses.status, 'Active')));
+    if (reversedBy) throw new Error(`This expense has been reversed (${reversedBy.n}) and can no longer be paid.`);
     if (expense.paymentStatus === 'Paid') throw new Error('Expense is already paid.');
 
     await validateTransactionDate(date, companyId);
@@ -336,7 +341,7 @@ router.post('/:id/pay', withTenantDb, async (req: any, res) => {
         referenceType: 'Expense',
         referenceId: id,
         createdById: req.user.id,
-        createdAt: new Date(),
+        createdAt: nowDate(),
         companyId,
         // Always the expense's own branch, never independently picked.
         branchId: expense.branchId,
@@ -379,6 +384,72 @@ router.post('/:id/pay', withTenantDb, async (req: any, res) => {
 // fiscal month, breaks the accrual<->actual settlement link either direction, and posts
 // a Reversal voucher (dated per the open-month-aware fallback below) if a Payment
 // voucher was active.
+// A closed month (or a quarter whose VAT return is generated/filed) locks the expenses dated in it: they cannot be cancelled. The correction is a
+// new REVERSAL document dated TODAY, in the current open month and quarter: a negative expense that takes the cost and the input VAT back in
+// this period and leaves the original untouched. What was still owed to the vendor is reduced; what had already been paid becomes a vendor
+// credit receivable (refunded later through POST /api/inventory/vendor-refunds, exactly like a return against a paid bill).
+router.post('/:id/reverse', withTenantDb, async (req: any, res) => {
+  try {
+    const tdb = tenantDb();
+    const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
+    if (!permissions.expense.delete.enabled) return res.status(403).json({ error: 'Forbidden' });
+    const companyId = req.targetCompanyId;
+    const { id } = req.params;
+    const reason = String(req.body?.reason || '').trim();
+
+    const [orig] = await tdb.select().from(schema.expenses)
+      .where(and(eq(schema.expenses.id, id), eq(schema.expenses.companyId, companyId))).for('update');
+    if (!orig) return res.status(404).json({ error: 'Expense not found.' });
+    if (!branchAccessOk(req, orig.branchId)) return res.status(403).json({ error: 'Forbidden: you are not assigned to this branch.' });
+    if (orig.status !== 'Active') return res.status(400).json({ error: 'Only an active expense can be reversed.' });
+    if (orig.type !== 'Actual') return res.status(400).json({ error: 'An accrual is removed with its own Delete; only a real expense is reversed.' });
+    if (orig.originAccrualId) return res.status(400).json({ error: 'This expense settles an accrual and cannot be reversed on its own.' });
+    if (orig.reversalOfExpenseId) return res.status(400).json({ error: 'This is already a reversal document.' });
+    const [already] = await tdb.select({ n: schema.expenses.expenseNumber }).from(schema.expenses)
+      .where(and(eq(schema.expenses.companyId, companyId), eq(schema.expenses.reversalOfExpenseId, id), eq(schema.expenses.status, 'Active')));
+    if (already) return res.status(400).json({ error: `This expense has already been reversed (${already.n}).` });
+
+    // The reversal lands today, so today must be an open month outside any generated/filed VAT quarter.
+    const today = nowDate().toISOString().slice(0, 10);
+    await validateTransactionDate(today, companyId);
+    await assertQuarterNotFrozen(today, companyId);
+
+    const gross = round2(Number(orig.amount));
+    const paid = Math.min(gross, round2(Number(orig.amountPaid || 0)));
+    const unpaid = round2(gross - paid);
+    const [slab] = orig.taxSlabId ? await tdb.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, orig.taxSlabId)) : [undefined];
+    const { netAmount, taxAmount } = splitExpenseTaxInclusiveAmount(gross, slab ? Number(slab.percentage) : 0);
+
+    const expenseNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'expense', today, orig.branchId);
+    const reversalId = generateId();
+    // amountPaid carries the part that is NOT payable any more: what had already been paid out becomes a credit owed back by the vendor,
+    // what was still unpaid simply stops being owed. (Negative amounts: this document is the mirror image of the original.)
+    await tdb.insert(schema.expenses).values({
+      id: reversalId, expenseNumber, date: today, vendorId: orig.vendorId, taxSlabId: orig.taxSlabId, bankId: orig.bankId,
+      paymentStatus: unpaid > 0.005 ? 'Unpaid' : 'Paid', amountPaid: String(-paid), paymentDate: null,
+      description: `Reversal of ${orig.expenseNumber}${reason ? ': ' + reason : ''}`, amount: String(-gross), status: 'Active', type: 'Actual',
+      classification: orig.classification, assetType: orig.assetType, expenseType: orig.expenseType,
+      billNumber: orig.billNumber, reversalOfExpenseId: id, createdById: req.user.id, createdAt: nowDate(), companyId, branchId: orig.branchId,
+    });
+
+    await postJournalEntry(tdb, {
+      companyId, branchId: orig.branchId, date: today, referenceType: 'Expense', referenceId: reversalId,
+      description: `Reversal ${expenseNumber} of expense ${orig.expenseNumber}`, createdById: req.user.id,
+      lines: [
+        ...(unpaid > 0 ? [{ accountKey: 'AP', debit: unpaid }] : []),
+        ...(paid > 0 ? [{ accountKey: 'VENDOR_CREDIT_RECEIVABLE', debit: paid }] : []),
+        { accountKey: orig.classification === 'Asset' ? 'FIXED_ASSETS' : 'DIRECT_OPEX', credit: netAmount },
+        ...(taxAmount > 0 ? [{ accountKey: 'VAT_INPUT', credit: taxAmount }] : []),
+      ],
+    });
+
+    recordAuditLog(req, 'REVERSE_EXPENSE', 'expense', id, { expenseNumber: orig.expenseNumber, reversalNumber: expenseNumber, amount: gross });
+    res.json({ success: true, reversalId, reversalNumber: expenseNumber });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
+});
+
 router.post('/:id/cancel', withTenantDb, async (req: any, res) => {
   try {
     const tdb = tenantDb();

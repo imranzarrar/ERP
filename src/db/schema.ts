@@ -1129,6 +1129,9 @@ export const expenses = pgTable('expenses', {
   // Nullable/additive like billNumber; enforced against a fixed option list at the
   // application layer (ExpenseModule.tsx), not a DB-level check constraint.
   expenseType: text('expense_type'),
+  // Set only on a REVERSAL document: the expense of a closed month (or locked quarter) that cannot be cancelled is corrected by a new,
+  // negative expense dated today in the current period, linked back to the original through this id. Nullable/additive.
+  reversalOfExpenseId: uuid('reversal_of_expense_id'),
 }, (table) => ({
   companyIdIdx: index('expenses_company_id_idx').on(table.companyId),
   originAccrualFk: index('expenses_origin_accrual_idx').on(table.originAccrualId),
