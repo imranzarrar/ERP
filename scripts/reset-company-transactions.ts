@@ -98,6 +98,11 @@ async function run(apply: boolean) {
         total_quantity_purchased = 0, total_quantity_sold = 0 where company_id = ${COMPANY_ID}::uuid`);
       counts.set('products_services (statistics reset, rows kept)', reset.rowCount ?? 0);
 
+      // Likewise an investor's capital_contributed is the running total of the capital receipts (vouchers) just removed. Left in place it
+      // would put capital on the Balance Sheet with no cash behind it, so the books would start out of balance.
+      const capital: any = await tx.execute(sql`update investors set capital_contributed = 0 where company_id = ${COMPANY_ID}::uuid`);
+      counts.set('investors (capital contributed reset to 0, rows kept)', capital.rowCount ?? 0);
+
       if (!apply) throw new Rollback();
       const typed = await ask(`\nType the company name (${COMPANY_NAME}) to COMMIT this deletion: `);
       if (typed !== COMPANY_NAME) throw new Error('Not confirmed — nothing was deleted.');
