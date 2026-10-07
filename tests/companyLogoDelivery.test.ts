@@ -104,10 +104,4 @@ describe('company logo delivery', () => {
     expect(await storedLogo()).toBe(other);
     await db.update(schema.companies).set({ logoUrl: LOGO }).where(eq(schema.companies.id, companyId));
   });
-
-  it('the legacy /api/migrate blob handing back the address does NOT overwrite the stored image', async () => {
-    const url = await stateLogo();
-    await api('/api/migrate', { method: 'POST', body: JSON.stringify({ companies: [{ id: companyId, name: 'Logo Delivery Test Co', address: 'x', phone: '0', email: 'logodelivery@example.com', logoUrl: url, customHeader: '', customFooter: '', currency: 'SAR' }] }) });
-    expect(await storedLogo()).toBe(LOGO);
-  });
 });

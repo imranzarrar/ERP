@@ -281,6 +281,8 @@ export const SEED_RECURRING: RecurringExpenseTemplate[] = [
 
 
 export const SEED_TRANSLATIONS: TranslationItem[] = [
+  { id: '019fa55c-7000-7000-8000-00000000f026', key: 'Download a full backup of your database. A backup is restored at the database level, not from this screen.', en: 'Download a full backup of your database. A backup is restored at the database level, not from this screen.', ar: 'قم بتنزيل نسخة احتياطية كاملة من قاعدة البيانات. تتم استعادة النسخة الاحتياطية على مستوى قاعدة البيانات وليس من هذه الشاشة.', ur: 'اپنے ڈیٹا بیس کا مکمل بیک اپ ڈاؤن لوڈ کریں۔ بیک اپ ڈیٹا بیس کی سطح پر بحال کیا جاتا ہے، اس اسکرین سے نہیں۔' },
+  { id: '019fa55c-7000-7000-8000-00000000f027', key: 'Generate and download a PostgreSQL backup file (.sql) containing all companies, users, settings, invoices, and transaction logs.', en: 'Generate and download a PostgreSQL backup file (.sql) containing all companies, users, settings, invoices, and transaction logs.', ar: 'أنشئ وقم بتنزيل ملف نسخة احتياطية لـ PostgreSQL (.sql) يحتوي على جميع الشركات والمستخدمين والإعدادات والفواتير وسجلات المعاملات.', ur: 'PostgreSQL بیک اپ فائل (.sql) تیار کر کے ڈاؤن لوڈ کریں جس میں تمام کمپنیاں، صارفین، ترتیبات، انوائسز اور لین دین کے لاگز شامل ہیں۔' },
   { id: '019fa55c-7000-7000-8000-00000000f021', key: 'Reverse', en: 'Reverse', ar: 'عكس', ur: 'الٹ دیں' },
   { id: '019fa55c-7000-7000-8000-00000000f022', key: 'Reverse Expense', en: 'Reverse Expense', ar: 'عكس المصروف', ur: 'اخراجات الٹ دیں' },
   { id: '019fa55c-7000-7000-8000-00000000f023', key: 'Reversal', en: 'Reversal', ar: 'قيد عكسي', ur: 'الٹ اندراج' },

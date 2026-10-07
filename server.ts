@@ -977,17 +977,10 @@ async function startServer() {
     }
   });
 
-  app.post("/api/migrate", async (req: any, res) => {
-    try {
-      const data = req.body;
-      const { migrateDataToPostgres } = await import('./src/db/migrateData.js');
-      const result = await migrateDataToPostgres(data, { user: req.user, targetCompanyId: req.targetCompanyId });
-      res.json(result || { success: true });
-    } catch (error: any) {
-      console.error("Migration endpoint error:", error);
-      res.status(error.status || 500).json({ error: error.message });
-    }
-  });
+  // There is deliberately no bulk-save endpoint (the old POST /api/migrate blob sync). It overwrote posted documents row by row with
+  // whatever the caller held, with no closed-month or VAT-quarter rule, so any stale copy or old backup could change a locked period.
+  // Every document is written only through its own route, which applies those rules. (src/db/migrateData.ts remains for the one-time
+  // seed of an empty database at startup; nothing serves it over HTTP.)
 
   app.get("/api/export-postgres", isAdmin, async (req, res) => {
     try {

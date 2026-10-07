@@ -42,7 +42,6 @@ import {
  Shield, MapPin, Hash, FileCheck, Monitor, LogOut, Inbox, Layers, Megaphone} from 'lucide-react';
 import { ensureCompatibleImage, downscaleImageDataUrl } from '../imageUtils';
 import { DEFAULT_DOCUMENT_LAYOUT, DETAILED_TAX_INVOICE_LAYOUT, buildCompactA4Layout, COL_SPAN_MD, COL_SPAN_PRINT } from '../documentTemplateDefaults';
-import { XMLParser } from 'fast-xml-parser';
 import DocumentRenderer from './DocumentRenderer';
 import ZatcaOnboardingWizard from './ZatcaOnboardingWizard';
 
@@ -453,11 +452,8 @@ interface AdminSettingsProps {
  // setDb-only local state update (App.tsx's handleUpdateDbLocal) — no /api/migrate POST.
  // Used where a real route already persisted the change (or nothing needed persisting at
  // all, e.g. a pure company-view switch) and the call was only reflecting that in local
- // state. Force Publish to Cloud and Import Database (file/pasted) below call
- // /api/migrate directly with a full backup blob instead — that's deliberate for both:
- // they're explicit, rare, admin-initiated whole-database operations where "overwrite the
- // server with what I have" is the actual intent, not an accident, and there's no
- // sensible per-record route to migrate a backup restore to. Deliberately a
+ // state. There is no bulk-save path any more (POST /api/migrate and the Force Publish / Import
+ // buttons were removed: they overwrote posted documents without any period rule). Deliberately a
  // function-updater only, not a raw DatabaseState — see App.tsx's handleUpdateDbLocal
  // comment for the incident this prevents at compile time.
  onUpdateDbLocal: (updater: (prev: DatabaseState) => DatabaseState) => void;
@@ -621,7 +617,6 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
 
  // Database backup and portability state
  const [copied, setCopied] = React.useState(false);
- const [pastedJson, setPastedJson] = React.useState('');
 
  // --- Audit Logs State & Actions ---
  const [auditLogs, setAuditLogs] = React.useState<any[]>([]);
@@ -815,29 +810,6 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  }
  };
 
- const handleForcePushToCloud = async () => {
- // Previously a no-op: this unconditionally showed a success toast with no fetch call
- // at all, so an admin clicking "Force Publish" to recover from a suspected sync issue
- // was told it worked regardless of what actually happened (nothing). Now genuinely
- // pushes the current in-memory db to the same /api/migrate endpoint every other write
- // in the app uses, and only reports success on a real 2xx response.
- try {
- const res = await fetch('/api/migrate', {
- method: 'POST',
- headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify(db),
- });
- if (!res.ok) {
- const body = await res.json().catch(() => ({}));
- triggerError(body.error || `Failed to publish to cloud (server returned ${res.status}).`);
- return;
- }
- triggerSuccess('Successfully published local database to Cloud!');
- if (onRefreshDb) await onRefreshDb();
- } catch (err: any) {
- triggerError('Failed to publish to cloud: ' + err.message);
- }
- };
 
   const [downloadingZip, setDownloadingZip] = React.useState(false);
 
@@ -885,80 +857,6 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
     }
   };
 
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fileReader = new FileReader();
-    if (e.target.files && e.target.files[0]) {
-      const fileName = e.target.files[0].name.toLowerCase();
-      fileReader.readAsText(e.target.files[0], "UTF-8");
-      fileReader.onload = async (event) => {
-        try {
-          const content = event.target?.result as string;
-          let parsed;
-          if (fileName.endsWith('.xml')) {
-            const parser = new XMLParser();
-            const rawParsed = parser.parse(content);
-            parsed = rawParsed.DatabaseState || rawParsed.root || rawParsed;
-          } else {
-            parsed = JSON.parse(content);
-          }
-          
-          if (!parsed.users || !parsed.companies) {
-            throw new Error("Invalid schema");
-          }
-          
-          triggerSuccess('Uploading database to Cloud Database...');
-          
-          const res = await fetch('/api/migrate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(parsed)
-          });
-          
-          if (!res.ok) {
-            const errJson = await res.json().catch(() => ({}));
-            throw new Error(errJson.error || 'Database sync failed on server');
-          }
-           
-          triggerSuccess('Database synchronized! Portal will reload shortly...');
-          setTimeout(() => {
-            window.location.reload();
-          }, 1500);
-        } catch (error: any) {
-          triggerError(error.message || 'Invalid backup file structure. Please ensure it is a valid ERP JSON/XML backup.');
-        }
-      };
-    }
-  };
-
-  const handleImportPasted = async () => {
-    try {
-      const parsed = JSON.parse(pastedJson);
-      if (!parsed.users || !parsed.companies) {
-        throw new Error("Invalid schema");
-      }
-      
-      triggerSuccess('Uploading database to Cloud Database...');
-      
-      const res = await fetch('/api/migrate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(parsed)
-      });
-      
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error || 'Database sync failed on server');
-      }
-       
-      triggerSuccess('Database synchronized! Portal will reload shortly...');
-      setPastedJson('');
-      setTimeout(() => {
-        window.location.reload();
-      }, 1500);
-    } catch (error: any) {
-      triggerError(error.message || 'Invalid pasted JSON structure. Please check the content and try again.');
-    }
-  };
 
  // ----------------------------------------
  // SUB-TAB: COMPANIES MANAGEMENT (SUPER-ADMIN ONLY)
@@ -8102,7 +8000,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <div className="space-y-6 animate-fade-in">
  <div>
  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">{t('Database Portability & Backup')}</h3>
- <p className="text-[11px] text-slate-400 mt-0.5">{t('Export, import, or copy your entire database state to easily transfer configurations, profiles, and transactions to other testers or backup slots.')}</p>
+ <p className="text-[11px] text-slate-400 mt-0.5">{t('Download a full backup of your database. A backup is restored at the database level, not from this screen.')}</p>
  </div>
 
  <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 space-y-6">
@@ -8113,7 +8011,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <Download className="w-4 h-4 text-indigo-500" /> {t('Export Database')}
  </h4>
  <p className="text-xs text-slate-500 ">
- {t('Generate and download a JSON file containing all companies, users, settings, invoices, and transaction logs. This file can be shared with other users to restore your exact current system setup.')}
+ {t('Generate and download a PostgreSQL backup file (.sql) containing all companies, users, settings, invoices, and transaction logs.')}
  </p>
  <div className="flex flex-wrap gap-2.5">
  <button
@@ -8137,64 +8035,6 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  >
  <Copy className="w-4 h-4" /> {copied ? t('Copied to Clipboard!') : t('Copy Database JSON String')}
  </button>
- <button
- onClick={handleForcePushToCloud}
- className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-md shadow-amber-600/10"
- >
- <Upload className="w-4 h-4" /> {t('Force Publish Local to Cloud')}
- </button>
- </div>
- </div>
-
- <hr className="border-slate-200/40 " />
-
- {/* Import Card */}
- <div className="space-y-3">
- <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
- <Upload className="w-4 h-4 text-indigo-500" /> {t('Import Database Setup')}
- </h4>
- <p className="text-xs text-slate-500 ">
- {t('Import an existing JSON backup to completely replace the active database setup in this browser. Warning: Importing a backup replaces all current transactions, companies, and user lists.')}
- </p>
- 
- <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
- {/* File import element */}
- <div className="border border-slate-200 rounded-2xl p-5 bg-white flex flex-col items-center justify-center text-center gap-3">
- <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-500">
- <Upload className="w-5 h-5" />
- </div>
- <div>
- <p className="text-xs font-bold text-slate-800 ">{t('Import .json / .xml File')}</p>
- <p className="text-[10px] text-slate-400 mt-0.5">{t('Select a database backup file to apply immediately')}</p>
- </div>
- <label className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-bold transition cursor-pointer select-none">
- <span>{t('Browse Backup File...')}</span>
- <input
- type="file"
- accept=".json,.xml"
- onChange={handleImportFile}
- className="hidden"
- />
- </label>
- </div>
-
- {/* Paste area */}
- <div className="border border-slate-200 rounded-2xl p-5 bg-white flex flex-col gap-3">
- <p className="text-xs font-bold text-slate-800 ">{t('Paste Database JSON String')}</p>
- <textarea
- placeholder={t('Paste raw JSON string here...')}
- value={pastedJson}
- onChange={(e) => setPastedJson(e.target.value)}
- className="w-full h-24 bg-slate-50 border border-slate-200 rounded-2xl p-2.5 text-[10px] text-slate-800 placeholder-slate-400 font-mono focus:outline-none focus:border-indigo-500"
- />
- <button
- onClick={handleImportPasted}
- disabled={!pastedJson.trim()}
- className="w-full bg-slate-800 hover:bg-slate-700 disabled:bg-slate-200 :bg-slate-800/50 disabled:text-slate-400 text-white rounded-2xl py-2 text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5"
- >
- <Check className="w-3.5 h-3.5" /> {t('Apply Pasted Backup')}
- </button>
- </div>
  </div>
  </div>
 
