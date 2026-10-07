@@ -744,37 +744,13 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     const { invoiceData } = req.body;
     const { items, ...invData } = invoiceData;
 
-    // Deliberately queries via the superuser `db`, NOT tenantDb — this check needs to see
-    // a row EVEN IF IT BELONGS TO ANOTHER COMPANY, precisely to catch and reject that case
-    // (assertOwnsRow below) with the correct 403 rather than a tenantDb-invisible 404.
-    let existingInvoice: typeof schema.invoices.$inferSelect | undefined;
+    // This route only ever CREATES an invoice. The server assigns the id and the number: a request that names an id would overwrite
+    // that stored invoice (date, items, amounts) with no closed-month or VAT-quarter rule, so it is refused outright. An issued invoice
+    // is corrected with a credit note, a cancel (while unlocked) or a payment; its ZATCA fields are written by the ZATCA job itself.
     if (invData.id) {
-      [existingInvoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invData.id));
-      if (!assertOwnsRow(existingInvoice, req)) {
-        return res.status(403).json({ error: 'Forbidden: this invoice belongs to another company' });
-      }
-      // This is the main upsert route (also used for edits) — the dedicated /note, /paid,
-      // and /cancel routes for the same table all check branch ownership, this one didn't.
-      if (existingInvoice && !branchAccessOk(req, existingInvoice.branchId)) {
-        return res.status(403).json({ error: 'Forbidden: you are not assigned to this branch.' });
-      }
-      // Regulatory rule, not a permission check: once ZATCA has a submission in flight
-      // or cleared/reported an invoice, its content is immutable — no role or permission
-      // can override this. Applies regardless of `invoice.create`/`invoice.update` above.
-      if (existingInvoice && ['SUBMITTING', 'CLEARED', 'REPORTED'].includes(existingInvoice.zatcaStatus as string)) {
-        return res.status(400).json({ error: 'This invoice has already been submitted to ZATCA and can no longer be edited. Issue a Credit Note instead.' });
-      }
+      return res.status(400).json({ error: 'An id cannot be supplied: the server assigns it. An issued invoice cannot be edited — cancel it (while it is not locked) or issue a Credit Note.' });
     }
-    // Upsert route: an existing row is an edit, gated by invoice.update (not
-    // invoice.create) — same split every other upsert route in this app already applies
-    // (quotations just above, expenses). This route previously gated the whole thing on
-    // invoice.create alone, so a create-only role (create:true, update:false) could edit
-    // any existing invoice through this same endpoint.
-    if (existingInvoice) {
-      if (!permissions.invoice.update.enabled) return res.status(403).json({ error: 'Forbidden' });
-    } else if (!permissions.invoice.create.enabled) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
+    if (!permissions.invoice.create.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     // A Credit Note/Debit Note may ONLY be created through the dedicated POST
     // /invoices/:id/note route below, which applies the correct reversal ledger posting,
@@ -884,7 +860,7 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     // just above — resolved/validated before the transaction so an invalid branch 400/
     // 403s before the ICV/counter reservation.
     try {
-      invData.branchId = existingInvoice ? existingInvoice.branchId : await resolveDocumentBranchId(req, invData.branchId);
+      invData.branchId = await resolveDocumentBranchId(req, invData.branchId);
     } catch (branchErr: any) {
       return res.status(branchErr.status || 400).json({ error: branchErr.error || 'Invalid branch.' });
     }
@@ -892,9 +868,7 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     // Sales Associate — purely an attribution field (e.g. for a sales-bonus calculation
     // elsewhere), optional forever, immutable after creation same as branchId above. Only
     // validated (belongs to this company, active) when actually set — never required.
-    if (existingInvoice) {
-      invData.salesAssociateId = existingInvoice.salesAssociateId;
-    } else if (invData.salesAssociateId) {
+    if (invData.salesAssociateId) {
       const [employee] = await tdb.select().from(schema.employees)
         .where(and(eq(schema.employees.id, invData.salesAssociateId), eq(schema.employees.companyId, invData.companyId)));
       if (!employee) {
@@ -915,8 +889,7 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     // paths in this same file, was never being set here — every direct invoice creation
     // failed with a raw Postgres constraint violation before this fix.
     if (!invData.createdById) invData.createdById = user.id;
-    const isNewInvoice = !invData.id;
-    invData.id = invData.id || generateId();
+    invData.id = generateId();
 
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
     // request in one transaction; the row lock below still applies within it.
@@ -926,10 +899,8 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     await assertQuarterNotFrozen(invData.date, companyId);
     await assertProductsOwnedByCompany(tdb, companyId, (items || []).map((it: any) => it.productId));
 
-    // 2. Increment Counter if new
-    if (isNewInvoice) {
-      invData.invoiceNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'invoice', invData.date, invData.branchId);
-    }
+    // 2. Increment Counter
+    invData.invoiceNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'invoice', invData.date, invData.branchId);
 
     // 2b. Compute grand total server-side from items + tax slab so paymentStatus can be
     // derived from amountPaid vs. an actual total, instead of trusting whatever string
@@ -953,52 +924,33 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     invData.paymentStatus = computePaymentStatus(Number(invData.amountPaid || 0), grandTotal);
     invData.amountPaid = String(round2(Number(invData.amountPaid || 0)));
 
-    // Warehouse is resolved/validated once at creation and then immutable, same pattern
-    // as branchId above — an edit keeps whatever warehouse the original sale deducted
-    // stock from (deduction itself is only ever applied on true new-invoice creation,
-    // see the isNewInvoice branch below, so there is nothing to re-resolve on an edit).
-    invData.warehouseId = existingInvoice
-      ? existingInvoice.warehouseId
-      : await resolveSaleWarehouse(tdb, companyId, invData.branchId, items || [], invData.warehouseId, req.allowedBranchIds);
-    if (isNewInvoice) {
-      await assertStockAvailable(tdb, companyId, invData.warehouseId, (items || []).map((it: any) => ({ productId: it.productId, quantity: Number(it.quantity), unitOfMeasureId: it.unitOfMeasureId })));
-    }
+    // Warehouse is resolved/validated once at creation and then immutable, same pattern as branchId above.
+    invData.warehouseId = await resolveSaleWarehouse(tdb, companyId, invData.branchId, items || [], invData.warehouseId, req.allowedBranchIds);
+    await assertStockAvailable(tdb, companyId, invData.warehouseId, (items || []).map((it: any) => ({ productId: it.productId, quantity: Number(it.quantity), unitOfMeasureId: it.unitOfMeasureId })));
 
-    // 3. Insert/Update Invoice
-    // createdAt/paymentDate are `timestamp` (Date-mode) columns — the driver serializes
-    // every bound parameter for the whole statement up front (Postgres, not drizzle,
-    // decides at execute time whether the INSERT or the ON CONFLICT...SET branch actually
-    // applies), so the SET clause's values need the same Date conversion as VALUES, not
-    // the raw invData (which still has string dates straight from the request body).
-    // Passing the raw string there broke every invoice creation carrying a paymentDate
-    // (e.g. any invoice saved as Paid) with a raw driver error: "value.toISOString is
-    // not a function" — reproduced live against the "UX test company" invoice-create flow.
+    // 3. Insert Invoice (insert only: an existing invoice is never overwritten through this route)
+    // createdAt/paymentDate are `timestamp` (Date-mode) columns, so the string dates from the request body are converted here.
     const invoiceValues = {
       ...invData,
       createdAt: invData.createdAt ? new Date(invData.createdAt) : nowDate(),
       paymentDate: invData.paymentDate ? new Date(invData.paymentDate) : null,
     };
-    const [newInvoice] = await tdb.insert(schema.invoices).values(invoiceValues).onConflictDoUpdate({
-      target: schema.invoices.id,
-      set: invoiceValues
-    }).returning();
+    const [newInvoice] = await tdb.insert(schema.invoices).values(invoiceValues).returning();
 
     const savedInvoiceId = newInvoice.id;
 
-    // 4. Insert/Update Items
+    // 4. Insert Items
     // Accumulated across every stock-item line into ONE combined COGS entry (row 1a of
     // the Phase 1 ledger design) — not one journal entry per line.
     let cogsTotal = 0;
-    const saleValuationBefore = isNewInvoice ? await snapshotInventory(tdb, companyId, (items || []).map((i: any) => i.productId).filter(Boolean)) : null;
+    const saleValuationBefore = await snapshotInventory(tdb, companyId, (items || []).map((i: any) => i.productId).filter(Boolean));
     if (items && items.length > 0) {
       const invoiceZatcaCodeById = await loadZatcaCodesByUnitId(tdb, items);
       for (const item of items) {
-        // Same object used for both branches (values and set) — see invoiceValues
-        // above for why: Postgres serializes both branches' parameters up front
-        // regardless of which one actually executes, so a raw/unvalidated value in
-        // either one reaches the driver either way.
+        // The server assigns every line's id: a client-supplied id could name a line of another invoice.
         const itemValues = {
           ...item,
+          id: generateId(),
           invoiceId: newInvoice.id,
           unitCost: String(round2(Number(item.unitCost))),
           quantity: String(item.quantity),
@@ -1006,18 +958,14 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
           unit: normalizeZatcaUnitCode(item.unitOfMeasureId ? invoiceZatcaCodeById.get(item.unitOfMeasureId) : item.unit),
           unitOfMeasureId: item.unitOfMeasureId || null,
         };
-        await tdb.insert(schema.invoiceItems).values(itemValues).onConflictDoUpdate({
-          target: schema.invoiceItems.id,
-          set: itemValues
-        });
+        await tdb.insert(schema.invoiceItems).values(itemValues);
 
-        // Fold into the product's weighted-average sale price — only on true new-invoice
-        // creation (not an edit of an existing one, and not a Credit/Debit Note, which
+        // Fold into the product's weighted-average sale price (not a Credit/Debit Note, which
         // goes through the separate /invoices/:id/note route below). A later cancel / Credit
         // Note takes the sale back OUT again via unwindAverageSalePrice (server/lib/
         // salesAverage.ts) — the exact inverse of this fold. Only lines actually picked from
         // the catalog carry a productId; a free-typed line simply doesn't contribute.
-        if (isNewInvoice && item.productId) {
+        if (item.productId) {
           const [product] = await tdb.select({
             averageSalePrice: schema.productsServices.averageSalePrice,
             totalQuantitySold: schema.productsServices.totalQuantitySold,
@@ -1049,7 +997,7 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     }
 
     // Cost of the stock that left = the fall in its valuation (whole cents per product), so the ledger and the stock valuation can never drift.
-    if (saleValuationBefore) {
+    {
       const after = await snapshotInventory(tdb, companyId, Array.from(saleValuationBefore.keys()));
       cogsTotal = round2(Array.from(saleValuationBefore).reduce((sum, [pid, b]) => sum + b.val - (after.get(pid)?.val ?? b.val), 0));
     }
@@ -1061,47 +1009,44 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     }, user.id);
 
     // Phase 1 ledger postings (rows 1, 1a, 1b of the Procurement Ledger Review's
-    // posting-rules table) — true new-invoice creation only. An edit to an existing,
-    // not-yet-submitted invoice does not re-sync the ledger in this phase (a known,
-    // deliberate Phase 1 scope boundary — full edit-reversal support is a later phase).
-    if (isNewInvoice) {
+    // posting-rules table).
+    await postJournalEntry(tdb, {
+      companyId, branchId: invData.branchId, date: invData.date,
+      referenceType: 'Invoice', referenceId: newInvoice.id,
+      description: `Invoice ${newInvoice.invoiceNumber} raised`,
+      createdById: user.id,
+      lines: [
+        { accountKey: 'AR', debit: grandTotal },
+        { accountKey: 'SALES_REVENUE', credit: discountedSubtotal },
+        ...(taxAmount > 0 ? [{ accountKey: 'VAT_OUTPUT', credit: taxAmount }] : []),
+      ],
+    });
+    if (cogsTotal > 0) {
       await postJournalEntry(tdb, {
         companyId, branchId: invData.branchId, date: invData.date,
         referenceType: 'Invoice', referenceId: newInvoice.id,
-        description: `Invoice ${newInvoice.invoiceNumber} raised`,
+        description: `Cost of goods sold for invoice ${newInvoice.invoiceNumber}`,
         createdById: user.id,
         lines: [
-          { accountKey: 'AR', debit: grandTotal },
-          { accountKey: 'SALES_REVENUE', credit: discountedSubtotal },
-          ...(taxAmount > 0 ? [{ accountKey: 'VAT_OUTPUT', credit: taxAmount }] : []),
+          { accountKey: 'COGS', debit: cogsTotal },
+          { accountKey: 'INVENTORY', credit: cogsTotal },
         ],
       });
-      if (cogsTotal > 0) {
-        await postJournalEntry(tdb, {
-          companyId, branchId: invData.branchId, date: invData.date,
-          referenceType: 'Invoice', referenceId: newInvoice.id,
-          description: `Cost of goods sold for invoice ${newInvoice.invoiceNumber}`,
-          createdById: user.id,
-          lines: [
-            { accountKey: 'COGS', debit: cogsTotal },
-            { accountKey: 'INVENTORY', credit: cogsTotal },
-          ],
-        });
-      }
-      const amountPaidNow = round2(Number(invData.amountPaid || 0));
-      if (amountPaidNow > 0) {
-        await postJournalEntry(tdb, {
-          companyId, branchId: invData.branchId, date: invData.date,
-          referenceType: 'Invoice', referenceId: newInvoice.id,
-          description: `Payment received at creation for invoice ${newInvoice.invoiceNumber}`,
-          createdById: user.id,
-          lines: [
-            { accountKey: 'BANK', debit: amountPaidNow, bankId: invData.bankId },
-            { accountKey: 'AR', credit: amountPaidNow },
-          ],
-        });
-      }
     }
+    const amountPaidNow = round2(Number(invData.amountPaid || 0));
+    if (amountPaidNow > 0) {
+      await postJournalEntry(tdb, {
+        companyId, branchId: invData.branchId, date: invData.date,
+        referenceType: 'Invoice', referenceId: newInvoice.id,
+        description: `Payment received at creation for invoice ${newInvoice.invoiceNumber}`,
+        createdById: user.id,
+        lines: [
+          { accountKey: 'BANK', debit: amountPaidNow, bankId: invData.bankId },
+          { accountKey: 'AR', credit: amountPaidNow },
+        ],
+      });
+    }
+  
 
     // Auto-process ZATCA Phase 2 E-Invoicing clearance/reporting — deferred until this
     // request's transaction has genuinely committed (runAfterTenantCommit), since
@@ -1115,7 +1060,7 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
       });
     }
 
-    recordAuditLog(req, isNewInvoice ? 'CREATE_INVOICE' : 'UPDATE_INVOICE', 'invoice', savedInvoiceId, {
+    recordAuditLog(req, 'CREATE_INVOICE', 'invoice', savedInvoiceId, {
       invoiceNumber: invData.invoiceNumber,
       documentType: invData.documentType,
       customerId: invData.customerId,

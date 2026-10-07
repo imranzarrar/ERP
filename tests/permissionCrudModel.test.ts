@@ -273,7 +273,7 @@ describe('Quotation cancel: dedicated isCancelled flag, separate from phase stat
 });
 
 describe('ZATCA-cleared invoice immutability: a record-state rule, not a permission gap', () => {
-  it('rejects editing a CLEARED invoice even for an admin', async () => {
+  it('rejects editing a CLEARED invoice even for an admin, and leaves it untouched', async () => {
     const invoiceId = generateId();
     await db.insert(schema.invoices).values({
       id: invoiceId, invoiceNumber: 'INV-PERMCRUD-1', date: '2026-08-01',
@@ -293,7 +293,9 @@ describe('ZATCA-cleared invoice immutability: a record-state rule, not a permiss
       }),
     });
     expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/ZATCA/i);
+    const [row] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invoiceId));
+    expect(row.notes).toBe('x');
+    expect(row.zatcaStatus).toBe('CLEARED');
   });
 });
 
@@ -555,12 +557,9 @@ describe('Tax slabs: POST /tax-slabs branches create-vs-update (regression - use
   });
 });
 
-// Regression coverage for a real bug found live: POST /transactions/invoices gated the
-// entire upsert on invoice.create alone — a create-only role (create:true, update:false)
-// could silently edit ANY existing invoice through this same endpoint, since the route
-// never branched on whether an id was supplied. Every sibling upsert route in this app
-// (quotations, expenses, tax slabs above) already branches create-vs-update correctly.
-describe('Invoices: POST /transactions/invoices branches create-vs-update (regression)', () => {
+// POST /transactions/invoices only ever CREATES (it used to upsert: a create-only role could edit any existing invoice through it).
+// Any request naming an id is refused whatever the role, so no role can overwrite an issued invoice through this route.
+describe('Invoices: POST /transactions/invoices is create-only (regression)', () => {
   let editableInvoiceId: string;
 
   beforeAll(async () => {
@@ -594,7 +593,7 @@ describe('Invoices: POST /transactions/invoices branches create-vs-update (regre
     expect(res.status).toBe(200);
   });
 
-  it('invoice.create=true, update=false blocks editing the existing fixture invoice', async () => {
+  it('invoice.create=true, update=false cannot edit the existing fixture invoice (id refused)', async () => {
     await setRolePermissions({
       invoice: { create: { enabled: true }, read: { enabled: true }, update: { enabled: false }, delete: { enabled: false } },
     });
@@ -607,10 +606,11 @@ describe('Invoices: POST /transactions/invoices branches create-vs-update (regre
         },
       }),
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/id cannot be supplied/i);
   });
 
-  it('invoice.create=false, update=true allows editing the existing fixture invoice', async () => {
+  it('invoice.create=false, update=true cannot edit the existing fixture invoice either (no role can)', async () => {
     await setRolePermissions({
       invoice: { create: { enabled: false }, read: { enabled: true }, update: { enabled: true }, delete: { enabled: false } },
     });
@@ -623,7 +623,9 @@ describe('Invoices: POST /transactions/invoices branches create-vs-update (regre
         },
       }),
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
+    const [row] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, editableInvoiceId));
+    expect(row.notes).toBe('');
   });
 
   it('invoice.create=false, update=true still blocks creating a brand-new invoice', async () => {

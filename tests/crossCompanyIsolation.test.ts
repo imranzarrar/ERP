@@ -179,8 +179,9 @@ describe('Cross-company hijack — invoices (transactions.ts)', () => {
       method: 'POST',
       body: JSON.stringify({ invoiceData: { id: bInvoiceId, date: new Date().toISOString().split('T')[0], customerId: bCustomerId, taxSlabId: bTaxSlabId, bankId: bBankId, notes: 'hijacked', status: 'Active', amountPaid: 0, items: [] } }),
     });
-    expect(status).toBe(403);
-    expect(body.error).toMatch(/another company/i);
+    // The create route refuses any supplied id outright (so another company's row is never even looked at), and nothing changes.
+    expect(status).toBe(400);
+    expect(body.error).toMatch(/id cannot be supplied/i);
 
     const [row] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, bInvoiceId));
     expect(row.companyId).toBe(companyBId);
@@ -244,8 +245,8 @@ describe('Cross-company hijack — expenses (expenses.ts)', () => {
       method: 'POST',
       body: JSON.stringify({ id: bExpenseId, date: new Date().toISOString().split('T')[0], vendorId: bVendorId, taxSlabId: bTaxSlabId, bankId: bBankId, description: 'hijacked', amount: 999, status: 'Active', type: 'Actual' }),
     });
-    expect(status).toBe(403);
-    expect(body.error).toMatch(/another company/i);
+    expect(status).toBe(400);
+    expect(body.error).toMatch(/id cannot be supplied/i);
 
     const [row] = await db.select().from(schema.expenses).where(eq(schema.expenses.id, bExpenseId));
     expect(row.companyId).toBe(companyBId);

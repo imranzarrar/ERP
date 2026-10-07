@@ -90,46 +90,19 @@ router.post('/', withTenantDb, async (req: any, res) => {
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
     const data = { ...req.body };
 
-    // This route upserts: an `id` naming an existing row is an edit, not a creation, and
-    // must be gated by expense.update, not expense.create - the two are separately
-    // grantable now. A cancelled expense is also terminal for edits regardless of
-    // permission, same as every other "U blocked once cancelled" rule in this app.
-    //
-    // Deliberately the superuser `db` — same hijack-detection reasoning as POST
-    // /customers in masterEntities.ts.
-    let existing: typeof schema.expenses.$inferSelect | undefined;
+    // This route only ever CREATES an expense. The server assigns the id and the number: a request that names an id would overwrite
+    // that stored expense (date, amount, status) with no closed-month or VAT-quarter rule, so it is refused outright. A posted expense
+    // is corrected by cancelling it (while its month is open), reversing it (closed month), or paying it through its own routes.
     if (data.id) {
-      [existing] = await db.select().from(schema.expenses).where(eq(schema.expenses.id, data.id));
-      if (!assertOwnsRow(existing, req)) {
-        return res.status(403).json({ error: 'Forbidden: this expense belongs to another company' });
-      }
-      if (existing && !branchAccessOk(req, existing.branchId)) {
-        return res.status(403).json({ error: 'Forbidden: you are not assigned to this branch.' });
-      }
+      return res.status(400).json({ error: 'An id cannot be supplied: the server assigns it. A posted expense cannot be edited — cancel it (while its month is open) or reverse it.' });
     }
-    if (existing) {
-      if (!permissions.expense.update.enabled) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-      if (existing.status === 'Cancelled') {
-        return res.status(400).json({ error: 'Cancelled expenses cannot be edited.' });
-      }
-    } else if (!permissions.expense.create.enabled) {
+    if (!permissions.expense.create.enabled) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
     // expenseNumber/createdById/createdAt are server-assigned facts, never client
-    // input — stripped here so a crafted request body can't inject/overwrite them.
-    // Restored below from either a fresh counter (create) or the pre-existing row
-    // (update) rather than left absent: expense_number/created_by_id/created_at are
-    // all NOT NULL with no column default, and Postgres validates the full candidate
-    // row for an `INSERT ... ON CONFLICT DO UPDATE` even when the UPDATE branch is what
-    // actually runs (confirmed live — leaving them merely deleted 500'd on update, not
-    // just on create). Only the isNew branch (re)assigns them for a genuinely new row.
-    // Confirmed live before this fix: every new-expense creation from ExpenseModule.tsx
-    // 500'd outright, since the real UI never sends expenseNumber — this route had no
-    // counter logic at all, unlike every other document-creation route (invoices/
-    // quotations) in transactions.ts, which already does this correctly.
+    // input — stripped here so a crafted request body can't inject/overwrite them,
+    // and assigned below from a fresh counter.
     delete data.expenseNumber;
     delete data.createdById;
     delete data.createdAt;
@@ -137,7 +110,7 @@ router.post('/', withTenantDb, async (req: any, res) => {
     // Bill # is mandatory on the create form (ExpenseModule.tsx) — enforced here too so a
     // request bypassing that form (a direct API call, a future integration) can't create
     // an expense with no vendor bill reference at all.
-    if (!existing && !String(data.billNumber || '').trim()) {
+    if (!String(data.billNumber || '').trim()) {
       return res.status(400).json({ error: 'Bill # is required.' });
     }
 
@@ -145,7 +118,7 @@ router.post('/', withTenantDb, async (req: any, res) => {
     // Branch is immutable after creation, same choke-point pattern as Quotation/Invoice
     // (server/routes/transactions.ts) — resolved/validated before the transaction opens.
     try {
-      data.branchId = existing ? existing.branchId : await resolveDocumentBranchId(req, data.branchId);
+      data.branchId = await resolveDocumentBranchId(req, data.branchId);
     } catch (branchErr: any) {
       return res.status(branchErr.status || 400).json({ error: branchErr.error || 'Invalid branch.' });
     }
@@ -161,75 +134,58 @@ router.post('/', withTenantDb, async (req: any, res) => {
     // request in one transaction.
     await validateTransactionDate(data.date, data.companyId);
     await assertQuarterNotFrozen(data.date, data.companyId);
-    const isNew = !data.id;
-    const expenseId = data.id || generateId();
+    const expenseId = generateId();
 
-    if (isNew) {
-      data.expenseNumber = await getAndIncrementDocumentNumber(tdb, data.companyId, 'expense', data.date, data.branchId);
-      data.createdById = req.user.id;
-      data.createdAt = nowDate();
-    } else if (existing) {
-      data.expenseNumber = existing.expenseNumber;
-      data.createdById = existing.createdById;
-      data.createdAt = existing.createdAt;
-    }
+    data.expenseNumber = await getAndIncrementDocumentNumber(tdb, data.companyId, 'expense', data.date, data.branchId);
+    data.createdById = req.user.id;
+    data.createdAt = nowDate();
 
     await tdb.insert(schema.expenses).values({
       ...data,
       id: expenseId,
       date: data.date,
       paymentDate: data.paymentDate ? new Date(data.paymentDate) : null,
-    }).onConflictDoUpdate({
-      target: schema.expenses.id,
-      set: {
-        ...data,
-        date: data.date,
-        paymentDate: data.paymentDate ? new Date(data.paymentDate) : null,
-      }
     });
 
     await syncVoucherForExpense(tdb, expenseId, data.companyId, data, req.user.id);
 
-    // Phase 2 ledger posting (rows 5/5a) — gated to genuinely new expenses only, same
-    // deliberate Phase 1 scope boundary as Invoice creation: an edit to an existing,
-    // not-yet-cancelled expense does not re-sync the ledger in this phase.
-    if (isNew) {
-      const [taxSlab] = data.taxSlabId ? await tdb.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, data.taxSlabId)) : [undefined];
-      const taxPct = taxSlab ? Number(taxSlab.percentage) : 0;
-      const { netAmount, taxAmount } = splitExpenseTaxInclusiveAmount(totalAmount, taxPct);
-      const expenseAccountKey = data.classification === 'Asset' ? 'FIXED_ASSETS' : 'DIRECT_OPEX';
+    // Phase 2 ledger posting (rows 5/5a).
+    const [taxSlab] = data.taxSlabId ? await tdb.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, data.taxSlabId)) : [undefined];
+    const taxPct = taxSlab ? Number(taxSlab.percentage) : 0;
+    const { netAmount, taxAmount } = splitExpenseTaxInclusiveAmount(totalAmount, taxPct);
+    const expenseAccountKey = data.classification === 'Asset' ? 'FIXED_ASSETS' : 'DIRECT_OPEX';
+    await postJournalEntry(tdb, {
+      companyId: data.companyId,
+      branchId: data.branchId,
+      date: data.date,
+      referenceType: 'Expense',
+      referenceId: expenseId,
+      description: `Expense ${data.expenseNumber} raised`,
+      createdById: req.user.id,
+      lines: [
+        { accountKey: expenseAccountKey, debit: netAmount },
+        ...(taxAmount > 0 ? [{ accountKey: 'VAT_INPUT', debit: taxAmount }] : []),
+        { accountKey: 'AP', credit: totalAmount },
+      ],
+    });
+    if (paidAmount > 0) {
       await postJournalEntry(tdb, {
         companyId: data.companyId,
         branchId: data.branchId,
         date: data.date,
         referenceType: 'Expense',
         referenceId: expenseId,
-        description: `Expense ${data.expenseNumber} raised`,
+        description: `Payment at creation for expense ${data.expenseNumber}`,
         createdById: req.user.id,
         lines: [
-          { accountKey: expenseAccountKey, debit: netAmount },
-          ...(taxAmount > 0 ? [{ accountKey: 'VAT_INPUT', debit: taxAmount }] : []),
-          { accountKey: 'AP', credit: totalAmount },
+          { accountKey: 'AP', debit: paidAmount },
+          { accountKey: 'BANK', credit: paidAmount, bankId: data.bankId },
         ],
       });
-      if (paidAmount > 0) {
-        await postJournalEntry(tdb, {
-          companyId: data.companyId,
-          branchId: data.branchId,
-          date: data.date,
-          referenceType: 'Expense',
-          referenceId: expenseId,
-          description: `Payment at creation for expense ${data.expenseNumber}`,
-          createdById: req.user.id,
-          lines: [
-            { accountKey: 'AP', debit: paidAmount },
-            { accountKey: 'BANK', credit: paidAmount, bankId: data.bankId },
-          ],
-        });
-      }
     }
+  
 
-    recordAuditLog(req, isNew ? 'CREATE_EXPENSE' : 'UPDATE_EXPENSE', 'expense', expenseId, {
+    recordAuditLog(req, 'CREATE_EXPENSE', 'expense', expenseId, {
       expenseNumber: data.expenseNumber,
       billNumber: data.billNumber,
       vendorId: data.vendorId,

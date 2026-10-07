@@ -112,7 +112,7 @@ describe('POST /api/expenses (creation counter + injection guard)', () => {
     expect(row.createdAt).toBeInstanceOf(Date);
   });
 
-  it('rejects a client attempt to inject/overwrite expenseNumber, createdById, and createdAt on update — those fields stay exactly as originally assigned', async () => {
+  it('refuses any request that names an existing id — an issued expense is never overwritten through the create route', async () => {
     const today = new Date().toISOString().split('T')[0];
     const createRes = await api(adminSessionId, '/api/expenses', {
       method: 'POST',
@@ -138,13 +138,15 @@ describe('POST /api/expenses (creation counter + injection guard)', () => {
         amount: 250, status: 'Active', type: 'Actual', paymentStatus: 'Unpaid',
       }),
     });
-    expect(updateRes.status).toBe(200);
+    expect(updateRes.status).toBe(400);
+    expect(updateRes.body.error).toMatch(/id cannot be supplied/i);
 
+    // nothing about the stored expense changed
     const [after] = await db.select().from(schema.expenses).where(eq(schema.expenses.id, targetId));
-    expect(after.description).toBe('Updated description'); // legitimate field DID update
-    expect(Number(after.amount)).toBe(250);
-    expect(after.expenseNumber).toBe(before.expenseNumber); // unchanged, not "HACKED-999"
-    expect(after.createdById).toBe(before.createdById); // unchanged, not the fake id
-    expect(new Date(after.createdAt).getTime()).toBe(new Date(before.createdAt).getTime()); // unchanged, not year 2000
+    expect(after.description).toBe('Original description');
+    expect(Number(after.amount)).toBe(200);
+    expect(after.expenseNumber).toBe(before.expenseNumber);
+    expect(after.createdById).toBe(before.createdById);
+    expect(new Date(after.createdAt).getTime()).toBe(new Date(before.createdAt).getTime());
   });
 });
