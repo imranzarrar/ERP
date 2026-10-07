@@ -681,9 +681,12 @@ export default function DocumentRenderer({
         ) : (
          <div className="w-20 h-20 bg-slate-100 rounded" />
         )}
-        <span className={`text-[8px] font-bold mt-1 ${isZatcaConfirmed ? 'text-slate-400' : 'text-amber-500'}`}>
-         {isZatcaConfirmed ? (docZatcaStatus === 'CLEARED' ? 'Cleared' : 'Reported') : 'Not Yet Cleared'}
-        </span>
+        {/* Nothing is printed under the QR until ZATCA has cleared/reported the invoice: a "Not Yet Cleared" caption must never reach a customer. */}
+        {isZatcaConfirmed && (
+         <span className="text-[8px] font-bold mt-1 text-slate-400">
+          {docZatcaStatus === 'CLEARED' ? 'Cleared' : 'Reported'}
+         </span>
+        )}
        </div>
       </>
      )}
@@ -1574,16 +1577,20 @@ export default function DocumentRenderer({
               (confirmed live: "تم التخليص" printed garbled). Keep tracking-wider/uppercase
               on the Latin portion only; the Arabic portion gets its own untracked span,
               matching every other bilingual caption in this file. */}
-          <span className={`text-[8px] font-bold mt-1 whitespace-nowrap ${isZatcaConfirmed ? 'text-slate-400' : 'text-amber-500'}`}>
-           <span className="uppercase tracking-wider">
-            {isZatcaConfirmed ? (docZatcaStatus === 'CLEARED' ? 'Cleared' : 'Reported') : 'Not Yet Cleared'}
-           </span>
-           {isBilingual && (
-            <span className="ms-1">
-             / {isZatcaConfirmed ? (docZatcaStatus === 'CLEARED' ? 'تم التخليص' : 'تم الإبلاغ') : 'قيد الانتظار'}
+          {/* Nothing is printed under the QR until ZATCA has cleared/reported the invoice: a "Not Yet Cleared / قيد الانتظار"
+              caption must never reach a customer, whatever the status (pending, rejected, error). */}
+          {isZatcaConfirmed && (
+           <span className="text-[8px] font-bold mt-1 whitespace-nowrap text-slate-400">
+            <span className="uppercase tracking-wider">
+             {docZatcaStatus === 'CLEARED' ? 'Cleared' : 'Reported'}
             </span>
-           )}
-          </span>
+            {isBilingual && (
+             <span className="ms-1">
+              / {docZatcaStatus === 'CLEARED' ? 'تم التخليص' : 'تم الإبلاغ'}
+             </span>
+            )}
+           </span>
+          )}
          </div>
         </div>
        );
