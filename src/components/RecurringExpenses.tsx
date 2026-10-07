@@ -285,8 +285,8 @@ export default function RecurringExpenses({ db, onRefreshDb }: RecurringExpenses
  if (!openMonth) return { status: 'No Open Month', expenseId: null };
  
  // Check if there is an expense of type 'Accrual' or 'Actual' linked to this month and template
- const postingKey = `${templateId}_${openMonth.id}`;
- const posting = db.recurringPostings.find(p => p.id === postingKey);
+ // Matched on template + month: a posting's id is an opaque server-generated id (not `${templateId}_${monthId}`).
+ const posting = db.recurringPostings.find(p => p.templateId === templateId && p.monthId === openMonth.id);
 
  if (posting) {
  return { status: posting.status, expenseId: posting.expenseId };

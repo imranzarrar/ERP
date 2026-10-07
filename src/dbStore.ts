@@ -978,9 +978,10 @@ export function checkRecurringPreconditions(db: DatabaseState, monthId: string, 
   const unposted: RecurringExpenseTemplate[] = [];
 
   for (const template of activeTemplates) {
-    const postingKey = `${template.id}_${monthId}`;
-    const posting = db.recurringPostings.find(p => p.id === postingKey);
-    
+    // A posting is the row for this template in this month. Its id is an opaque server-generated id, not a composed key: matching on
+    // `${templateId}_${monthId}` never found a posting saved by the server, so a month with recurring templates could not be closed.
+    const posting = db.recurringPostings.find(p => p.templateId === template.id && p.monthId === monthId);
+
     if (!posting || posting.status === 'Unposted') {
       unposted.push(template);
     }

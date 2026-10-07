@@ -651,7 +651,7 @@ export interface RecurringExpenseTemplate {
 }
 
 export interface RecurringPosting {
-  id: string; // templateId_monthId
+  id: string; // opaque id assigned by the server — find a posting by templateId + monthId, never by composing a key
   templateId: string;
   monthId: string;
   status: 'Unposted' | 'Posted as Actual' | 'Posted as Accrual' | 'Accrual Settled';
