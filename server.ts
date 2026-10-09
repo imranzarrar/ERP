@@ -381,6 +381,14 @@ async function startServer() {
     res.status(403).json({ error: 'Forbidden' });
   };
 
+  // Platform-owner tier only (never a plain company admin): whole-database / whole-platform
+  // operations such as the SQL backup (every tenant's rows, incl. password hashes) and the
+  // source-code download.
+  const isSuperAdmin = async (req: any, res: any, next: any) => {
+    if (isSuperAdminUser(req.user)) return next();
+    res.status(403).json({ error: 'Forbidden: super-admin only' });
+  };
+
   // --- Login Endpoint ---
   app.post("/api/login", async (req: any, res: any) => {
     const { username, password } = req.body;
@@ -950,19 +958,14 @@ async function startServer() {
     }
   });
 
-  app.post("/api/audit-logs/purge", isAdmin, async (req: any, res: any) => {
+  app.post("/api/audit-logs/purge", isSuperAdmin, async (req: any, res: any) => {
     try {
-      const isSuper = req.user?.isSuperAdmin === true || req.user?.role === 'super-admin';
       const oneYearAgo = new Date();
       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
-      // A plain company admin may only purge their own company's history; only a
-      // super-admin may purge across every tenant.
-      const purgeCondition = isSuper
-        ? lt(schema.auditLogs.createdAt, oneYearAgo)
-        : and(lt(schema.auditLogs.createdAt, oneYearAgo), eq(schema.auditLogs.companyId, req.targetCompanyId || ''));
-
-      await db.delete(schema.auditLogs).where(purgeCondition);
+      // Super-admin only (see isSuperAdmin): a company admin must not be able to erase
+      // their own company's audit trail.
+      await db.delete(schema.auditLogs).where(lt(schema.auditLogs.createdAt, oneYearAgo));
 
       // Record the purge action itself in the logs
       await recordAuditLog(req, 'PURGE_AUDIT_LOGS', 'audit_logs', null, {
@@ -982,7 +985,7 @@ async function startServer() {
   // Every document is written only through its own route, which applies those rules. (src/db/migrateData.ts remains for the one-time
   // seed of an empty database at startup; nothing serves it over HTTP.)
 
-  app.get("/api/export-postgres", isAdmin, async (req, res) => {
+  app.get("/api/export-postgres", isSuperAdmin, async (req, res) => {
     try {
       const { db } = await import('./src/db/index.js');
       const schema = await import('./src/db/schema.js');
@@ -1263,7 +1266,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/download-source-code", isAdmin, async (req, res) => {
+  app.get("/api/download-source-code", isSuperAdmin, async (req, res) => {
     try {
       const AdmZip = (await import('adm-zip')).default;
       const zip = new AdmZip();

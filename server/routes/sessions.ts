@@ -2,16 +2,16 @@ import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, and, gt, isNotNull, desc } from 'drizzle-orm';
-import { isAdminUser, isSuperAdminUser } from '../lib/authz.js';
+import { isSuperAdminUser } from '../lib/authz.js';
 
 const router = express.Router();
 
-// Admin-only, not a delegable permission leaf — forcibly viewing/ending another staff
-// member's session belongs in the same tier as Roles/DB backup in this codebase, not
-// something assignable via the ordinary CRUD permission model.
+// Super-admin only, not a delegable permission leaf — the Active Sessions screen lives under
+// Settings > System & Backup, which is platform-owner territory (a company admin could
+// otherwise sign out a super-admin who is working inside their company).
 router.get('/admin/sessions', async (req: any, res) => {
   try {
-    if (!isAdminUser(req.user)) {
+    if (!isSuperAdminUser(req.user)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
@@ -48,7 +48,7 @@ router.get('/admin/sessions', async (req: any, res) => {
 
 router.delete('/admin/sessions/:sid', async (req: any, res) => {
   try {
-    if (!isAdminUser(req.user)) {
+    if (!isSuperAdminUser(req.user)) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { sid } = req.params;

@@ -346,8 +346,8 @@ interface SettingsSubTab {
 //                                    (see the permission-crud-model skill for which areas
 //                                    are deliberately kept off the Role system entirely -
 //                                    ZATCA config, Role definition, the Companies
-//                                    directory, Translations, and Database Backup/Sync,
-//                                    none of which are safe or requested to delegate.
+//                                    directory, Translations, and Database Backup/Sync
+//                                    (the last three are super-admin only), none of which are safe or requested to delegate.
 //                                    Company Profile used to be on this list too but is
 //                                    now delegable via companyProfile.read/update — see
 //                                    that leaf's own comment in permissionSchema.ts for
@@ -417,12 +417,11 @@ const CATEGORY_GROUPS: { id: string; label: string; icon: any; subTabs: Settings
     label: 'System & Backup',
     icon: Database,
     subTabs: [
-      // Export/import/force-push/audit-purge live here - dangerous whole-tenant-data
-      // operations, never proposed for delegation.
-      { id: 'database', label: 'Database Backup & Sync', icon: Database, adminOnly: true },
-      // Forcibly ending another staff member's session is the same tier as the above -
-      // admin-only, not a delegable permission leaf.
-      { id: 'sessions', label: 'Active Sessions', icon: Monitor, adminOnly: true },
+      // Whole-platform operations (SQL backup of every tenant, source download, audit
+      // purge, session revocation) - super-admin only, never a company admin. The server
+      // routes enforce the same tier (server.ts isSuperAdmin, server/routes/sessions.ts).
+      { id: 'database', label: 'Database Backup & Sync', icon: Database, superAdminOnly: true },
+      { id: 'sessions', label: 'Active Sessions', icon: Monitor, superAdminOnly: true },
     ]
   }
 ];
