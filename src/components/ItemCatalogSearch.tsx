@@ -1,5 +1,8 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
+import { Plus } from 'lucide-react';
+import { usePermissions, useTranslation } from '../hooks';
+import QuickAddProductModal, { QuickAddProductContext } from './QuickAddProductModal';
 
 export interface CatalogItem {
   id: string;
@@ -21,6 +24,8 @@ export interface CatalogItem {
   conversionFactor?: number;
 }
 
+const NO_DB = {};
+
 interface ItemCatalogSearchProps {
   value: string;
   items: CatalogItem[];
@@ -31,6 +36,10 @@ interface ItemCatalogSearchProps {
   required?: boolean;
   className?: string;
   noMatchesLabel: string;
+  // When given, the dropdown offers "Add new product" (only to users whose roles grant
+  // products.create): a short form pre-filled with what was typed, and the saved product
+  // is then selected on this line exactly as if it had been picked from the list.
+  quickAdd?: QuickAddProductContext;
 }
 
 // Replaces the native `<input list="..."><datalist>` pattern used across Quotation/
@@ -52,8 +61,14 @@ interface ItemCatalogSearchProps {
 // every time it opens and on scroll/resize while open - escapes that ancestor entirely
 // and never goes stale, unlike the native bug this replaces.
 export default function ItemCatalogSearch({
-  value, items, onChangeText, onSelectItem, placeholder, currencySymbol, required, className, noMatchesLabel,
+  value, items, onChangeText, onSelectItem, placeholder, currencySymbol, required, className, noMatchesLabel, quickAdd,
 }: ItemCatalogSearchProps) {
+  const { can } = usePermissions(quickAdd?.db.currentUser);
+  // Hooks must run unconditionally; with no quickAdd there's nothing to translate, so an
+  // empty stand-in db is enough.
+  const { t } = useTranslation((quickAdd?.db || NO_DB) as any);
+  const canQuickAdd = !!quickAdd && can('products.create');
+  const [quickAddName, setQuickAddName] = React.useState<string | null>(null);
   const [isOpen, setIsOpen] = React.useState(false);
   const [highlightedIndex, setHighlightedIndex] = React.useState(0);
   const [coords, setCoords] = React.useState({ top: 0, left: 0, width: 0 });
@@ -151,7 +166,7 @@ export default function ItemCatalogSearch({
           style={{ position: 'fixed', top: coords.top, left: coords.left, width: coords.width }}
           className="z-50 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-64 overflow-y-auto"
         >
-          {filtered.length === 0 ? (
+          {filtered.length === 0 && !canQuickAdd ? (
             <div className="px-3 py-2 text-xs text-slate-400">{noMatchesLabel}</div>
           ) : (
             filtered.map((item, i) => (
@@ -175,8 +190,30 @@ export default function ItemCatalogSearch({
               </button>
             ))
           )}
+          {canQuickAdd && (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { setIsOpen(false); setQuickAddName(trimmed); }}
+              className="sticky bottom-0 w-full text-start px-3 py-2 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border-t border-indigo-100 flex items-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">{t('Add new product')}{trimmed ? `: "${trimmed}"` : ''}</span>
+            </button>
+          )}
         </div>,
         document.body
+      )}
+      {quickAdd && quickAddName !== null && (
+        <QuickAddProductModal
+          {...quickAdd}
+          initialName={quickAddName}
+          onClose={() => setQuickAddName(null)}
+          onCreated={(product) => {
+            setQuickAddName(null);
+            handleSelect({ ...product, unitOfMeasureId: undefined });
+          }}
+        />
       )}
     </>
   );

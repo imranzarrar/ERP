@@ -1,4 +1,5 @@
 import React from 'react';
+import { QuickAddProductButton } from './QuickAddProductModal';
 import { useTranslation, usePermissions, useDirtyGuard } from '../hooks';
 import { DatabaseState, generateId, getDefaultTaxSlabId } from '../dbStore';
 import {
@@ -2903,16 +2904,20 @@ export default function InventoryModule({
                   <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wider">{t('Add Requested Material')}</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <select
-                        value={newPrItem.productId}
-                        onChange={(e) => setNewPrItem({ ...newPrItem, productId: e.target.value })}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
-                      >
-                        <option value="">{t('-- Select Product --')}</option>
-                        {stockItemProducts.map(p => (
-                          <option key={p.id} value={p.id}>{p.name} ({p.sku || 'N/A'})</option>
-                        ))}
-                      </select>
+                      <div className="flex gap-1.5">
+                        <select
+                          value={newPrItem.productId}
+                          onChange={(e) => setNewPrItem({ ...newPrItem, productId: e.target.value })}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                        >
+                          <option value="">{t('-- Select Product --')}</option>
+                          {stockItemProducts.map(p => (
+                            <option key={p.id} value={p.id}>{p.name} ({p.sku || 'N/A'})</option>
+                          ))}
+                        </select>
+                        <QuickAddProductButton db={db} onUpdateDbLocal={onUpdateDbLocal} onRefreshDb={onRefreshDb} side="purchase" itemOnly
+                          onCreated={(prod) => setNewPrItem(prev => ({ ...prev, productId: prod.id }))} />
+                      </div>
                     </div>
                     <div>
                       <input
@@ -3113,24 +3118,28 @@ export default function InventoryModule({
                   <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
                     <div className="sm:col-span-4">
                       <label className="block text-xs font-semibold text-gray-500 mb-1">{t('Select Product')}</label>
-                      <select
-                        value={newPoItem.productId}
-                        onChange={(e) => {
-                          const selectedProd = products.find(prod => prod.id === e.target.value);
-                          setNewPoItem({
-                            ...newPoItem,
-                            productId: e.target.value,
-                            unitOfMeasureId: '',
-                            unitPrice: Number(selectedProd?.costPrice ?? selectedProd?.unitPrice ?? 0)
-                          });
-                        }}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
-                      >
-                        <option value="">{t('-- Select Product --')}</option>
-                        {stockItemProducts.map(p => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
+                      <div className="flex gap-1.5">
+                        <select
+                          value={newPoItem.productId}
+                          onChange={(e) => {
+                            const selectedProd = products.find(prod => prod.id === e.target.value);
+                            setNewPoItem({
+                              ...newPoItem,
+                              productId: e.target.value,
+                              unitOfMeasureId: '',
+                              unitPrice: Number(selectedProd?.costPrice ?? selectedProd?.unitPrice ?? 0)
+                            });
+                          }}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                        >
+                          <option value="">{t('-- Select Product --')}</option>
+                          {stockItemProducts.map(p => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                        <QuickAddProductButton db={db} onUpdateDbLocal={onUpdateDbLocal} onRefreshDb={onRefreshDb} side="purchase" itemOnly
+                          onCreated={(prod) => setNewPoItem(prev => ({ ...prev, productId: prod.id, unitOfMeasureId: '', unitPrice: Number(prod.costPrice ?? prod.unitPrice ?? 0) }))} />
+                      </div>
                     </div>
                     <div className="sm:col-span-2">
                       <label className="block text-xs font-semibold text-gray-500 mb-1">{t('Unit')}</label>

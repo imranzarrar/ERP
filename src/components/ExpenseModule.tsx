@@ -908,6 +908,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  items={purchaseProducts}
  currencySymbol={currencySymbol}
  noMatchesLabel={t('No matching items found.')}
+ quickAdd={{ db, onRefreshDb, side: 'purchase' }}
  onChangeText={(val) => handleUpdateLineItem(idx, 'description', val)}
  onSelectItem={(matched) => {
  handleUpdateLineItem(idx, 'unitCost', matched.unitPrice || 0);

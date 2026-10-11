@@ -281,6 +281,13 @@ export const SEED_RECURRING: RecurringExpenseTemplate[] = [
 
 
 export const SEED_TRANSLATIONS: TranslationItem[] = [
+  { id: '019fa55c-7000-7000-8000-00000000f033', key: 'Add new product', en: 'Add new product', ar: 'إضافة منتج جديد', ur: 'نئی پروڈکٹ شامل کریں' },
+  { id: '019fa55c-7000-7000-8000-00000000f034', key: 'Barcode, category, stock levels and images can be added later from the Product Catalog.', en: 'Barcode, category, stock levels and images can be added later from the Product Catalog.', ar: 'يمكن إضافة الباركود والفئة ومستويات المخزون والصور لاحقًا من كتالوج المنتجات.', ur: 'بارکوڈ، زمرہ، اسٹاک کی حدیں اور تصاویر بعد میں پروڈکٹ کیٹلاگ سے شامل کی جا سکتی ہیں۔' },
+  { id: '019fa55c-7000-7000-8000-00000000f035', key: 'Could not save the product.', en: 'Could not save the product.', ar: 'تعذر حفظ المنتج.', ur: 'پروڈکٹ محفوظ نہیں ہو سکی۔' },
+  { id: '019fa55c-7000-7000-8000-00000000f036', key: 'Piece', en: 'Piece', ar: 'قطعة', ur: 'عدد' },
+  { id: '019fa55c-7000-7000-8000-00000000f037', key: 'Price must be a valid positive number.', en: 'Price must be a valid positive number.', ar: 'يجب أن يكون السعر رقمًا موجبًا صحيحًا.', ur: 'قیمت ایک درست مثبت عدد ہونی چاہیے۔' },
+  { id: '019fa55c-7000-7000-8000-00000000f038', key: 'Product name is required.', en: 'Product name is required.', ar: 'اسم المنتج مطلوب.', ur: 'پروڈکٹ کا نام لازمی ہے۔' },
+  { id: '019fa55c-7000-7000-8000-00000000f039', key: 'Sales & Purchase (Both)', en: 'Sales & Purchase (Both)', ar: 'المبيعات والمشتريات (كلاهما)', ur: 'فروخت اور خریداری (دونوں)' },
   { id: '019fa55c-7000-7000-8000-00000000f028', key: 'Add new customer', en: 'Add new customer', ar: 'إضافة عميل جديد', ur: 'نیا کسٹمر شامل کریں' },
   { id: '019fa55c-7000-7000-8000-00000000f029', key: 'Add new vendor', en: 'Add new vendor', ar: 'إضافة مورد جديد', ur: 'نیا وینڈر شامل کریں' },
   { id: '019fa55c-7000-7000-8000-00000000f02a', key: 'Could not save the customer.', en: 'Could not save the customer.', ar: 'تعذر حفظ العميل.', ur: 'کسٹمر محفوظ نہیں ہو سکا۔' },

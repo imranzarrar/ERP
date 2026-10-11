@@ -1179,6 +1179,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  items={salesProducts}
  currencySymbol={currencySymbol}
  noMatchesLabel={t('No matching items found.')}
+ quickAdd={{ db, onUpdateDbLocal, onRefreshDb, side: 'sales' }}
  onChangeText={(val) => {
  handleUpdateLineItem(idx, 'description', val);
  // Editing free-text after a catalog selection means the line may no longer match

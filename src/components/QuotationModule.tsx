@@ -1068,6 +1068,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  items={salesProducts}
  currencySymbol={currencySymbol}
  noMatchesLabel={t('No matching items found.')}
+ quickAdd={{ db, onUpdateDbLocal, onRefreshDb, side: 'sales' }}
  onChangeText={(val) => {
  handleUpdateLineItem(idx, 'description', val);
  // Editing free-text after a catalog selection means the line may no longer match
