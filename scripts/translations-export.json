@@ -14720,8 +14720,8 @@
   {
     "key": "VAT Number",
     "en": "VAT Number",
-    "ar": "",
-    "ur": ""
+    "ar": "الرقم الضريبي",
+    "ur": "ویٹ نمبر"
   },
   {
     "key": "VAT on Purchases",
@@ -16090,5 +16090,65 @@
     "en": "Vendor Code",
     "ar": "رمز المورد",
     "ur": "وینڈر کوڈ"
+  },
+  {
+    "key": "Add new customer",
+    "en": "Add new customer",
+    "ar": "إضافة عميل جديد",
+    "ur": "نیا کسٹمر شامل کریں"
+  },
+  {
+    "key": "Add new vendor",
+    "en": "Add new vendor",
+    "ar": "إضافة مورد جديد",
+    "ur": "نیا وینڈر شامل کریں"
+  },
+  {
+    "key": "Could not save the customer.",
+    "en": "Could not save the customer.",
+    "ar": "تعذر حفظ العميل.",
+    "ur": "کسٹمر محفوظ نہیں ہو سکا۔"
+  },
+  {
+    "key": "Could not save the vendor.",
+    "en": "Could not save the vendor.",
+    "ar": "تعذر حفظ المورد.",
+    "ur": "وینڈر محفوظ نہیں ہو سکا۔"
+  },
+  {
+    "key": "Customer added and selected.",
+    "en": "Customer added and selected.",
+    "ar": "تمت إضافة العميل وتحديده.",
+    "ur": "کسٹمر شامل اور منتخب کر دیا گیا۔"
+  },
+  {
+    "key": "Vendor added and selected.",
+    "en": "Vendor added and selected.",
+    "ar": "تمت إضافة المورد وتحديده.",
+    "ur": "وینڈر شامل اور منتخب کر دیا گیا۔"
+  },
+  {
+    "key": "Fill in every required address field.",
+    "en": "Fill in every required address field.",
+    "ar": "يرجى تعبئة جميع حقول العنوان المطلوبة.",
+    "ur": "پتے کے تمام لازمی خانے پُر کریں۔"
+  },
+  {
+    "key": "Name is required.",
+    "en": "Name is required.",
+    "ar": "الاسم مطلوب.",
+    "ur": "نام لازمی ہے۔"
+  },
+  {
+    "key": "Save & Select",
+    "en": "Save & Select",
+    "ar": "حفظ وتحديد",
+    "ur": "محفوظ کریں اور منتخب کریں"
+  },
+  {
+    "key": "VAT number must be 15 digits, starting and ending with 3.",
+    "en": "VAT number must be 15 digits, starting and ending with 3.",
+    "ar": "يجب أن يتكون الرقم الضريبي من 15 رقمًا، يبدأ وينتهي بالرقم 3.",
+    "ur": "ویٹ نمبر 15 ہندسوں کا ہونا چاہیے، جو 3 سے شروع اور 3 پر ختم ہو۔"
   }
 ]

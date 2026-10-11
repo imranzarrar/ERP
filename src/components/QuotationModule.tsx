@@ -6,6 +6,7 @@ import { Quotation, QuotationItem, Customer, TaxSlab, User, normalizePermissions
 import StatusPill from './StatusPill';
 import ItemCatalogSearch from './ItemCatalogSearch';
 import PartySearchSelect from './PartySearchSelect';
+import QuickAddPartyButton from './QuickAddPartyButton';
 import { usePaginatedList } from '../usePaginatedList';
 import { RowNumberTh, RowNumberTd, PaginationFooter } from './PaginationControls';
 import { handleLineItemGridKeyDown, handleFormSaveShortcut } from '../lineItemKeyboardNav';
@@ -956,7 +957,9 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  </div>
 
  <div className="lg:col-span-3 space-y-0.5">
- <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Customer Selection')}<span className="text-rose-500"> *</span></label>
+ <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Customer Selection')}<span className="text-rose-500"> *</span>
+ <QuickAddPartyButton kind="customer" db={db} onUpdateDbLocal={onUpdateDbLocal} onRefreshDb={onRefreshDb} onCreated={setFormCustomerId} onError={triggerError} onSuccess={triggerSuccess} />
+ </label>
  <PartySearchSelect
  required
  valueId={formCustomerId}
@@ -1268,7 +1271,9 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  {/* Top Configuration Grid */}
  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
  <div className="space-y-1">
- <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Customer Relationship')}<span className="text-rose-500"> *</span></label>
+ <label className="text-[10px] font-bold text-slate-400 uppercase">{t('Customer Relationship')}<span className="text-rose-500"> *</span>
+ <QuickAddPartyButton kind="customer" db={db} onUpdateDbLocal={onUpdateDbLocal} onRefreshDb={onRefreshDb} onCreated={(id) => setConvForm(prev => ({ ...prev, customerId: id }))} onError={triggerError} onSuccess={triggerSuccess} />
+ </label>
  <PartySearchSelect
  required
  valueId={convForm.customerId}

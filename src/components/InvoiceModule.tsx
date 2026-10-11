@@ -8,6 +8,7 @@ import { Invoice, InvoiceItem, Customer, TaxSlab, BankAccount, User, normalizePe
 import StatusPill, { StatusPillTone } from './StatusPill';
 import ItemCatalogSearch from './ItemCatalogSearch';
 import PartySearchSelect from './PartySearchSelect';
+import QuickAddPartyButton from './QuickAddPartyButton';
 import { usePaginatedList } from '../usePaginatedList';
 import { RowNumberTd, PaginationFooter } from './PaginationControls';
 import { handleLineItemGridKeyDown, handleFormSaveShortcut } from '../lineItemKeyboardNav';
@@ -960,7 +961,9 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  </div>
 
  <div className="lg:col-span-3 space-y-0.5">
- <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Customer')}<span className="text-rose-500"> *</span></label>
+ <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t('Customer')}<span className="text-rose-500"> *</span>
+ <QuickAddPartyButton kind="customer" db={db} onUpdateDbLocal={onUpdateDbLocal} onRefreshDb={onRefreshDb} onCreated={setFormCustomerId} onError={triggerError} onSuccess={triggerSuccess} />
+ </label>
  <PartySearchSelect
  required
  valueId={formCustomerId}

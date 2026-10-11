@@ -281,6 +281,17 @@ export const SEED_RECURRING: RecurringExpenseTemplate[] = [
 
 
 export const SEED_TRANSLATIONS: TranslationItem[] = [
+  { id: '019fa55c-7000-7000-8000-00000000f028', key: 'Add new customer', en: 'Add new customer', ar: 'إضافة عميل جديد', ur: 'نیا کسٹمر شامل کریں' },
+  { id: '019fa55c-7000-7000-8000-00000000f029', key: 'Add new vendor', en: 'Add new vendor', ar: 'إضافة مورد جديد', ur: 'نیا وینڈر شامل کریں' },
+  { id: '019fa55c-7000-7000-8000-00000000f02a', key: 'Could not save the customer.', en: 'Could not save the customer.', ar: 'تعذر حفظ العميل.', ur: 'کسٹمر محفوظ نہیں ہو سکا۔' },
+  { id: '019fa55c-7000-7000-8000-00000000f02b', key: 'Could not save the vendor.', en: 'Could not save the vendor.', ar: 'تعذر حفظ المورد.', ur: 'وینڈر محفوظ نہیں ہو سکا۔' },
+  { id: '019fa55c-7000-7000-8000-00000000f02c', key: 'Customer added and selected.', en: 'Customer added and selected.', ar: 'تمت إضافة العميل وتحديده.', ur: 'کسٹمر شامل اور منتخب کر دیا گیا۔' },
+  { id: '019fa55c-7000-7000-8000-00000000f02d', key: 'Vendor added and selected.', en: 'Vendor added and selected.', ar: 'تمت إضافة المورد وتحديده.', ur: 'وینڈر شامل اور منتخب کر دیا گیا۔' },
+  { id: '019fa55c-7000-7000-8000-00000000f02e', key: 'Fill in every required address field.', en: 'Fill in every required address field.', ar: 'يرجى تعبئة جميع حقول العنوان المطلوبة.', ur: 'پتے کے تمام لازمی خانے پُر کریں۔' },
+  { id: '019fa55c-7000-7000-8000-00000000f02f', key: 'Name is required.', en: 'Name is required.', ar: 'الاسم مطلوب.', ur: 'نام لازمی ہے۔' },
+  { id: '019fa55c-7000-7000-8000-00000000f030', key: 'Save & Select', en: 'Save & Select', ar: 'حفظ وتحديد', ur: 'محفوظ کریں اور منتخب کریں' },
+  { id: '019fa55c-7000-7000-8000-00000000f031', key: 'VAT Number', en: 'VAT Number', ar: 'الرقم الضريبي', ur: 'ویٹ نمبر' },
+  { id: '019fa55c-7000-7000-8000-00000000f032', key: 'VAT number must be 15 digits, starting and ending with 3.', en: 'VAT number must be 15 digits, starting and ending with 3.', ar: 'يجب أن يتكون الرقم الضريبي من 15 رقمًا، يبدأ وينتهي بالرقم 3.', ur: 'ویٹ نمبر 15 ہندسوں کا ہونا چاہیے، جو 3 سے شروع اور 3 پر ختم ہو۔' },
   { id: '019fa55c-7000-7000-8000-00000000f026', key: 'Download a full backup of your database. A backup is restored at the database level, not from this screen.', en: 'Download a full backup of your database. A backup is restored at the database level, not from this screen.', ar: 'قم بتنزيل نسخة احتياطية كاملة من قاعدة البيانات. تتم استعادة النسخة الاحتياطية على مستوى قاعدة البيانات وليس من هذه الشاشة.', ur: 'اپنے ڈیٹا بیس کا مکمل بیک اپ ڈاؤن لوڈ کریں۔ بیک اپ ڈیٹا بیس کی سطح پر بحال کیا جاتا ہے، اس اسکرین سے نہیں۔' },
   { id: '019fa55c-7000-7000-8000-00000000f027', key: 'Generate and download a PostgreSQL backup file (.sql) containing all companies, users, settings, invoices, and transaction logs.', en: 'Generate and download a PostgreSQL backup file (.sql) containing all companies, users, settings, invoices, and transaction logs.', ar: 'أنشئ وقم بتنزيل ملف نسخة احتياطية لـ PostgreSQL (.sql) يحتوي على جميع الشركات والمستخدمين والإعدادات والفواتير وسجلات المعاملات.', ur: 'PostgreSQL بیک اپ فائل (.sql) تیار کر کے ڈاؤن لوڈ کریں جس میں تمام کمپنیاں، صارفین، ترتیبات، انوائسز اور لین دین کے لاگز شامل ہیں۔' },
   { id: '019fa55c-7000-7000-8000-00000000f021', key: 'Reverse', en: 'Reverse', ar: 'عكس', ur: 'الٹ دیں' },

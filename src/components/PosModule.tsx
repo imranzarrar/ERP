@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import PartySearchSelect from './PartySearchSelect';
+import QuickAddPartyButton from './QuickAddPartyButton';
 import { DatabaseState, calculateInvoiceTotals, getDefaultTaxSlabId } from '../dbStore';
 import { getMonthToDateRange } from '../dateUtils';
 import { ProductService, Customer, PosShift, PosHeldInvoice, PosCartItem, TaxSlab, Invoice, BankAccount } from '../types';
@@ -1111,7 +1112,10 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">{t("Customer (Optional for paid)")}</label>
+                <label className="block text-sm font-bold text-slate-700 mb-2">
+                  {t("Customer (Optional for paid)")}
+                  <QuickAddPartyButton kind="customer" db={db} onUpdateDbLocal={onUpdateDbLocal} onRefreshDb={onRefreshDb} onCreated={setPayCustomerId} onError={() => {}} />
+                </label>
                 <PartySearchSelect
                   valueId={payCustomerId}
                   onSelect={setPayCustomerId}
