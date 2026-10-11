@@ -42,8 +42,15 @@
 
 1. Develop locally as always — no change to the existing workflow.
 2. Commit and push to the git remote as normal once satisfied.
-3. In your own SSH session on the VPS: `cd ~/apps/erp && deploy/deploy.sh` — pulls the latest commit, installs deps, builds, and reloads PM2 with zero downtime (cluster reload — one instance restarts while the other keeps serving). It auto-tags the pre-deploy commit first, so a rollback always has somewhere to go back to.
-4. If `deploy.sh` prints a schema-changed warning (it diffs `src/db/schema.ts` across the deployed commit range), run `npm run db:push` yourself as its own deliberate, reviewed step — it is never run automatically.
+3. **Always deploy with `deploy/release.sh`** — in your own SSH session on the VPS:
+   ```
+   su - deploy
+   cd ~/apps/erp
+   git pull --ff-only
+   bash deploy/release.sh
+   ```
+   It backs up the database, pulls and **always builds** (even if the code was already pulled), puts up the maintenance page, runs `db:push` only if `src/db/schema.ts` changed since the last release (printing the plan and waiting for you to type "yes"), re-applies RLS, seeds/checks the chart of accounts and ledger, then reloads PM2, health-checks and takes the maintenance page down. `--dry-run` previews, `--from N` resumes after a failure, `--force-schema` runs the db:push step regardless.
+4. Do **not** use `deploy/deploy.sh` for a release: it exits at "Already up to date" without building or reloading when the code was already pulled (a real stale-build incident, Oct 2026), and it never applies schema changes or RLS. It is kept only as a legacy fallback.
 5. If something breaks: `deploy/rollback.sh` (no argument = most recent auto-tag, or pass a specific commit/tag) reverts the code and reloads PM2. It does not touch the database.
 
 ## Files built
@@ -54,7 +61,8 @@
 
 - `deploy/ecosystem.config.cjs` — PM2 process definition (cluster mode, 2 instances, log paths, memory restart threshold).
 - `deploy/setup-server.sh` — one-time provisioning script, run from inside the freshly-cloned repo on the VPS (installs Node/PM2/Postgres/ufw/fail2ban, creates the DB role, checks for `app.secrets`, builds, first PM2 start + `pm2 save`). Covers Part 1 steps 4–10 below (the pre-repo steps — deploy user, SSH hardening, cloning — happen first, by hand, since the script can't exist on the server before the repo is cloned).
-- `deploy/deploy.sh` — the repeatable pull → build → reload script, run on the VPS. Tags the pre-deploy commit automatically for rollback and warns (without blocking) if the schema changed.
+- `deploy/release.sh` — **the** release script (see Part 2): backup → build → maintenance on → reviewed db:push → RLS → ledger checks → reload + health check → maintenance off.
+- `deploy/deploy.sh` — legacy pull → build → reload script. Not used for releases any more (see Part 2, step 4).
 - `deploy/rollback.sh` — revert to the most recent auto-tagged rollback point (or an explicit commit/tag) and reload. Never touches the database.
 - `deploy/backup-db.sh` — nightly `pg_dump` with 14-day rotation; the crontab line to schedule it is in a comment at the bottom of the file (not wired in automatically).
 - `deploy/db-tunnel.sh` — run on your OWN machine (not the VPS) to open an SSH tunnel to production Postgres for ad-hoc access from a local client (`psql`, DBeaver, pgAdmin) without ever exposing Postgres on the VPS's public interface. See Part 3f below.
@@ -76,7 +84,7 @@
 Order matters; each step needs the previous one:
 1. `bash deploy/setup-rls.sh` — creates role `erp_app_tenant` (LOGIN, NOSUPERUSER, NOBYPASSRLS) and grants it DML on all tables (+ default privileges for future tables). It prompts for a password.
 2. Put `TENANT_DB_USER=erp_app_tenant` and `TENANT_DB_PASSWORD=<same password>` in `app.secrets` **by hand**. Use a password of letters and digits only (e.g. `openssl rand -hex 20`): `dotenv` treats `#`, `$` and quotes specially, and a mismatched password makes every tenant-scoped request fail with "password authentication failed for user erp_app_tenant". (That is exactly what happened on the first deploy: pages loaded forever, see the log line in `pm2 logs --err`.)
-3. Deploy the code (`deploy.sh`), then `npm run db:push` (read the plan: only policies/indexes expected).
+3. Deploy with `bash deploy/release.sh --force-schema` (its db:push step: read the plan, only policies/indexes expected).
 4. `npx tsx scripts/apply-rls-policies.mjs` — **mandatory after every db:push**: drizzle-kit creates policies but drops their USING/WITH CHECK conditions.
 5. `bash deploy/verify-rls.sh` (must print `RLS OK`) and `npx tsx scripts/verify-tenant-isolation.ts` (must print `ALL ISOLATION CHECKS PASSED`; it creates two temporary companies inside a transaction that is rolled back — nothing is left behind).
 Also: Postgres `max_connections` must cover, per PM2 instance, the normal pool plus the tenant pool (`TENANT_DB_POOL_MAX`, default 10).

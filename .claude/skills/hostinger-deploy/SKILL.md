@@ -7,10 +7,25 @@ description: Load this before any action that touches the production Hostinger V
 
 Read `docs/deployment-plan.md` first — it's the actual agreed design (architecture diagram, locked-in decisions, the one-time setup steps, the repeatable deploy loop) and takes precedence over anything below if they ever disagree. This skill exists to carry the *guardrails* forward into every session that touches deployment, since the stakes on a live server are categorically higher than local dev.
 
+## The one deploy command — standing rule
+
+**Every production release goes through `deploy/release.sh`, never `deploy/deploy.sh`.** (User's standing instruction, Oct 2026.) When the user asks for VPS/deploy commands, hand them exactly this:
+
+```
+su - deploy
+cd ~/apps/erp
+git pull --ff-only
+bash deploy/release.sh
+```
+
+- Add `--force-schema` when production may be missing schema changes from earlier commits (e.g. a release that previously went out via `deploy.sh`, which never runs db:push). `--dry-run` to preview, `--from N` to resume at a failed step.
+- Before they run it, tell them what step 4 (db:push) should show for this release — which tables/columns get added — and to decline anything that drops, renames or retypes.
+- Why not `deploy.sh`: it stops at "Already up to date" *before* building or reloading, so when the code was already pulled by hand the old build keeps serving (real incident: a security fix looked deployed but a company admin could still open Settings > System & Backup until a manual `npm run build && pm2 reload`). It also never applies schema changes or RLS.
+
 ## The non-negotiable guardrails
 
 - **Never deploy, restart the production process, or touch the production database without the user explicitly asking in that session.** A prior deploy being approved does not pre-approve the next one.
-- **`db:push` against production is always its own separate, manually reviewed step** — never chained automatically after a code deploy. `deploy/deploy.sh` and `deploy/setup-server.sh` both deliberately stop and ask rather than running it for you; do not "helpfully" wire it into an automated path.
+- **`db:push` against production is always its own separate, manually reviewed step** — never chained automatically after a code deploy. `deploy/release.sh` (which shows the plan and waits for a typed "yes"), `deploy/deploy.sh` and `deploy/setup-server.sh` all deliberately stop and ask rather than running it for you; do not "helpfully" wire it into an automated path.
 - **Secrets never pass through git, chat, or this repo.** `app.secrets` on the VPS is created by hand, directly on the server, every time — including the first time. If you ever find yourself about to paste a real secret value into a chat message, a commit, or a file under this repo, stop.
 - **Before anything destructive or hard-to-reverse on the live server** (DB schema changes, force-pushes to the deploy branch, `pm2 delete`, restoring from a backup, rolling back), stop and confirm with the user first — the same standing rule this project already follows for local git operations, with higher stakes here.
 - **The user runs VPS-side commands themselves by default.** This project's chosen access model (confirmed with the user) is: you write/maintain the scripts and give exact commands, the user pastes them into their own SSH session and reports back the output. Don't assume you have direct SSH access to the VPS unless the user has explicitly set that up and told you so in the current session.
@@ -38,7 +53,8 @@ The user has explicitly asked for this to be a standing habit, not a one-off: **
 - `deploy/setup-server.sh` — one-time provisioning, run once from inside the freshly-cloned repo on the VPS (installs Node/PM2/Postgres/ufw/fail2ban, creates the DB role, checks for `app.secrets`, builds, first PM2 start, and auto-registers `pm2 startup` as `deploy` — not root, matching the incident below — then verifies with `systemctl is-enabled pm2-deploy`). Safe to re-run (idempotent-ish checks), but read it before re-running on a server that already has other things on it.
 - `deploy/db-tunnel.sh` — the ONE script in this folder meant to run on a local machine, not the VPS. Opens an SSH tunnel (`localhost:5433` → VPS's `localhost:5432`) for ad-hoc `psql`/DBeaver/pgAdmin access to production Postgres without ever exposing port 5432 publicly (it stays bound to `127.0.0.1` on the VPS, confirmed via `ss -tlnp`). See docs/deployment-plan.md Part 3f.
 - `deploy/maintenance-mode.sh` + `deploy/maintenance.html` + `deploy/nginx-snippets/erp-maintenance.conf` — toggles a real "system unavailable" page served by Nginx itself (works even with the Node app or Postgres down). Needs a one-time manual `include` line added to the live HTTPS server block — not sed-automated, unlike the other nginx snippets, since guessing the right server block (SSL, not the `:80` redirect) reliably by pattern in a Certbot-managed file is riskier than doing it by eye once. See docs/deployment-plan.md Part 3g.
-- `deploy/deploy.sh` — the repeatable pull → build → reload loop. Tags the pre-deploy commit automatically (`pre-deploy-<timestamp>`) before moving, so `rollback.sh` always has something to fall back to. Warns (does not block) if `src/db/schema.ts` changed in the deployed range.
+- `deploy/release.sh` — **the release script; always use it** (see the standing rule above). 9 steps: backup, pull + always build, maintenance on, reviewed db:push (only when schema.ts changed since the `last-release` tag, or with `--force-schema`), RLS apply + verify, chart of accounts, invoice-XML compression, ledger checks, reload + health check + maintenance off. Stops at the first failure with the maintenance page left on.
+- `deploy/deploy.sh` — legacy, do not hand it to the user for a release. The old pull → build → reload loop. Tags the pre-deploy commit automatically (`pre-deploy-<timestamp>`) before moving, so `rollback.sh` always has something to fall back to. Warns (does not block) if `src/db/schema.ts` changed in the deployed range.
 - `deploy/setup-rls.sh` / `deploy/verify-rls.sh` — one-time creation of the restricted `erp_app_tenant` role and the post-deploy RLS check. Every deploy that runs `db:push` must be followed by `npx tsx scripts/apply-rls-policies.mjs` (drizzle-kit drops policy conditions) and `verify-rls.sh`. `TENANT_DB_USER`/`TENANT_DB_PASSWORD` must be in `app.secrets` (letters+digits password).
 - `deploy/nginx-tuning.sh` (+ `deploy/nginx-snippets/`) — HTTP/2, gzip and immutable `/assets/` caching; part of provisioning any new host, see docs/deployment-plan.md Part 3.
 - `deploy/rollback.sh` — reverts to the most recent `pre-deploy-*` tag (or an explicit commit/tag argument) and reloads PM2. Never touches the database.
