@@ -16,6 +16,7 @@ import { invoiceListColumns } from '../../src/db/invoiceColumns.js';
 import { unwindAverageSalePrice } from '../lib/salesAverage.js';
 import { readInvoiceXml } from '../lib/zatca/xmlStorage.js';
 import { generateId } from '../../src/id.js';
+import { pickFields, INVOICE_CREATE_FIELDS } from '../lib/pickFields.js';
 import { normalizeZatcaUnitCode } from '../../src/zatcaUnitCodes.js';
 import { recordAuditLog } from '../lib/audit.js';
 import { withTenantDb, tenantDb, runAfterTenantCommit } from '../lib/tenantDb.js';
@@ -742,7 +743,10 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     const permissions = normalizePermissions(user.permissions, user.role, user.isSuperAdmin);
 
     const { invoiceData } = req.body;
-    const { items, ...invData } = invoiceData;
+    const { items } = invoiceData || {};
+    // Only the fields the Invoice / POS screens send are read; the server owns the rest of the row (status, createdBy/At, ZATCA state,
+    // document type). `id` is kept out of the picked set so the check below still sees whether the request named one.
+    const invData: any = { ...pickFields(invoiceData, INVOICE_CREATE_FIELDS), ...(invoiceData?.id ? { id: invoiceData.id } : {}) };
 
     // This route only ever CREATES an invoice. The server assigns the id and the number: a request that names an id would overwrite
     // that stored invoice (date, items, amounts) with no closed-month or VAT-quarter rule, so it is refused outright. An issued invoice
@@ -760,7 +764,7 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     // ledger as a normal sale (AR/Revenue/VAT all in the wrong direction). Found live
     // during this session's stress testing — a malformed request (never sent by the real
     // UI, which only ever calls /note for this) hit exactly this gap.
-    if (invData.documentType === 'CreditNote' || invData.documentType === 'DebitNote') {
+    if (invoiceData?.documentType === 'CreditNote' || invoiceData?.documentType === 'DebitNote') {
       return res.status(400).json({ error: 'A Credit Note or Debit Note can only be created via the dedicated note-issuance endpoint, not this route.' });
     }
 
@@ -888,7 +892,9 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     // createdById is NOT NULL and, unlike the quotation-conversion/POS/voucher insert
     // paths in this same file, was never being set here — every direct invoice creation
     // failed with a raw Postgres constraint violation before this fix.
-    if (!invData.createdById) invData.createdById = user.id;
+    invData.createdById = user.id;
+    invData.status = 'Active';
+    invData.documentType = 'Invoice';
     invData.id = generateId();
 
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
@@ -932,7 +938,7 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     // createdAt/paymentDate are `timestamp` (Date-mode) columns, so the string dates from the request body are converted here.
     const invoiceValues = {
       ...invData,
-      createdAt: invData.createdAt ? new Date(invData.createdAt) : nowDate(),
+      createdAt: nowDate(),
       paymentDate: invData.paymentDate ? new Date(invData.paymentDate) : null,
     };
     const [newInvoice] = await tdb.insert(schema.invoices).values(invoiceValues).returning();
@@ -1862,6 +1868,11 @@ router.post('/recurring-postings', withTenantDb, async (req: any, res) => {
     const { templateId, monthId, postType, amount, dateStr, paymentStatus, bankId } = req.body;
     const companyId = req.targetCompanyId;
 
+    // The screen already checks these; the server must too, since a request need not come from the screen.
+    if (postType !== 'Actual' && postType !== 'Accrual') return res.status(400).json({ error: 'Post type must be Actual or Accrual.' });
+    if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) return res.status(400).json({ error: 'Please enter a valid expense amount.' });
+    if (!['Paid', 'Partially Paid', 'Unpaid'].includes(paymentStatus)) return res.status(400).json({ error: 'Payment status must be Paid, Partially Paid or Unpaid.' });
+
     const refError = await assertDocumentRefsOwnedByCompany(tdb, companyId, { bankId });
     if (refError) return res.status(400).json({ error: refError });
 
@@ -1992,6 +2003,9 @@ router.post('/settle-accrual', withTenantDb, async (req: any, res) => {
 
     const { accrualExpenseId, actualAmount, actualDate, paymentStatus, bankId } = req.body;
     const companyId = req.targetCompanyId;
+
+    if (!Number.isFinite(Number(actualAmount)) || Number(actualAmount) <= 0) return res.status(400).json({ error: 'Please enter a valid actual amount.' });
+    if (!['Paid', 'Partially Paid', 'Unpaid'].includes(paymentStatus)) return res.status(400).json({ error: 'Payment status must be Paid, Partially Paid or Unpaid.' });
 
     const refError = await assertDocumentRefsOwnedByCompany(tdb, companyId, { bankId });
     if (refError) return res.status(400).json({ error: refError });

@@ -8,6 +8,7 @@ import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { normalizePermissions } from '../../src/types.js';
 import { parseLimitOffset, parsePageSort, wantsPaged } from '../lib/pagination.js';
 import { generateId } from '../../src/id.js';
+import { pickFields, EXPENSE_CREATE_FIELDS } from '../lib/pickFields.js';
 import { assertOwnsRow, resolveDocumentBranchId, branchAccessOk } from '../lib/authz.js';
 import { recordAuditLog } from '../lib/audit.js';
 import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
@@ -88,7 +89,9 @@ router.post('/', withTenantDb, async (req: any, res) => {
   try {
     const tdb = tenantDb();
     const permissions = normalizePermissions(req.user.permissions, req.user.role, req.user.isSuperAdmin);
-    const data = { ...req.body };
+    // Only the fields the Expense screen sends are read; the server owns the rest of the row (status, type, created-by/at, the
+    // accrual and reversal links). `id` is kept out of the picked set so the check below still sees whether the request named one.
+    const data: any = { ...pickFields(req.body, EXPENSE_CREATE_FIELDS), ...(req.body?.id ? { id: req.body.id } : {}) };
 
     // This route only ever CREATES an expense. The server assigns the id and the number: a request that names an id would overwrite
     // that stored expense (date, amount, status) with no closed-month or VAT-quarter rule, so it is refused outright. A posted expense
@@ -103,9 +106,8 @@ router.post('/', withTenantDb, async (req: any, res) => {
     // expenseNumber/createdById/createdAt are server-assigned facts, never client
     // input — stripped here so a crafted request body can't inject/overwrite them,
     // and assigned below from a fresh counter.
-    delete data.expenseNumber;
-    delete data.createdById;
-    delete data.createdAt;
+    data.status = 'Active';
+    data.type = 'Actual';
 
     // Bill # is mandatory on the create form (ExpenseModule.tsx) — enforced here too so a
     // request bypassing that form (a direct API call, a future integration) can't create
