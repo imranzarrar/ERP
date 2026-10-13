@@ -329,7 +329,12 @@ export default function DocumentRenderer({
  print-color-adjust: exact !important;
  color-adjust: exact !important;
  }
- body { padding: 0; margin: 0; width: 100%; }
+ /* html as well as body: the base rule above gives BOTH 20px of padding for the on-screen
+ popup, but only body used to be reset here, so in print the <html> element kept 40px
+ (0.42in) of top+bottom padding on top of the page's own @page margin. That alone pushed
+ an anchored template (print:min-h-[10.5in], inside a 10.89in printable area) past one
+ page and printed a blank second page. */
+ html, body { padding: 0; margin: 0; width: 100%; }
  .no-print { display: none !important; }
  @page {
  /* 80mm width, auto height: a real thermal roll has no fixed page length — it just
@@ -1808,7 +1813,9 @@ export default function DocumentRenderer({
      {mainBlocks.map(renderBlock)}
     </div>
     {anchorFooterToBottom && (
-     <div className={`grid grid-cols-12 gap-x-4 ${getGridGapClass()}`}>
+     // print:break-inside-avoid keeps notes/QR/totals together: on a document just over one page the
+     // totals box used to split, leaving a lone "Amount in Words" strip on an otherwise empty page 2.
+     <div className={`grid grid-cols-12 gap-x-4 print:break-inside-avoid ${getGridGapClass()}`}>
       {footerBlocks.map(renderBlock)}
      </div>
     )}
@@ -2930,7 +2937,7 @@ export default function DocumentRenderer({
             <div
               ref={printableRef}
               id="printable-document-content"
- className={`bg-white shadow-lg border border-slate-200/60 p-8 md:p-12 text-slate-800 print:min-w-0 print:w-full print:p-0 md:mx-auto overflow-hidden ${isRTL ? '' : theme.accentFont} ${getPageSizeClass()}`}
+ className={`bg-white shadow-lg border border-slate-200/60 p-8 md:p-12 text-slate-800 print:min-w-0 print:w-full print:p-0 print:shadow-none print:border-0 md:mx-auto overflow-hidden ${isRTL ? '' : theme.accentFont} ${getPageSizeClass()}`}
  // Arabic/Urdu documents always render in the bilingual-capable Cairo/Noto stack
  // (--font-arabic, index.css) regardless of the template's own Latin accent font
  // (Space Grotesk, JetBrains Mono, etc.) — none of those have real Arabic glyph

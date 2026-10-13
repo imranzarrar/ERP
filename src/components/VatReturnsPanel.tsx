@@ -195,7 +195,7 @@ export default function VatReturnsPanel({ db }: VatReturnsPanelProps) {
           .vr-footnote { font-size: 10px; color: #94a3b8; margin-top: 24px; line-height: 1.5; }
           @media print {
             * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-            body { padding: 0; margin: 0; width: 100%; }
+            html, body { padding: 0; margin: 0; width: 100%; }
             @page { size: A4 portrait; margin: 0.6in; }
           }
         </style>
