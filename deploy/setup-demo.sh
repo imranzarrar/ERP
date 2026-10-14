@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# ALTERNATIVE to deploy/create-agent-access.sh (which does all of this as root and also prepares a restricted demo user).
 # One-time setup of the 2.0 DEMO database and role on the VPS, next to live. Run as the deploy user, from the DEMO checkout:
 #
 #     git clone --branch v2 <same repo URL live uses> ~/apps/erp-demo      # a separate folder; ~/apps/erp (live) is never touched

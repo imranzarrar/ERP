@@ -28,7 +28,7 @@ read_secret() {
 }
 
 say "Preflight (demo-only guards)"
-[ "$(id -un)" = "deploy" ] || die "Run as the deploy user (su - deploy)."
+case "$(id -un)" in deploy|warraq-demo) ;; *) die "Run as the demo user (warraq-demo) or deploy." ;; esac
 case "$REPO_DIR" in *erp-demo*) ;; *) die "This folder is not the demo checkout (path must contain 'erp-demo')." ;; esac
 [ -f app.secrets ] || die "app.secrets not found."
 [ "$(read_secret APP_ENV)" = "demo" ] || die "app.secrets does not say APP_ENV=demo."

@@ -5,7 +5,8 @@
 #
 # On the VPS, as the deploy user, from the DEMO checkout (~/apps/erp-demo):
 #     bash deploy/clone-prod-to-demo.sh
-#   The live credentials are read from ~/apps/erp/app.secrets (read only); the target is this checkout's app.secrets.
+#   The live credentials come from ~/.live-readonly (the read-only role made by create-agent-access.sh) or, for the deploy user, from
+#   ~/apps/erp/app.secrets (read only); the target is this checkout's app.secrets.
 #
 # On your own machine (local 2.0 copy, E:\ERP-2.0), with the SSH tunnel open (bash deploy/db-tunnel.sh -> localhost:5433):
 #     SRC_HOST=localhost SRC_PORT=5433 SRC_USER=<live db user> SRC_DB=<live db name> bash deploy/clone-prod-to-demo.sh
@@ -42,6 +43,12 @@ case "$DST_DB" in erp_demo*|erp_v2*) ;; *) die "Target database '$DST_DB' is not
 
 # ---- source (live): read-only ----
 LIVE_ENV="${SRC_ENV_FILE:-$HOME/apps/erp/app.secrets}"
+RO_FILE="${SRC_CRED_FILE:-$HOME/.live-readonly}"
+if [ -z "${SRC_USER:-}" ] && [ -f "$RO_FILE" ]; then
+  # Read-only login created by deploy/create-agent-access.sh (role erp_readonly, can read live but never write).
+  SRC_HOST="$(read_secret_from "$RO_FILE" SRC_HOST)"; SRC_PORT="$(read_secret_from "$RO_FILE" SRC_PORT)"
+  SRC_USER="$(read_secret_from "$RO_FILE" SRC_USER)"; SRC_DB="$(read_secret_from "$RO_FILE" SRC_DB)"; SRC_PW="$(read_secret_from "$RO_FILE" SRC_PW)"
+fi
 if [ -z "${SRC_USER:-}" ] && [ -f "$LIVE_ENV" ]; then
   SRC_HOST="$(read_secret_from "$LIVE_ENV" SQL_HOST)"; SRC_HOST="${SRC_HOST:-localhost}"
   SRC_USER="$(read_secret_from "$LIVE_ENV" SQL_USER)"
