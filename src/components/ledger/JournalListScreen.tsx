@@ -4,6 +4,7 @@ import { useTranslation, usePermissions } from '../../hooks';
 import type { DatabaseState } from '../../dbStore';
 import { ledgerApi, money, inputCls, labelCls, primaryBtn, Card, Notice, JournalStatusPill, SOURCE_LABEL } from './ui';
 import JournalDetailPanel from './JournalDetailPanel';
+import { DimensionFilter, useDimensionOptions, type DimFilterValue } from './dimensions';
 
 interface Row { kind: 'entry' | 'manual'; id: string; number: string; date: string; description: string; source: string; status: string; reference: string | null; amount: number; userName: string | null }
 interface ListResp { rows: Row[]; total: number; page: number; pageSize: number; manualCounts: Record<string, number> }
@@ -24,6 +25,8 @@ export default function JournalListScreen({ db, mode, focus, onFocusConsumed, on
   const [from, setFrom] = React.useState('');
   const [to, setTo] = React.useState('');
   const [mine, setMine] = React.useState(false);
+  const [dims, setDims] = React.useState<DimFilterValue>({});
+  const { options: dimOptions } = useDimensionOptions();
   const [open, setOpen] = React.useState<{ kind: 'manual' | 'entry'; id: string } | null>(focus || null);
   const currency = db.companySetup?.currency || 'SAR';
   const pageSize = 25;
@@ -36,10 +39,11 @@ export default function JournalListScreen({ db, mode, focus, onFocusConsumed, on
     if (from) p.set('from', from);
     if (to) p.set('to', to);
     if (mine) p.set('mine', '1');
+    if (Object.keys(dims).length) p.set('dims', JSON.stringify(dims));
     try { setData(await ledgerApi<ListResp>(`/journals?${p}`)); setError(''); } catch (e: any) { setError(e.message); }
-  }, [page, status, source, q, from, to, mine]);
+  }, [page, status, source, q, from, to, mine, dims]);
   React.useEffect(() => { const h = setTimeout(load, 200); return () => clearTimeout(h); }, [load]);
-  React.useEffect(() => { setPage(1); }, [status, source, q, from, to, mine]);
+  React.useEffect(() => { setPage(1); }, [status, source, q, from, to, mine, dims]);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / pageSize)) : 1;
   const counts = data?.manualCounts || {};
@@ -74,6 +78,7 @@ export default function JournalListScreen({ db, mode, focus, onFocusConsumed, on
             <div><label className={labelCls}>{t('To')}</label><input type="date" className={inputCls} value={to} onChange={e => setTo(e.target.value)} /></div>
           </>
         )}
+        {mode === 'all' && <DimensionFilter db={db} options={dimOptions} value={dims} onChange={setDims} />}
         <label className="flex items-center gap-1.5 text-xs text-slate-600 font-semibold cursor-pointer pb-2"><input type="checkbox" checked={mine} onChange={e => setMine(e.target.checked)} />{t('Prepared by me')}</label>
         {can('journals.create') && <button className={`${primaryBtn} ms-auto`} onClick={onNew}><Plus className="w-3.5 h-3.5" />{t('New Manual Journal')}</button>}
       </Card>

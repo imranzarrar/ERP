@@ -790,6 +790,16 @@ type NavSection = {
             { id: 'gl-reconciliation', label: t('Ledger vs Documents'), permissionKey: 'reports.ledgerReconciliation' }
           ]
         },
+        {
+          // Set up in this order: define the dimensions, add their values, assign them to accounts.
+          id: 'gl-dim-group', label: t('Dimensions'), icon: Layers, adminOnly: false,
+          subItems: [
+            { id: 'gl-dim-types', label: t('1 Dimension Types'), permissionKey: 'dimensions.read' },
+            { id: 'gl-dim-values', label: t('2 Dimension Values'), permissionKey: 'dimensions.read' },
+            { id: 'gl-cost-centers', label: t('2 Cost Centres'), permissionKey: 'dimensions.read' },
+            { id: 'gl-dim-rules', label: t('3 Account Dimension Rules'), permissionKey: 'accountDimensionRules.read' }
+          ]
+        },
         { id: 'gl-opening', label: t('Opening Balances'), icon: BookOpen, adminOnly: false, permissionKey: ['openingBalances.read', 'openingBalances.post'] }
       ]
     },
@@ -1639,6 +1649,10 @@ type NavSection = {
  activeTab === 'gl-trial-balance' ? t('Trial Balance (Ledger)') :
  activeTab === 'gl-reconciliation' ? t('Ledger vs Documents') :
  activeTab === 'gl-opening' ? t('Opening Balances') :
+ activeTab === 'gl-dim-types' ? t('Dimension Types') :
+ activeTab === 'gl-dim-values' ? t('Dimension Values') :
+ activeTab === 'gl-cost-centers' ? t('Cost Centres') :
+ activeTab === 'gl-dim-rules' ? t('Account Dimension Rules') :
  activeTab === 'settings' ? t('Settings & Companies') :
  t(activeTab)}
  </h2>
@@ -1669,6 +1683,10 @@ type NavSection = {
  {activeTab === 'gl-trial-balance' && t('Opening, movement and closing balance of every account, built from the ledger.')}
  {activeTab === 'gl-reconciliation' && t('Check that the ledger agrees with the document-based reports.')}
  {activeTab === 'gl-opening' && t('Bring forward the balances your books start with.')}
+ {activeTab === 'gl-dim-types' && t('Define the labels you report by: Branch, Department, Profit Centre, Project and more.')}
+ {activeTab === 'gl-dim-values' && t('The values of each dimension, as a list or a tree.')}
+ {activeTab === 'gl-cost-centers' && t('Departments and cost centres, with their home branch.')}
+ {activeTab === 'gl-dim-rules' && t('Decide which dimensions each account must, may or must not carry.')}
  {activeTab === 'settings' && t('Administrative settings, company config, and month closures.')}
  </p>
  </div>

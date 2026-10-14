@@ -3,11 +3,12 @@ import { Plus, Trash2, Save, Send, AlertTriangle, CheckCircle2 } from 'lucide-re
 import { useTranslation, usePermissions } from '../../hooks';
 import type { DatabaseState } from '../../dbStore';
 import { ledgerApi, money, todayIso, inputCls, labelCls, primaryBtn, ghostBtn, Card, Notice } from './ui';
+import { LineDimensions, useDimensionOptions, type DimTags } from './dimensions';
 
 export interface Acct { id: string; code: string; name: string; nameAr: string | null; type: string; isGroup: boolean; isActive: boolean; isControl: boolean }
-interface FormLine { key: number; accountId: string; debit: string; credit: string; note: string }
+interface FormLine { key: number; accountId: string; debit: string; credit: string; note: string; dims: DimTags }
 let lineKey = 1;
-const blankLine = (): FormLine => ({ key: lineKey++, accountId: '', debit: '', credit: '', note: '' });
+const blankLine = (): FormLine => ({ key: lineKey++, accountId: '', debit: '', credit: '', note: '', dims: {} });
 const num = (s: string) => { const n = Number(s); return isNaN(n) ? 0 : Math.round(n * 100) / 100; };
 
 // Type-ahead account chooser: type a code or a name, pick from the short list. Headings, inactive, control and bank accounts are not offered
@@ -51,6 +52,7 @@ export default function JournalFormScreen({ db, editId, onDone, onDirtyChange }:
   const [preparerNote, setPreparerNote] = React.useState('');
   const [branchId, setBranchId] = React.useState('');
   const [lines, setLines] = React.useState<FormLine[]>([blankLine(), blankLine()]);
+  const { options: dimOptions } = useDimensionOptions();
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');
   const [loaded, setLoaded] = React.useState(!editId);
@@ -67,7 +69,7 @@ export default function JournalFormScreen({ db, editId, onDone, onDirtyChange }:
     if (!editId) return;
     ledgerApi<any>(`/manual-journals/${editId}`).then(j => {
       setNumber(j.number); setDate(j.date); setDescription(j.description); setReference(j.reference || ''); setPreparerNote(j.preparerNote || ''); setBranchId(j.branchId || '');
-      setLines(j.lines.map((l: any) => ({ key: lineKey++, accountId: l.accountId, debit: l.debit ? String(l.debit) : '', credit: l.credit ? String(l.credit) : '', note: l.note || '' })));
+      setLines(j.lines.map((l: any) => ({ key: lineKey++, accountId: l.accountId, debit: l.debit ? String(l.debit) : '', credit: l.credit ? String(l.credit) : '', note: l.note || '', dims: l.dimensions || {} })));
       setLoaded(true);
     }).catch(e => setError(e.message));
   }, [editId]);
@@ -84,7 +86,7 @@ export default function JournalFormScreen({ db, editId, onDone, onDirtyChange }:
 
   const payload = () => ({
     date, description, reference, preparerNote, branchId: branchId || null,
-    lines: filled.map(l => ({ accountId: l.accountId, debit: num(l.debit) || 0, credit: num(l.credit) || 0, note: l.note })),
+    lines: filled.map(l => ({ accountId: l.accountId, debit: num(l.debit) || 0, credit: num(l.credit) || 0, note: l.note, dimensions: l.dims })),
   });
 
   const save = async (submit: boolean) => {
@@ -132,7 +134,8 @@ export default function JournalFormScreen({ db, editId, onDone, onDirtyChange }:
               {lines.map((l, i) => (
                 <tr key={l.key}>
                   <td className="p-2 ps-4 text-slate-400">{i + 1}</td>
-                  <td className="p-2"><AccountPicker accounts={postable} value={l.accountId} lang={lang} placeholder={t('Type a code or name')} onChange={id => setLine(l.key, { accountId: id })} /></td>
+                  <td className="p-2"><AccountPicker accounts={postable} value={l.accountId} lang={lang} placeholder={t('Type a code or name')} onChange={id => setLine(l.key, { accountId: id, dims: {} })} />
+                    <LineDimensions db={db} options={dimOptions} accountId={l.accountId} value={l.dims} onChange={dims => setLine(l.key, { dims })} /></td>
                   <td className="p-2"><input className={inputCls} value={l.note} maxLength={300} onChange={e => setLine(l.key, { note: e.target.value })} /></td>
                   <td className="p-2"><input type="number" min="0" step="0.01" className={`${inputCls} text-end font-mono`} value={l.debit} onChange={e => setLine(l.key, { debit: e.target.value, credit: e.target.value ? '' : l.credit })} /></td>
                   <td className="p-2"><input type="number" min="0" step="0.01" className={`${inputCls} text-end font-mono`} value={l.credit} onChange={e => setLine(l.key, { credit: e.target.value, debit: e.target.value ? '' : l.debit })} /></td>

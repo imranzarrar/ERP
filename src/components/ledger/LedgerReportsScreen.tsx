@@ -5,6 +5,7 @@ import type { DatabaseState } from '../../dbStore';
 import { ledgerApi, downloadLedgerFile, money, moneyOrBlank, todayIso, yearStartIso, inputCls, labelCls, primaryBtn, ghostBtn, Card, Notice, SOURCE_LABEL } from './ui';
 import { AccountPicker, type Acct } from './JournalFormScreen';
 import JournalDetailPanel from './JournalDetailPanel';
+import { DimensionFilter, useDimensionOptions, type DimFilterValue } from './dimensions';
 
 export type LedgerReportKind = 'general-ledger' | 'trial-balance' | 'reconciliation';
 export interface AccountFocus { accountId: string; from: string; to: string }
@@ -27,6 +28,9 @@ function GeneralLedger({ db, focus }: { db: DatabaseState; focus: AccountFocus |
   const [error, setError] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [open, setOpen] = React.useState<string | null>(null);
+  const [dims, setDims] = React.useState<DimFilterValue>({});
+  const { options: dimOptions } = useDimensionOptions();
+  const dimQs = Object.keys(dims).length ? `&dims=${encodeURIComponent(JSON.stringify(dims))}` : '';
   const currency = db.companySetup?.currency || 'SAR';
   const pageSize = 50;
 
@@ -35,10 +39,10 @@ function GeneralLedger({ db, focus }: { db: DatabaseState; focus: AccountFocus |
   const run = React.useCallback(async (p = 1) => {
     if (!accountId) return;
     setLoading(true); setError('');
-    try { setData(await ledgerApi(`/reports/general-ledger?accountId=${accountId}&from=${from}&to=${to}&page=${p}&pageSize=${pageSize}`)); setPage(p); }
+    try { setData(await ledgerApi(`/reports/general-ledger?accountId=${accountId}&from=${from}&to=${to}&page=${p}&pageSize=${pageSize}${dimQs}`)); setPage(p); }
     catch (e: any) { setError(e.message); setData(null); } finally { setLoading(false); }
-  }, [accountId, from, to]);
-  React.useEffect(() => { if (accountId) run(1); }, [accountId, from, to]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [accountId, from, to, dimQs]);
+  React.useEffect(() => { if (accountId) run(1); }, [accountId, from, to, dimQs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pages = data ? Math.max(1, Math.ceil(data.totals.lines / pageSize)) : 1;
   return (
@@ -49,8 +53,9 @@ function GeneralLedger({ db, focus }: { db: DatabaseState; focus: AccountFocus |
           <AccountPicker accounts={accounts.filter(a => a.isActive || true)} value={accountId} onChange={setAccountId} lang={lang} placeholder={t('Choose an account or heading')} /></div>
         <div><label className={labelCls}>{t('From')}</label><input type="date" className={inputCls} value={from} onChange={e => setFrom(e.target.value)} /></div>
         <div><label className={labelCls}>{t('To')}</label><input type="date" className={inputCls} value={to} onChange={e => setTo(e.target.value)} /></div>
+        <DimensionFilter db={db} options={dimOptions} value={dims} onChange={setDims} />
         <button className={primaryBtn} disabled={!accountId || loading} onClick={() => run(1)}><Play className="w-3.5 h-3.5" />{t('Run')}</button>
-        <button className={ghostBtn} disabled={!accountId} onClick={() => downloadLedgerFile(`/reports/general-ledger/export?accountId=${accountId}&from=${from}&to=${to}`, 'general-ledger.xlsx').catch(e => setError(e.message))}><Download className="w-3.5 h-3.5" />{t('Export')}</button>
+        <button className={ghostBtn} disabled={!accountId} onClick={() => downloadLedgerFile(`/reports/general-ledger/export?accountId=${accountId}&from=${from}&to=${to}${dimQs}`, 'general-ledger.xlsx').catch(e => setError(e.message))}><Download className="w-3.5 h-3.5" />{t('Export')}</button>
       </Card>
       {!accountId && <Card className="p-8 text-center text-xs text-slate-400">{t('Choose an account to see its ledger.')}</Card>}
       {data && (
@@ -111,12 +116,15 @@ function TrialBalance({ db, onDrill }: { db: DatabaseState; onDrill?: (f: Accoun
   const [includeZero, setIncludeZero] = React.useState(false);
   const [data, setData] = React.useState<any>(null);
   const [error, setError] = React.useState('');
+  const [dims, setDims] = React.useState<DimFilterValue>({});
+  const { options: dimOptions } = useDimensionOptions();
+  const dimQs = Object.keys(dims).length ? `&dims=${encodeURIComponent(JSON.stringify(dims))}` : '';
   const currency = db.companySetup?.currency || 'SAR';
 
   const run = React.useCallback(async () => {
     setError('');
-    try { setData(await ledgerApi(`/reports/trial-balance?from=${from}&to=${to}${includeZero ? '&includeZero=1' : ''}`)); } catch (e: any) { setError(e.message); setData(null); }
-  }, [from, to, includeZero]);
+    try { setData(await ledgerApi(`/reports/trial-balance?from=${from}&to=${to}${includeZero ? '&includeZero=1' : ''}${dimQs}`)); } catch (e: any) { setError(e.message); setData(null); }
+  }, [from, to, includeZero, dimQs]);
   React.useEffect(() => { run(); }, [run]);
 
   const depthOf = (r: any, rows: any[]) => { let d = 0; let cur = r; while (cur.parentId) { const p = rows.find((x: any) => x.id === cur.parentId); if (!p) break; d++; cur = p; } return d; };
@@ -134,8 +142,9 @@ function TrialBalance({ db, onDrill }: { db: DatabaseState; onDrill?: (f: Accoun
       <Card className="p-4 flex flex-wrap items-end gap-3">
         <div><label className={labelCls}>{t('From')}</label><input type="date" className={inputCls} value={from} onChange={e => setFrom(e.target.value)} /></div>
         <div><label className={labelCls}>{t('To')}</label><input type="date" className={inputCls} value={to} onChange={e => setTo(e.target.value)} /></div>
+        <DimensionFilter db={db} options={dimOptions} value={dims} onChange={setDims} />
         <label className="flex items-center gap-1.5 text-xs text-slate-600 font-semibold cursor-pointer pb-2"><input type="checkbox" checked={includeZero} onChange={e => setIncludeZero(e.target.checked)} />{t('Show accounts with no activity')}</label>
-        <button className={`${ghostBtn} ms-auto`} onClick={() => downloadLedgerFile(`/reports/trial-balance/export?from=${from}&to=${to}${includeZero ? '&includeZero=1' : ''}`, 'trial-balance-ledger.xlsx').catch(e => setError(e.message))}><Download className="w-3.5 h-3.5" />{t('Export')}</button>
+        <button className={`${ghostBtn} ms-auto`} onClick={() => downloadLedgerFile(`/reports/trial-balance/export?from=${from}&to=${to}${includeZero ? '&includeZero=1' : ''}${dimQs}`, 'trial-balance-ledger.xlsx').catch(e => setError(e.message))}><Download className="w-3.5 h-3.5" />{t('Export')}</button>
       </Card>
       {data && (
         <>

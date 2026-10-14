@@ -84,7 +84,7 @@ export default function JournalDetailPanel({ db, kind, id, onClose, onChanged, o
               <tbody className="divide-y divide-slate-100">
                 {(j.lines as Line[]).map(l => (
                   <tr key={l.id}>
-                    <td className="p-2.5"><span className="font-mono text-slate-500 me-2">{l.accountCode}</span><span className="font-semibold text-slate-800">{acctName(l)}</span>{l.note && <span className="block text-[11px] text-slate-500">{l.note}</span>}</td>
+                    <td className="p-2.5"><span className="font-mono text-slate-500 me-2">{l.accountCode}</span><span className="font-semibold text-slate-800">{acctName(l)}</span>{l.note && <span className="block text-[11px] text-slate-500">{l.note}</span>}{(l as any).dimensionLabels?.length > 0 && <span className="flex flex-wrap gap-1 mt-0.5">{(l as any).dimensionLabels.map((d: any) => <span key={d.typeId} className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[10px] font-bold">{d.typeName}: {d.name}</span>)}</span>}</td>
                     <td className="p-2.5 text-end font-mono tabular-nums">{moneyOrBlank(l.debit)}</td>
                     <td className="p-2.5 text-end font-mono tabular-nums">{moneyOrBlank(l.credit)}</td>
                   </tr>

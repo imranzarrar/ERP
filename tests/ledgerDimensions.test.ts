@@ -69,8 +69,8 @@ beforeAll(async () => {
   rulesOnly = await mkUser(A.id, { accountDimensionRules: on('read', 'update'), dimensions: on('read') });
   const list = await accounts(A.admin);
   ids = { expense: acct(list, '6200').id, expense2: acct(list, '6300').id, income: acct(list, '4100').id, accrued: acct(list, '2200').id, opex: acct(list, '6000').id, ar: acct(list, '1100').id };
-  const [bA] = await db.insert(schema.branches).values({ id: generateId(), companyId: A.id, name: 'Jeddah', code: 'JED' } as any).returning();
-  const [bB] = await db.insert(schema.branches).values({ id: generateId(), companyId: B.id, name: 'Dammam', code: 'DMM' } as any).returning();
+  const [bA] = (await db.insert(schema.branches).values({ id: generateId(), companyId: A.id, name: 'Jeddah', code: 'JED' } as any).returning()) as any[];
+  const [bB] = (await db.insert(schema.branches).values({ id: generateId(), companyId: B.id, name: 'Dammam', code: 'DMM' } as any).returning()) as any[];
   branchA = bA.id; branchB = bB.id;
 }, 180000);
 afterAll(async () => { for (const id of cleanup) await purgeCompany(id); }, 180000);

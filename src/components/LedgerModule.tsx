@@ -6,6 +6,8 @@ import JournalListScreen from './ledger/JournalListScreen';
 import JournalFormScreen from './ledger/JournalFormScreen';
 import LedgerReportsScreen, { type AccountFocus } from './ledger/LedgerReportsScreen';
 import OpeningBalancesScreen from './ledger/OpeningBalancesScreen';
+import DimensionsScreen from './ledger/DimensionsScreen';
+import AccountDimensionRulesScreen from './ledger/AccountDimensionRulesScreen';
 
 export type LedgerFocus = { kind: 'manual' | 'entry'; id: string };
 
@@ -32,6 +34,10 @@ export default function LedgerModule({ db, tab, editJournalId, focus, accountFoc
     case 'gl-trial-balance': return <LedgerReportsScreen db={db} report="trial-balance" onDrill={onDrill} />;
     case 'gl-reconciliation': return <LedgerReportsScreen db={db} report="reconciliation" />;
     case 'gl-opening': return <OpeningBalancesScreen db={db} />;
+    case 'gl-dim-types': return <DimensionsScreen db={db} mode="types" />;
+    case 'gl-dim-values': return <DimensionsScreen db={db} mode="values" />;
+    case 'gl-cost-centers': return <DimensionsScreen db={db} mode="cost-centers" />;
+    case 'gl-dim-rules': return <AccountDimensionRulesScreen db={db} />;
     default: return null;
   }
 }
