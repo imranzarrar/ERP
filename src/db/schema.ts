@@ -2506,3 +2506,113 @@ export const accountDimensionRules = pgTable('account_dimension_rules', {
   oneDefaultCheck: check('account_dimension_rules_one_default_check', sql`num_nonnulls(${table.defaultValueId}, ${table.defaultBranchId}, ${table.defaultCostCenterId}) <= 1 AND (${table.rule} <> 'not_allowed' OR num_nonnulls(${table.defaultValueId}, ${table.defaultBranchId}, ${table.defaultCostCenterId}) = 0)`),
   tenantIsolationPolicy: tenantPolicy('account_dimension_rules_tenant_isolation', table),
 })).enableRLS();
+
+// ---- General Ledger Step 1.5: the Report Definition engine (Finance Core Blueprint FR-RPT-CFG). See docs/gl-step1-5-decisions.md. ----
+// Trial Balance, Income Statement and Balance Sheet are seeded, editable and cloneable instances of ONE engine: a definition is rows x columns evaluated
+// against journal lines. A row selects accounts (include / exclude selectors) or calculates from other rows; a column picks a period basis, a value basis and
+// an optional dimension filter.
+export const reportDefinitions = pgTable('report_definitions', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  name: text('name').notNull(),
+  nameAr: text('name_ar'),
+  reportType: text('report_type').notNull(), // 'TrialBalance' | 'PnL' | 'BalanceSheet' | 'Custom'
+  isSystemSeeded: boolean('is_system_seeded').notNull().default(false),
+  isDefault: boolean('is_default').notNull().default(false),
+  defaultDisplayMode: text('default_display_mode').notNull().default('Summary'), // 'Summary' | 'Detailed'
+  isActive: boolean('is_active').notNull().default(true),
+  createdById: uuid('created_by_id').references(() => users.id),
+  createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at').notNull(),
+}, (table) => ({
+  companyIdIdx: index('report_definitions_company_id_idx').on(table.companyId),
+  idCompanyUnique: unique('report_definitions_id_company_unique').on(table.companyId, table.id),
+  nameUnique: uniqueIndex('report_definitions_company_name_unique').on(table.companyId, table.name),
+  oneDefaultPerType: uniqueIndex('report_definitions_one_default_unique').on(table.companyId, table.reportType).where(sql`is_default = true`),
+  typeCheck: check('report_definitions_type_check', sql`${table.reportType} IN ('TrialBalance','PnL','BalanceSheet','Custom')`),
+  modeCheck: check('report_definitions_mode_check', sql`${table.defaultDisplayMode} IN ('Summary','Detailed')`),
+  tenantIsolationPolicy: tenantPolicy('report_definitions_tenant_isolation', table),
+})).enableRLS();
+
+export const reportRows = pgTable('report_rows', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  reportDefinitionId: uuid('report_definition_id').notNull(),
+  rowNumber: integer('row_number').notNull(), // the number formulas refer to
+  sortOrder: integer('sort_order').notNull(),
+  rowType: text('row_type').notNull(), // 'Heading' | 'Accounts' | 'Subtotal' | 'Calculated' | 'ProfitToDate' | 'Text' | 'Spacer'
+  label: text('label'),
+  labelAr: text('label_ar'),
+  balanceDisplay: text('balance_display').notNull().default('Net'), // 'Net' | 'Debit' | 'Credit' | 'DebitBalances' | 'CreditBalances' | 'Split'
+  flipSign: boolean('flip_sign').notNull().default(false), // show the opposite sign (credit-natured rows show positive)
+  calcFormula: jsonb('calc_formula'), // Calculated: [{ rowNumber, sign }] over EARLIER rows
+  role: text('role'), // optional tag a rule or report relies on: total_assets, total_liabilities, total_equity, net_profit ...
+  dimensionFilter: jsonb('dimension_filter'), // { dimensionTypeId: [entityId] } applied to this row only
+  format: jsonb('format').notNull().default(sql`'{}'::jsonb`), // bold, italic, underline, indent, align, amountAlign, borderTop, borderBottom, shade, show, pageBreakAfter, negatives, decimals
+}, (table) => ({
+  companyIdIdx: index('report_rows_company_id_idx').on(table.companyId),
+  definitionIdx: index('report_rows_definition_idx').on(table.reportDefinitionId),
+  idCompanyUnique: unique('report_rows_id_company_unique').on(table.companyId, table.id),
+  numberUnique: uniqueIndex('report_rows_definition_number_unique').on(table.reportDefinitionId, table.rowNumber),
+  definitionFk: foreignKey({ name: 'report_rows_definition_company_fk', columns: [table.reportDefinitionId, table.companyId], foreignColumns: [reportDefinitions.id, reportDefinitions.companyId] }),
+  typeCheck: check('report_rows_type_check', sql`${table.rowType} IN ('Heading','Accounts','Subtotal','Calculated','ProfitToDate','Text','Spacer')`),
+  displayCheck: check('report_rows_display_check', sql`${table.balanceDisplay} IN ('Net','Debit','Credit','DebitBalances','CreditBalances','Split')`),
+  tenantIsolationPolicy: tenantPolicy('report_rows_tenant_isolation', table),
+})).enableRLS();
+
+// What an Accounts row contains. Includes are united, then Excludes are removed ("Operating expenses excluding Depreciation").
+export const reportRowSelectors = pgTable('report_row_selectors', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  reportRowId: uuid('report_row_id').notNull(),
+  mode: text('mode').notNull().default('Include'), // 'Include' | 'Exclude'
+  selectorType: text('selector_type').notNull(), // 'Account' | 'ParentRollup' | 'Range' | 'Type' | 'Role'
+  accountId: uuid('account_id'),
+  rangeStart: text('range_start'),
+  rangeEnd: text('range_end'),
+  accountType: text('account_type'),
+  systemKey: text('system_key'),
+}, (table) => ({
+  companyIdIdx: index('report_row_selectors_company_id_idx').on(table.companyId),
+  rowIdx: index('report_row_selectors_row_idx').on(table.reportRowId),
+  rowFk: foreignKey({ name: 'report_row_selectors_row_company_fk', columns: [table.reportRowId, table.companyId], foreignColumns: [reportRows.id, reportRows.companyId] }),
+  accountFk: foreignKey({ name: 'report_row_selectors_account_company_fk', columns: [table.accountId, table.companyId], foreignColumns: [companyAccounts.id, companyAccounts.companyId] }),
+  systemKeyFk: foreignKey({ name: 'report_row_selectors_system_key_fk', columns: [table.systemKey], foreignColumns: [systemAccounts.key] }),
+  modeCheck: check('report_row_selectors_mode_check', sql`${table.mode} IN ('Include','Exclude')`),
+  typeCheck: check('report_row_selectors_type_check', sql`${table.selectorType} IN ('Account','ParentRollup','Range','Type','Role')`),
+  shapeCheck: check('report_row_selectors_shape_check', sql`
+    (${table.selectorType} IN ('Account','ParentRollup') AND ${table.accountId} IS NOT NULL)
+    OR (${table.selectorType} = 'Range' AND ${table.rangeStart} IS NOT NULL AND ${table.rangeEnd} IS NOT NULL)
+    OR (${table.selectorType} = 'Type' AND ${table.accountType} IN ('Asset','Liability','Equity','Revenue','Expense'))
+    OR (${table.selectorType} = 'Role' AND ${table.systemKey} IS NOT NULL)`),
+  tenantIsolationPolicy: tenantPolicy('report_row_selectors_tenant_isolation', table),
+})).enableRLS();
+
+export const reportColumns = pgTable('report_columns', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  reportDefinitionId: uuid('report_definition_id').notNull(),
+  columnNumber: integer('column_number').notNull(),
+  label: text('label').notNull(),
+  labelAr: text('label_ar'),
+  columnKind: text('column_kind').notNull().default('Value'), // 'Value' | 'Variance' | 'Percent'
+  periodBasis: text('period_basis').notNull().default('CurrentPeriod'), // CurrentPeriod | YearToDate | PriorPeriod | PriorYear | AsAtEnd | AsAtPriorYearEnd | AsAtPriorPeriodEnd | CustomRange
+  customFrom: text('custom_from'),
+  customTo: text('custom_to'),
+  valueBasis: text('value_basis').notNull().default('Movement'), // 'Debit' | 'Credit' | 'Movement' | 'OpeningBalance' | 'ClosingBalance'
+  presentation: text('presentation').notNull().default('Single'), // 'Single' | 'DrCr' (a debit and a credit sub-column)
+  dimensionFilter: jsonb('dimension_filter'),
+  refColumnA: integer('ref_column_a'), // Variance / Percent: column A minus column B (percent of B)
+  refColumnB: integer('ref_column_b'),
+  format: jsonb('format').notNull().default(sql`'{}'::jsonb`),
+}, (table) => ({
+  companyIdIdx: index('report_columns_company_id_idx').on(table.companyId),
+  definitionIdx: index('report_columns_definition_idx').on(table.reportDefinitionId),
+  numberUnique: uniqueIndex('report_columns_definition_number_unique').on(table.reportDefinitionId, table.columnNumber),
+  definitionFk: foreignKey({ name: 'report_columns_definition_company_fk', columns: [table.reportDefinitionId, table.companyId], foreignColumns: [reportDefinitions.id, reportDefinitions.companyId] }),
+  kindCheck: check('report_columns_kind_check', sql`${table.columnKind} IN ('Value','Variance','Percent')`),
+  periodCheck: check('report_columns_period_check', sql`${table.periodBasis} IN ('CurrentPeriod','YearToDate','PriorPeriod','PriorYear','AsAtEnd','AsAtPriorYearEnd','AsAtPriorPeriodEnd','CustomRange')`),
+  valueCheck: check('report_columns_value_check', sql`${table.valueBasis} IN ('Debit','Credit','Movement','OpeningBalance','ClosingBalance')`),
+  presentationCheck: check('report_columns_presentation_check', sql`${table.presentation} IN ('Single','DrCr')`),
+  tenantIsolationPolicy: tenantPolicy('report_columns_tenant_isolation', table),
+})).enableRLS();

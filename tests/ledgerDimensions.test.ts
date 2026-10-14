@@ -8,6 +8,7 @@ import { generateId } from '../src/id.js';
 import { provisionStarterResources } from '../server/lib/companyProvisioning.js';
 import { postJournalEntry } from '../server/lib/ledger.js';
 import { purgeCompany } from './helpers/purgeCompany.js';
+import { trialBalance } from './helpers/ledgerReports.js';
 
 // General Ledger Step 1.5, slice 1: dynamic dimensions. Real HTTP against the running server and real Postgres, no mocks. Two companies prove nothing leaks.
 const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
@@ -248,7 +249,7 @@ describe('tagging postings: manual journals', () => {
     expect((await gl({ [profit.id]: [profit.other] })).body.totals.debit).toBe(0);
     expect((await gl({ [dept]: [deptOpts.digital], [profit.id]: [profit.other] })).body.totals.debit).toBe(0); // both must match
     expect((await gl({ [dept]: [generateId()] })).status).toBe(400);
-    const tb = (await get(A.admin, `/api/ledger/reports/trial-balance?from=${TODAY.slice(0, 8)}01&to=${TODAY}&dims=${encodeURIComponent(JSON.stringify({ [dept]: [deptOpts.digital] }))}`)).body;
+    const tb = await trialBalance(A.admin, `${TODAY.slice(0, 8)}01`, TODAY, { [dept]: [deptOpts.digital] });
     expect(tb.rows.find((r: any) => r.code === '6200').debit).toBe(200);
     const list = (await get(A.admin, `/api/ledger/journals?dims=${encodeURIComponent(JSON.stringify({ [profit.id]: [profit.kid] }))}`)).body;
     expect(list.rows.map((r: any) => r.id)).toContain(mk.body.id);

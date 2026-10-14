@@ -7,6 +7,7 @@ import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { seedCompanyChart } from '../server/lib/chartOfAccounts.js';
 import { seedCompanyDimensions } from '../server/lib/dimensions.js';
+import { seedCompanyReportDefinitions } from '../server/lib/reportDefinitions.js';
 
 const APPLY = process.argv.includes('--apply');
 const ci = process.argv.indexOf('--company');
@@ -22,6 +23,7 @@ for (const c of companies) {
     const had = Number(before.rows[0].n);
     const seeded = await seedCompanyChart(tx, c.id);
     await seedCompanyDimensions(tx, c.id);
+    await seedCompanyReportDefinitions(tx, c.id);
     // Stamp the lines that never got an account: by the bank's own account first, then by the role's account.
     const byBank: any = await tx.execute(sql`
       UPDATE journal_lines l SET account_id = a.id FROM company_accounts a

@@ -3,6 +3,7 @@ import { generateId } from '../../src/id.js';
 import { buildCompactA4Layout, DETAILED_TAX_INVOICE_LAYOUT } from '../../src/documentTemplateDefaults.js';
 import { getAndIncrementDocumentNumber } from './documentNumbering.js';
 import { seedCompanyDimensions } from './dimensions.js';
+import { seedCompanyReportDefinitions } from './reportDefinitions.js';
 import { seedCompanyChart } from './chartOfAccounts.js';
 
 // Server-side, atomic equivalent of AdminSettings.tsx's handleAddCompany starter-resource
@@ -167,4 +168,6 @@ export async function provisionStarterResources(tx: any, params: { companyId: st
   await seedCompanyChart(tx, companyId);
   // Branch and Department dimensions (Blueprint FR-DIM-01).
   await seedCompanyDimensions(tx, companyId);
+  // Trial Balance, Income Statement and Balance Sheet as editable report definitions built from the chart.
+  await seedCompanyReportDefinitions(tx, companyId);
 }

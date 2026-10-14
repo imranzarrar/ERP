@@ -32,6 +32,7 @@ import ledgerJournalsRouter from './server/routes/ledgerJournals.js';
 import ledgerReportsRouter from './server/routes/ledgerReports.js';
 import ledgerOpeningRouter from './server/routes/ledgerOpening.js';
 import ledgerDimensionsRouter from './server/routes/ledgerDimensions.js';
+import ledgerReportDefsRouter from './server/routes/ledgerReportDefs.js';
 import posRouter from './server/routes/pos.js';
 import zatcaRouter from './server/routes/zatca.js';
 import inventoryRouter from './server/routes/inventory.js';
@@ -881,6 +882,7 @@ async function startServer() {
   app.use('/api/ledger', ledgerReportsRouter);
   app.use('/api/ledger', ledgerOpeningRouter);
   app.use('/api/ledger', ledgerDimensionsRouter);
+  app.use('/api/ledger', ledgerReportDefsRouter);
   app.use('/api/pos', posRouter);
   app.use('/api/zatca', zatcaRouter);
   app.use('/api/inventory', inventoryRouter);

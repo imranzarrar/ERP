@@ -7,6 +7,7 @@ import * as schema from '../src/db/schema.js';
 import { generateId } from '../src/id.js';
 import { provisionStarterResources } from '../server/lib/companyProvisioning.js';
 import { purgeCompany } from './helpers/purgeCompany.js';
+import { defaultDefinitionId, runReport, trialBalance } from './helpers/ledgerReports.js';
 
 // General Ledger Step 1, groups C/D/E: manual journals with maker-checker approval, the journal listing and entry detail, the ledger reports and
 // Opening Balances. Real HTTP against the running server and real Postgres, no mocks. A second company proves nothing crosses over.
@@ -293,7 +294,7 @@ describe('ledger reports', () => {
   });
 
   it('Trial Balance (ledger) balances and ties to the General Ledger', async () => {
-    const tb = (await get(appr, `/api/ledger/reports/trial-balance?from=${D('01')}&to=${TODAY}`)).body;
+    const tb = await trialBalance(appr, D('01'), TODAY);
     expect(tb.balanced).toBe(true);
     expect(tb.totals.debit).toBeCloseTo(tb.totals.credit, 2);
     const exp = tb.rows.find((r: any) => r.code === '6200');
@@ -302,10 +303,11 @@ describe('ledger reports', () => {
     expect(exp.closing).toBeCloseTo(gl.closing, 2);
     const head = tb.rows.find((r: any) => r.code === '6000');
     expect(head.debit).toBeGreaterThanOrEqual(exp.debit);
-    expect((await get(B.admin, `/api/ledger/reports/trial-balance?from=${D('01')}&to=${TODAY}`)).body.totals.debit).toBe(0);
-    expect((await get(appr, `/api/ledger/reports/trial-balance?from=${TODAY}&to=${D('01')}`)).status).toBe(400);
-    expect((await get(prep, '/api/ledger/reports/trial-balance')).status).toBe(403);
-    expect((await get(appr, `/api/ledger/reports/trial-balance/export?from=${D('01')}&to=${TODAY}`)).status).toBe(200);
+    expect((await trialBalance(B.admin, D('01'), TODAY)).totals.debit).toBe(0);
+    const tbId = await defaultDefinitionId(appr, 'TrialBalance');
+    expect((await runReport(appr, tbId, { from: TODAY, to: D('01') })).status).toBe(400);
+    expect((await runReport(prep, tbId, { from: D('01'), to: TODAY })).status).toBe(403);
+    expect((await get(appr, `/api/ledger/report-definitions/${tbId}/export?from=${D('01')}&to=${TODAY}`)).status).toBe(200);
   });
 
   it('Ledger vs Documents separates manual journals from document postings', async () => {
@@ -380,7 +382,7 @@ describe('opening balances', () => {
     const [entry] = await db.select().from(schema.journalEntries).where(eq(schema.journalEntries.id, done.body.journalEntryId));
     expect(entry.referenceType).toBe('Opening');
     expect((await post(C.admin, '/api/ledger/opening-balances/post', { ...body(), confirm: true })).status).toBe(400); // second live run
-    const tb = (await get(C.admin, `/api/ledger/reports/trial-balance?from=${D('01')}&to=${TODAY}`)).body;
+    const tb = await trialBalance(C.admin, D('01'), TODAY);
     expect(tb.balanced).toBe(true);
     expect(tb.rows.find((r: any) => r.code === '3010').closing).toBe(-7000);
     const list = (await get(C.admin, '/api/ledger/opening-balances')).body;
@@ -395,7 +397,7 @@ describe('opening balances', () => {
     expect((await post(B.admin, `/api/ledger/opening-balances/${run.id}/reverse`, { reason: 'x' })).status).toBe(404); // another company
     expect((await post(C.admin, `/api/ledger/opening-balances/${run.id}/reverse`, { reason: 'Wrong bank balance' })).status).toBe(200);
     expect((await post(C.admin, `/api/ledger/opening-balances/${run.id}/reverse`, { reason: 'again' })).status).toBe(400);
-    const tb = (await get(C.admin, `/api/ledger/reports/trial-balance?from=${D('01')}&to=${TODAY}`)).body;
+    const tb = await trialBalance(C.admin, D('01'), TODAY);
     expect(tb.rows.find((r: any) => r.code === '3010')?.closing || 0).toBe(0);
     const again = await post(C.admin, '/api/ledger/opening-balances/post', { ...body({ lines: [{ accountId: cId.bank, debit: 4000 }, { accountId: cId.capital, credit: 4000 }] }), confirm: true });
     expect(again.status).toBe(200);
@@ -429,7 +431,7 @@ describe('expenses post to the account their category is mapped to', () => {
     const onGovt = all.map(x => x.journal_lines).filter(x => x.accountId === govt.id);
     expect(onGovt.reduce((sum, x) => sum + Number(x.debit) - Number(x.credit), 0)).toBeCloseTo(0, 2);
     // and the ledger reports see the split
-    const tb = (await get(appr, `/api/ledger/reports/trial-balance?from=${D('01')}&to=${TODAY}`)).body;
+    const tb = await trialBalance(appr, D('01'), TODAY);
     expect(tb.rows.find((r: any) => r.code === '6410').debit).toBeCloseTo(100, 2);
   });
 });

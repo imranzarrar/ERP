@@ -118,6 +118,11 @@ router.delete('/:id', async (req: any, res) => {
 
       // The general ledger: manual journals (and their trail), opening runs, the journal itself, then the company's chart. Self-references
       // (a reversal pointing at its original, an account at its parent) are cut first. No other table points at these.
+      // Report definitions: selectors, rows and columns, then the definitions.
+      await tx.delete(schema.reportRowSelectors).where(byCompany(schema.reportRowSelectors));
+      await tx.delete(schema.reportRows).where(byCompany(schema.reportRows));
+      await tx.delete(schema.reportColumns).where(byCompany(schema.reportColumns));
+      await tx.delete(schema.reportDefinitions).where(byCompany(schema.reportDefinitions));
       // Dimensions: tags on lines first (a line points at a combination), then the combinations, rules, values, types and cost centres.
       await tx.update(schema.manualJournalLines).set({ dimensionCombinationId: null }).where(byCompany(schema.manualJournalLines));
       await tx.update(schema.journalLines).set({ dimensionCombinationId: null }).where(byCompany(schema.journalLines));

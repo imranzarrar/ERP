@@ -252,6 +252,15 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
     ]
   },
   {
+    // Designing a report (rows, columns, formatting) is separate from viewing it; viewing each statement is its own `reports` leaf.
+    id: 'reportDefinitions', groupId: 'general_ledger', label: 'Report Designer (Trial Balance, P&L, Balance Sheet layouts)', leaves: [
+      { key: 'create', label: 'Create and Copy Report Definitions' },
+      { key: 'read', label: 'View Report Definitions' },
+      { key: 'update', label: 'Design Reports (rows, columns, formatting)' },
+      { key: 'delete', label: 'Deactivate Report Definitions' },
+    ]
+  },
+  {
     id: 'accountDimensionRules', groupId: 'general_ledger', label: 'Account Dimension Rules', leaves: [
       { key: 'read', label: 'View Account Dimension Rules' },
       { key: 'update', label: 'Assign Dimensions to Accounts' },
@@ -297,6 +306,9 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
       { key: 'generalLedger', label: 'General Ledger (account detail)' },
       { key: 'trialBalanceLedger', label: 'Trial Balance (Ledger)' },
       { key: 'ledgerReconciliation', label: 'Ledger vs Documents Report' },
+      { key: 'incomeStatementLedger', label: 'Income Statement (Ledger)' },
+      { key: 'balanceSheetLedger', label: 'Balance Sheet (Ledger)' },
+      { key: 'customLedgerReports', label: 'Custom Ledger Reports' },
       // Sales
       { key: 'salesRegister', label: 'Sales Register' },
       { key: 'itemWiseSales', label: 'Item-wise Sales Report' },

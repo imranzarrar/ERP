@@ -38,7 +38,8 @@ async function usageOf(tdb: any, companyId: string, accountId: string) {
 // ---- list ----
 router.get('/accounts', withTenantDb, async (req: any, res) => {
   try {
-    if (!hasPermission(req.user, 'chartOfAccounts.read') && !hasPermission(req.user, 'journals.create') && !hasPermission(req.user, 'accountMapping.read')) return fail(res, 403, 'Forbidden');
+    // the chart is also needed by whoever designs a report or sets dimension rules or reads a ledger report (they pick accounts)
+    if (!['chartOfAccounts.read', 'journals.create', 'accountMapping.read', 'reportDefinitions.update', 'reportDefinitions.create', 'accountDimensionRules.read', 'reports.generalLedger'].some(k => hasPermission(req.user, k))) return fail(res, 403, 'Forbidden');
     const tdb = tenantDb();
     const companyId = req.targetCompanyId;
     const accounts = await tdb.select().from(schema.companyAccounts).where(eq(schema.companyAccounts.companyId, companyId));
