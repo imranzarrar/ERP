@@ -11,4 +11,6 @@
 Guard: `tests/closedPeriodImmutability.test.ts` attempts every cancel, reversal, credit, return, payment, settlement and delete against a
 closed, filed period; each must be refused or leave the period unchanged, and the books must stay balanced.
 
-Considered and not adopted: ledger-based reports, a `cancelledAt` column, retroactive VAT correction of a closed quarter.
+Considered and not adopted: a `cancelledAt` column, retroactive VAT correction of a closed quarter.
+
+Ledger-based statements: the existing document-based reports stay the figures of record. Ledger-based statements (General Ledger Step 1.5, `docs/gl-step1-5-decisions.md`) run beside them and are cut over one at a time, as the Finance Core Blueprint's rollout step 4 prescribes, only after the two agree on every company.
