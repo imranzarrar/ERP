@@ -12,7 +12,7 @@ import { generateId } from '../src/id.js';
 // Take/Invoice — inventory (inventoryStocks/stockLedgerTransactions) and averageCost/
 // averageSalePrice always stay in the product's own base unit regardless of which unit a
 // transaction was entered in (server/lib/uomConversion.ts).
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 const CARTON_FACTOR = 12;
 

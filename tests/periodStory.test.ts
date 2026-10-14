@@ -11,7 +11,7 @@ import { purgeCompany } from './helpers/purgeCompany.js';
 // really happens thanks to the developer clock (server started with ALLOW_DEV_CLOCK=1; skipped when it is not): buy -> pay -> sell ->
 // collect -> credit -> return -> refund -> expense -> reverse -> accrue -> settle -> close month -> file VAT -> next quarter.
 // After every phase the whole rule set is checked through the consistency-check endpoint; the few hard figures are worked out by hand.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const PW = 'AutoTest_Pw_2026!';
 const NAME = 'Period Story Test Co';
 const now = new Date();

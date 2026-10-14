@@ -11,7 +11,7 @@ import { generateId } from '../src/id.js';
 // Postgres, no mocks — matches this project's established testing convention. Creates
 // its own throwaway company (via the real super-admin-gated POST /api/companies route,
 // exactly like the UI does) and tears everything down in afterAll.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let superAdminHomeCompanyId: string;

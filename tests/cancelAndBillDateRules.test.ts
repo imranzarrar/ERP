@@ -12,7 +12,7 @@ import { purgeCompany } from './helpers/purgeCompany.js';
 //     whose own month is already closed cannot be cancelled at all (it would drop out of that month's figures);
 //   * a purchase bill carries a mandatory date (the supplier's invoice date), validated like every other dated document, and a
 //     payment cannot predate the bill.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const PW = 'AutoTest_Pw_2026!';
 const NAME = 'Cancel And Bill Date Test Co';
 const now = new Date();

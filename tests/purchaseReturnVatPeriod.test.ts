@@ -12,7 +12,7 @@ import { purgeCompany } from './helpers/purgeCompany.js';
 // the period of the original bill. Two cases, both with bills dated in the PREVIOUS quarter and returns made
 // now: (a) the bill is still unpaid when the goods go back (its stored totals get reduced) and (b) the bill is
 // already paid (its stored totals are NOT reduced — the VAT claim used to be left standing forever).
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 const NAME = 'Return VAT Period Test Co';
 

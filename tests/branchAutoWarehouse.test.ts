@@ -16,7 +16,7 @@ import { generateId } from '../src/id.js';
 // Never fires on an edit to an existing branch, never overrides an explicitly-chosen
 // defaultWarehouseId, and still respects the "company's very first warehouse becomes its
 // default" rule identically to a manually-created warehouse.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

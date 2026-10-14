@@ -9,7 +9,7 @@ import { generateId } from '../src/id.js';
 // (a 1 MB logo was re-downloaded on every load and every post-save refresh); it carries a short
 // versioned address, the bytes come from a public, immutable-cached endpoint, and no write path may
 // ever overwrite the stored image with that address.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 // 1x1 transparent PNG
 const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';

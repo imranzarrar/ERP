@@ -13,7 +13,7 @@ import { generateId } from '../src/id.js';
 // enums, category-by-name resolution scoped to the caller's own company, barcode as the
 // re-import match key), the validate-then-commit split (nothing written until commit),
 // partial success (one bad row never blocks the others), and permission/company scoping.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

@@ -18,7 +18,7 @@ import { generateId } from '../src/id.js';
 // passwordResetTokens row is created either way (that's the actual account-activation
 // mechanism — see server/routes/onboarding.ts); resetUrl is only ever returned in the API
 // response as a manual fallback when the email genuinely couldn't be sent.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let superAdminHomeCompanyId: string;

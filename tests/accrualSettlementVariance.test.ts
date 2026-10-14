@@ -11,7 +11,7 @@ import { purgeCompany } from './helpers/purgeCompany.js';
 // "only the payment" of the accrued cost, EXCEPT for the difference — that difference is a real cost (or saving) which has to
 // reach the profit, otherwise the cash and the input VAT move while the P&L does not and the Balance Sheet is out by exactly
 // that net amount. The dashboard's Net Profit must also agree with the P&L when accruals are unsettled.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const PW = 'AutoTest_Pw_2026!';
 const NAME = 'Accrual Settlement Variance Test Co';
 const now = new Date();

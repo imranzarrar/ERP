@@ -11,7 +11,7 @@ import { purgeCompany } from './helpers/purgeCompany.js';
 // input VAT go back, and the SUPPLIER NOW OWES THE COMPANY that money. That refund due is a receivable — it must appear as its
 // own asset (not be netted into Accounts Payable: IAS 1.32 / IAS 32.42), otherwise the Balance Sheet and Trial Balance are out
 // by exactly the returned amount. A return against a bill that is NOT yet paid reduces what is owed instead (no receivable).
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const PW = 'AutoTest_Pw_2026!';
 const NAME = 'Vendor Credit Receivable Test Co';
 const today = new Date().toISOString().slice(0, 10);

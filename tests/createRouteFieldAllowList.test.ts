@@ -9,7 +9,7 @@ import { purgeCompany } from './helpers/purgeCompany.js';
 
 // The create routes build the stored row from the fields their screens send. A crafted request that names a server-owned field (ZATCA
 // state, status, created-by/at, numbers, the reversal/accrual links, the document type) must not be able to set it.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const PW = 'AutoTest_Pw_2026!';
 const NAME = 'Create Allow-list Test Co';
 const today = new Date().toISOString().slice(0, 10);

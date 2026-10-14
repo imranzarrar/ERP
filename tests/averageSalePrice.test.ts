@@ -12,7 +12,7 @@ import { generateId } from '../src/id.js';
 // catalog via productId (ItemCatalogSearch) — a free-typed line without productId never
 // contributes. Credit/Debit Notes deliberately do NOT unwind the average (forward-only,
 // same philosophy as GRN reversal not unwinding averageCost).
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

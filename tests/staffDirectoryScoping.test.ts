@@ -27,7 +27,7 @@ import { generateId } from '../src/id.js';
 // 4. users.fullName/users.phone: forced to null server-side whenever the account has a
 //    linked employeeId (the employees row stays the single source of truth), only ever
 //    stored directly when there's no employee link.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyAId: string;

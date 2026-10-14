@@ -11,7 +11,7 @@ import { generateId } from '../src/id.js';
 // plain admin locked to their own company vs a super-admin's companyId=all / explicit
 // companyId) — none of which had a dedicated HTTP-level test before this session's audit-log
 // scalability work (tests/auditLogPurge.test.ts only covers the purge route).
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyAId: string;

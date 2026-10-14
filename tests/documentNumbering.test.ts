@@ -21,7 +21,7 @@ import { getAndIncrementDocumentNumber, DOCUMENT_TYPE_REGISTRY } from '../server
 // the DISABLED path and status transitions via direct DB writes, not a real clearance
 // call). What IS proven here, with real Postgres state, is the architectural claim that
 // actually matters: getAndIncrementDocumentNumber never touches zatcaChainState at all.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

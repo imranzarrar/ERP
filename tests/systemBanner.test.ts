@@ -11,7 +11,7 @@ import { generateId } from '../src/id.js';
 // browser session is looking at right now) — every test that changes it restores it to
 // {enabled: false, message: ''} in afterAll so this file never leaves a real "maintenance"
 // banner active for anyone else.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let homeCompanyId: string;

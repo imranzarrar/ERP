@@ -13,7 +13,7 @@ import { generateId } from '../src/id.js';
 // row and re-parent it to Company A. Fixed by adding assertOwnsRow() (server/lib/authz.ts)
 // before each upsert. This test proves the fix blocks the attack AND that legitimate
 // same-company updates still work — both directions matter, not just the block.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyAId: string;

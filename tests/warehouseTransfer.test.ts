@@ -14,7 +14,7 @@ import { generateId } from '../src/id.js';
 // that accepts more than one foreign key from the client — both tenant (company) and
 // branch isolation, checked independently on both the dispatching side and the receiving
 // side, since they can legitimately be different users at different branches.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

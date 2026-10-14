@@ -11,7 +11,7 @@ import { purgeCompany } from './helpers/purgeCompany.js';
 // average folded in when an invoice is created. A cancelled or credited sale must come back OUT of it exactly,
 // otherwise the report counts sales that no longer stand. A service product is used so the book needs no stock,
 // and the three sales are at deliberately different prices so a wrong reversal could not accidentally match.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 const NAME = 'Sales Average Unwind Test Co';
 const today = new Date().toISOString().slice(0, 10);

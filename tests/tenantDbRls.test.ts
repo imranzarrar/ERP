@@ -19,7 +19,7 @@ import { generateId } from '../src/id.js';
 // This is the test that would have caught the confirmed drizzle-kit 0.31.10 bug (silently
 // dropping the policy's USING/WITH CHECK predicate) had it not been caught by manual
 // pg_policy inspection first.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyAId: string;

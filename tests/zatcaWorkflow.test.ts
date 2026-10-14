@@ -12,7 +12,7 @@ import { readInvoiceXml } from '../server/lib/zatca/xmlStorage.js';
 // real HTTP requests and real DB state, not mocks. All fixtures are created under one
 // dedicated throwaway company and torn down in afterAll, so this never touches the
 // seeded demo companies (CNC Woodcraft & Design, etc.) used for manual QA.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

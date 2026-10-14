@@ -12,7 +12,7 @@ import { generateId } from '../src/id.js';
 // deletion routine's dependency chain (product, employee/branch, invoice+line item,
 // purchase-order-to-GRN chain), then exercises the whole registration-status +
 // "Delete Company & All Data" lifecycle end-to-end.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let superAdminHomeCompanyId: string;

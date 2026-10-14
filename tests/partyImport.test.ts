@@ -15,7 +15,7 @@ import { generateId } from '../src/id.js';
 // a DIFFERENT existing party is a conflict (rejected, never silently updated), not a fallback
 // update target. Both entities share one implementation, so this file runs the same suite
 // against both /master-import/customers/* and /master-import/vendors/*.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 const VALID_VAT_1 = '300012345600003';

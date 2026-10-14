@@ -12,7 +12,7 @@ import { generateId } from '../src/id.js';
 // POST /api/users, and the forced-password-change flow (mustChangePassword flag set by an
 // admin-driven password change, surfaced on login, cleared by the new self-service
 // POST /api/auth/change-password route).
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

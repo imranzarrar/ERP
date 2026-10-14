@@ -21,7 +21,7 @@ import { generateId } from '../src/id.js';
 // inventory_stocks, stock_ledger_transactions — the latter specifically called out during
 // planning as a high-volume table that had zero indexes at all before this rollout) and a
 // category-B child table scoped via its parent (goods_receipt_note_items).
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyAId: string;

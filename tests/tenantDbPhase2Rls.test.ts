@@ -20,7 +20,7 @@ import { generateId } from '../src/id.js';
 // visibly rejected), and (2) the database itself enforces isolation via a raw
 // erp_app_tenant connection with no WHERE clause. It also smoke-tests every other
 // migrated GET endpoint to confirm the withTenantDb wiring didn't break at runtime.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyAId: string;

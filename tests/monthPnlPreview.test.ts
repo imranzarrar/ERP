@@ -13,7 +13,7 @@ import { purgeCompany } from './helpers/purgeCompany.js';
 //   * revenue is tax-exclusive, expenses are net of recoverable VAT;
 //   * a credit note takes revenue back out of the including-pending view always, and out of the paid view only when the invoice
 //     it reverses was counted as paid there (a credit note against an unpaid invoice cancels a receivable never collected).
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const PW = 'AutoTest_Pw_2026!';
 const NAME = 'Month PnL Preview Test Co';
 const today = new Date().toISOString().slice(0, 10);

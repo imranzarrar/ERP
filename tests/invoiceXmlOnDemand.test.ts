@@ -10,7 +10,7 @@ import { readInvoiceXml } from '../server/lib/zatca/xmlStorage.js';
 // invoice list — rows carry a `hasXml` flag, and the document itself is fetched on demand
 // from GET /api/transactions/invoices/:id/xml. Real HTTP + real Postgres, no mocks, one
 // throwaway company (plus a second one for the cross-tenant check), torn down in afterAll.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 interface Tenant { companyId: string; userId: string; sessionId: string; customerId: string; taxSlabId: string; bankId: string }

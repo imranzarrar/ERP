@@ -22,7 +22,7 @@ import { processInvoiceZatca } from '../server/lib/zatca/processInvoice.js';
 // true so the guarded code path is actually exercised, but the guard aborts before any
 // hash-chain reservation, XML signing, or real network call — no ZATCA sandbox
 // credentials are needed for this test to be meaningful.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

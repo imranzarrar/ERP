@@ -10,7 +10,7 @@ import { generateId } from '../src/id.js';
 // held-invoices, and returnable-invoices routes onto tenantDb() — POST /returns is
 // deliberately deferred (fire-and-forget processInvoiceZatca, same category as
 // transactions.ts's own deferred routes; see that route's own comment).
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyAId: string;

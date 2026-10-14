@@ -15,7 +15,7 @@ import { generateId } from '../src/id.js';
 // processInvoiceZatca sets for a company with zatcaEnabled: false) rather than staying
 // at 'NOT_SUBMITTED'. Real HTTP against the already-running dev server + real Postgres,
 // no mocks, matching this project's established testing convention.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

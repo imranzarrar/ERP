@@ -17,7 +17,7 @@ import { generateId } from '../src/id.js';
 // the sequential-filing-order test (arbitrary past quarters with zero underlying data) —
 // kept separate so its quarter rows never count as "earlier rows" against companyId's
 // own filing of the current quarter.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 const now = new Date();

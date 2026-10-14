@@ -9,7 +9,7 @@ import { generateId } from '../src/id.js';
 // localhost:3000) + real Postgres state, matching this project's established
 // no-mocks testing practice. Dedicated throwaway company/users, torn down in afterAll —
 // never touches the seeded demo companies used for manual QA.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

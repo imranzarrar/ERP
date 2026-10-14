@@ -11,7 +11,7 @@ import { generateId } from '../src/id.js';
 // leaving recent rows untouched, refused for a company admin and, for a super-admin, applied across every company — this route had never been exercised by an automated test
 // before. This is the one intentional exception to every other soft-delete conversion in this
 // session's audit pass: audit-log retention pruning is meant to be a real, permanent DELETE.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyAId: string;

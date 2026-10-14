@@ -11,7 +11,7 @@ import { generateId } from '../src/id.js';
 // (2) the ghost-row bug fix in isAuthenticated's non-cookie branch, (3) that the fix does NOT
 // regress BACKLOG.md item 64's super-admin company-switch persistence over the x-session-id
 // path, and (4) the new admin session list/revoke routes (server/routes/sessions.ts).
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyAId: string;

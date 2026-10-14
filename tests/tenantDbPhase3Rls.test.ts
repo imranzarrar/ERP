@@ -17,7 +17,7 @@ import { generateId } from '../src/id.js';
 // itself enforces isolation via a raw erp_app_tenant connection with no WHERE clause —
 // for both a direct company-scoped table (expenses) and a category-B child table scoped
 // via its parent (quotationItems, scoped through quotations).
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyAId: string;

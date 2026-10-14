@@ -13,7 +13,7 @@ import { purgeCompany } from './helpers/purgeCompany.js';
 // shape of the first production company (credit note + cancellation + bill) and guards three defects that
 // shipped in the reports: P&L revenue included VAT, Net Cash Flow ignored refunds and supplier payments,
 // and the Balance Sheet did not balance (missing VAT/fixed-asset lines and unclosed-period earnings).
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 const NAME = 'Reports Reconcile Test Co';
 

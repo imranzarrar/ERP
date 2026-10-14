@@ -10,7 +10,7 @@ import { generateId } from '../src/id.js';
 // testing practice (see tests/nonTransactionalSync.test.ts, tests/zatcaWorkflow.test.ts).
 // Dedicated throwaway companies/users, torn down in afterAll — never touches the seeded
 // demo companies used for manual QA.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyAId: string;

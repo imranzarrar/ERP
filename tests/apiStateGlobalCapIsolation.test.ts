@@ -22,7 +22,7 @@ import { generateId } from '../src/id.js';
 // value only ever set for testing. It bulk-inserts enough rows for a "noisy" company to
 // exceed 500, all more recently created than a "small" company's own rows, and asserts
 // the small company's own /api/state still returns its own data intact.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 const NOISY_COMPANY_INVOICE_COUNT = 520;
 

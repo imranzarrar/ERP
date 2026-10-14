@@ -10,7 +10,7 @@ import { generateId } from '../src/id.js';
 // Bills module (BACKLOG.md) — specifically the Tier-1 "3-way match" control: a bill's
 // totals are computed server-side from the GRN it references (never trusted from the
 // client), and a GRN can only ever be billed once.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

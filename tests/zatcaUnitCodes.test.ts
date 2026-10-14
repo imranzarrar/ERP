@@ -17,7 +17,7 @@ import { readInvoiceXml } from '../server/lib/zatca/xmlStorage.js';
 // previously-hardcoded 'PCE'. The generated XML is also written to a scratch file for a
 // subsequent real `fatoora -validate` dual-gate run (this project's established ZATCA
 // verification standard — see CLAUDE.md and docs/zatca/sandbox-qa-test-plan.html).
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

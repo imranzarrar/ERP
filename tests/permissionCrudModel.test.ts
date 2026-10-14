@@ -13,7 +13,7 @@ import { generateId } from '../src/id.js';
 // deactivate-toggle-as-delete, the dedicated quotation isCancelled flag (separate from
 // its phase `status`), and the ZATCA-cleared-invoice immutability guard that applies
 // regardless of permission.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

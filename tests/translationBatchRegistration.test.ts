@@ -7,7 +7,7 @@ import { generateId } from '../src/id.js';
 
 // Real HTTP against the running dev server + real Postgres. Covers the batched missing-key
 // endpoint the browser now uses (one request for every missing key instead of one per key).
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 const PREFIX = `zz batch key ${generateId().slice(0, 8)} `;
 

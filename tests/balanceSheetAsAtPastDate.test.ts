@@ -12,7 +12,7 @@ import { purgeCompany } from './helpers/purgeCompany.js';
 // sheet stopped balancing for every past date as soon as the next period had any payments in it.
 //   previous month P:  a service invoice (230, unpaid), an expense (115, unpaid), an accrual (230 estimate, owed at its net 200)
 //   this month (today): the invoice is collected, the expense is paid, the accrual is settled by its real invoice (230, paid)
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const PW = 'AutoTest_Pw_2026!';
 const NAME = 'Balance Sheet As-At Test Co';
 const now = new Date();

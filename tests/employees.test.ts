@@ -11,7 +11,7 @@ import { generateId } from '../src/id.js';
 // adopted rule on POST /users, and the optional salesAssociateId attribution field on
 // invoices — see the approved plan (jobTitles/employees tables, users.employeeId,
 // invoices.salesAssociateId).
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

@@ -13,7 +13,7 @@ import { generateId } from '../src/id.js';
 // former pure client-side handlers onto real per-record REST routes. Dedicated
 // throwaway company/user/bank/vendor/tax-slab fixture, torn down in afterAll — never
 // touches the seeded demo companies used for manual QA.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

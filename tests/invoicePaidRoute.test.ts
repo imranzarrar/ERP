@@ -15,7 +15,7 @@ import { generateId } from '../src/id.js';
 // All fixtures live under one dedicated throwaway company, torn down in afterAll — this
 // never touches the seeded demo companies (e.g. "CNC Woodcraft & Design") used for
 // manual QA.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

@@ -16,7 +16,7 @@ import { generateId } from '../src/id.js';
 // acting user right after the action and asserts it has the correct action name, a real
 // (or correctly-null, for fiscal months) entity_id, and a document-number-bearing details
 // blob — the only way to actually prove this rather than just asserting it compiles.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

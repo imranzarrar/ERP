@@ -21,7 +21,7 @@ import { generateId } from '../src/id.js';
 // POST /api/auth/reset-password (token consumption) has no SMTP dependency and is
 // covered fully below via directly-inserted token rows, mirroring how other tests in
 // this suite set up fixtures straight through the DB rather than only through the API.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

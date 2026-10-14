@@ -21,7 +21,7 @@ import { generateId } from '../src/id.js';
 // the persisted session (req.session.companyId) when no explicit override is passed,
 // (3) a new POST /api/switch-company endpoint that persists the selection into the
 // session when a super-admin switches companies in the UI.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyAId: string;

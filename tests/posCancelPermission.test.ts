@@ -14,7 +14,7 @@ import { generateId } from '../src/id.js';
 // Fixed: the route now branches on the invoice's own isPosSale — pos.cancel for a POS
 // sale, invoice.delete for everything else. This test proves both halves of that split,
 // in both directions (a role with one leaf but not the other).
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

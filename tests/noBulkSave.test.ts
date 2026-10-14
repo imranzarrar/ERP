@@ -10,7 +10,7 @@ import { purgeCompany } from './helpers/purgeCompany.js';
 // There is no bulk-save endpoint. The old POST /api/migrate overwrote posted documents row by row with whatever the caller held, with no
 // closed-month or VAT-quarter rule, so a stale copy or an old backup could change a locked period. A posted document can only change through
 // its own route, which applies those rules.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const PW = 'AutoTest_Pw_2026!';
 const NAME = 'No Bulk Save Test Co';
 const today = new Date().toISOString().slice(0, 10);

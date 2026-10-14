@@ -16,7 +16,7 @@ import { generateId } from '../src/id.js';
 // `noWarehouseCompanyId` (starts with zero branches/warehouses, for the "nothing
 // configured yet" boundary cases), kept isolated so one company's warehouse setup can
 // never influence the other's resolution.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

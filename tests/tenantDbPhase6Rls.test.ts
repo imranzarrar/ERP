@@ -25,7 +25,7 @@ import { generateId } from '../src/id.js';
 // company, not the super-admin's own home/active company — POST /users is a permanent
 // exemption specifically so this legitimate cross-company write keeps working correctly
 // under RLS instead of being rejected by tenantDb's WITH CHECK.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyAId: string;

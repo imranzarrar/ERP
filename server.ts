@@ -45,7 +45,10 @@ import { devClockEnabled, runWithDevDate, setSessionDevDate, getSessionDevDate }
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  // Live (1.0) runs on 3000 with no PORT set; the 2.0 demo and a local second copy set PORT (and HOST=127.0.0.1 so the demo is never
+  // reachable from outside the machine except through Nginx or an SSH tunnel).
+  const PORT = Number(process.env.PORT) || 3000;
+  const HOST = process.env.HOST || '0.0.0.0';
 
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -182,6 +185,9 @@ async function startServer() {
   const SESSION_TTL_SECONDS = Number(process.env.SESSION_TTL_SECONDS) || 7 * 24 * 60 * 60;
 
   app.use(session({
+    // Distinct cookie name per environment: browsers share cookies across ports on the same host (localhost:3000 and localhost:4000),
+    // so two copies of the app using the same name would keep logging each other out.
+    name: process.env.SESSION_COOKIE_NAME || 'connect.sid',
     store: new ResilientSessionStore(),
     secret: process.env.SESSION_SECRET,
     resave: false,
@@ -1526,7 +1532,7 @@ Do NOT wrap the response in any introductory, markdown formatting (no \`\`\`json
     console.error("[Startup] Error during seeding check:", err);
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, HOST, () => {
     console.log(`Server running on http://localhost:${PORT}`);
     // Launches Chromium now instead of on the first real Download PDF request — see
     // pdfGenerator.ts's own comment for why (a cold-start launch is slow enough to trip

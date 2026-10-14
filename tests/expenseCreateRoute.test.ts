@@ -14,7 +14,7 @@ import { generateId } from '../src/id.js';
 // sends expenseNumber, so every new-expense creation from the actual UI 500'd outright.
 // Fixed by mirroring transactions.ts's isNew-counter pattern, plus stripping/restoring
 // expenseNumber/createdById/createdAt so a crafted request body can't inject them either.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

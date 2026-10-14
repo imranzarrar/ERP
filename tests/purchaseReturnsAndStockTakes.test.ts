@@ -9,7 +9,7 @@ import { generateId } from '../src/id.js';
 // matching this project's established no-mocks testing practice. Covers Purchase Returns
 // (Debit Notes) and Physical Stock Takes (BACKLOG.md) — both previously pure schema stubs
 // with zero backend/frontend implementation anywhere.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

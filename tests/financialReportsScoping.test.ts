@@ -12,7 +12,7 @@ import { generateId } from '../src/id.js';
 // correctly (a hand-computed reconciliation against known seeded amounts), and (2) two
 // companies' figures never cross-contaminate, matching this project's no-mocks,
 // real-HTTP-against-the-running-dev-server testing convention.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyAId: string;

@@ -14,7 +14,7 @@ import { generateId } from '../src/id.js';
 // silently making stock deduction dead code for every real product). Also covers the two
 // newly-added restock paths (Invoice cancel, Credit Note) that previously never touched
 // inventoryStocks at all.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

@@ -16,7 +16,7 @@ import { generateId } from '../src/id.js';
 // (server/routes/transactions.ts) — this test hits that route directly, not the
 // client-side src/dbStore.ts helpers (which deliberately do not re-implement the rule;
 // see the comments on closeMonth/openNewMonth there and BACKLOG.md item 35).
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

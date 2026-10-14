@@ -10,7 +10,7 @@ import { generateId } from '../src/id.js';
 // result), the `all=true` print/export path, the Stock Movement Ledger's SQL-level date/
 // warehouse/paging, the `?branchId=` filter that can only ever narrow a caller's own scope,
 // and the resolved document numbers on ledger rows.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyId: string;

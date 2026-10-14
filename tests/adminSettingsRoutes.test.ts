@@ -11,7 +11,7 @@ import { generateId } from '../src/id.js';
 // never touches the seeded demo companies used for manual QA. Covers the AdminSettings
 // Company/Banks/Tax Slabs/Investor handlers migrated off the generic /api/migrate blob
 // sync onto dedicated per-record routes.
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const TEST_PASSWORD = 'AutoTest_Pw_2026!';
 
 let companyAId: string;

@@ -12,7 +12,7 @@ import { purgeCompany } from './helpers/purgeCompany.js';
 // reversals, accruals, transfers, stock counts — closing each month and filing each quarter's VAT. After EVERY operation the whole rule set
 // (GET /api/reports/consistency-check) must hold and no operation may fail with a server error. A violation is reproducible from the seed:
 //   FUZZ_SEEDS=7,11 FUZZ_DAYS=100 npx vitest run tests/periodFuzz.test.ts
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const PW = 'AutoTest_Pw_2026!';
 const SEEDS = (process.env.FUZZ_SEEDS || '1,2,3').split(',').map(Number);
 const DAYS = Number(process.env.FUZZ_DAYS || 70);
