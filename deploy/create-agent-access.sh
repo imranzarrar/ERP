@@ -56,6 +56,8 @@ fi
 say "OS user $DEMO_USER (no password, no sudo)"
 if id "$DEMO_USER" >/dev/null 2>&1; then echo "exists — kept."; else adduser --disabled-password --gecos "Warraq 2.0 demo (managed by the assistant)" "$DEMO_USER" >/dev/null; fi
 chmod 750 "$DEMO_HOME"
+# adduser puts new users into the shared group `users` on this system; the demo user must not share a group with anyone.
+gpasswd -d "$DEMO_USER" users >/dev/null 2>&1 || true
 install -d -m 700 -o "$DEMO_USER" -g "$DEMO_USER" "$DEMO_HOME/.ssh" "$DEMO_HOME/apps"
 for g in $(id -nG "$DEMO_USER"); do case "$g" in sudo|admin|root|deploy) die "$DEMO_USER is in the privileged group '$g' — remove it first." ;; esac; done
 
@@ -121,12 +123,13 @@ if [ "$NEW_DEMO_ROLE" = "1" ] || [ ! -f "$STAGED" ]; then
       echo "SESSION_SECRET=$(rand)"; echo "ZATCA_KEY_ENCRYPTION_SECRET=$(rand)"
       echo "PORT=4000"; echo "HOST=127.0.0.1"; echo "SESSION_COOKIE_NAME=warraq2.sid"
       echo "APP_BASE_URL=http://localhost:4000"; echo "APP_ENV=demo"
-      [ -n "$CHROMIUM" ] && echo "PLAYWRIGHT_CHROMIUM_PATH=$CHROMIUM"
+      if [ -n "$CHROMIUM" ]; then echo "PLAYWRIGHT_CHROMIUM_PATH=$CHROMIUM"; fi
     } > "$STAGED" )
   chown "$DEMO_USER:$DEMO_USER" "$STAGED"; chmod 600 "$STAGED"
   echo "Written: $STAGED (no SMTP settings, no ZATCA live-call flag, new random secrets)."
 else
   echo "Staged file already exists — kept."
+  chown "$DEMO_USER:$DEMO_USER" "$STAGED"; chmod 600 "$STAGED"
 fi
 unset DEMO_PW RO_PW TENANT_PW 2>/dev/null || true
 
