@@ -22,3 +22,21 @@ describe('print keeps the anchored footer together', () => {
     expect(src).toMatch(/print:shadow-none print:border-0/);
   });
 });
+
+// The items table: the currency is written only in the line Subtotal column when the table has one (Unit Cost / Taxable / Tax Amount
+// are bare numbers, so the description gets the width), the Item Code column is dropped when no line has a code, and the last item line
+// shares an unbreakable row group with the footer row so a page holding the QR/totals always holds at least one item line.
+describe('items table layout and pagination', () => {
+  const src = readFileSync('src/components/DocumentRenderer.tsx', 'utf8');
+  it('writes the currency only on the Subtotal column of a table that has one', () => {
+    expect(src).toMatch(/const currencyOnSubtotalOnly = showLineSubtotal;/);
+    expect(src).toMatch(/fmtCell\(lineTaxable\)/);
+    expect(src).toMatch(/\{fmt\(lineTaxable \+ lineTax\)\}/);
+  });
+  it('hides the Item Code column when no line has a code', () => {
+    expect(src).toMatch(/showItemCodeCol = showItemCode && \(!compact \|\| items\.some/);
+  });
+  it('keeps the last item line and the footer row together', () => {
+    expect(src).toMatch(/<tbody style=\{\{ breakInside: 'avoid' \}\}>/);
+  });
+});

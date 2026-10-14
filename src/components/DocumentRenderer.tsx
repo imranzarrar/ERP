@@ -862,6 +862,25 @@ export default function DocumentRenderer({
   const anchorFooterToBottom = activeBlocks.some(b => footerBlockIds.includes(b.id) && b.props?.anchorBottom === true);
   const mainBlocks = anchorFooterToBottom ? activeBlocks.filter(b => !footerBlockIds.includes(b.id)) : activeBlocks;
   const footerBlocks = anchorFooterToBottom ? activeBlocks.filter(b => footerBlockIds.includes(b.id)) : [];
+  // Notes / QR / totals / footer text that follow the items table directly are drawn INSIDE the table, as its last row, instead of as
+  // separate grid cells below it. A separate cell can start a page of its own, which printed a final page holding only the QR code
+  // and totals. As the table's last row it cannot be separated from the last item line (see the table's own comment), so a
+  // document that runs onto a second page always carries at least one item line on that last page. Anchored (bottom-of-page)
+  // layouts keep their own footer container, so they are left as they were.
+  let tailBlocks: any[] = [];
+  // Anchored layouts: the LAST item line is drawn inside the footer container (set while the items table renders), so it cannot be
+  // separated from the QR/totals by a page break.
+  let anchoredTailRow: React.ReactNode = null;
+  let bodyBlocks = mainBlocks;
+  if (!anchorFooterToBottom) {
+    const tableAt = mainBlocks.findIndex(b => b.id === 'items_table');
+    if (tableAt >= 0) {
+      let end = tableAt + 1;
+      while (end < mainBlocks.length && footerBlockIds.includes(mainBlocks[end].id)) end++;
+      tailBlocks = mainBlocks.slice(tableAt + 1, end);
+      bodyBlocks = [...mainBlocks.slice(0, tableAt + 1), ...mainBlocks.slice(end)];
+    }
+  }
   // On screen this is an approximate "looks like a full sheet" height (the on-screen
   // width isn't literally physical inches, so exact precision doesn't matter there). The
   // print:-scoped value is NOT a guess, and is NOT the raw paper height — using the raw
@@ -1394,7 +1413,98 @@ export default function DocumentRenderer({
        // comment in documentTemplateDefaults.ts).
        const compact = block.props?.compact === true;
        const cellPad = compact ? 'py-0.5' : 'py-2.5';
+       // A table that has its own line Subtotal column shows the currency only there (and in the totals box): "SAR" repeated in every
+       // number column ate the width the description needs, so long descriptions wrapped onto 3-4 lines per row.
+       const currencyOnSubtotalOnly = showLineSubtotal;
+       const fmtCell = (v: number) => currencyOnSubtotalOnly ? Number(v).toFixed(2) : fmt(v);
+       // The Item Code column is only worth its width when at least one line has a code to show.
+       const lineCode = (item: any) => { const prod = item.productId ? db?.products?.find((p: any) => p.id === item.productId) : null; return prod?.sku || prod?.barcode || ''; };
+       const showItemCodeCol = showItemCode && (!compact || items.some((it: any) => lineCode(it)));
+       // Compact tables use tighter cells and narrower number columns so the description gets the room.
+       const px = compact ? 'px-1.5' : 'px-3';
+       // w-px + whitespace-nowrap makes a column shrink to exactly its widest text (header or number), so the number columns sit
+       // close together and the description takes everything that is left.
+       const wNo = compact ? 'w-px' : 'w-12';
+       const wCode = compact ? 'w-px' : 'w-20';
+       const wMoney = compact ? 'w-px' : 'w-24';
+       const wTax = compact ? 'w-px' : 'w-24';
+       const wQty = compact ? 'w-px' : 'w-20';
+       const wVat = compact ? 'w-px' : 'w-16';
+       const subLabel = compact ? 'block text-[9px] font-normal text-slate-200 mt-0.5 whitespace-normal' : 'block text-[10px] font-normal text-slate-200 mt-0.5';
+       const descFontClass = compact ? 'text-[9.5px] leading-tight break-words' : '';
+       const columnCount = (showSNo ? 1 : 0) + (showItemCodeCol ? 1 : 0) + 5 + (showTaxAmount ? 1 : 0) + (showLineSubtotal ? 1 : 0);
        const tableFontClass = block.props?.fontSize ? '' : (compact ? 'text-[10.5px]' : 'text-xs');
+
+       // The last line moves into the footer container on anchored layouts with more than one line (see anchoredTailRow).
+       const splitLastRow = anchorFooterToBottom && items.length > 1;
+       const bodyItems = splitLastRow ? items.slice(0, -1) : items;
+       const renderItemRow = (item: any, idx: number) => {
+            const itemNetCost = Math.max(0, (item.unitCost || 0) - (item.discountAmount || 0));
+            const stripeClass = rowStyle === 'stripe' && idx % 2 === 1 ? 'bg-slate-50/40' : '';
+            const itemRate = getItemTaxRate(item);
+            return (
+             // break-inside: avoid keeps one line from being cut across two pages.
+             <tr key={item.id} className={`border-b border-slate-100 ${stripeClass}`} style={{ breakInside: 'avoid' }}>
+              {showSNo && <td className={`${cellPad} ${px} text-center text-slate-500 ${wNo} whitespace-nowrap`}>{idx + 1}</td>}
+              {showItemCodeCol && (
+               // Free-typed lines (no productId — see invoiceItems.productId's schema
+               // comment) have no catalog code to show; blank rather than an error.
+               <td className={`${cellPad} ${px} text-center text-slate-500 ${wCode} whitespace-nowrap font-mono`}>{lineCode(item) || '—'}</td>
+              )}
+              <td className={`${cellPad} ${px} text-slate-800 font-medium ${isRTL ? 'text-end' : 'text-start'}`}>
+               <div className={descFontClass}>{item.description}</div>
+               {item.discountAmount > 0 && block.props?.showDiscount !== false && (
+                <div className="text-[10px] text-rose-500 font-semibold">
+                 Discounted -{fmt(item.discountAmount)} per unit
+                </div>
+               )}
+              </td>
+              <td className={`${cellPad} ${px} text-center text-slate-600 ${wMoney}`}>
+               {item.discountAmount > 0 ? (
+                // Two explicit stacked lines, not one nowrap-forced line — "77.00 SAR" +
+                // "76.00 SAR" together don't fit this column's width at normal invoice
+                // font size, and whitespace-nowrap on one line just forces an overflow/
+                // overlap instead of wrapping. block+text-xs keeps both numbers fully
+                // legible on their own line regardless of column width.
+                <div className="whitespace-nowrap">
+                 <div className="line-through text-slate-400 text-[10px]">{fmtCell(item.unitCost)}</div>
+                 <div className="font-bold text-slate-700">{fmtCell(itemNetCost)}</div>
+                </div>
+               ) : (
+                <span className="whitespace-nowrap">{fmtCell(item.unitCost)}</span>
+               )}
+              </td>
+              <td className={`${cellPad} ${px} text-center text-slate-600 ${wQty} whitespace-nowrap`}>
+               {item.quantity}
+               {/* The same unit code submitted to ZATCA in this invoice's XML
+                   (normalizeZatcaUnitCode, src/zatcaUnitCodes.ts) — always shown
+                   (including the PCE default) so the printed document and the ZATCA
+                   submission never silently disagree about what unit a line was sold
+                   in, and so it's directly visible during compliance verification. */}
+               <span className="text-[10px] text-slate-400 ms-1">{item.unit || 'PCE'}</span>
+              </td>
+              <td className={`${cellPad} ${px} text-center text-slate-600 ${wVat} whitespace-nowrap`}>{itemRate}%</td>
+              {(() => {
+               const lineTaxable = itemNetCost * item.quantity;
+               const lineTax = lineTaxable * (itemRate / 100);
+               return (
+                <>
+                 <td className={`${cellPad} ${px} text-slate-800 font-semibold ${wMoney} whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>{fmtCell(lineTaxable)}</td>
+                 {showTaxAmount && <td className={`${cellPad} ${px} text-slate-600 ${wTax} whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>{fmtCell(lineTax)}</td>}
+                 {showLineSubtotal && <td className={`${cellPad} ${px} text-slate-900 font-bold ${wMoney} whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>{fmt(lineTaxable + lineTax)}</td>}
+                </>
+               );
+              })()}
+             </tr>
+            );
+       };
+       if (splitLastRow) {
+        anchoredTailRow = (
+         <table className={`w-full ${tableFontClass} border-collapse`} style={{ tableLayout: 'fixed' }}>
+          <tbody>{renderItemRow(items[items.length - 1], items.length - 1)}</tbody>
+         </table>
+        );
+       }
 
        return (
         // The <table> itself used to hardcode text-xs unconditionally — since font-size
@@ -1406,107 +1516,69 @@ export default function DocumentRenderer({
         // correctly since <table> never set those. Only fall back to the default text-xs
         // when no explicit fontSize is configured, so the override actually takes effect
         // while the existing default (no override) appearance is unchanged.
-        <div key={block.id} className={`${blockColClass} overflow-x-auto ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
-         <table className={`w-full ${tableFontClass} border-collapse min-w-[500px]`}>
+        <div key={block.id} className={`${blockColClass} overflow-x-auto print:overflow-visible ${getBlockTypographyClasses(block)}`} style={getBlockStyle(block)}>
+         <table className={`w-full ${tableFontClass} border-collapse ${compact || splitLastRow ? '' : 'min-w-[500px]'}`} style={splitLastRow ? { tableLayout: 'fixed' } : undefined}>
           <thead>
            <tr className={theme.tableHeaderClass}>
-            {showSNo && <th className={`${cellPad} px-3 font-semibold text-center w-12 whitespace-nowrap`}>{t('S.No')}</th>}
-            {showItemCode && <th className={`${cellPad} px-3 font-semibold text-center w-20 whitespace-nowrap`}>
+            {showSNo && <th className={`${cellPad} ${px} font-semibold text-center ${wNo} whitespace-nowrap`}>{t('S.No')}</th>}
+            {showItemCodeCol && <th className={`${cellPad} ${px} font-semibold text-center ${wCode} whitespace-nowrap`}>
              {t('Item Code')}
-             {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">رمز الصنف</span>}
+             {isBilingual && <span className={subLabel}>رمز الصنف</span>}
             </th>}
-            <th className={`${cellPad} px-3 font-semibold ${isRTL ? 'text-end' : 'text-start'}`}>
+            <th className={`${cellPad} ${px} font-semibold ${isRTL ? 'text-end' : 'text-start'}`}>
              {t('Description')}
-             {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">الوصف / البند</span>}
+             {isBilingual && <span className={subLabel}>الوصف / البند</span>}
             </th>
-            <th className={`${cellPad} px-3 font-semibold text-center w-24 whitespace-nowrap`}>
+            <th className={`${cellPad} ${px} font-semibold text-center ${wMoney} whitespace-nowrap`}>
              {t('Unit Cost')}
-             {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">سعر الوحدة</span>}
+             {isBilingual && <span className={subLabel}>سعر الوحدة</span>}
             </th>
-            <th className={`${cellPad} px-3 font-semibold text-center w-20 whitespace-nowrap`}>
+            <th className={`${cellPad} ${px} font-semibold text-center ${wQty} whitespace-nowrap`}>
              {t('Quantity')}
-             {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">الكمية</span>}
+             {isBilingual && <span className={subLabel}>الكمية</span>}
             </th>
-            <th className={`${cellPad} px-3 font-semibold text-center w-16 whitespace-nowrap`}>
+            <th className={`${cellPad} ${px} font-semibold text-center ${wVat} whitespace-nowrap`}>
              {t('VAT %')}
-             {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">نسبة الضريبة</span>}
+             {isBilingual && <span className={subLabel}>نسبة الضريبة</span>}
             </th>
-            <th className={`${cellPad} px-3 font-semibold w-24 whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>
+            <th className={`${cellPad} ${px} font-semibold ${wMoney} whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>
              {amountColLabel}
-             {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">{amountColLabelAr}</span>}
+             {isBilingual && <span className={subLabel}>{amountColLabelAr}</span>}
             </th>
-            {showTaxAmount && <th className={`${cellPad} px-3 font-semibold w-24 whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>
+            {showTaxAmount && <th className={`${cellPad} ${px} font-semibold ${wTax} whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>
              {t('Tax Amount')}
-             {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">مبلغ الضريبة</span>}
+             {isBilingual && <span className={subLabel}>مبلغ الضريبة</span>}
             </th>}
-            {showLineSubtotal && <th className={`${cellPad} px-3 font-semibold w-24 whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>
+            {showLineSubtotal && <th className={`${cellPad} ${px} font-semibold ${wMoney} whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>
              {t('Subtotal')}
-             {isBilingual && <span className="block text-[10px] font-normal text-slate-200 mt-0.5">المجموع الفرعي</span>}
+             {isBilingual && <span className={subLabel}>المجموع الفرعي</span>}
             </th>}
            </tr>
           </thead>
-          <tbody>
-           {items.map((item: any, idx: number) => {
-            const itemNetCost = Math.max(0, (item.unitCost || 0) - (item.discountAmount || 0));
-            const stripeClass = rowStyle === 'stripe' && idx % 2 === 1 ? 'bg-slate-50/40' : '';
-            const itemRate = getItemTaxRate(item);
-            return (
-             <tr key={item.id} className={`border-b border-slate-100 ${stripeClass}`}>
-              {showSNo && <td className={`${cellPad} px-3 text-center text-slate-500 w-12 whitespace-nowrap`}>{idx + 1}</td>}
-              {showItemCode && (() => {
-               // Free-typed lines (no productId — see invoiceItems.productId's schema
-               // comment) have no catalog code to show; blank rather than an error.
-               const product = item.productId ? db?.products?.find((p: any) => p.id === item.productId) : null;
-               return <td className={`${cellPad} px-3 text-center text-slate-500 w-20 whitespace-nowrap font-mono`}>{product?.sku || product?.barcode || '—'}</td>;
-              })()}
-              <td className={`${cellPad} px-3 text-slate-800 font-medium ${isRTL ? 'text-end' : 'text-start'}`}>
-               <div>{item.description}</div>
-               {item.discountAmount > 0 && block.props?.showDiscount !== false && (
-                <div className="text-[10px] text-rose-500 font-semibold">
-                 Discounted -{fmt(item.discountAmount)} per unit
-                </div>
-               )}
+          {tailBlocks.length > 0 ? (
+           <>
+            <tbody>
+             {bodyItems.slice(0, -1).map((item: any, idx: number) => renderItemRow(item, idx))}
+            </tbody>
+            {/* The LAST item line and the footer row (QR, totals, footer text) share one row group that refuses to split. When they do
+                not fit under the other lines, the whole group starts the next page, so a page that holds the footer always holds at
+                least one item line too. Tested in headless Chrome from 10 to 80 lines on 1 to 3 pages: never a footer-only page. */}
+            <tbody style={{ breakInside: 'avoid' }}>
+             {bodyItems.length > 0 && renderItemRow(bodyItems[bodyItems.length - 1], bodyItems.length - 1)}
+             <tr style={{ breakInside: 'avoid' }}>
+              <td colSpan={columnCount} className="p-0 pt-2">
+               <div className={`grid grid-cols-12 gap-x-4 ${getGridGapClass()}`}>
+                {tailBlocks.map(renderBlock)}
+               </div>
               </td>
-              <td className={`${cellPad} px-3 text-center text-slate-600 w-24`}>
-               {item.discountAmount > 0 ? (
-                // Two explicit stacked lines, not one nowrap-forced line — "77.00 SAR" +
-                // "76.00 SAR" together don't fit this column's width at normal invoice
-                // font size, and whitespace-nowrap on one line just forces an overflow/
-                // overlap instead of wrapping. block+text-xs keeps both numbers fully
-                // legible on their own line regardless of column width.
-                <div className="whitespace-nowrap">
-                 <div className="line-through text-slate-400 text-[10px]">{fmt(item.unitCost)}</div>
-                 <div className="font-bold text-slate-700">{fmt(itemNetCost)}</div>
-                </div>
-               ) : (
-                <span className="whitespace-nowrap">{fmt(item.unitCost)}</span>
-               )}
-              </td>
-              <td className={`${cellPad} px-3 text-center text-slate-600 w-20 whitespace-nowrap`}>
-               {item.quantity}
-               {/* The same unit code submitted to ZATCA in this invoice's XML
-                   (normalizeZatcaUnitCode, src/zatcaUnitCodes.ts) — always shown
-                   (including the PCE default) so the printed document and the ZATCA
-                   submission never silently disagree about what unit a line was sold
-                   in, and so it's directly visible during compliance verification. */}
-               <span className="text-[10px] text-slate-400 ms-1">{item.unit || 'PCE'}</span>
-              </td>
-              <td className={`${cellPad} px-3 text-center text-slate-600 w-16 whitespace-nowrap`}>{itemRate}%</td>
-              {(() => {
-               const lineTaxable = itemNetCost * item.quantity;
-               const lineTax = lineTaxable * (itemRate / 100);
-               return (
-                <>
-                 <td className={`${cellPad} px-3 text-slate-800 font-semibold w-24 whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>{fmt(lineTaxable)}</td>
-                 {showTaxAmount && <td className={`${cellPad} px-3 text-slate-600 w-24 whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>{fmt(lineTax)}</td>}
-                 {showLineSubtotal && <td className={`${cellPad} px-3 text-slate-900 font-bold w-24 whitespace-nowrap ${isRTL ? 'text-start' : 'text-end'}`}>{fmt(lineTaxable + lineTax)}</td>}
-                </>
-               );
-              })()}
              </tr>
-            );
-           })}
-          </tbody>
+            </tbody>
+           </>
+          ) : (
+           <tbody>
+            {bodyItems.map((item: any, idx: number) => renderItemRow(item, idx))}
+           </tbody>
+          )}
          </table>
         </div>
        );
@@ -1810,13 +1882,16 @@ export default function DocumentRenderer({
   return (
    <div className={`flex flex-col justify-between ${anchorHeightClass} ${getGlobalFontClass()}`} id="printable-inner">
     <div className={`grid grid-cols-12 gap-x-4 ${getGridGapClass()}`}>
-     {mainBlocks.map(renderBlock)}
+     {bodyBlocks.map(renderBlock)}
     </div>
     {anchorFooterToBottom && (
      // print:break-inside-avoid keeps notes/QR/totals together: on a document just over one page the
      // totals box used to split, leaving a lone "Amount in Words" strip on an otherwise empty page 2.
-     <div className={`grid grid-cols-12 gap-x-4 print:break-inside-avoid ${getGridGapClass()}`}>
-      {footerBlocks.map(renderBlock)}
+     <div className="print:break-inside-avoid">
+      {anchoredTailRow}
+      <div className={`grid grid-cols-12 gap-x-4 ${getGridGapClass()}`}>
+       {footerBlocks.map(renderBlock)}
+      </div>
      </div>
     )}
    </div>
