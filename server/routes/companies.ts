@@ -118,6 +118,17 @@ router.delete('/:id', async (req: any, res) => {
 
       // The general ledger: manual journals (and their trail), opening runs, the journal itself, then the company's chart. Self-references
       // (a reversal pointing at its original, an account at its parent) are cut first. No other table points at these.
+      // Dimensions: tags on lines first (a line points at a combination), then the combinations, rules, values, types and cost centres.
+      await tx.update(schema.manualJournalLines).set({ dimensionCombinationId: null }).where(byCompany(schema.manualJournalLines));
+      await tx.update(schema.journalLines).set({ dimensionCombinationId: null }).where(byCompany(schema.journalLines));
+      await tx.delete(schema.dimensionCombinationEntries).where(byCompany(schema.dimensionCombinationEntries));
+      await tx.delete(schema.dimensionCombinations).where(byCompany(schema.dimensionCombinations));
+      await tx.delete(schema.accountDimensionRules).where(byCompany(schema.accountDimensionRules));
+      await tx.update(schema.dimensionValues).set({ parentValueId: null }).where(byCompany(schema.dimensionValues));
+      await tx.delete(schema.dimensionValues).where(byCompany(schema.dimensionValues));
+      await tx.delete(schema.dimensionTypes).where(byCompany(schema.dimensionTypes));
+      await tx.update(schema.costCenters).set({ parentId: null }).where(byCompany(schema.costCenters));
+      await tx.delete(schema.costCenters).where(byCompany(schema.costCenters));
       await tx.delete(schema.manualJournalEvents).where(byCompany(schema.manualJournalEvents));
       await tx.delete(schema.manualJournalLines).where(byCompany(schema.manualJournalLines));
       await tx.update(schema.manualJournals).set({ reversalOfId: null, reversedById: null }).where(byCompany(schema.manualJournals));

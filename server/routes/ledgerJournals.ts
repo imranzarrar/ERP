@@ -16,7 +16,8 @@ import { nowDate, todayStr } from '../lib/clock.js';
 import { postJournalEntry } from '../lib/ledger.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { validateTransactionDate, assertQuarterNotFiled, assertQuarterNotFrozen } from '../lib/businessLogic.js';
-import { branchIdsFor, round2, uuidArray } from '../lib/ledgerQueries.js';
+import { branchIdsFor, dimFilterSql, round2, uuidArray } from '../lib/ledgerQueries.js';
+import { applyRules, entitiesOfType, loadRules, loadTypes, parseDimFilters, resolveCombination, tagsOfCombinations, type Tags } from '../lib/dimensions.js';
 
 const router = express.Router();
 const fail = (res: any, status: number, error: string) => res.status(status).json({ error });
@@ -26,7 +27,7 @@ const VAT_ROLES = ['VAT_INPUT', 'VAT_OUTPUT', 'VAT_PAYABLE'];
 
 const canSee = (req: any) => hasPermission(req.user, 'journals.read') || hasPermission(req.user, 'journals.create') || hasPermission(req.user, 'journals.post');
 
-interface LineIn { accountId: string; debit: number; credit: number; note: string | null }
+interface LineIn { accountId: string; debit: number; credit: number; note: string | null; tags: Tags }
 
 // Validates the lines a client sent: shape, one side per line, and that every account is this company's own, active, a posting account (not a
 // heading) and not a control / bank account (those only move through the documents that own them).
@@ -43,7 +44,9 @@ async function checkLines(tdb: any, companyId: string, raw: any, requireBalanced
     if ((debit > 0) === (credit > 0)) return { ...empty, error: `Line ${i + 1}: enter either a debit or a credit amount, not both and not neither.` };
     if (debit > 999999999999 || credit > 999999999999) return { ...empty, error: `Line ${i + 1}: amount is too large.` };
     const note = String(r.note ?? '').trim().slice(0, 300) || null;
-    lines.push({ accountId: r.accountId, debit, credit, note });
+    const tags: Tags = {};
+    if (r.dimensions && typeof r.dimensions === 'object') for (const [k, v] of Object.entries(r.dimensions)) if (typeof v === 'string' && v) tags[k] = v;
+    lines.push({ accountId: r.accountId, debit, credit, note, tags });
   }
   const ids = [...new Set(lines.map(l => l.accountId))];
   const accounts = new Map<string, any>();
@@ -73,6 +76,28 @@ async function checkLines(tdb: any, companyId: string, raw: any, requireBalanced
 async function checkPeriod(companyId: string, date: string, touchesVat: boolean) {
   await validateTransactionDate(date, companyId);
   if (touchesVat) await assertQuarterNotFrozen(date, companyId); else await assertQuarterNotFiled(date, companyId);
+}
+
+// Resolves each line's dimension tags to a combination, through the account rules. A tag on a Not-allowed dimension is always an error; a Required tag that
+// is missing is an error only when the journal is being submitted or approved (a draft may be saved incomplete). Defaults fill the gaps.
+async function lineCombinations(tdb: any, req: any, companyId: string, lines: LineIn[], mode: 'draft' | 'strict'): Promise<(string | null)[]> {
+  const rules = await loadRules(tdb, companyId, lines.map(l => l.accountId));
+  const nameOf = new Map<string, string>((await loadTypes(tdb, companyId)).map((t: any) => [t.id, t.name]));
+  const out: (string | null)[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const r = rules.get(lines[i].accountId);
+    try {
+      for (const [typeId, info] of r || []) if (info.rule === 'not_allowed' && lines[i].tags[typeId]) throw Object.assign(new Error(`${nameOf.get(typeId) || 'This dimension'} is not allowed on this account.`), { status: 400 });
+      const tags = applyRules(r, lines[i].tags, mode === 'strict' ? 'strict' : 'defaults', { type: id => nameOf.get(id) || 'Dimension' });
+      out.push(await resolveCombination(tdb, companyId, tags, { allowedBranchIds: req.allowedBranchIds }));
+    } catch (e: any) { throw Object.assign(new Error(`Line ${i + 1}: ${e.message}`), { status: e.status || 400 }); }
+  }
+  return out;
+}
+// The stored lines of a journal, as rows carrying their tags (so the same rules can be re-applied at submit and at approval).
+async function storedLines(tdb: any, companyId: string, rows: any[]) {
+  const tags = await tagsOfCombinations(tdb, companyId, rows.map(l => l.dimensionCombinationId).filter(Boolean));
+  return rows.map(l => ({ accountId: l.accountId, debit: Number(l.debit), credit: Number(l.credit), note: l.note, dimensions: l.dimensionCombinationId ? tags.get(l.dimensionCombinationId) || {} : {} }));
 }
 
 async function loadJournal(tdb: any, companyId: string, id: string) {
@@ -112,12 +137,16 @@ async function journalDetail(tdb: any, req: any, j: any) {
   const relIds = [j.reversalOfId, j.reversedById].filter(Boolean) as string[];
   const rel = relIds.length ? await tdb.select({ id: schema.manualJournals.id, number: schema.manualJournals.number, status: schema.manualJournals.status }).from(schema.manualJournals).where(and(eq(schema.manualJournals.companyId, companyId), inArray(schema.manualJournals.id, relIds))) : [];
   const rMap = new Map<string, any>(rel.map((r: any) => [r.id, r]));
+  const comboTags = await tagsOfCombinations(tdb, companyId, lines.map((l: any) => l.dimensionCombinationId).filter(Boolean));
+  const dimTypes = await loadTypes(tdb, companyId);
+  const entityName = new Map<string, string>();
+  for (const t of dimTypes) for (const e of await entitiesOfType(tdb, companyId, t)) entityName.set(e.id, e.name);
   const selfApproval = await selfApprovalOn(tdb, companyId);
   return {
     ...j,
     preparedByName: uMap.get(j.preparedById) || null,
     decidedByName: j.decidedById ? uMap.get(j.decidedById) || null : null,
-    lines: lines.map((l: any) => { const a = aMap.get(l.accountId); return { id: l.id, accountId: l.accountId, accountCode: a?.code || '', accountName: a?.name || '', accountNameAr: a?.nameAr || null, debit: Number(l.debit), credit: Number(l.credit), note: l.note }; }),
+    lines: lines.map((l: any) => { const a = aMap.get(l.accountId); return { id: l.id, accountId: l.accountId, accountCode: a?.code || '', accountName: a?.name || '', accountNameAr: a?.nameAr || null, debit: Number(l.debit), credit: Number(l.credit), note: l.note, dimensions: comboTags.get(l.dimensionCombinationId) || {}, dimensionLabels: Object.entries(comboTags.get(l.dimensionCombinationId) || {}).map(([typeId, entityId]) => ({ typeId, typeName: dimTypes.find((t: any) => t.id === typeId)?.name || '', entityId, name: entityName.get(entityId as string) || '' })) }; }),
     totalDebit: round2(lines.reduce((s: number, l: any) => s + Number(l.debit), 0)),
     totalCredit: round2(lines.reduce((s: number, l: any) => s + Number(l.credit), 0)),
     events: events.map((e: any) => ({ id: e.id, action: e.action, userName: uMap.get(e.userId) || '', note: e.note, createdAt: e.createdAt })),
@@ -161,6 +190,7 @@ router.get('/journals', withTenantDb, async (req: any, res) => {
     const accountId = /^[0-9a-f-]{36}$/i.test(String(req.query.accountId || '')) ? String(req.query.accountId) : '';
     const mineOnly = req.query.mine === '1';
     const branchIds = branchIdsFor(req);
+    const dimFilters = await parseDimFilters(tdb, companyId, req.query.dims);
     const where: any[] = [sql`TRUE`];
     if (q) { const like = `%${q.replace(/[\\%_]/g, m => '\\' + m)}%`; where.push(sql`(i.number ILIKE ${like} OR i.description ILIKE ${like} OR i.source ILIKE ${like} OR COALESCE(i.reference,'') ILIKE ${like})`); }
     if (status !== 'all') where.push(sql`i.status = ${status}`);
@@ -172,6 +202,10 @@ router.get('/journals', withTenantDb, async (req: any, res) => {
     if (mineOnly) where.push(sql`i.user_id = ${req.user.id}::uuid`);
     if (accountId) where.push(sql`(CASE WHEN i.kind = 'entry' THEN EXISTS (SELECT 1 FROM journal_lines l WHERE l.journal_entry_id = i.id::uuid AND l.company_id = ${companyId}::uuid AND l.account_id = ${accountId}::uuid)
       ELSE EXISTS (SELECT 1 FROM manual_journal_lines ml WHERE ml.journal_id = i.id::uuid AND ml.company_id = ${companyId}::uuid AND ml.account_id = ${accountId}::uuid) END)`);
+    for (const f of dimFilters) {
+      where.push(sql`(CASE WHEN i.kind = 'entry' THEN EXISTS (SELECT 1 FROM journal_lines l JOIN journal_entries e ON e.id = l.journal_entry_id WHERE l.journal_entry_id = i.id::uuid AND l.company_id = ${companyId}::uuid${dimFilterSql(f, 'l', 'e.branch_id')})
+        ELSE EXISTS (SELECT 1 FROM manual_journal_lines ml WHERE ml.journal_id = i.id::uuid AND ml.company_id = ${companyId}::uuid${dimFilterSql(f, 'ml', 'i.branch_id')}) END)`);
+    }
     if (branchIds) where.push(sql`i.branch_id = ANY(${uuidArray(branchIds)})`);
     const items = sql`(
       WITH ranked AS (
@@ -287,7 +321,8 @@ router.post('/manual-journals', withTenantDb, async (req: any, res) => {
       branchId: br.branchId, status: 'Draft', preparedById: req.user.id, preparedAt: nowDate(),
     });
     // isolation-ok: every accountId was verified to be an active posting account of this company by checkLines above
-    await tdb.insert(schema.manualJournalLines).values(checked.lines.map((l, i) => ({ id: generateId(), journalId: id, companyId, accountId: l.accountId, debit: String(l.debit), credit: String(l.credit), note: l.note, sortOrder: i })));
+    const combos = await lineCombinations(tdb, req, companyId, checked.lines, 'draft');
+    await tdb.insert(schema.manualJournalLines).values(checked.lines.map((l, i) => ({ id: generateId(), journalId: id, companyId, accountId: l.accountId, debit: String(l.debit), credit: String(l.credit), note: l.note, sortOrder: i, dimensionCombinationId: combos[i] })));
     await addEvent(tdb, req, id, 'Prepared');
     recordAuditLog(req, 'CREATE_MANUAL_JOURNAL', 'manual_journal', id, { number, date });
     res.json({ success: true, id, number });
@@ -326,7 +361,8 @@ router.put('/manual-journals/:id', withTenantDb, async (req: any, res) => {
     }).where(and(eq(schema.manualJournals.id, j.id), eq(schema.manualJournals.companyId, companyId)));
     if (checked) {
       await tdb.delete(schema.manualJournalLines).where(and(eq(schema.manualJournalLines.journalId, j.id), eq(schema.manualJournalLines.companyId, companyId)));
-      await tdb.insert(schema.manualJournalLines).values(checked.lines.map((l, i) => ({ id: generateId(), journalId: j.id, companyId, accountId: l.accountId, debit: String(l.debit), credit: String(l.credit), note: l.note, sortOrder: i })));
+      const combos = await lineCombinations(tdb, req, companyId, checked.lines, 'draft');
+      await tdb.insert(schema.manualJournalLines).values(checked.lines.map((l, i) => ({ id: generateId(), journalId: j.id, companyId, accountId: l.accountId, debit: String(l.debit), credit: String(l.credit), note: l.note, sortOrder: i, dimensionCombinationId: combos[i] })));
     }
     await addEvent(tdb, req, j.id, 'Edited');
     recordAuditLog(req, 'UPDATE_MANUAL_JOURNAL', 'manual_journal', j.id, { number: j.number });
@@ -344,8 +380,9 @@ router.post('/manual-journals/:id/submit', withTenantDb, async (req: any, res) =
     if (!j || !branchVisible(req, j.branchId)) return fail(res, 404, 'Journal not found.');
     if (j.status !== 'Draft' && j.status !== 'Rejected') return fail(res, 400, `Only a draft or rejected journal can be submitted (this one is ${j.status.toLowerCase()}).`);
     const rawLines = await tdb.select().from(schema.manualJournalLines).where(and(eq(schema.manualJournalLines.journalId, j.id), eq(schema.manualJournalLines.companyId, companyId)));
-    const checked = await checkLines(tdb, companyId, rawLines.map((l: any) => ({ accountId: l.accountId, debit: Number(l.debit), credit: Number(l.credit), note: l.note })), true, !!j.reversalOfId);
+    const checked = await checkLines(tdb, companyId, await storedLines(tdb, companyId, rawLines), true, !!j.reversalOfId);
     if (checked.error) return fail(res, 400, checked.error);
+    await lineCombinations(tdb, req, companyId, checked.lines, 'strict'); // Required dimensions must be present before it goes for approval
     const touchesVat = checked.lines.some(l => VAT_ROLES.includes(checked.accounts.get(l.accountId)?.systemKey));
     await checkPeriod(companyId, j.date, touchesVat);
     await tdb.update(schema.manualJournals).set({ status: 'Pending', submittedAt: nowDate(), decisionNote: null }).where(and(eq(schema.manualJournals.id, j.id), eq(schema.manualJournals.companyId, companyId)));
@@ -369,8 +406,9 @@ router.post('/manual-journals/:id/approve', withTenantDb, async (req: any, res) 
     const selfOk = await selfApprovalOn(tdb, companyId);
     if (own && !selfOk) return fail(res, 403, 'You prepared this journal, so someone else must approve it.');
     const rawLines = await tdb.select().from(schema.manualJournalLines).where(and(eq(schema.manualJournalLines.journalId, j.id), eq(schema.manualJournalLines.companyId, companyId))).orderBy(asc(schema.manualJournalLines.sortOrder));
-    const checked = await checkLines(tdb, companyId, rawLines.map((l: any) => ({ accountId: l.accountId, debit: Number(l.debit), credit: Number(l.credit), note: l.note })), true, !!j.reversalOfId);
+    const checked = await checkLines(tdb, companyId, await storedLines(tdb, companyId, rawLines), true, !!j.reversalOfId);
     if (checked.error) return fail(res, 400, checked.error);
+    const combos = await lineCombinations(tdb, req, companyId, checked.lines, j.reversalOfId ? 'draft' : 'strict'); // a reversal mirrors the original's tags as they were
     const touchesVat = checked.lines.some(l => VAT_ROLES.includes(checked.accounts.get(l.accountId)?.systemKey));
     await checkPeriod(companyId, j.date, touchesVat);
     // A reversal is posted as the mirror of the entry it reverses, linked to it.
@@ -383,7 +421,7 @@ router.post('/manual-journals/:id/approve', withTenantDb, async (req: any, res) 
     const entryId = await postJournalEntry(tdb, {
       companyId, branchId: j.branchId, date: j.date, referenceType: 'Manual', referenceId: j.id,
       reversalOfId: reversalOfEntryId, description: `${j.number}: ${j.description}`, createdById: j.preparedById,
-      lines: checked.lines.map(l => ({ accountId: l.accountId, debit: l.debit || undefined, credit: l.credit || undefined })),
+      lines: checked.lines.map((l, i) => ({ accountId: l.accountId, debit: l.debit || undefined, credit: l.credit || undefined, dimensionCombinationId: combos[i] })),
     });
     await tdb.update(schema.manualJournals).set({ status: 'Posted', journalEntryId: entryId, decidedById: req.user.id, decidedAt: nowDate(), selfApproved: own, decisionNote: String(req.body?.note ?? '').trim().slice(0, 300) || null })
       .where(and(eq(schema.manualJournals.id, j.id), eq(schema.manualJournals.companyId, companyId)));
@@ -457,7 +495,7 @@ router.post('/manual-journals/:id/reverse', withTenantDb, async (req: any, res) 
       branchId: orig.branchId, status: 'Draft', preparedById: req.user.id, preparedAt: nowDate(), reversalOfId: orig.id,
     });
     await tdb.insert(schema.manualJournalLines).values(lines.map((l: any, i: number) => ({
-      id: generateId(), journalId: id, companyId, accountId: l.accountId, debit: l.credit, credit: l.debit, note: l.note, sortOrder: i,
+      id: generateId(), journalId: id, companyId, accountId: l.accountId, debit: l.credit, credit: l.debit, note: l.note, sortOrder: i, dimensionCombinationId: l.dimensionCombinationId,
     })));
     await addEvent(tdb, req, id, 'Prepared', `Reversal of ${orig.number}`);
     await addEvent(tdb, req, orig.id, 'ReversalStarted', `${number}: ${reason}`);

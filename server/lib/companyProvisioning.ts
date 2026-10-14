@@ -2,6 +2,7 @@ import * as schema from '../../src/db/schema.js';
 import { generateId } from '../../src/id.js';
 import { buildCompactA4Layout, DETAILED_TAX_INVOICE_LAYOUT } from '../../src/documentTemplateDefaults.js';
 import { getAndIncrementDocumentNumber } from './documentNumbering.js';
+import { seedCompanyDimensions } from './dimensions.js';
 import { seedCompanyChart } from './chartOfAccounts.js';
 
 // Server-side, atomic equivalent of AdminSettings.tsx's handleAddCompany starter-resource
@@ -164,4 +165,6 @@ export async function provisionStarterResources(tx: any, params: { companyId: st
 
   // The standard chart of accounts (and one ledger account per bank), so the General Ledger works from the first day.
   await seedCompanyChart(tx, companyId);
+  // Branch and Department dimensions (Blueprint FR-DIM-01).
+  await seedCompanyDimensions(tx, companyId);
 }

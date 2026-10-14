@@ -243,6 +243,21 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
     ]
   },
   {
+    // Defining dimensions (types, values, cost centres) is one authority; assigning them to accounts is a control decision of its own; tagging a posting stays with journals / documents.
+    id: 'dimensions', groupId: 'general_ledger', label: 'Dimensions (Branch, Department, Profit Centre ...)', leaves: [
+      { key: 'create', label: 'Add Dimensions, Values and Cost Centres' },
+      { key: 'read', label: 'View Dimensions' },
+      { key: 'update', label: 'Edit Dimensions, Values and Cost Centres' },
+      { key: 'delete', label: 'Deactivate Dimensions, Values and Cost Centres' },
+    ]
+  },
+  {
+    id: 'accountDimensionRules', groupId: 'general_ledger', label: 'Account Dimension Rules', leaves: [
+      { key: 'read', label: 'View Account Dimension Rules' },
+      { key: 'update', label: 'Assign Dimensions to Accounts' },
+    ]
+  },
+  {
     // Maker and checker: create = prepare and submit; post = approve and post, or reject (never your own unless the company allows it).
     id: 'journals', groupId: 'general_ledger', label: 'Manual Journals & Approval', leaves: [
       { key: 'create', label: 'Prepare and Submit Journals' },

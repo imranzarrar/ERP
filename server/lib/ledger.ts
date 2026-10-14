@@ -15,6 +15,7 @@ import { generateId } from '../../src/id.js';
 import { round2 } from './businessLogic.js';
 import { toBaseQuantity } from './uomConversion.js';
 import { nowDate } from './clock.js';
+import { applyRules, loadRules, loadTypes, resolveCombination, type Tags } from './dimensions.js';
 
 // Anything larger than this is a real bug in the calling code, not rounding noise from
 // splitting a tax-exclusive-subtotal-plus-tax across several independently-round2'd
@@ -31,6 +32,10 @@ export interface JournalLineInput {
   // Set only when accountKey === 'BANK' — Bank isn't one pooled account, it's N separate
   // ones, same as vouchers.bankId.
   bankId?: string | null;
+  // Dimension tags of this line (dimensionTypeId -> entityId), merged over the entry's own tags. A manual journal passes the combination it already
+  // resolved and validated instead.
+  dimensions?: Tags;
+  dimensionCombinationId?: string | null;
 }
 
 export interface PostJournalEntryInput {
@@ -45,6 +50,11 @@ export interface PostJournalEntryInput {
   description: string;
   createdById: string;
   lines: JournalLineInput[];
+  // Tags every line of the entry starts from (e.g. the document's own Department / Project).
+  dimensions?: Tags;
+  // 'strict' (manual journals): a Required tag that is missing, or a Not-allowed tag that is present, is an error. 'defaults' (documents, until their
+  // forms collect dimensions): defaults fill gaps, Not-allowed tags are dropped, Required is not enforced.
+  dimensionMode?: 'strict' | 'defaults';
 }
 
 // Posts one balanced journal entry. Throws before writing anything if the lines don't
@@ -84,6 +94,7 @@ export async function postJournalEntry(tx: any, input: PostJournalEntryInput): P
   // Stamp every line with the company account it posts to AT THIS MOMENT (the role's current account, the bank's own account, or the explicit
   // account). A later change of Account Mapping therefore only affects postings made after it; entries already posted keep their account.
   const accountIds = await resolveLineAccountIds(tx, input.companyId, realLines);
+  const combinationIds = await resolveLineCombinations(tx, input, realLines, accountIds);
 
   const entryId = generateId();
   await tx.insert(schema.journalEntries).values({
@@ -109,8 +120,33 @@ export async function postJournalEntry(tx: any, input: PostJournalEntryInput): P
     debit: String(round2(l.debit || 0)),
     credit: String(round2(l.credit || 0)),
     bankId: l.bankId || null,
+    dimensionCombinationId: combinationIds[i],
   })));
   return entryId;
+}
+
+// Each line's dimension combination: explicit tags over the entry's tags, then the account rules (defaults, Not allowed, Required). Lines without any tag
+// and without a rule that adds one get null, and a company that uses no dimensions pays for one small query only.
+async function resolveLineCombinations(tx: any, input: PostJournalEntryInput, lines: JournalLineInput[], accountIds: (string | null)[]): Promise<(string | null)[]> {
+  const entryTags = input.dimensions || {};
+  const anyTags = Object.keys(entryTags).length > 0 || lines.some(l => l.dimensionCombinationId || (l.dimensions && Object.keys(l.dimensions).length > 0));
+  const rules = await loadRules(tx, input.companyId, accountIds.filter(Boolean) as string[]);
+  if (!anyTags && rules.size === 0) return lines.map(() => null);
+  const types = await loadTypes(tx, input.companyId);
+  const nameOf = new Map<string, string>(types.map((t: any) => [t.id, t.name]));
+  const mode = input.dimensionMode || 'defaults';
+  const cache = new Map<string, string | null>();
+  const out: (string | null)[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (l.dimensionCombinationId) { out.push(l.dimensionCombinationId); continue; }
+    const accountRules = accountIds[i] ? rules.get(accountIds[i] as string) : undefined;
+    const tags = applyRules(accountRules, { ...entryTags, ...(l.dimensions || {}) }, mode, { type: id => nameOf.get(id) || 'Dimension' });
+    const key = JSON.stringify(Object.keys(tags).sort().map(k => [k, tags[k]]));
+    if (!cache.has(key)) cache.set(key, await resolveCombination(tx, input.companyId, tags));
+    out.push(cache.get(key) ?? null);
+  }
+  return out;
 }
 
 // Which company account each line posts to now. null when the company has no chart yet (reports then fall back to resolving by role).
@@ -174,6 +210,7 @@ export async function reverseAllEntriesFor(
       debit: Number(l.credit) > 0 ? Number(l.credit) : undefined,
       credit: Number(l.debit) > 0 ? Number(l.debit) : undefined,
       bankId: l.bankId || undefined,
+      dimensionCombinationId: l.dimensionCombinationId || undefined,
     }));
     const newId = await postJournalEntry(tx, {
       companyId,

@@ -195,6 +195,15 @@ describe('Company registration status + Delete Company & All Data', () => {
     await db.insert(schema.manualJournalLines).values({ id: generateId(), journalId: mjOrig, companyId, accountId: exp.id, debit: '5', credit: '0' });
     await db.insert(schema.manualJournalEvents).values({ id: generateId(), journalId: mjOrig, companyId, action: 'Prepared', userId: targetUserId, createdAt: ts });
     await db.insert(schema.openingBalanceRuns).values({ id: generateId(), companyId, cutOffDate: '2026-01-01', journalEntryId: e1, summary: {}, postedById: targetUserId, postedAt: ts });
+    // Dimensions: a custom type with a value (and a child), a cost centre under a branch, a tagged line, a rule with a default.
+    const dimType = generateId(), dimVal = generateId(), dimKid = generateId(), cc = generateId(), combo = generateId();
+    await db.insert(schema.dimensionTypes).values({ id: dimType, companyId, code: 'PC', name: 'Profit centre', valueSource: 'Custom', isHierarchical: true, createdAt: ts });
+    await db.insert(schema.dimensionValues).values([{ id: dimVal, companyId, dimensionTypeId: dimType, code: 'A', name: 'A', createdAt: ts }, { id: dimKid, companyId, dimensionTypeId: dimType, code: 'A1', name: 'A1', parentValueId: dimVal, createdAt: ts }]);
+    await db.insert(schema.costCenters).values({ id: cc, companyId, code: 'CC', name: 'Cost centre', homeBranchId: branchId, createdAt: ts });
+    await db.insert(schema.dimensionCombinations).values({ id: combo, companyId, dedupKey: generateId(), createdAt: ts });
+    await db.insert(schema.dimensionCombinationEntries).values({ id: generateId(), companyId, combinationId: combo, dimensionTypeId: dimType, entityId: dimKid, valueId: dimKid });
+    await db.update(schema.journalLines).set({ dimensionCombinationId: combo }).where(eq(schema.journalLines.journalEntryId, e1));
+    await db.insert(schema.accountDimensionRules).values({ id: generateId(), companyId, accountId: exp.id, dimensionTypeId: dimType, rule: 'optional', defaultValueId: dimVal });
 
     // 3. Registration-status guard rails.
     expect((await api(companyAdminSessionId, `/api/companies/${companyId}/registration-status`, { method: 'PATCH', body: JSON.stringify({ status: 'Cancelled' }) })).status).toBe(403);

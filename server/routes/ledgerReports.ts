@@ -11,6 +11,7 @@ import { hasPermission } from '../lib/authz.js';
 import { todayStr } from '../lib/clock.js';
 import { isDebitNormal } from '../lib/chartOfAccounts.js';
 import { resolvedLines, branchIdsFor, round2, uuidArray } from '../lib/ledgerQueries.js';
+import { parseDimFilters } from '../lib/dimensions.js';
 import { computeBalanceSheet, computeProfitLoss } from '../lib/financialReports.js';
 
 const router = express.Router();
@@ -32,23 +33,32 @@ async function generalLedger(req: any, opts: { paged: boolean }) {
   const companyId = req.targetCompanyId;
   const { from, to, error } = range(req);
   if (error) throw Object.assign(new Error(error), { status: 400 });
-  const accountId = String(req.query.accountId || '');
-  if (!/^[0-9a-f-]{36}$/i.test(accountId)) throw Object.assign(new Error('Choose an account.'), { status: 400 });
+  const dims = await parseDimFilters(tdb, companyId, req.query.dims);
   const accounts = await tdb.select().from(schema.companyAccounts).where(eq(schema.companyAccounts.companyId, companyId));
-  const account = accounts.find((a: any) => a.id === accountId);
-  if (!account) throw Object.assign(new Error('Account not found.'), { status: 404 });
-  // A heading shows everything beneath it.
+  // One account (a heading shows everything beneath it), or an explicit list of accounts: the drill-down of a report figure names the accounts behind it.
+  const listed = String(req.query.accountIds || '').split(',').map(x => x.trim()).filter(Boolean);
+  const accountId = String(req.query.accountId || '');
+  let account: any;
   const ids: string[] = [];
-  const walk = (id: string) => { ids.push(id); for (const c of accounts) if (c.parentId === id) walk(c.id); };
-  walk(account.id);
+  if (listed.length) {
+    if (listed.some(i => !/^[0-9a-f-]{36}$/i.test(i) || !accounts.some((a: any) => a.id === i))) throw Object.assign(new Error('Account not found.'), { status: 404 });
+    account = { id: 'selection', code: '', name: 'Selected accounts', nameAr: null, type: accounts.find((a: any) => a.id === listed[0]).type, isGroup: true };
+    ids.push(...listed);
+  } else {
+    if (!/^[0-9a-f-]{36}$/i.test(accountId)) throw Object.assign(new Error('Choose an account.'), { status: 400 });
+    account = accounts.find((a: any) => a.id === accountId);
+    if (!account) throw Object.assign(new Error('Account not found.'), { status: 404 });
+    const walk = (id: string) => { ids.push(id); for (const c of accounts) if (c.parentId === id) walk(c.id); };
+    walk(account.id);
+  }
   const branchIds = branchIdsFor(req);
   const page = Math.max(1, Math.floor(Number(req.query.page) || 1));
   const pageSize = Math.min(200, Math.max(1, Math.floor(Number(req.query.pageSize) || 50)));
   const sign = isDebitNormal(account.type) ? 1 : -1;
 
-  const openRes: any = await tdb.execute(sql`SELECT COALESCE(SUM(rl.debit - rl.credit),0)::float8 AS net FROM ${resolvedLines(companyId, { to: dayBefore(from), branchIds })} WHERE rl.account_id = ANY(${uuidArray(ids)})`);
+  const openRes: any = await tdb.execute(sql`SELECT COALESCE(SUM(rl.debit - rl.credit),0)::float8 AS net FROM ${resolvedLines(companyId, { to: dayBefore(from), branchIds, dims })} WHERE rl.account_id = ANY(${uuidArray(ids)})`);
   const opening = round2(Number(openRes.rows[0].net));
-  const period = resolvedLines(companyId, { from, to, branchIds });
+  const period = resolvedLines(companyId, { from, to, branchIds, dims });
   const totRes: any = await tdb.execute(sql`SELECT COALESCE(SUM(rl.debit),0)::float8 AS debit, COALESCE(SUM(rl.credit),0)::float8 AS credit, COUNT(*)::int AS n FROM ${period} WHERE rl.account_id = ANY(${uuidArray(ids)})`);
   const totals = { debit: round2(Number(totRes.rows[0].debit)), credit: round2(Number(totRes.rows[0].credit)), lines: Number(totRes.rows[0].n) };
   const lim = opts.paged ? sql`LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}` : sql`LIMIT 100000`;
@@ -122,6 +132,7 @@ async function trialBalance(req: any) {
   const { from, to, error } = range(req);
   if (error) throw Object.assign(new Error(error), { status: 400 });
   const includeZero = req.query.includeZero === '1';
+  const dims = await parseDimFilters(tdb, companyId, req.query.dims);
   const branchIds = branchIdsFor(req);
   const accounts = await tdb.select().from(schema.companyAccounts).where(eq(schema.companyAccounts.companyId, companyId));
   const res: any = await tdb.execute(sql`
@@ -130,7 +141,7 @@ async function trialBalance(req: any) {
            COALESCE(SUM(CASE WHEN rl.date >= ${from} THEN rl.debit END),0)::float8 AS debit,
            COALESCE(SUM(CASE WHEN rl.date >= ${from} THEN rl.credit END),0)::float8 AS credit,
            COUNT(*)::int AS lines
-    FROM ${resolvedLines(companyId, { to, branchIds })} GROUP BY rl.account_id`);
+    FROM ${resolvedLines(companyId, { to, branchIds, dims })} GROUP BY rl.account_id`);
   const m = new Map<string | null, any>(res.rows.map((r: any) => [r.accountId, r]));
   const rows = accounts.map((a: any) => {
     const r = m.get(a.id);
