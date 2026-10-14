@@ -78,12 +78,19 @@ echo "every password replaced by the demo password, emails and phones removed."
 read -r -p "Replace everything in $DST_DB with this copy? [type yes to continue]: " ANSWER
 [ "$ANSWER" = "yes" ] || die "Not confirmed — nothing changed."
 
-if [ -z "${DEMO_PASSWORD:-}" ]; then
-  read -r -s -p "Demo password every user will get (min 8 chars): " DEMO_PASSWORD; echo
+# Demo password: reuse the stored hash (~/.demo-password-hash, written by set-demo-password.sh; only the bcrypt hash is ever stored),
+# unless DEMO_PASSWORD is given or no hash is stored yet, in which case ask for one.
+HASH_FILE="${DEMO_HASH_FILE:-$HOME/.demo-password-hash}"
+if [ -z "${DEMO_PASSWORD:-}" ] && [ -s "$HASH_FILE" ]; then
+  PWHASH="$(cat "$HASH_FILE")"
+else
+  if [ -z "${DEMO_PASSWORD:-}" ]; then
+    read -r -s -p "Demo password every user will get (min 8 chars): " DEMO_PASSWORD; echo
+  fi
+  [ "${#DEMO_PASSWORD}" -ge 8 ] || die "Demo password too short."
+  PWHASH="$(DEMO_PASSWORD="$DEMO_PASSWORD" node -e "process.stdout.write(require('bcrypt').hashSync(process.env.DEMO_PASSWORD, 10))")"
+  unset DEMO_PASSWORD
 fi
-[ "${#DEMO_PASSWORD}" -ge 8 ] || die "Demo password too short."
-PWHASH="$(DEMO_PASSWORD="$DEMO_PASSWORD" node -e "process.stdout.write(require('bcrypt').hashSync(process.env.DEMO_PASSWORD, 10))")"
-unset DEMO_PASSWORD
 [ -n "$PWHASH" ] || die "Could not hash the demo password (run npm ci in this checkout first)."
 
 say "[1/5] Dumping live (read-only connection)"

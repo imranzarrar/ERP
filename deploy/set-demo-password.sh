@@ -22,6 +22,7 @@ read -r -s -p "Repeat: " PW2; echo
 [ "${#PW}" -ge 8 ] || die "Too short."
 HASH="$(DEMO_PASSWORD="$PW" node -e "process.stdout.write(require('bcrypt').hashSync(process.env.DEMO_PASSWORD, 10))")"
 unset PW PW2
+( umask 077; printf '%s' "$HASH" > "${DEMO_HASH_FILE:-$HOME/.demo-password-hash}" )   # only the bcrypt hash; clone-prod-to-demo.sh reuses it
 # (psql only substitutes :'h' in text read from a file or stdin, not in -c strings)
 N="$(printf "UPDATE users SET password = :'h', must_change_password = false RETURNING 1;
 " | PGPASSWORD="$(read_secret SQL_PASSWORD)" psql -h "$(read_secret SQL_HOST)" -U "$(read_secret SQL_USER)" -d "$DB" -At -v ON_ERROR_STOP=1 -v "h=$HASH" -f - | grep -c '^1$' || true)"
