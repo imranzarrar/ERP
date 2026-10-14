@@ -15,6 +15,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Secrets:** DB connection info (`SQL_HOST`/`SQL_USER`/`SQL_PASSWORD`/`SQL_DB_NAME`) plus `SESSION_SECRET` and `ZATCA_KEY_ENCRYPTION_SECRET` live in a gitignored file named `app.secrets` at the repo root (not in this checkout by default) — deliberately not named `.env`, so a hosting platform's own .env-specific tooling (dashboard-injected env vars, deploy templating) can't recognize or overwrite it. Required for `db:push` and for anything touching the database or ZATCA signing to work at all; loaded explicitly via `dotenv.config({ path: 'app.secrets' })` in `server.ts`, `src/db/index.ts`, and `src/db/drizzle.config.ts` — not the default `dotenv/config` auto-lookup. `src/db/dbCredentials.ts` (also gitignored) is a documented-but-currently-unused placeholder, kept for a future non-local Postgres provider if one is ever added.
 
+## Environments: Live (1.0) and Demo / development (2.0)
+
+Two tracks run side by side — read `docs/environments.md` before any deploy-related or branch-related work. **Live / 1.0** = branch `master`, folder
+`E:\ERP`, production at warraq.compbrain.io, fixes and small updates only. **Demo / 2.0** = branch `v2`, folder `E:\ERP-2.0` (a git worktree), local port 3001 /
+database `erp_v2`, VPS folder `~/apps/erp-demo` on port 4000 (127.0.0.1 only), all new development. A Live fix is made on `master` and then merged into `v2`
+(`git merge master` in `E:\ERP-2.0`). Nothing from `v2` is merged into `master` or deployed to Live until the user decides to promote it. Always ask
+which track a request belongs to if it is not clear, and never run a Live release script from the 2.0 checkout or the other way round.
+
 ## Architecture
 
 - **Multi-tenant.** Every business table carries a `companyId`. The active company for a request (`req.targetCompanyId`) is resolved per-request in `server.ts`'s auth middleware (`isAuthenticated`) from the session user's own `companyId`, or an explicit override for super-admins only.
