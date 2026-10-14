@@ -36,13 +36,17 @@ function GeneralLedger({ db, focus }: { db: DatabaseState; focus: AccountFocus |
 
   React.useEffect(() => { ledgerApi<{ accounts: Acct[] }>('/accounts').then(r => setAccounts(r.accounts)).catch(e => setError(e.message)); }, []);
 
+  // A drill-down from a statement can carry several accounts (a whole report line); picking one account here replaces that set.
+  const [drillIds, setDrillIds] = React.useState<string[]>(accountIds);
+  const pickAccount = (id: string) => { setDrillIds([]); setAccountId(id); };
+  const scope = accountId ? `accountId=${accountId}` : drillIds.length ? `accountIds=${drillIds.join(',')}` : '';
   const run = React.useCallback(async (p = 1) => {
-    if (!accountId) return;
+    if (!scope) return;
     setLoading(true); setError('');
-    try { setData(await ledgerApi(`/reports/general-ledger?accountId=${accountId}&from=${from}&to=${to}&page=${p}&pageSize=${pageSize}${dimQs}`)); setPage(p); }
+    try { setData(await ledgerApi(`/reports/general-ledger?${scope}&from=${from}&to=${to}&page=${p}&pageSize=${pageSize}${dimQs}`)); setPage(p); }
     catch (e: any) { setError(e.message); setData(null); } finally { setLoading(false); }
-  }, [accountId, from, to, dimQs]);
-  React.useEffect(() => { if (accountId) run(1); }, [accountId, from, to, dimQs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [scope, from, to, dimQs]);
+  React.useEffect(() => { if (scope) run(1); }, [scope, from, to, dimQs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pages = data ? Math.max(1, Math.ceil(data.totals.lines / pageSize)) : 1;
   return (
@@ -50,14 +54,14 @@ function GeneralLedger({ db, focus }: { db: DatabaseState; focus: AccountFocus |
       {error && <Notice tone="error">{error}</Notice>}
       <Card className="p-4 flex flex-wrap items-end gap-3">
         <div className="flex-1 min-w-[260px]"><label className={labelCls}>{t('Account')}</label>
-          <AccountPicker accounts={accounts.filter(a => a.isActive || true)} value={accountId} onChange={setAccountId} lang={lang} placeholder={t('Choose an account or heading')} /></div>
+          <AccountPicker accounts={accounts.filter(a => a.isActive || true)} value={accountId} onChange={pickAccount} lang={lang} placeholder={drillIds.length ? `${drillIds.length} ${t('accts')}` : t('Choose an account or heading')} /></div>
         <div><label className={labelCls}>{t('From')}</label><input type="date" className={inputCls} value={from} onChange={e => setFrom(e.target.value)} /></div>
         <div><label className={labelCls}>{t('To')}</label><input type="date" className={inputCls} value={to} onChange={e => setTo(e.target.value)} /></div>
         <DimensionFilter db={db} options={dimOptions} value={dims} onChange={setDims} />
-        <button className={primaryBtn} disabled={(!accountId && !accountIds.length) || loading} onClick={() => run(1)}><Play className="w-3.5 h-3.5" />{t('Run')}</button>
-        <button className={ghostBtn} disabled={!accountId && !accountIds.length} onClick={() => downloadLedgerFile(`/reports/general-ledger/export?${accountIds.length && !accountId ? `accountIds=${accountIds.join(',')}` : `accountId=${accountId}`}&from=${from}&to=${to}${dimQs}`, 'general-ledger.xlsx').catch(e => setError(e.message))}><Download className="w-3.5 h-3.5" />{t('Export')}</button>
+        <button className={primaryBtn} disabled={!scope || loading} onClick={() => run(1)}><Play className="w-3.5 h-3.5" />{t('Run')}</button>
+        <button className={ghostBtn} disabled={!scope} onClick={() => downloadLedgerFile(`/reports/general-ledger/export?${scope}&from=${from}&to=${to}${dimQs}`, 'general-ledger.xlsx').catch(e => setError(e.message))}><Download className="w-3.5 h-3.5" />{t('Export')}</button>
       </Card>
-      {!accountId && !accountIds.length && <Card className="p-8 text-center text-xs text-slate-400">{t('Choose an account to see its ledger.')}</Card>}
+      {!scope && <Card className="p-8 text-center text-xs text-slate-400">{t('Choose an account to see its ledger.')}</Card>}
       {data && (
         <>
           {data.branchRestricted && <Notice tone="info">{t('You are limited to your own branches, so these figures cover those branches only.')}</Notice>}
@@ -67,7 +71,7 @@ function GeneralLedger({ db, focus }: { db: DatabaseState; focus: AccountFocus |
             ))}
           </div>
           <Card className="overflow-hidden">
-            <div className="px-5 py-3 border-b border-slate-100 text-xs font-bold text-slate-800">{data.account.code} · {lang === 'ar' && data.account.nameAr ? data.account.nameAr : data.account.name}{data.account.isGroup ? ` (${t('including everything under this heading')})` : ''}</div>
+            <div className="px-5 py-3 border-b border-slate-100 text-xs font-bold text-slate-800">{data.account.id === 'selection' ? t('Selected accounts') : <>{data.account.code} · {lang === 'ar' && data.account.nameAr ? data.account.nameAr : data.account.name}{data.account.isGroup ? ` (${t('including everything under this heading')})` : ''}</>}</div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-start">
                 <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500 tracking-wider">

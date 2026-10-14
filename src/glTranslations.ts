@@ -457,6 +457,7 @@ export const GL_TRANSLATIONS: [key: string, ar: string, ur: string][] = [
   ['profit', 'ربح', 'منافع'],
   ['spacer', 'فاصل', 'خالی'],
   ['subtotal', 'مجموع فرعي', 'ذیلی مجموعہ'],
+  ['Selected accounts', 'حسابات مختارة', 'منتخب اکاؤنٹس'],
   ["As at last year's end date", 'كما في تاريخ نهاية السنة الماضية', 'پچھلے سال کی اختتامی تاریخ کے مطابق'],
   ['text', 'نص', 'متن'],
 ];
