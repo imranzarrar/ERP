@@ -7,13 +7,12 @@ import { AccountPicker, type Acct } from './JournalFormScreen';
 import JournalDetailPanel from './JournalDetailPanel';
 import { DimensionFilter, useDimensionOptions, type DimFilterValue } from './dimensions';
 
-export type LedgerReportKind = 'general-ledger' | 'trial-balance' | 'reconciliation';
-export interface AccountFocus { accountId: string; from: string; to: string }
+export type LedgerReportKind = 'general-ledger' | 'reconciliation';
+export interface AccountFocus { accountId?: string; accountIds?: string[]; from: string; to: string; dims?: DimFilterValue }
 
 // The three ledger reports. All are computed in the database for this company from the journal; they never add up what the screen happens to hold.
-export default function LedgerReportsScreen({ db, report, accountFocus, onDrill }: { db: DatabaseState; report: LedgerReportKind; accountFocus?: AccountFocus | null; onDrill?: (f: AccountFocus) => void }) {
+export default function LedgerReportsScreen({ db, report, accountFocus }: { db: DatabaseState; report: LedgerReportKind; accountFocus?: AccountFocus | null }) {
   if (report === 'general-ledger') return <GeneralLedger db={db} focus={accountFocus || null} />;
-  if (report === 'trial-balance') return <TrialBalance db={db} onDrill={onDrill} />;
   return <Reconciliation db={db} />;
 }
 
@@ -21,6 +20,7 @@ function GeneralLedger({ db, focus }: { db: DatabaseState; focus: AccountFocus |
   const { t, lang } = useTranslation(db);
   const [accounts, setAccounts] = React.useState<Acct[]>([]);
   const [accountId, setAccountId] = React.useState(focus?.accountId || '');
+  const [accountIds] = React.useState<string[]>(focus?.accountIds || []);
   const [from, setFrom] = React.useState(focus?.from || yearStartIso());
   const [to, setTo] = React.useState(focus?.to || todayIso());
   const [page, setPage] = React.useState(1);
@@ -54,10 +54,10 @@ function GeneralLedger({ db, focus }: { db: DatabaseState; focus: AccountFocus |
         <div><label className={labelCls}>{t('From')}</label><input type="date" className={inputCls} value={from} onChange={e => setFrom(e.target.value)} /></div>
         <div><label className={labelCls}>{t('To')}</label><input type="date" className={inputCls} value={to} onChange={e => setTo(e.target.value)} /></div>
         <DimensionFilter db={db} options={dimOptions} value={dims} onChange={setDims} />
-        <button className={primaryBtn} disabled={!accountId || loading} onClick={() => run(1)}><Play className="w-3.5 h-3.5" />{t('Run')}</button>
-        <button className={ghostBtn} disabled={!accountId} onClick={() => downloadLedgerFile(`/reports/general-ledger/export?accountId=${accountId}&from=${from}&to=${to}${dimQs}`, 'general-ledger.xlsx').catch(e => setError(e.message))}><Download className="w-3.5 h-3.5" />{t('Export')}</button>
+        <button className={primaryBtn} disabled={(!accountId && !accountIds.length) || loading} onClick={() => run(1)}><Play className="w-3.5 h-3.5" />{t('Run')}</button>
+        <button className={ghostBtn} disabled={!accountId && !accountIds.length} onClick={() => downloadLedgerFile(`/reports/general-ledger/export?${accountIds.length && !accountId ? `accountIds=${accountIds.join(',')}` : `accountId=${accountId}`}&from=${from}&to=${to}${dimQs}`, 'general-ledger.xlsx').catch(e => setError(e.message))}><Download className="w-3.5 h-3.5" />{t('Export')}</button>
       </Card>
-      {!accountId && <Card className="p-8 text-center text-xs text-slate-400">{t('Choose an account to see its ledger.')}</Card>}
+      {!accountId && !accountIds.length && <Card className="p-8 text-center text-xs text-slate-400">{t('Choose an account to see its ledger.')}</Card>}
       {data && (
         <>
           {data.branchRestricted && <Notice tone="info">{t('You are limited to your own branches, so these figures cover those branches only.')}</Notice>}
@@ -105,93 +105,6 @@ function GeneralLedger({ db, focus }: { db: DatabaseState; focus: AccountFocus |
         </>
       )}
       {open && <JournalDetailPanel db={db} kind="entry" id={open} onClose={() => setOpen(null)} />}
-    </div>
-  );
-}
-
-function TrialBalance({ db, onDrill }: { db: DatabaseState; onDrill?: (f: AccountFocus) => void }) {
-  const { t, lang } = useTranslation(db);
-  const [from, setFrom] = React.useState(yearStartIso());
-  const [to, setTo] = React.useState(todayIso());
-  const [includeZero, setIncludeZero] = React.useState(false);
-  const [data, setData] = React.useState<any>(null);
-  const [error, setError] = React.useState('');
-  const [dims, setDims] = React.useState<DimFilterValue>({});
-  const { options: dimOptions } = useDimensionOptions();
-  const dimQs = Object.keys(dims).length ? `&dims=${encodeURIComponent(JSON.stringify(dims))}` : '';
-  const currency = db.companySetup?.currency || 'SAR';
-
-  const run = React.useCallback(async () => {
-    setError('');
-    try { setData(await ledgerApi(`/reports/trial-balance?from=${from}&to=${to}${includeZero ? '&includeZero=1' : ''}${dimQs}`)); } catch (e: any) { setError(e.message); setData(null); }
-  }, [from, to, includeZero, dimQs]);
-  React.useEffect(() => { run(); }, [run]);
-
-  const depthOf = (r: any, rows: any[]) => { let d = 0; let cur = r; while (cur.parentId) { const p = rows.find((x: any) => x.id === cur.parentId); if (!p) break; d++; cur = p; } return d; };
-  const side = (n: number) => ({ dr: n > 0.004 ? n : 0, cr: n < -0.004 ? -n : 0 });
-  const cell = 'p-2.5 text-end font-mono tabular-nums';
-  // Column totals: each posting account lands on its debit or its credit side (headings only repeat their children, so they are left out).
-  const sideTotal = (k: 'opening' | 'closing') => {
-    const posting = (data?.rows || []).filter((r: any) => !r.isGroup);
-    return { dr: posting.reduce((s: number, r: any) => s + side(r[k]).dr, 0), cr: posting.reduce((s: number, r: any) => s + side(r[k]).cr, 0) };
-  };
-
-  return (
-    <div className="space-y-4 pb-10">
-      {error && <Notice tone="error">{error}</Notice>}
-      <Card className="p-4 flex flex-wrap items-end gap-3">
-        <div><label className={labelCls}>{t('From')}</label><input type="date" className={inputCls} value={from} onChange={e => setFrom(e.target.value)} /></div>
-        <div><label className={labelCls}>{t('To')}</label><input type="date" className={inputCls} value={to} onChange={e => setTo(e.target.value)} /></div>
-        <DimensionFilter db={db} options={dimOptions} value={dims} onChange={setDims} />
-        <label className="flex items-center gap-1.5 text-xs text-slate-600 font-semibold cursor-pointer pb-2"><input type="checkbox" checked={includeZero} onChange={e => setIncludeZero(e.target.checked)} />{t('Show accounts with no activity')}</label>
-        <button className={`${ghostBtn} ms-auto`} onClick={() => downloadLedgerFile(`/reports/trial-balance/export?from=${from}&to=${to}${includeZero ? '&includeZero=1' : ''}${dimQs}`, 'trial-balance-ledger.xlsx').catch(e => setError(e.message))}><Download className="w-3.5 h-3.5" />{t('Export')}</button>
-      </Card>
-      {data && (
-        <>
-          {data.branchRestricted && <Notice tone="info">{t('You are limited to your own branches, so these figures cover those branches only and may not balance.')}</Notice>}
-          {data.unmapped && <Notice tone="warn">{t('Some ledger lines are not on any account of your chart:')} {data.unmapped.lines} ({money(data.unmapped.net)} {currency}). {t('Check Account Mapping.')}</Notice>}
-          <div className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold ${data.balanced ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
-            {data.balanced ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-            {data.balanced ? t('The trial balance balances: total debits equal total credits.') : t('The trial balance does not balance. Do not rely on these figures until this is explained.')}
-          </div>
-          <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-start">
-                <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-                  <tr>
-                    <th rowSpan={2} className="p-2.5 ps-5 text-start">{t('Code')}</th><th rowSpan={2} className="p-2.5 text-start">{t('Account')}</th>
-                    <th colSpan={2} className="p-2 text-center border-s border-slate-200">{t('Opening')}</th><th colSpan={2} className="p-2 text-center border-s border-slate-200">{t('Movement')}</th><th colSpan={2} className="p-2 text-center border-s border-slate-200">{t('Closing')}</th>
-                  </tr>
-                  <tr>{['Debit', 'Credit', 'Debit', 'Credit', 'Debit', 'Credit'].map((h, i) => <th key={i} className={`p-2 text-end ${i % 2 === 0 ? 'border-s border-slate-200' : ''}`}>{t(h)}</th>)}</tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {data.rows.map((r: any) => {
-                    const o = side(r.opening), c = side(r.closing);
-                    return (
-                      <tr key={r.id} onClick={() => onDrill?.({ accountId: r.id, from, to })} className={`${r.isGroup ? 'bg-slate-50/70 font-bold' : 'hover:bg-indigo-50/40'} cursor-pointer`}>
-                        <td className="p-2.5 ps-5 font-mono text-slate-600">{r.code}</td>
-                        <td className="p-2.5 text-slate-800"><span style={{ paddingInlineStart: depthOf(r, data.rows) * 16 }}>{lang === 'ar' && r.nameAr ? r.nameAr : r.name}</span></td>
-                        <td className={`${cell} border-s border-slate-100`}>{moneyOrBlank(o.dr)}</td><td className={cell}>{moneyOrBlank(o.cr)}</td>
-                        <td className={`${cell} border-s border-slate-100`}>{moneyOrBlank(r.debit)}</td><td className={cell}>{moneyOrBlank(r.credit)}</td>
-                        <td className={`${cell} border-s border-slate-100`}>{moneyOrBlank(c.dr)}</td><td className={cell}>{moneyOrBlank(c.cr)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot className="bg-slate-100 font-black">
-                  <tr>
-                    <td colSpan={2} className="p-2.5 ps-5 text-end">{t('Total')} ({currency})</td>
-                    <td className={`${cell} border-s border-slate-200`}>{money(sideTotal('opening').dr)}</td><td className={cell}>{money(sideTotal('opening').cr)}</td>
-                    <td className={`${cell} border-s border-slate-200`}>{money(data.totals.debit)}</td><td className={cell}>{money(data.totals.credit)}</td>
-                    <td className={`${cell} border-s border-slate-200`}>{money(sideTotal('closing').dr)}</td><td className={cell}>{money(sideTotal('closing').cr)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </Card>
-          <p className="text-[11px] text-slate-500">{t('Opening is the balance of every account before the From date; profit and loss accounts are not closed to retained earnings in this report. Click an account to see its ledger.')}</p>
-        </>
-      )}
     </div>
   );
 }

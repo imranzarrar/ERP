@@ -462,7 +462,7 @@ export default function App() {
   // General Ledger: the journal / account the next ledger screen should open on. Lives here (not inside the ledger screens) because a tab change
   // remounts them; each screen reads it once and clears it.
   const [ledgerFocus, setLedgerFocus] = React.useState<{ kind: 'manual' | 'entry'; id: string } | null>(null);
-  const [ledgerAccountFocus, setLedgerAccountFocus] = React.useState<{ accountId: string; from: string; to: string } | null>(null);
+  const [ledgerAccountFocus, setLedgerAccountFocus] = React.useState<{ accountId?: string; accountIds?: string[]; from: string; to: string; dims?: Record<string, string[]> } | null>(null);
 
   // Whichever transactional form is currently open reports its own live dirty state here
   // (via onDirtyChange, see useDirtyGuard in hooks.ts) so handleNavigate — the single
@@ -787,6 +787,10 @@ type NavSection = {
           subItems: [
             { id: 'gl-general-ledger', label: t('General Ledger'), permissionKey: 'reports.generalLedger' },
             { id: 'gl-trial-balance', label: t('Trial Balance (Ledger)'), permissionKey: 'reports.trialBalanceLedger' },
+            { id: 'gl-income-statement', label: t('Income Statement'), permissionKey: 'reports.incomeStatementLedger' },
+            { id: 'gl-balance-sheet', label: t('Balance Sheet (Ledger)'), permissionKey: 'reports.balanceSheetLedger' },
+            { id: 'gl-custom-reports', label: t('Custom Reports'), permissionKey: 'reports.customLedgerReports' },
+            { id: 'gl-report-designer', label: t('Report Designer'), permissionKey: 'reportDefinitions.read' },
             { id: 'gl-reconciliation', label: t('Ledger vs Documents'), permissionKey: 'reports.ledgerReconciliation' }
           ]
         },
@@ -1647,6 +1651,10 @@ type NavSection = {
  activeTab === 'gl-pending' ? t('Pending Approval') :
  activeTab === 'gl-general-ledger' ? t('General Ledger') :
  activeTab === 'gl-trial-balance' ? t('Trial Balance (Ledger)') :
+ activeTab === 'gl-income-statement' ? t('Income Statement') :
+ activeTab === 'gl-balance-sheet' ? t('Balance Sheet (Ledger)') :
+ activeTab === 'gl-custom-reports' ? t('Custom Reports') :
+ activeTab === 'gl-report-designer' ? t('Report Designer') :
  activeTab === 'gl-reconciliation' ? t('Ledger vs Documents') :
  activeTab === 'gl-opening' ? t('Opening Balances') :
  activeTab === 'gl-dim-types' ? t('Dimension Types') :
@@ -1681,6 +1689,10 @@ type NavSection = {
  {activeTab === 'gl-pending' && t('Manual journals waiting for review: approve to post them, or reject with a reason.')}
  {activeTab === 'gl-general-ledger' && t('Every movement of one account with its running balance.')}
  {activeTab === 'gl-trial-balance' && t('Opening, movement and closing balance of every account, built from the ledger.')}
+ {activeTab === 'gl-income-statement' && t('Revenue, cost of sales and expenses for a period, from the ledger, with comparatives.')}
+ {activeTab === 'gl-balance-sheet' && t('Assets, liabilities and equity as at a date, from the ledger.')}
+ {activeTab === 'gl-custom-reports' && t('Your own report layouts: any rows and columns you design.')}
+ {activeTab === 'gl-report-designer' && t('Design the rows, columns and formatting of every ledger report.')}
  {activeTab === 'gl-reconciliation' && t('Check that the ledger agrees with the document-based reports.')}
  {activeTab === 'gl-opening' && t('Bring forward the balances your books start with.')}
  {activeTab === 'gl-dim-types' && t('Define the labels you report by: Branch, Department, Profit Centre, Project and more.')}
