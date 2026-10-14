@@ -308,6 +308,8 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
       { key: 'ledgerReconciliation', label: 'Ledger vs Documents Report' },
       { key: 'incomeStatementLedger', label: 'Income Statement (Ledger)' },
       { key: 'balanceSheetLedger', label: 'Balance Sheet (Ledger)' },
+      { key: 'cashFlowLedger', label: 'Cash Flow Statement (Ledger)' },
+      { key: 'equityChangesLedger', label: 'Statement of Changes in Equity (Ledger)' },
       { key: 'customLedgerReports', label: 'Custom Ledger Reports' },
       // Sales
       { key: 'salesRegister', label: 'Sales Register' },

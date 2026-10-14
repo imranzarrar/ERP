@@ -16,7 +16,7 @@ import type { ReportFormat } from '../../src/reportFormat.js';
 
 const router = express.Router();
 const fail = (res: any, status: number, error: string) => res.status(status).json({ error });
-const VIEW_PERMISSION: Record<string, string> = { TrialBalance: 'reports.trialBalanceLedger', PnL: 'reports.incomeStatementLedger', BalanceSheet: 'reports.balanceSheetLedger', Custom: 'reports.customLedgerReports' };
+const VIEW_PERMISSION: Record<string, string> = { TrialBalance: 'reports.trialBalanceLedger', PnL: 'reports.incomeStatementLedger', BalanceSheet: 'reports.balanceSheetLedger', CashFlow: 'reports.cashFlowLedger', ChangesInEquity: 'reports.equityChangesLedger', Custom: 'reports.customLedgerReports' };
 const canDesign = (req: any) => hasPermission(req.user, 'reportDefinitions.update') || hasPermission(req.user, 'reportDefinitions.create');
 const canListType = (req: any, type: string) => hasPermission(req.user, VIEW_PERMISSION[type]) || hasPermission(req.user, 'reportDefinitions.read');
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -79,7 +79,7 @@ router.post('/report-definitions', withTenantDb, async (req: any, res) => {
       if (!src) return fail(res, 404, 'The report to copy does not exist.');
       type = src.reportType; design = { rows: src.rows, columns: src.columns }; mode = src.defaultDisplayMode;
     }
-    if (!['TrialBalance', 'PnL', 'BalanceSheet', 'Custom'].includes(type)) return fail(res, 400, 'Choose a report type.');
+    if (!['TrialBalance', 'PnL', 'BalanceSheet', 'CashFlow', 'ChangesInEquity', 'Custom'].includes(type)) return fail(res, 400, 'Choose a report type.');
     if (!canListType(req, type)) return fail(res, 403, 'Forbidden');
     const id = await createDefinition(tdb, companyId, req.user.id, { name, nameAr: String(b.nameAr ?? '').trim().slice(0, 120) || null, reportType: type, defaultDisplayMode: mode });
     if (design) await saveDesign(tdb, companyId, id, design);
@@ -155,7 +155,7 @@ router.post('/report-definitions/preview', withTenantDb, async (req: any, res) =
     if (!canDesign(req)) return fail(res, 403, 'Forbidden');
     const tdb = tenantDb(); const companyId = req.targetCompanyId; const b = req.body || {};
     const type: ReportType = b.reportType;
-    if (!['TrialBalance', 'PnL', 'BalanceSheet', 'Custom'].includes(type)) return fail(res, 400, 'Choose a report type.');
+    if (!['TrialBalance', 'PnL', 'BalanceSheet', 'CashFlow', 'ChangesInEquity', 'Custom'].includes(type)) return fail(res, 400, 'Choose a report type.');
     const checked = await validateDesign(tdb, companyId, type, { rows: b.rows, columns: b.columns });
     const def: EngineDefinition = { name: String(b.name || 'Preview'), reportType: type, defaultDisplayMode: b.mode === 'Detailed' ? 'Detailed' : 'Summary', rows: checked.rows, columns: checked.columns };
     res.json(await evaluate(tdb, req, def, b));

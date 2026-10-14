@@ -7,7 +7,7 @@ async function get(session: string, path: string) {
   return { status: res.status, body: ct.includes('json') ? await res.json().catch(() => ({})) : await res.arrayBuffer() };
 }
 
-export async function defaultDefinitionId(session: string, type: 'TrialBalance' | 'PnL' | 'BalanceSheet'): Promise<string> {
+export async function defaultDefinitionId(session: string, type: 'TrialBalance' | 'PnL' | 'BalanceSheet' | 'CashFlow' | 'ChangesInEquity'): Promise<string> {
   const r = await get(session, `/api/ledger/report-definitions?type=${type}`);
   const d = (r.body.definitions || []).find((x: any) => x.isDefault) || (r.body.definitions || [])[0];
   if (!d) throw new Error(`No ${type} definition (${r.status})`);

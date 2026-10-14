@@ -460,6 +460,20 @@ export const GL_TRANSLATIONS: [key: string, ar: string, ur: string][] = [
   ['Selected accounts', 'حسابات مختارة', 'منتخب اکاؤنٹس'],
   ["As at last year's end date", 'كما في تاريخ نهاية السنة الماضية', 'پچھلے سال کی اختتامی تاریخ کے مطابق'],
   ['text', 'نص', 'متن'],
+  ['Cash Flow Statement', 'قائمة التدفقات النقدية', 'کیش فلو اسٹیٹمنٹ'],
+  ['Changes in Equity', 'التغيرات في حقوق الملكية', 'ایکویٹی میں تبدیلیاں'],
+  ['Statement of Changes in Equity', 'قائمة التغيرات في حقوق الملكية', 'ایکویٹی میں تبدیلیوں کا گوشوارہ'],
+  ['Where cash came from and where it went in a period (indirect method), reconciled to the bank and cash accounts.', 'مصدر النقد وأوجه استخدامه في فترة (الطريقة غير المباشرة)، مطابقة مع حسابات البنوك والنقد.', 'ایک مدت میں نقد کہاں سے آیا اور کہاں گیا (بالواسطہ طریقہ)، بینک اور کیش اکاؤنٹس سے ملایا گیا۔'],
+  ['Equity at the start of a period, what changed it, and equity at the end.', 'حقوق الملكية في بداية الفترة وما غيّرها وحقوق الملكية في نهايتها.', 'مدت کے آغاز پر ایکویٹی، اسے کس نے بدلا، اور اختتام پر ایکویٹی۔'],
+  ['Balance point', 'نقطة الرصيد', 'بیلنس کا نقطہ'],
+  ['As the column says', 'كما يحدده العمود', 'جیسا کالم کہے'],
+  ['Balance at the start of the period', 'الرصيد في بداية الفترة', 'مدت کے آغاز پر بیلنس'],
+  ['Balance at the end of the period', 'الرصيد في نهاية الفترة', 'مدت کے اختتام پر بیلنس'],
+  ['Every bank and cash account', 'كل حسابات البنوك والنقد', 'تمام بینک اور کیش اکاؤنٹس'],
+  ['The cash flow agrees with the movement of the bank and cash accounts.', 'التدفق النقدي يتطابق مع حركة حسابات البنوك والنقد.', 'کیش فلو بینک اور کیش اکاؤنٹس کی حرکت سے مطابقت رکھتا ہے۔'],
+  ['The cash flow differs from the movement of the bank and cash accounts by', 'التدفق النقدي يختلف عن حركة حسابات البنوك والنقد بمقدار', 'کیش فلو بینک اور کیش اکاؤنٹس کی حرکت سے اتنا مختلف ہے'],
+  ['Closing equity agrees with the equity of the balance sheet.', 'حقوق الملكية الختامية تتطابق مع حقوق الملكية في قائمة المركز المالي.', 'اختتامی ایکویٹی بیلنس شیٹ کی ایکویٹی سے مطابقت رکھتی ہے۔'],
+  ['Closing equity differs from the equity of the balance sheet by', 'حقوق الملكية الختامية تختلف عن حقوق الملكية في قائمة المركز المالي بمقدار', 'اختتامی ایکویٹی بیلنس شیٹ کی ایکویٹی سے اتنی مختلف ہے'],
 ];
 
 // A stable id per key (the same on every machine), so the bundled fallback and the database row for a key never disagree about identity.

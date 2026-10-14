@@ -84,13 +84,13 @@ beforeAll(async () => {
 afterAll(async () => { for (const id of cleanup) await purgeCompany(id); }, 180000);
 
 describe('the standard definitions', () => {
-  it('every company has Trial Balance, Income Statement and Balance Sheet as editable defaults, and another company sees none of them', async () => {
+  it('every company has Trial Balance, Income Statement, Balance Sheet, Cash Flow and Changes in Equity as editable defaults, and another company sees none of them', async () => {
     const a = (await get(A.admin, '/api/ledger/report-definitions')).body.definitions;
-    expect(a.map((d: any) => d.reportType).sort()).toEqual(['BalanceSheet', 'PnL', 'TrialBalance']);
-    expect(a.every((d: any) => d.isSystemSeeded && d.isDefault && d.isActive && d.rowCount > 3 && d.columnCount >= 3)).toBe(true);
+    expect(a.map((d: any) => d.reportType).sort()).toEqual(['BalanceSheet', 'CashFlow', 'ChangesInEquity', 'PnL', 'TrialBalance']);
+    expect(a.every((d: any) => d.isSystemSeeded && d.isDefault && d.isActive && d.rowCount > 3 && d.columnCount >= 2)).toBe(true);
     const b = (await get(B.admin, '/api/ledger/report-definitions')).body.definitions;
-    expect(b).toHaveLength(3);
-    expect(new Set([...a, ...b].map((d: any) => d.id)).size).toBe(6);
+    expect(b).toHaveLength(5);
+    expect(new Set([...a, ...b].map((d: any) => d.id)).size).toBe(10);
     expect((await get(B.admin, `/api/ledger/report-definitions/${a[0].id}`)).status).toBe(404);
     expect((await runReport(B.admin, a[0].id, { from: FROM, to: TODAY })).status).toBe(404);
   });
@@ -145,6 +145,74 @@ describe('the standard definitions', () => {
     expect((await run(designer, bs)).status).toBe(403);
     expect((await get(nobody, '/api/ledger/report-definitions')).status).toBe(403);
     expect((await get(viewer, '/api/ledger/report-definitions?type=PnL')).body.definitions).toHaveLength(1);
+  });
+});
+
+describe('cash flow and changes in equity', () => {
+  it('Cash Flow (indirect) explains the change in cash and agrees with the bank and cash accounts', async () => {
+    const id = await defaultDefinitionId(A.admin, 'CashFlow');
+    const r = (await run(A.admin, id)).body;
+    expect(cell(r, 'Net profit for the period').v).toBe(430);
+    expect(cell(r, 'Depreciation (non-cash)').v).toBe(50);
+    expect(cell(r, 'Change in receivables, inventory and other current assets').v).toBe(-750); // receivables +1150, inventory -400
+    expect(cell(r, 'Change in payables and other current liabilities').v).toBe(270); // VAT output and accrued expenses
+    expect(cell(r, 'Net cash from operating activities').v).toBe(0);
+    expect(cell(r, 'Net cash used in investing activities').v).toBe(0);
+    expect(cell(r, 'Net cash from financing activities').v).toBe(5000);
+    expect(cell(r, 'Net change in cash').v).toBe(5000);
+    expect(cell(r, 'Cash at the beginning of the period').v).toBe(0);
+    expect(cell(r, 'Cash at the end of the period').v).toBe(5000);
+    expect(r.checks.balanced).toBe(true); expect(r.checks.difference).toBe(0);
+    // the previous period only holds the 500 credit sale: profit 500 offset by receivables -500
+    expect(cell(r, 'Net profit for the period', 1).v).toBe(500);
+    expect(cell(r, 'Net change in cash', 1).v).toBe(0);
+    // the opening cash of a later period is the closing cash of the earlier one
+    const later = (await runReport(A.admin, id, { from: addDays(TODAY, 1), to: addDays(TODAY, 30) })).body;
+    expect(cell(later, 'Cash at the beginning of the period').v).toBe(5000);
+    expect(cell(later, 'Net change in cash').v).toBe(0);
+    expect(later.checks.balanced).toBe(true);
+  });
+
+  it('Changes in Equity: opening equity plus profit and equity movements equals the balance sheet equity', async () => {
+    const id = await defaultDefinitionId(A.admin, 'ChangesInEquity');
+    const r = (await run(A.admin, id)).body;
+    expect(cell(r, 'Profit (loss) brought forward').v).toBe(500); // the prior sale, before the period began
+    expect(rowOf(r, 'Equity at the beginning of the period').cells[0].v).toBe(500);
+    expect(cell(r, 'Profit (loss) for the period').v).toBe(430);
+    expect(r.rows.filter((x: any) => x.label === 'Owner Capital').map((x: any) => x.cells[0].v)).toEqual([0, 5000]); // at the start, then the movement
+    expect(cell(r, 'Total changes during the period').v).toBe(5430);
+    expect(cell(r, 'Equity at the end of the period').v).toBe(5930);
+    expect(r.checks.balanced).toBe(true); expect(r.checks.difference).toBe(0);
+    const bs = (await run(A.admin, await defaultDefinitionId(A.admin, 'BalanceSheet'))).body;
+    expect(cell(bs, 'Total equity').v).toBe(cell(r, 'Equity at the end of the period').v);
+  });
+
+  it('a row can pin itself to the opening balance, the Cash selector finds every bank account, and a pinned row may repeat an account a movement row has', async () => {
+    const rd = (await post(A.admin, '/api/ledger/report-definitions', { name: 'Cash position', reportType: 'Custom' })).body.id;
+    const design = {
+      rows: [
+        { rowNumber: 10, rowType: 'Accounts', label: 'Cash at start', valueBasis: 'OpeningBalance', selectors: [{ mode: 'Include', selectorType: 'Cash' }] },
+        { rowNumber: 20, rowType: 'Accounts', label: 'Cash moved', selectors: [{ mode: 'Include', selectorType: 'Cash' }] },
+        { rowNumber: 30, rowType: 'Calculated', label: 'Cash at end', calcFormula: [{ rowNumber: 10, sign: 1 }, { rowNumber: 20, sign: 1 }] },
+      ],
+      columns: [{ columnNumber: 1, label: 'Period', columnKind: 'Value', periodBasis: 'CurrentPeriod', valueBasis: 'Movement', presentation: 'Single' }],
+    };
+    expect((await put(A.admin, `/api/ledger/report-definitions/${rd}`, design)).status).toBe(200);
+    const rep = (await run(A.admin, rd)).body;
+    expect(cell(rep, 'Cash at start').v).toBe(0); expect(cell(rep, 'Cash moved').v).toBe(5000); expect(cell(rep, 'Cash at end').v).toBe(5000);
+    // the same account twice at the same balance point is still refused
+    const twice = { ...design, rows: [design.rows[1], { ...design.rows[1], rowNumber: 21, label: 'Again' }] };
+    const res = await put(A.admin, `/api/ledger/report-definitions/${rd}`, twice);
+    expect(res.status).toBe(400); expect(res.body.error).toMatch(/already counted/i);
+    expect((await put(A.admin, `/api/ledger/report-definitions/${rd}`, { ...design, rows: [{ ...design.rows[0], valueBasis: 'Bogus' }] })).status).toBe(400);
+  });
+
+  it('each statement needs its own view permission', async () => {
+    const cf = await defaultDefinitionId(A.admin, 'CashFlow'), eq2 = await defaultDefinitionId(A.admin, 'ChangesInEquity');
+    expect((await run(viewer, cf)).status).toBe(403); expect((await run(viewer, eq2)).status).toBe(403);
+    const reader = await mkUser(A.id, { reports: on('cashFlowLedger', 'equityChangesLedger'), branches: on('viewAllBranches') });
+    expect((await run(reader, cf)).status).toBe(200); expect((await run(reader, eq2)).status).toBe(200);
+    expect((await run(reader, await defaultDefinitionId(A.admin, 'PnL'))).status).toBe(403);
   });
 });
 

@@ -36,6 +36,8 @@ export default function LedgerModule({ db, tab, editJournalId, focus, accountFoc
     case 'gl-trial-balance': return <ReportRunScreen db={db} reportType="TrialBalance" onDrill={onDrill} onDesign={() => onNavigate('gl-report-designer')} />;
     case 'gl-income-statement': return <ReportRunScreen db={db} reportType="PnL" onDrill={onDrill} onDesign={() => onNavigate('gl-report-designer')} />;
     case 'gl-balance-sheet': return <ReportRunScreen db={db} reportType="BalanceSheet" onDrill={onDrill} onDesign={() => onNavigate('gl-report-designer')} />;
+    case 'gl-cash-flow': return <ReportRunScreen db={db} reportType="CashFlow" onDrill={onDrill} onDesign={() => onNavigate('gl-report-designer')} />;
+    case 'gl-equity-changes': return <ReportRunScreen db={db} reportType="ChangesInEquity" onDrill={onDrill} onDesign={() => onNavigate('gl-report-designer')} />;
     case 'gl-custom-reports': return <ReportRunScreen db={db} reportType="Custom" onDrill={onDrill} onDesign={() => onNavigate('gl-report-designer')} />;
     case 'gl-report-designer': return <ReportDesignerScreen db={db} />;
     case 'gl-reconciliation': return <LedgerReportsScreen db={db} report="reconciliation" />;

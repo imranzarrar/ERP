@@ -200,6 +200,7 @@ fi
 
 if should_run 5; then
   say "[5/9] Row-level security policies + checks"
+  npx tsx scripts/apply-check-constraints.mjs
   npx tsx scripts/apply-rls-policies.mjs
   bash deploy/verify-rls.sh
   npx tsx scripts/verify-tenant-isolation.ts

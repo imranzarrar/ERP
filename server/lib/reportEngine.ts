@@ -12,11 +12,11 @@ import { normalizeFormat, type ReportFormat } from '../../src/reportFormat.js';
 import { resolvedLines, round2 } from './ledgerQueries.js';
 import { parseDimFilters, type DimFilter } from './dimensions.js';
 
-export type ReportType = 'TrialBalance' | 'PnL' | 'BalanceSheet' | 'Custom';
-export interface Selector { mode: 'Include' | 'Exclude'; selectorType: 'Account' | 'ParentRollup' | 'Range' | 'Type' | 'Role'; accountId?: string | null; rangeStart?: string | null; rangeEnd?: string | null; accountType?: string | null; systemKey?: string | null }
+export type ReportType = 'TrialBalance' | 'PnL' | 'BalanceSheet' | 'CashFlow' | 'ChangesInEquity' | 'Custom';
+export interface Selector { mode: 'Include' | 'Exclude'; selectorType: 'Account' | 'ParentRollup' | 'Range' | 'Type' | 'Role' | 'Cash'; accountId?: string | null; rangeStart?: string | null; rangeEnd?: string | null; accountType?: string | null; systemKey?: string | null }
 export interface EngineRow {
   rowNumber: number; rowType: 'Heading' | 'Accounts' | 'Subtotal' | 'Calculated' | 'ProfitToDate' | 'Text' | 'Spacer'; label: string | null; labelAr: string | null;
-  balanceDisplay: 'Net' | 'Debit' | 'Credit' | 'DebitBalances' | 'CreditBalances' | 'Split'; flipSign: boolean; calcFormula: { rowNumber: number; sign: number }[] | null;
+  balanceDisplay: 'Net' | 'Debit' | 'Credit' | 'DebitBalances' | 'CreditBalances' | 'Split'; flipSign: boolean; valueBasis: 'OpeningBalance' | 'ClosingBalance' | null; calcFormula: { rowNumber: number; sign: number }[] | null;
   role: string | null; dimensionFilter: Record<string, string[]> | null; format: ReportFormat; selectors: Selector[];
 }
 export interface EngineColumn {
@@ -45,7 +45,7 @@ export async function loadDefinition(tx: any, companyId: string, id: string): Pr
   return {
     id: d.id, name: d.name, nameAr: d.nameAr, reportType: d.reportType, defaultDisplayMode: d.defaultDisplayMode, isSystemSeeded: d.isSystemSeeded, isDefault: d.isDefault, isActive: d.isActive,
     rows: rows.map(r => ({
-      rowNumber: r.rowNumber, rowType: r.rowType, label: r.label, labelAr: r.labelAr, balanceDisplay: r.balanceDisplay, flipSign: r.flipSign, calcFormula: r.calcFormula, role: r.role,
+      rowNumber: r.rowNumber, rowType: r.rowType, label: r.label, labelAr: r.labelAr, balanceDisplay: r.balanceDisplay, flipSign: r.flipSign, valueBasis: r.valueBasis || null, calcFormula: r.calcFormula, role: r.role,
       dimensionFilter: r.dimensionFilter, format: r.format || {},
       selectors: sels.filter(s => s.reportRowId === r.id).map(s => ({ mode: s.mode, selectorType: s.selectorType, accountId: s.accountId, rangeStart: s.rangeStart, rangeEnd: s.rangeEnd, accountType: s.accountType, systemKey: s.systemKey })),
     })),
@@ -64,7 +64,7 @@ export async function saveDesign(tx: any, companyId: string, definitionId: strin
     const rowId = generateId();
     await tx.insert(schema.reportRows).values({
       id: rowId, companyId, reportDefinitionId: definitionId, rowNumber: r.rowNumber, sortOrder: order++, rowType: r.rowType, label: r.label || null, labelAr: r.labelAr || null,
-      balanceDisplay: r.balanceDisplay, flipSign: r.flipSign, calcFormula: r.calcFormula && r.calcFormula.length ? r.calcFormula : null, role: r.role || null,
+      balanceDisplay: r.balanceDisplay, flipSign: r.flipSign, valueBasis: r.valueBasis || null, calcFormula: r.calcFormula && r.calcFormula.length ? r.calcFormula : null, role: r.role || null,
       dimensionFilter: r.dimensionFilter && Object.keys(r.dimensionFilter).length ? r.dimensionFilter : null, format: r.format || {},
     });
     for (const s of r.selectors) {
@@ -97,6 +97,7 @@ export function accountSetOf(chart: any[], selectors: Selector[]): string[] {
     else if (s.selectorType === 'Range') { for (const a of chart) if (cmpCode(a.code, s.rangeStart || '') >= 0 && cmpCode(a.code, s.rangeEnd || '') <= 0) out.add(a.id); }
     else if (s.selectorType === 'Type') { for (const a of chart) if (a.type === s.accountType) out.add(a.id); }
     else if (s.selectorType === 'Role') { for (const a of chart) if (a.systemKey && a.systemKey === s.systemKey) out.add(a.id); }
+    else if (s.selectorType === 'Cash') { for (const a of chart) if (a.systemKey === 'BANK' || a.bankId) out.add(a.id); }
     return out;
   };
   const inc = new Set<string>(); const exc = new Set<string>();
@@ -143,11 +144,14 @@ export async function validateDesign(tx: any, companyId: string, reportType: Rep
         else if (t === 'Range') { const a = String(s.rangeStart || '').trim(), b = String(s.rangeEnd || '').trim(); if (!a || !b) throw fail(400, `${where}: a range needs both codes.`); if (cmpCode(a, b) > 0) throw fail(400, `${where}: the range starts after it ends.`); selectors.push({ mode, selectorType: t, rangeStart: a, rangeEnd: b }); }
         else if (t === 'Type') { if (!['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'].includes(s.accountType)) throw fail(400, `${where}: unknown account type.`); selectors.push({ mode, selectorType: t, accountType: s.accountType }); }
         else if (t === 'Role') { if (!sysKeys.has(String(s.systemKey))) throw fail(400, `${where}: unknown posting role.`); selectors.push({ mode, selectorType: t, systemKey: String(s.systemKey) }); }
+        else if (t === 'Cash') selectors.push({ mode, selectorType: t });
         else throw fail(400, `${where}: unknown selector.`);
       }
       const set = accountSetOf(chart, selectors);
-      for (const id of set) { const prev = covered.get(id); if (prev !== undefined) throw fail(400, `${where}: account ${byId.get(id).code} is already counted in row ${prev}. An account can be in only one Accounts row.`); covered.set(id, rowNumber); }
+      // an account is counted once per balance point: a row pinned to the opening balance may repeat an account that a movement row also has
+      for (const id of set) { const key = `${id}|${r.valueBasis || ''}`; const prev = covered.get(key); if (prev !== undefined) throw fail(400, `${where}: account ${byId.get(id).code} is already counted in row ${prev}. An account can be in only one Accounts row.`); covered.set(key, rowNumber); }
     }
+    if (r.valueBasis != null && !['OpeningBalance', 'ClosingBalance'].includes(r.valueBasis)) throw fail(400, `${where}: unknown balance point.`);
     let calc: { rowNumber: number; sign: number }[] | null = null;
     if (r.rowType === 'Calculated') {
       if (!Array.isArray(r.calcFormula) || r.calcFormula.length === 0) throw fail(400, `${where}: a formula row needs at least one referenced row.`);
@@ -156,7 +160,7 @@ export async function validateDesign(tx: any, companyId: string, reportType: Rep
     }
     let dimFilter: Record<string, string[]> | null = null;
     if (r.dimensionFilter && typeof r.dimensionFilter === 'object' && Object.keys(r.dimensionFilter).length) { await parseDimFilters(tx, companyId, r.dimensionFilter); dimFilter = r.dimensionFilter; }
-    rows.push({ rowNumber, rowType: r.rowType, label, labelAr: String(r.labelAr ?? '').trim().slice(0, 160) || null, balanceDisplay: display, flipSign: r.flipSign === true, calcFormula: calc, role: String(r.role ?? '').trim().slice(0, 40) || null, dimensionFilter: dimFilter, format: fmt.format, selectors });
+    rows.push({ rowNumber, rowType: r.rowType, label, labelAr: String(r.labelAr ?? '').trim().slice(0, 160) || null, balanceDisplay: display, flipSign: r.flipSign === true, valueBasis: r.valueBasis || null, calcFormula: calc, role: String(r.role ?? '').trim().slice(0, 40) || null, dimensionFilter: dimFilter, format: fmt.format, selectors });
     earlier.add(rowNumber);
   }
   const columns: EngineColumn[] = []; const seenCols = new Set<number>();
@@ -303,7 +307,8 @@ export async function runDefinition(tx: any, companyId: string, def: EngineDefin
     const cells: Cell[] = [];
     if (r.rowType === 'Accounts' || r.rowType === 'ProfitToDate') {
       const ids = r.rowType === 'Accounts' ? rowSets.get(r.rowNumber) || [] : plAccounts;
-      for (const c of valueCols) {
+      for (const col of valueCols) {
+        const c: EngineColumn = r.valueBasis ? { ...col, valueBasis: r.valueBasis } : col; // a row can pin itself to the balance at the start or end of the period
         const w = windows.get(c.columnNumber)!;
         const d = await dataFor(w, c.dimensionFilter, r.dimensionFilter);
         unmappedLines = Math.max(unmappedLines, d.unmappedLines);
@@ -356,7 +361,8 @@ export async function runDefinition(tx: any, companyId: string, def: EngineDefin
       for (const a of chart.filter(x => nodeIds.has(x.id))) {
         const under = [...descendantsOf(chart, a.id)].filter(x => ids.has(x));
         const dcells: Cell[] = [];
-        for (const c of valueCols) {
+        for (const col of valueCols) {
+          const c: EngineColumn = r.valueBasis ? { ...col, valueBasis: r.valueBasis } : col;
           const w = windows.get(c.columnNumber)!;
           const d = await dataFor(w, c.dimensionFilter, r.dimensionFilter);
           const f = figure(under, d.byAccount, r, c);
@@ -421,6 +427,20 @@ export async function runDefinition(tx: any, companyId: string, def: EngineDefin
     const roleVal = (role: string) => { const out = results.find(o => o.row.role === role); return out ? (out.cells[0]?.v ?? 0) : null; };
     const ta = roleVal('total_assets'), tl = roleVal('total_liabilities'), te = roleVal('total_equity');
     if (ta !== null && tl !== null && te !== null) { checks.difference = round2(ta - tl - te); checks.balanced = Math.abs(checks.difference) < 0.011; }
+  }
+  // The statements below are checked against the ledger itself (not against their own rows), so a definition that misses something shows a difference.
+  const roleOut = (role: string) => results.find(o => o.row.role === role);
+  if (def.reportType === 'CashFlow' && roleOut('net_change_in_cash') && valueCols.length) {
+    // the net change in cash must equal what the bank and cash accounts actually moved by
+    const c0 = valueCols[0]; const d = await dataFor(windows.get(c0.columnNumber)!, c0.dimensionFilter, null);
+    let actual = 0; for (const id of accountSetOf(chart, [{ mode: 'Include', selectorType: 'Cash' }])) { const b = d.byAccount.get(id); if (b) actual += b.movDr - b.movCr; }
+    checks.difference = round2((roleOut('net_change_in_cash')!.cells[0]?.v ?? 0) - actual); checks.balanced = Math.abs(checks.difference) < 0.011;
+  }
+  if (def.reportType === 'ChangesInEquity' && roleOut('closing_equity') && valueCols.length) {
+    // closing equity must equal the equity of the balance sheet at the end of the period (equity accounts plus profit to date)
+    const c0 = valueCols[0]; const d = await dataFor(windows.get(c0.columnNumber)!, c0.dimensionFilter, null);
+    let eq = 0; for (const a of chart) { if (a.isGroup || !['Equity', 'Revenue', 'Expense'].includes(a.type)) continue; const b = d.byAccount.get(a.id); if (b) eq += (b.openCr + b.movCr) - (b.openDr + b.movDr); }
+    checks.difference = round2((roleOut('closing_equity')!.cells[0]?.v ?? 0) - eq); checks.balanced = Math.abs(checks.difference) < 0.011;
   }
   checks.uncovered = notIn.length;
 

@@ -67,7 +67,8 @@ else
   echo "schema.ts unchanged since the last demo release — db:push skipped."
 fi
 
-say "[3/6] Row-level security policies + grants"
+say "[3/6] Check constraints, row-level security policies + grants"
+npx tsx scripts/apply-check-constraints.mjs
 npx tsx scripts/apply-rls-policies.mjs
 PGPASSWORD="$(read_secret SQL_PASSWORD)" psql -h "$(read_secret SQL_HOST)" -U "$(read_secret SQL_USER)" -d "$(read_secret SQL_DB_NAME)" -v ON_ERROR_STOP=1 -q \
   -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO erp_app_tenant" \

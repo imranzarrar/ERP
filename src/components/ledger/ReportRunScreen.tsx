@@ -6,7 +6,7 @@ import { formatAmount, type ReportFormat } from '../../reportFormat';
 import { ledgerApi, downloadLedgerFile, todayIso, yearStartIso, inputCls, labelCls, primaryBtn, ghostBtn, Card, Notice } from './ui';
 import { DimensionFilter, useDimensionOptions, type DimFilterValue } from './dimensions';
 
-export type ReportKind = 'TrialBalance' | 'PnL' | 'BalanceSheet' | 'Custom';
+export type ReportKind = 'TrialBalance' | 'PnL' | 'BalanceSheet' | 'CashFlow' | 'ChangesInEquity' | 'Custom';
 export interface DrillFocus { accountIds: string[]; from: string; to: string; dims?: DimFilterValue }
 
 const BORDER = (b?: string) => (b === 'double' ? '3px double #111' : b === 'single' ? '1px solid #111' : undefined);
@@ -158,7 +158,11 @@ export default function ReportRunScreen({ db, reportType, onDrill, onDesign }: {
               {result.checks.balanced ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
               {reportType === 'TrialBalance'
                 ? (result.checks.balanced ? t('The trial balance balances: total debits equal total credits.') : t('The trial balance does not balance. Do not rely on these figures until this is explained.'))
-                : (result.checks.balanced ? t('The balance sheet balances: assets equal liabilities plus equity.') : `${t('The balance sheet is out of balance by')} ${formatAmount(Math.abs(result.checks.difference || 0))}.`)}
+                : reportType === 'CashFlow'
+                  ? (result.checks.balanced ? t('The cash flow agrees with the movement of the bank and cash accounts.') : `${t('The cash flow differs from the movement of the bank and cash accounts by')} ${formatAmount(Math.abs(result.checks.difference || 0))}.`)
+                  : reportType === 'ChangesInEquity'
+                    ? (result.checks.balanced ? t('Closing equity agrees with the equity of the balance sheet.') : `${t('Closing equity differs from the equity of the balance sheet by')} ${formatAmount(Math.abs(result.checks.difference || 0))}.`)
+                    : (result.checks.balanced ? t('The balance sheet balances: assets equal liabilities plus equity.') : `${t('The balance sheet is out of balance by')} ${formatAmount(Math.abs(result.checks.difference || 0))}.`)}
             </div>
           )}
           {result.checks.uncovered > 0 && <Notice tone="warn">{result.checks.uncovered} {t('accounts have figures but are in no row of this layout. They are listed at the bottom and are not in the totals.')}</Notice>}

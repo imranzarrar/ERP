@@ -12,13 +12,13 @@ import { StatementTable } from './ReportRunScreen';
 // rules produce (evaluated by the server on the unsaved design, so the preview is exactly what will be run).
 const ROW_TYPES = [['Heading', 'Heading'], ['Accounts', 'Accounts (a group of accounts)'], ['Subtotal', 'Subtotal (adds the rows above since the last subtotal)'], ['Calculated', 'Formula (add or subtract rows)'], ['ProfitToDate', 'Profit (loss) to date'], ['Text', 'Text note'], ['Spacer', 'Blank row']] as const;
 const DISPLAYS = [['Net', 'Net (debits less credits)'], ['Debit', 'Debits only'], ['Credit', 'Credits only'], ['DebitBalances', 'Debit balances only'], ['CreditBalances', 'Credit balances only'], ['Split', 'Split by account (no netting)']] as const;
-const SELECTORS = [['Account', 'One account'], ['ParentRollup', 'A heading and everything under it'], ['Range', 'A range of codes'], ['Type', 'Every account of a type'], ['Role', 'The account of a posting role']] as const;
+const SELECTORS = [['Account', 'One account'], ['ParentRollup', 'A heading and everything under it'], ['Range', 'A range of codes'], ['Type', 'Every account of a type'], ['Role', 'The account of a posting role'], ['Cash', 'Every bank and cash account']] as const;
 const PERIODS = [['CurrentPeriod', 'The period chosen'], ['YearToDate', 'Year to date'], ['PriorPeriod', 'The previous period'], ['PriorYear', 'Same period last year'], ['AsAtEnd', 'As at the end date'], ['AsAtPriorYearEnd', 'As at last year\'s end date'], ['AsAtPriorPeriodEnd', 'As at the end of the previous period'], ['CustomRange', 'A fixed date range']] as const;
 const BASES = [['Movement', 'Movement (net activity)'], ['Debit', 'Debits'], ['Credit', 'Credits'], ['OpeningBalance', 'Opening balance'], ['ClosingBalance', 'Closing balance']] as const;
 const ROLES: [string, string][] = [['SALES_REVENUE', 'Sales revenue'], ['AR', 'Receivable'], ['VAT_OUTPUT', 'VAT output'], ['INVENTORY', 'Inventory'], ['GR_IR_CLEARING', 'Goods received not invoiced'], ['AP', 'Payable'], ['VAT_INPUT', 'VAT input'], ['VENDOR_CREDIT_RECEIVABLE', 'Vendor credit receivable'], ['COGS', 'Cost of goods sold'], ['DIRECT_OPEX', 'Default expense'], ['FIXED_ASSETS', 'Fixed assets'], ['BANK', 'Bank / cash (not allocated)'], ['PAID_IN_CAPITAL', 'Owner capital'], ['RETAINED_EARNINGS', 'Retained earnings'], ['VAT_PAYABLE_TO_AUTHORITY', 'VAT payable to authority'], ['ROUNDING_ADJUSTMENT', 'Rounding']];
 
 interface Sel { mode: 'Include' | 'Exclude'; selectorType: string; accountId?: string | null; rangeStart?: string | null; rangeEnd?: string | null; accountType?: string | null; systemKey?: string | null }
-interface Row { rowNumber: number; rowType: string; label: string | null; labelAr: string | null; balanceDisplay: string; flipSign: boolean; calcFormula: { rowNumber: number; sign: number }[] | null; role: string | null; dimensionFilter: DimFilterValue | null; format: ReportFormat; selectors: Sel[] }
+interface Row { rowNumber: number; rowType: string; label: string | null; labelAr: string | null; balanceDisplay: string; flipSign: boolean; valueBasis?: string | null; calcFormula: { rowNumber: number; sign: number }[] | null; role: string | null; dimensionFilter: DimFilterValue | null; format: ReportFormat; selectors: Sel[] }
 interface Col { columnNumber: number; label: string; labelAr: string | null; columnKind: string; periodBasis: string; customFrom: string | null; customTo: string | null; valueBasis: string; presentation: string; dimensionFilter: DimFilterValue | null; refColumnA: number | null; refColumnB: number | null; format: ReportFormat }
 
 const blankRow = (rowNumber: number, rowType: string): Row => ({ rowNumber, rowType, label: rowType === 'Spacer' ? null : rowType === 'Heading' ? 'New heading' : rowType === 'Subtotal' ? 'Subtotal' : rowType === 'Calculated' ? 'Formula' : rowType === 'ProfitToDate' ? 'Profit (loss) to date' : rowType === 'Text' ? 'Note' : 'New group', labelAr: null, balanceDisplay: 'Net', flipSign: false, calcFormula: rowType === 'Calculated' ? [] : null, role: null, dimensionFilter: null, format: rowType === 'Heading' || rowType === 'Subtotal' ? { bold: true } : {}, selectors: [] });
@@ -95,7 +95,7 @@ export default function ReportDesignerScreen({ db }: { db: DatabaseState }) {
       <Card className="p-4 flex flex-wrap items-end gap-3">
         <div className="min-w-[240px]"><label className={labelCls}>{t('Report')}</label>
           <select className={inputCls} value={defId} onChange={e => { if (dirty && !window.confirm(t('You have unsaved changes. Leave without saving?'))) return; setDefId(e.target.value); }}>
-            {defs.map(d => <option key={d.id} value={d.id}>{d.name}{d.isDefault ? ` ★` : ''}{!d.isActive ? ` (${t('inactive')})` : ''} · {t(d.reportType === 'PnL' ? 'Income Statement' : d.reportType === 'TrialBalance' ? 'Trial Balance' : d.reportType === 'BalanceSheet' ? 'Balance Sheet' : 'Custom')}</option>)}
+            {defs.map(d => <option key={d.id} value={d.id}>{d.name}{d.isDefault ? ` ★` : ''}{!d.isActive ? ` (${t('inactive')})` : ''} · {t(d.reportType === 'PnL' ? 'Income Statement' : d.reportType === 'TrialBalance' ? 'Trial Balance' : d.reportType === 'BalanceSheet' ? 'Balance Sheet' : d.reportType === 'CashFlow' ? 'Cash Flow Statement' : d.reportType === 'ChangesInEquity' ? 'Statement of Changes in Equity' : 'Custom')}</option>)}
           </select></div>
         <div className="flex items-center gap-2 flex-wrap">
           {can('reportDefinitions.create') && <button className={ghostBtn} onClick={() => setNewOpen(true)}><Plus className="w-3.5 h-3.5" />{t('New / copy')}</button>}
@@ -177,6 +177,9 @@ function RowEditor({ row, rows, sel, accounts, dimOptions, canEdit, db, setRow, 
           <div><label className={labelCls}>{t('Value of the row')}</label>
             <select className={inputCls} disabled={!canEdit} value={row.balanceDisplay} onChange={e => setRow({ balanceDisplay: e.target.value })}>{DISPLAYS.map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}</select></div>
           <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" disabled={!canEdit} checked={row.flipSign} onChange={e => setRow({ flipSign: e.target.checked })} />{t('Show the opposite sign (credit-natured rows show positive)')}</label>
+          {(row.rowType === 'Accounts' || row.rowType === 'ProfitToDate') && <div><label className={labelCls}>{t('Balance point')}</label>
+            <select className={`${inputCls} !py-1`} disabled={!canEdit} value={row.valueBasis || ''} onChange={e => setRow({ valueBasis: e.target.value || null })}>
+              <option value="">{t('As the column says')}</option><option value="OpeningBalance">{t('Balance at the start of the period')}</option><option value="ClosingBalance">{t('Balance at the end of the period')}</option></select></div>}
           <div><label className={labelCls}>{t('Accounts in this row')}</label>
             <div className="space-y-2">
               {row.selectors.map((s, i) => (
@@ -286,7 +289,7 @@ function NewReportModal({ db, defs, current, onClose, onCreated }: { db: Databas
       <div><label className={labelCls}>{t('Name')}</label><input className={inputCls} value={name} onChange={e => setName(e.target.value)} placeholder={t('Management P&L')} /></div>
       <div><label className={labelCls}>{t('Start from')}</label>
         <select className={inputCls} value={clone} onChange={e => setClone(e.target.value)}><option value="">{t('A blank report')}</option>{defs.map(d => <option key={d.id} value={d.id}>{t('A copy of')} {d.name}</option>)}</select></div>
-      {!clone && <div><label className={labelCls}>{t('Type')}</label><select className={inputCls} value={type} onChange={e => setType(e.target.value)}><option value="Custom">{t('Custom')}</option><option value="PnL">{t('Income Statement')}</option><option value="BalanceSheet">{t('Balance Sheet')}</option><option value="TrialBalance">{t('Trial Balance')}</option></select></div>}
+      {!clone && <div><label className={labelCls}>{t('Type')}</label><select className={inputCls} value={type} onChange={e => setType(e.target.value)}><option value="Custom">{t('Custom')}</option><option value="PnL">{t('Income Statement')}</option><option value="BalanceSheet">{t('Balance Sheet')}</option><option value="TrialBalance">{t('Trial Balance')}</option><option value="CashFlow">{t('Cash Flow Statement')}</option><option value="ChangesInEquity">{t('Statement of Changes in Equity')}</option></select></div>}
     </Modal>
   );
 }

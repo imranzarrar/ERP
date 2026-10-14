@@ -2516,7 +2516,7 @@ export const reportDefinitions = pgTable('report_definitions', {
   companyId: uuid('company_id').notNull().references(() => companies.id),
   name: text('name').notNull(),
   nameAr: text('name_ar'),
-  reportType: text('report_type').notNull(), // 'TrialBalance' | 'PnL' | 'BalanceSheet' | 'Custom'
+  reportType: text('report_type').notNull(), // 'TrialBalance' | 'PnL' | 'BalanceSheet' | 'CashFlow' | 'ChangesInEquity' | 'Custom'
   isSystemSeeded: boolean('is_system_seeded').notNull().default(false),
   isDefault: boolean('is_default').notNull().default(false),
   defaultDisplayMode: text('default_display_mode').notNull().default('Summary'), // 'Summary' | 'Detailed'
@@ -2529,7 +2529,7 @@ export const reportDefinitions = pgTable('report_definitions', {
   idCompanyUnique: unique('report_definitions_id_company_unique').on(table.companyId, table.id),
   nameUnique: uniqueIndex('report_definitions_company_name_unique').on(table.companyId, table.name),
   oneDefaultPerType: uniqueIndex('report_definitions_one_default_unique').on(table.companyId, table.reportType).where(sql`is_default = true`),
-  typeCheck: check('report_definitions_type_check', sql`${table.reportType} IN ('TrialBalance','PnL','BalanceSheet','Custom')`),
+  typeCheck: check('report_definitions_type_check', sql`${table.reportType} IN ('TrialBalance','PnL','BalanceSheet','CashFlow','ChangesInEquity','Custom')`),
   modeCheck: check('report_definitions_mode_check', sql`${table.defaultDisplayMode} IN ('Summary','Detailed')`),
   tenantIsolationPolicy: tenantPolicy('report_definitions_tenant_isolation', table),
 })).enableRLS();
@@ -2545,6 +2545,7 @@ export const reportRows = pgTable('report_rows', {
   labelAr: text('label_ar'),
   balanceDisplay: text('balance_display').notNull().default('Net'), // 'Net' | 'Debit' | 'Credit' | 'DebitBalances' | 'CreditBalances' | 'Split'
   flipSign: boolean('flip_sign').notNull().default(false), // show the opposite sign (credit-natured rows show positive)
+  valueBasis: text('value_basis'), // null = the column's own basis; 'OpeningBalance' | 'ClosingBalance' pins this row to the balance at the start / end of the column's period (cash at the beginning of a cash flow)
   calcFormula: jsonb('calc_formula'), // Calculated: [{ rowNumber, sign }] over EARLIER rows
   role: text('role'), // optional tag a rule or report relies on: total_assets, total_liabilities, total_equity, net_profit ...
   dimensionFilter: jsonb('dimension_filter'), // { dimensionTypeId: [entityId] } applied to this row only
@@ -2557,6 +2558,7 @@ export const reportRows = pgTable('report_rows', {
   definitionFk: foreignKey({ name: 'report_rows_definition_company_fk', columns: [table.reportDefinitionId, table.companyId], foreignColumns: [reportDefinitions.id, reportDefinitions.companyId] }),
   typeCheck: check('report_rows_type_check', sql`${table.rowType} IN ('Heading','Accounts','Subtotal','Calculated','ProfitToDate','Text','Spacer')`),
   displayCheck: check('report_rows_display_check', sql`${table.balanceDisplay} IN ('Net','Debit','Credit','DebitBalances','CreditBalances','Split')`),
+  basisCheck: check('report_rows_basis_check', sql`${table.valueBasis} IS NULL OR ${table.valueBasis} IN ('OpeningBalance','ClosingBalance')`),
   tenantIsolationPolicy: tenantPolicy('report_rows_tenant_isolation', table),
 })).enableRLS();
 
@@ -2566,7 +2568,7 @@ export const reportRowSelectors = pgTable('report_row_selectors', {
   companyId: uuid('company_id').notNull().references(() => companies.id),
   reportRowId: uuid('report_row_id').notNull(),
   mode: text('mode').notNull().default('Include'), // 'Include' | 'Exclude'
-  selectorType: text('selector_type').notNull(), // 'Account' | 'ParentRollup' | 'Range' | 'Type' | 'Role'
+  selectorType: text('selector_type').notNull(), // 'Account' | 'ParentRollup' | 'Range' | 'Type' | 'Role' | 'Cash' (every bank and cash account)
   accountId: uuid('account_id'),
   rangeStart: text('range_start'),
   rangeEnd: text('range_end'),
@@ -2579,9 +2581,10 @@ export const reportRowSelectors = pgTable('report_row_selectors', {
   accountFk: foreignKey({ name: 'report_row_selectors_account_company_fk', columns: [table.accountId, table.companyId], foreignColumns: [companyAccounts.id, companyAccounts.companyId] }),
   systemKeyFk: foreignKey({ name: 'report_row_selectors_system_key_fk', columns: [table.systemKey], foreignColumns: [systemAccounts.key] }),
   modeCheck: check('report_row_selectors_mode_check', sql`${table.mode} IN ('Include','Exclude')`),
-  typeCheck: check('report_row_selectors_type_check', sql`${table.selectorType} IN ('Account','ParentRollup','Range','Type','Role')`),
+  typeCheck: check('report_row_selectors_type_check', sql`${table.selectorType} IN ('Account','ParentRollup','Range','Type','Role','Cash')`),
   shapeCheck: check('report_row_selectors_shape_check', sql`
     (${table.selectorType} IN ('Account','ParentRollup') AND ${table.accountId} IS NOT NULL)
+    OR ${table.selectorType} = 'Cash'
     OR (${table.selectorType} = 'Range' AND ${table.rangeStart} IS NOT NULL AND ${table.rangeEnd} IS NOT NULL)
     OR (${table.selectorType} = 'Type' AND ${table.accountType} IN ('Asset','Liability','Equity','Revenue','Expense'))
     OR (${table.selectorType} = 'Role' AND ${table.systemKey} IS NOT NULL)`),
