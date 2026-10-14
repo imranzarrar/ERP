@@ -4,6 +4,7 @@ import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { generateId } from '../src/id.js';
 import { provisionStarterResources } from '../server/lib/companyProvisioning.js';
+import { purgeCompany } from './helpers/purgeCompany.js';
 
 // A brand-new company's starter print templates: "Detailed Compact (A4)" is the one pre-selected
 // (isActive) in the Print dialog; "Compact A4" and "Compact A4 Arabic" are saved but inactive.
@@ -12,20 +13,7 @@ const NAME_PREFIX = 'Default Template Test Co';
 
 afterAll(async () => {
   const rows = await db.select({ id: schema.companies.id }).from(schema.companies).where(like(schema.companies.name, `${NAME_PREFIX}%`));
-  for (const { id: companyId } of rows) {
-    await db.delete(schema.documentTemplates).where(eq(schema.documentTemplates.companyId, companyId));
-    await db.delete(schema.fiscalMonths).where(eq(schema.fiscalMonths.companyId, companyId));
-    await db.delete(schema.unitsOfMeasure).where(eq(schema.unitsOfMeasure.companyId, companyId));
-    await db.delete(schema.warehouses).where(eq(schema.warehouses.companyId, companyId));
-    await db.delete(schema.taxSlabs).where(eq(schema.taxSlabs.companyId, companyId));
-    await db.delete(schema.vendors).where(eq(schema.vendors.companyId, companyId));
-    await db.delete(schema.customers).where(eq(schema.customers.companyId, companyId));
-    await db.delete(schema.expenseCategoryAccounts).where(eq(schema.expenseCategoryAccounts.companyId, companyId));
-    await db.delete(schema.companyAccounts).where(eq(schema.companyAccounts.companyId, companyId)); // the company's chart (each bank owns a ledger account)
-    await db.delete(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, companyId));
-    await db.delete(schema.documentCounters).where(eq(schema.documentCounters.companyId, companyId));
-    await db.delete(schema.companies).where(eq(schema.companies.id, companyId));
-  }
+  for (const { id: companyId } of rows) await purgeCompany(companyId); // follows every foreign key, so new tables never break this teardown
 });
 
 describe('new company starter templates', () => {
