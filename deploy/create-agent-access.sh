@@ -50,7 +50,7 @@ has_db "$LIVE_DB" || die "Live database $LIVE_DB not found."
 [ -z "$(ss -ltn | awk '$4 ~ /:4000$/ {print "x"}')" ] || die "Port 4000 is already in use."
 if [ -n "$PUBKEY" ]; then
   [[ "$PUBKEY" =~ ^ssh-ed25519\ AAAA[0-9A-Za-z+/=]+(\ .*)?$ ]] || die "The first argument must be an ssh-ed25519 PUBLIC key line."
-  [[ "$ALLOW_IP" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || die "Give your public IPv4 address as the second argument (the key is locked to it)."
+  [[ "$ALLOW_IP" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ || "$ALLOW_IP" == "any" ]] || die "Give your public IPv4 address (the key is locked to it) or the word any (no address restriction) as the second argument."
 fi
 
 say "OS user $DEMO_USER (no password, no sudo)"
@@ -62,9 +62,9 @@ for g in $(id -nG "$DEMO_USER"); do case "$g" in sudo|admin|root|deploy) die "$D
 say "SSH access for the assistant"
 AK="$DEMO_HOME/.ssh/authorized_keys"; touch "$AK"; chown "$DEMO_USER:$DEMO_USER" "$AK"; chmod 600 "$AK"
 if [ -n "$PUBKEY" ]; then
-  LINE="from=\"$ALLOW_IP\",restrict,pty $PUBKEY"
+  if [ "$ALLOW_IP" = "any" ]; then LINE="restrict,pty $PUBKEY"; else LINE="from=\"$ALLOW_IP\",restrict,pty $PUBKEY"; fi
   grep -qxF "$LINE" "$AK" || echo "$LINE" >> "$AK"
-  echo "Key installed, usable only from $ALLOW_IP."
+  if [ "$ALLOW_IP" = "any" ]; then echo "Key installed (no address restriction)."; else echo "Key installed, usable only from $ALLOW_IP."; fi
 else
   echo "No key given — authorized_keys is empty. Re-run this script with the key line and your IP."
 fi
