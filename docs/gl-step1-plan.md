@@ -75,3 +75,18 @@ of accounts that belongs to the company. Existing reports and period rules stay 
 1. Do accountants need to define their own account structure from day one, or is a renameable standard chart enough for the first release?
 2. Are expenses by category (rent, utilities, salaries) needed in the ledger now (1b), or later?
 3. Which live company is the first to use the ledger screens (so I verify against its real data first)?
+
+## Decisions confirmed by the user (2026-10-14) and the approval model
+
+* Manual journals follow **Draft -> Pending approval -> Posted**. An Accountant prepares and submits (`journals.create`); a Manager holding
+  `journals.post` approves and posts, or rejects with a written reason (the journal returns to Draft). The preparer cannot approve their own
+  journal unless the owner switches that safeguard on for the company (default off, audit-logged, such journals are marked).
+* Reversal of a posted manual journal creates a reversing Draft that takes the same approval path; the original stays posted until the reversal is approved.
+  Journals made by documents are reversed by their document, never by hand.
+* An account can be deactivated only when its balance is zero; mapping changes, chart imports and opening-balance runs are audit-logged.
+* The separate "Ledger vs Documents" report is built (kept while both Trial Balances exist). Excel import of the chart is in the first release.
+* Permission modules/keys: `chartOfAccounts` (create, read, update, delete=deactivate, import, export), `accountMapping` (read, update),
+  `journals` (create, read, update, delete=discard draft, post, reverse), `openingBalances` (read, preview, post), and in `reports`:
+  `generalLedger`, `trialBalanceLedger`, `ledgerReconciliation`. New left-menu section "General Ledger" (Chart of Accounts, Journals incl. Pending
+  Approval, Ledger Reports, Opening Balances). Every key is also enforced on the server; every new table carries companyId + RLS; every label is
+  translated EN/AR/UR. UX screens: the "Warraq 2.0 - General Ledger UX (Step 1)" design canvas.
