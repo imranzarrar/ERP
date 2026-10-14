@@ -335,6 +335,10 @@ export default function DocumentRenderer({
  an anchored template (print:min-h-[10.5in], inside a 10.89in printable area) past one
  page and printed a blank second page. */
  html, body { padding: 0; margin: 0; width: 100%; }
+ /* A4 only: a 0.1in side margin that does not depend on the print dialog. The popup used to get its side space from the 20px html
+ padding, which the blank-page fix removed; with the dialog's margins set to None (or a printer that prints edge to edge) the header
+ then touched, and was clipped at, the left and right edges. Receipt and 4x6 label sizes keep their own @page margins untouched. */
+ ${forceThermalReceipt || currentTemplate?.pageSize?.includes('4in x 6in') ? '' : 'body { box-sizing: border-box; padding: 0 0.1in; }'}
  .no-print { display: none !important; }
  @page {
  /* 80mm width, auto height: a real thermal roll has no fixed page length — it just
