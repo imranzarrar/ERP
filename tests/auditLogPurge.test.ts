@@ -8,8 +8,7 @@ import { generateId } from '../src/id.js';
 // Real integration tests against the already-running dev server + real Postgres state, no
 // mocks, matching this project's established convention. Verifies POST /api/audit-logs/purge
 // (server.ts) actually does what it claims: permanently removes rows older than 1 year while
-// leaving recent rows untouched, scoped correctly for a company admin (own company only) vs a
-// super-admin (every company) — this route had never been exercised by an automated test
+// leaving recent rows untouched, refused for a company admin and, for a super-admin, applied across every company — this route had never been exercised by an automated test
 // before. This is the one intentional exception to every other soft-delete conversion in this
 // session's audit pass: audit-log retention pruning is meant to be a real, permanent DELETE.
 const BASE_URL = 'http://localhost:3000';
@@ -84,35 +83,30 @@ afterAll(async () => {
   await db.delete(schema.companies).where(eq(schema.companies.id, companyBId));
 });
 
+// Purging the audit trail is platform-owner only: a company admin must not be able to erase their own company's history.
 describe('POST /api/audit-logs/purge', () => {
-  it('a company admin purging only removes their own company\'s rows older than 1 year, leaving recent rows and other companies untouched', async () => {
+  it('a company admin is rejected, and nothing is purged', async () => {
     await insertLogRow(companyAId, adminAId, 'purge-test-fixture', 400); // older than 1 year
-    await insertLogRow(companyAId, adminAId, 'purge-test-fixture', 10);  // recent
-    await insertLogRow(companyBId, adminBId, 'purge-test-fixture', 400); // older than 1 year, DIFFERENT company
+    await insertLogRow(companyBId, adminBId, 'purge-test-fixture', 400);
 
-    const { status, body } = await api(adminASessionId, '/api/audit-logs/purge', { method: 'POST' });
-    expect(status).toBe(200);
-    expect(body.success).toBe(true);
+    const { status } = await api(adminASessionId, '/api/audit-logs/purge', { method: 'POST' });
+    expect(status).toBe(403);
 
     const remainingA = await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.userId, adminAId));
-    // Only the recent row (10 days old) should survive for company A.
     expect(remainingA.filter(r => r.action === 'TEST_ACTION').length).toBe(1);
-    expect(remainingA.find(r => r.action === 'TEST_ACTION')?.details).toBeFalsy();
-
-    // Company B's old row must be untouched by a plain company admin's purge.
     const remainingB = await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.userId, adminBId));
     expect(remainingB.filter(r => r.action === 'TEST_ACTION').length).toBe(1);
   });
 
-  it('a super-admin purging removes rows older than 1 year across every company', async () => {
-    await insertLogRow(companyBId, adminBId, 'purge-test-fixture', 400); // freshly inserted for this test, still older than 1 year
+  it('a super-admin purging removes rows older than 1 year across every company, and keeps recent rows', async () => {
+    await insertLogRow(companyAId, adminAId, 'purge-test-fixture', 10); // recent: must survive
     const { status, body } = await api(superAdminSessionId, '/api/audit-logs/purge', { method: 'POST' });
     expect(status).toBe(200);
     expect(body.success).toBe(true);
 
+    const remainingA = await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.userId, adminAId));
+    expect(remainingA.filter(r => r.action === 'TEST_ACTION').length).toBe(1); // only the 10-day-old row
     const remainingB = await db.select().from(schema.auditLogs).where(eq(schema.auditLogs.userId, adminBId));
-    // Every row older than a year for company B must now be gone — a super-admin purge
-    // is not scoped to their own company.
     expect(remainingB.every(r => r.action !== 'TEST_ACTION')).toBe(true);
   });
 });

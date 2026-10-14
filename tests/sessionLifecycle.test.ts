@@ -240,21 +240,17 @@ describe('Company-switch persistence is not regressed by the ghost-row fix (BACK
   });
 });
 
+// Active Sessions lives under Settings > System & Backup, which is platform-owner territory: super-admin only. A company admin must not
+// be able to list their company's sessions, or sign out a super-admin who is working inside it.
 describe('GET /api/admin/sessions', () => {
   it('a non-admin is rejected', async () => {
     const { status } = await api(companyANormalSessionId, '/api/admin/sessions');
     expect(status).toBe(403);
   });
 
-  it('a company-scoped admin sees their own company\'s sessions but never another company\'s', async () => {
-    const { status, body } = await api(companyAAdminSessionId, '/api/admin/sessions');
-    expect(status).toBe(200);
-    const sids = body.sessions.map((s: any) => s.sid);
-    expect(sids).toContain(companyAAdminSessionId);
-    expect(sids).not.toContain(companyBAdminSessionId);
-    for (const s of body.sessions) {
-      expect(s.companyId).toBe(companyAId);
-    }
+  it('a company admin is rejected too: only a super-admin may list sessions', async () => {
+    const { status } = await api(companyAAdminSessionId, '/api/admin/sessions');
+    expect(status).toBe(403);
   });
 
   it('a super-admin sees sessions across companies', async () => {
@@ -272,23 +268,25 @@ describe('DELETE /api/admin/sessions/:sid', () => {
     expect(status).toBe(403);
   });
 
-  it('rejects revoking your own current session, with a clear message', async () => {
-    const { status, body } = await api(companyAAdminSessionId, `/api/admin/sessions/${companyAAdminSessionId}`, { method: 'DELETE' });
+  it('a company admin is rejected, and the session they tried to revoke survives', async () => {
+    const { status } = await api(companyAAdminSessionId, `/api/admin/sessions/${companyANormalSessionId}`, { method: 'DELETE' });
+    expect(status).toBe(403);
+    const [row] = await db.select().from(schema.user_sessions).where(eq(schema.user_sessions.sid, companyANormalSessionId));
+    expect(row).toBeTruthy();
+    const { status: stillAuthenticated } = await api(companyANormalSessionId, '/api/branches');
+    expect(stillAuthenticated).not.toBe(401); // still signed in (a plain user may get 403 for this resource, never 401)
+  });
+
+  it('a super-admin cannot revoke their own current session, with a clear message', async () => {
+    const { status, body } = await api(superAdminSessionId, `/api/admin/sessions/${superAdminSessionId}`, { method: 'DELETE' });
     expect(status).toBe(400);
     expect(body.error).toMatch(/logout/i);
-    const [row] = await db.select().from(schema.user_sessions).where(eq(schema.user_sessions.sid, companyAAdminSessionId));
+    const [row] = await db.select().from(schema.user_sessions).where(eq(schema.user_sessions.sid, superAdminSessionId));
     expect(row).toBeTruthy();
   });
 
-  it('rejects a company-scoped admin revoking a different company\'s session', async () => {
-    const { status } = await api(companyAAdminSessionId, `/api/admin/sessions/${companyBAdminSessionId}`, { method: 'DELETE' });
-    expect(status).toBe(403);
-    const [row] = await db.select().from(schema.user_sessions).where(eq(schema.user_sessions.sid, companyBAdminSessionId));
-    expect(row).toBeTruthy();
-  });
-
-  it('revokes another user\'s session in the same company, and that user is then unauthenticated', async () => {
-    const { status } = await api(companyAAdminSessionId, `/api/admin/sessions/${companyANormalSessionId}`, { method: 'DELETE' });
+  it('a super-admin revokes a user\'s session in any company, and that user is then unauthenticated', async () => {
+    const { status } = await api(superAdminSessionId, `/api/admin/sessions/${companyANormalSessionId}`, { method: 'DELETE' });
     expect(status).toBe(200);
 
     const { status: nextStatus } = await api(companyANormalSessionId, '/api/branches');
