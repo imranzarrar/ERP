@@ -8,7 +8,7 @@ import {
 
 interface Account {
   id: string; code: string; name: string; nameAr: string | null; type: string; parentId: string | null; parentCode: string | null; isGroup: boolean;
-  systemKey: string | null; isControl: boolean; bankId: string | null; isActive: boolean; balance: number; lines: number;
+  systemKey: string | null; isControl: boolean; subledgerType?: string | null; bankId: string | null; isActive: boolean; balance: number; lines: number;
 }
 
 const TYPE_TONE: Record<string, string> = {
@@ -129,7 +129,7 @@ export default function ChartOfAccountsScreen({ db, autoOpen, onDone }: { db: Da
                     <div className="flex flex-wrap gap-1">
                       {a.bankId && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 text-[9px] font-bold uppercase"><Landmark className="w-3 h-3" />{t('Bank')}</span>}
                       {a.systemKey && !a.bankId && <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[9px] font-bold uppercase">{t('Posting role')}</span>}
-                      {a.isControl && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[9px] font-bold uppercase"><Lock className="w-3 h-3" />{t('Control')}</span>}
+                      {a.isControl && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[9px] font-bold uppercase"><Lock className="w-3 h-3" />{t('Control')}{a.subledgerType && ['customer', 'vendor'].includes(a.subledgerType) ? ` · ${t(a.subledgerType === 'customer' ? 'Customers' : 'Vendors')}` : ''}</span>}
                     </div>
                   </td>
                   <td className="p-3 text-end font-mono tabular-nums">{Math.abs(a.balance) < 0.005 && !a.isGroup ? <span className="text-slate-300">0.00</span> : money(a.balance)}</td>
@@ -167,17 +167,20 @@ function AccountDrawer({ db, accounts, account, onClose, onSaved }: { db: Databa
   const [type, setType] = React.useState(account?.type || 'Expense');
   const [parentId, setParentId] = React.useState(account?.parentId || '');
   const [isGroup, setIsGroup] = React.useState(account?.isGroup || false);
+  const [subledger, setSubledger] = React.useState(account?.subledgerType === 'customer' || account?.subledgerType === 'vendor' ? account.subledgerType : '');
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
   // The type is fixed once an account has postings, a posting role or a bank behind it; the server enforces it, the screen just says so.
   const typeLocked = !isNew && (account!.lines > 0 || !!account!.systemKey || !!account!.bankId || account!.isControl || account!.isGroup);
   const parents = accounts.filter(a => a.isGroup && a.isActive && a.type === type && a.id !== account?.id);
+  // an ordinary account can serve as the receivable / payable account of customers or vendors, as long as nothing has posted to it yet
+  const canSubledger = !isNew && !account!.isGroup && !account!.systemKey && !account!.bankId && (account!.type === 'Asset' || account!.type === 'Liability');
 
   const save = async () => {
     setSaving(true); setError('');
     try {
       if (isNew) await ledgerApi('/accounts', { method: 'POST', body: { code, name, nameAr, type, parentId: parentId || null, isGroup } });
-      else await ledgerApi(`/accounts/${account!.id}`, { method: 'PUT', body: { code, name, nameAr, ...(typeLocked ? {} : { type }), parentId: parentId || null } });
+      else await ledgerApi(`/accounts/${account!.id}`, { method: 'PUT', body: { code, name, nameAr, ...(typeLocked ? {} : { type }), parentId: parentId || null, ...(canSubledger && subledger !== (account!.subledgerType === 'customer' || account!.subledgerType === 'vendor' ? account!.subledgerType : '') ? { subledgerType: subledger } : {}) } });
       onSaved(isNew ? t('Account created.') : t('Account saved.'));
     } catch (e: any) { setError(e.message); setSaving(false); }
   };
@@ -206,6 +209,17 @@ function AccountDrawer({ db, accounts, account, onClose, onSaved }: { db: Databa
           {parents.map(p => <option key={p.id} value={p.id}>{p.code} · {p.name}</option>)}
         </select>
       </div>
+      {canSubledger && (
+        <div>
+          <label className={labelCls}>{t('Control account for')}</label>
+          <select className={inputCls} value={subledger} disabled={account!.lines > 0 && !subledger} onChange={e => setSubledger(e.target.value)}>
+            <option value="">{t('Not a control account')}</option>
+            {account!.type === 'Asset' && <option value="customer">{t('Customers (receivable)')}</option>}
+            {account!.type === 'Liability' && <option value="vendor">{t('Vendors (payable)')}</option>}
+          </select>
+          <p className="text-[11px] text-slate-500 mt-1">{t('A control account takes the postings of its customers or vendors only, never manual journals. Choose it on the customer or vendor to post their documents here instead of the company default. It can be set or removed only while the account has no postings.')}</p>
+        </div>
+      )}
       {isNew && (
         <label className="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
           <input type="checkbox" className="mt-0.5" checked={isGroup} onChange={e => setIsGroup(e.target.checked)} />

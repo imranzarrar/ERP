@@ -19,7 +19,7 @@ const fail = (res: any, status: number, error: string) => res.status(status).jso
 const CODE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,19}$/;
 const ID_RE = /^[0-9a-f-]{36}$/i;
 
-const canSeeTypes = (req: any) => ['dimensions.read', 'accountDimensionRules.read', 'journals.create', 'journals.read', 'journals.post', 'reports.generalLedger', 'reports.trialBalanceLedger', 'reports.ledgerReconciliation']
+const canSeeTypes = (req: any) => ['dimensions.read', 'accountDimensionRules.read', 'accountMapping.update', 'journals.create', 'journals.read', 'journals.post', 'reports.generalLedger', 'reports.trialBalanceLedger', 'reports.ledgerReconciliation']
   .some(k => hasPermission(req.user, k));
 
 async function ensureSeeded(tdb: any, companyId: string) { await seedCompanyDimensions(tdb, companyId); }

@@ -204,6 +204,9 @@ describe('Company registration status + Delete Company & All Data', () => {
     await db.insert(schema.dimensionCombinationEntries).values({ id: generateId(), companyId, combinationId: combo, dimensionTypeId: dimType, entityId: dimKid, valueId: dimKid });
     await db.update(schema.journalLines).set({ dimensionCombinationId: combo }).where(eq(schema.journalLines.journalEntryId, e1));
     await db.insert(schema.accountDimensionRules).values({ id: generateId(), companyId, accountId: exp.id, dimensionTypeId: dimType, rule: 'optional', defaultValueId: dimVal });
+    // a customer's posting profile points at a control account and a default dimension combination
+    await db.update(schema.companyAccounts).set({ subledgerType: 'customer', isControl: true }).where(eq(schema.companyAccounts.id, exp.id));
+    await db.update(schema.customers).set({ controlAccountId: exp.id, defaultDimensionCombinationId: combo }).where(eq(schema.customers.id, defaultCustomer.id));
 
     // 3. Registration-status guard rails.
     expect((await api(companyAdminSessionId, `/api/companies/${companyId}/registration-status`, { method: 'PATCH', body: JSON.stringify({ status: 'Cancelled' }) })).status).toBe(403);

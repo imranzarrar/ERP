@@ -49,6 +49,12 @@ export const DEFAULT_CHART: ChartSeed[] = [
   { code: '7900', name: 'Rounding Adjustment', nameAr: 'فروقات التقريب', type: 'Expense', parent: '7000', systemKey: 'ROUNDING_ADJUSTMENT' },
 ];
 
+// The subledger that owns each system role's account (control accounts: only that subledger's documents post to them).
+export const SUBLEDGER_OF_ROLE: Record<string, string> = {
+  AR: 'customer', AP: 'vendor', VENDOR_CREDIT_RECEIVABLE: 'vendor', INVENTORY: 'inventory', BANK: 'bank',
+  VAT_INPUT: 'tax', VAT_OUTPUT: 'tax', VAT_PAYABLE_TO_AUTHORITY: 'tax', GR_IR_CLEARING: 'clearing',
+};
+
 // The fixed expense categories of the Expense screen and the account each one starts out on.
 export const EXPENSE_CATEGORY_DEFAULTS: Record<string, string> = {
   'Admin Expenses': '6010',
@@ -78,7 +84,7 @@ export async function ensureBankAccount(tx: any, companyId: string, bank: { id: 
   const id = generateId();
   await tx.insert(schema.companyAccounts).values({
     id, companyId, code: await allocateCode(tx, companyId, 1020, 1099), name: bank.bankName, nameAr: null, type: 'Asset',
-    parentId: parent?.id || null, isGroup: false, systemKey: null, isControl: true, bankId: bank.id, isActive: true, createdAt: nowDate(),
+    parentId: parent?.id || null, isGroup: false, systemKey: null, isControl: true, subledgerType: 'bank', bankId: bank.id, isActive: true, createdAt: nowDate(),
   });
   return id;
 }
@@ -96,12 +102,17 @@ export async function seedCompanyChart(tx: any, companyId: string): Promise<{ cr
     const row = {
       id: generateId(), companyId, code: seed.code, name: seed.name, nameAr: seed.nameAr, type: seed.type, parentId: parent?.id || null,
       isGroup: !!seed.isGroup, systemKey: seed.systemKey && !takenKeys.has(seed.systemKey) ? seed.systemKey : null,
-      isControl: !!seed.isControl, bankId: null, isActive: true, createdAt: nowDate(),
+      isControl: !!seed.isControl, subledgerType: seed.systemKey && !takenKeys.has(seed.systemKey) ? (SUBLEDGER_OF_ROLE[seed.systemKey] || null) : null, bankId: null, isActive: true, createdAt: nowDate(),
     };
     if (row.systemKey) takenKeys.add(row.systemKey);
     await tx.insert(schema.companyAccounts).values(row);
     byCode.set(seed.code, row);
     created++;
+  }
+  // companies charted before subledger types existed: stamp the control accounts they already have
+  for (const a of existing) {
+    const want = a.bankId ? 'bank' : a.systemKey ? SUBLEDGER_OF_ROLE[a.systemKey] : null;
+    if (want && !a.subledgerType) await tx.update(schema.companyAccounts).set({ subledgerType: want }).where(and(eq(schema.companyAccounts.id, a.id), eq(schema.companyAccounts.companyId, companyId)));
   }
   const banks = await tx.select().from(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, companyId));
   let bankCount = 0;

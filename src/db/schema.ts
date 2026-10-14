@@ -675,8 +675,14 @@ export const customers = pgTable('customers', {
   // field (that's only mandatory when a B2B buyer lacks a VAT number, a separate, deferred
   // gap — see BACKLOG.md), just what shows on the printed invoice/quotation alongside VAT.
   crNumber: text('cr_number'),
+  // Posting profile: the receivable account this customer's invoices and receipts post to (a control account of subledger type 'customer'; null = the
+  // company's Accounts Receivable), and the dimension tags every ledger line of a document for this customer starts from.
+  controlAccountId: uuid('control_account_id'),
+  defaultDimensionCombinationId: uuid('default_dimension_combination_id'),
 }, (table) => ({
   companyIdIdx: index('customers_company_id_idx').on(table.companyId),
+  controlAccountFk: foreignKey({ name: 'customers_control_account_company_fk', columns: [table.controlAccountId, table.companyId], foreignColumns: [companyAccounts.id, companyAccounts.companyId] }),
+  defaultDimensionFk: foreignKey({ name: 'customers_default_dimension_company_fk', columns: [table.defaultDimensionCombinationId, table.companyId], foreignColumns: [dimensionCombinations.id, dimensionCombinations.companyId] }),
   // Proof-of-concept table for the tenantDb RLS rollout (see the TENANT_DB_ROLE comment
   // above) — first table migrated, deliberately simple (no branch-scoping complexity) to
   // validate the whole pipeline (policy + tenantDb + ALS context + a real migrated route)
@@ -731,8 +737,13 @@ export const vendors = pgTable('vendors', {
   // General print-facing Commercial Registration number — see the matching field on
   // customers; this form is shared between the two, so both need it.
   crNumber: text('cr_number'),
+  // Posting profile (see customers): the payable account for this vendor's bills and payments, and its default dimension tags.
+  controlAccountId: uuid('control_account_id'),
+  defaultDimensionCombinationId: uuid('default_dimension_combination_id'),
 }, (table) => ({
   companyIdIdx: index('vendors_company_id_idx').on(table.companyId),
+  controlAccountFk: foreignKey({ name: 'vendors_control_account_company_fk', columns: [table.controlAccountId, table.companyId], foreignColumns: [companyAccounts.id, companyAccounts.companyId] }),
+  defaultDimensionFk: foreignKey({ name: 'vendors_default_dimension_company_fk', columns: [table.defaultDimensionCombinationId, table.companyId], foreignColumns: [dimensionCombinations.id, dimensionCombinations.companyId] }),
   tenantIsolationPolicy: pgPolicy('vendors_tenant_isolation', {
     for: 'all',
     to: TENANT_DB_ROLE,
@@ -750,7 +761,10 @@ export const bankAccounts = pgTable('bank_accounts', {
   isActive: boolean('is_active').default(true),
   isDefault: boolean('is_default').default(false),
   companyId: uuid('company_id').notNull().references(() => companies.id),
+  // Dimension tags every ledger line on this bank account starts from (e.g. the Branch that holds the cash).
+  defaultDimensionCombinationId: uuid('default_dimension_combination_id'),
 }, (table) => ({
+  defaultDimensionFk: foreignKey({ name: 'bank_accounts_default_dimension_company_fk', columns: [table.defaultDimensionCombinationId, table.companyId], foreignColumns: [dimensionCombinations.id, dimensionCombinations.companyId] }),
   unique_default_bank: uniqueIndex('unique_default_bank').on(table.companyId).where(sql`is_default = true`),
   companyIdIdx: index('bank_accounts_company_id_idx').on(table.companyId),
   tenantIsolationPolicy: pgPolicy('bank_accounts_tenant_isolation', {
@@ -1283,6 +1297,9 @@ export const companyAccounts = pgTable('company_accounts', {
   isGroup: boolean('is_group').notNull().default(false), // a heading: takes no postings of its own
   systemKey: text('system_key').references(() => systemAccounts.key),
   isControl: boolean('is_control').notNull().default(false), // receivables, payables, inventory, GR/IR, VAT, vendor credit, banks: no manual lines
+  // Which subledger owns the account: only that subledger's documents post to it. A company may have several per type (Trade receivables, Staff receivables);
+  // a customer / vendor names its own control account. null = an ordinary account. Control accounts of the chart always have one.
+  subledgerType: text('subledger_type'), // 'customer' | 'vendor' | 'inventory' | 'bank' | 'tax' | 'clearing' | 'other'
   bankId: uuid('bank_id').references(() => bankAccounts.id), // set on the account auto-made for a bank / cash account
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull(),
@@ -1296,6 +1313,7 @@ export const companyAccounts = pgTable('company_accounts', {
   bankUnique: uniqueIndex('company_accounts_company_bank_unique').on(table.companyId, table.bankId).where(sql`bank_id IS NOT NULL`),
   parentFk: foreignKey({ name: 'company_accounts_parent_company_fk', columns: [table.parentId, table.companyId], foreignColumns: [table.id, table.companyId] }),
   typeCheck: check('company_accounts_type_check', sql`${table.type} IN ('Asset','Liability','Equity','Revenue','Expense')`),
+  subledgerCheck: check('company_accounts_subledger_check', sql`${table.subledgerType} IS NULL OR ${table.subledgerType} IN ('customer','vendor','inventory','bank','tax','clearing','other')`),
   tenantIsolationPolicy: pgPolicy('company_accounts_tenant_isolation', {
     for: 'all',
     to: TENANT_DB_ROLE,

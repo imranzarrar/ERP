@@ -9,6 +9,7 @@ import { DatabaseState, saveDatabase } from '../dbStore';
 import { generateId } from '../id';
 import { ProductService, Customer, Vendor, User } from '../types';
 import { ZATCA_UNIT_CODES } from '../zatcaUnitCodes';
+import PostingProfileFields, { type ProfileValue } from './ledger/PostingProfile';
 import { 
  Plus,
  Trash,
@@ -120,6 +121,7 @@ export default function MasterEntities({ db, onUpdateDbLocal, onRefreshDb, force
  const [zatcaBuildingNumber, setZatcaBuildingNumber] = React.useState('');
  const [zatcaDistrict, setZatcaDistrict] = React.useState('');
  const [zatcaCity, setZatcaCity] = React.useState('');
+ const [profile, setProfile] = React.useState<ProfileValue | null>(null); // posting profile (control account, default dimensions); null = not loaded / not allowed
  const [zatcaPostalCode, setZatcaPostalCode] = React.useState('');
  // Not a ZATCA field — general Commercial Registration number shown on the printed
  // document alongside VAT (DocumentRenderer.tsx), separate from the ZATCA buyer-identity
@@ -395,7 +397,8 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
     postalCode: zatcaPostalCode || null,
     crNumber: entityCrNumber || null,
     isSystem: false,
-    companyId: db.selectedCompanyId
+    companyId: db.selectedCompanyId,
+    ...(profile ? { controlAccountId: profile.controlAccountId || null, defaultDimensions: profile.dimensions } : {}),
   };
 
   try {
@@ -485,7 +488,7 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
 
  try {
  if (savedVendor) {
- const res = await fetch('/api/vendors', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(savedVendor) });
+ const res = await fetch('/api/vendors', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ ...savedVendor, ...(profile ? { controlAccountId: profile.controlAccountId || null, defaultDimensions: profile.dimensions } : {}) }) });
  if (!res.ok) {
  const errData = await res.json().catch(() => ({}));
  triggerError(errData.error || 'Failed to save vendor — the server rejected this request.');
@@ -1493,6 +1496,8 @@ const handleSaveCustomer = async (e: React.FormEvent) => {
  </div>
  </div>
  )}
+
+ <PostingProfileFields db={db} kind={subTab === 'vendors' ? 'vendor' : 'customer'} entityId={editingId} value={profile} onChange={setProfile} />
 
  {buyerFieldErrors.length > 0 && (
  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-[11px] font-bold text-rose-700 space-y-0.5">

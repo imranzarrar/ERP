@@ -44,6 +44,7 @@ import { ensureCompatibleImage, downscaleImageDataUrl } from '../imageUtils';
 import { DEFAULT_DOCUMENT_LAYOUT, DETAILED_TAX_INVOICE_LAYOUT, buildCompactA4Layout, COL_SPAN_MD, COL_SPAN_PRINT } from '../documentTemplateDefaults';
 import DocumentRenderer from './DocumentRenderer';
 import ZatcaOnboardingWizard from './ZatcaOnboardingWizard';
+import PostingProfileFields, { type ProfileValue } from './ledger/PostingProfile';
 
 // Shared sample invoice data for template preview — used both by the Canvas Designer's
 // embedded live preview (updates as you edit) and the standalone "Live Print Preview"
@@ -1398,6 +1399,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  // SUB-TAB: BANK MANAGEMENT
  // ----------------------------------------
  const [editingBankId, setEditingBankId] = React.useState<string | null>(null);
+ const [bankProfile, setBankProfile] = React.useState<ProfileValue | null>(null); // the bank's default dimension tags (Account Mapping permission)
  const [bankForm, setBankForm] = React.useState<Omit<BankAccount, 'id'>>({
  bankName: '',
  accountNumber: '',
@@ -1431,7 +1433,8 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
          accountTitle: bankForm.accountTitle,
          accountNumber: bankForm.accountNumber,
          openingBalance: bankForm.openingBalance,
-         isDefault: bankForm.isDefault
+         isDefault: bankForm.isDefault,
+         ...(bankProfile ? { defaultDimensions: bankProfile.dimensions } : {})
        })
      });
      const data = await res.json().catch(() => ({}));
@@ -1451,7 +1454,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
      const res = await fetch('/api/banks', {
        method: 'POST',
        headers: { 'Content-Type': 'application/json' },
-       body: JSON.stringify(newBank)
+       body: JSON.stringify({ ...newBank, ...(bankProfile ? { defaultDimensions: bankProfile.dimensions } : {}) })
      });
      const data = await res.json().catch(() => ({}));
      if (!res.ok || data.error) return triggerError(data.error || 'Failed to add bank.');
@@ -4446,6 +4449,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  className="w-full bg-white border border-slate-200 rounded-2xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500"
  />
  </div>
+ <PostingProfileFields db={db} kind="bank" entityId={editingBankId} value={bankProfile} onChange={setBankProfile} />
  <div className="col-span-2 flex items-center gap-4 mt-1.5">
  <label className="flex items-center gap-1.5 text-xs text-slate-600">
  <input

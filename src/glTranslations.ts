@@ -474,6 +474,20 @@ export const GL_TRANSLATIONS: [key: string, ar: string, ur: string][] = [
   ['The cash flow differs from the movement of the bank and cash accounts by', 'التدفق النقدي يختلف عن حركة حسابات البنوك والنقد بمقدار', 'کیش فلو بینک اور کیش اکاؤنٹس کی حرکت سے اتنا مختلف ہے'],
   ['Closing equity agrees with the equity of the balance sheet.', 'حقوق الملكية الختامية تتطابق مع حقوق الملكية في قائمة المركز المالي.', 'اختتامی ایکویٹی بیلنس شیٹ کی ایکویٹی سے مطابقت رکھتی ہے۔'],
   ['Closing equity differs from the equity of the balance sheet by', 'حقوق الملكية الختامية تختلف عن حقوق الملكية في قائمة المركز المالي بمقدار', 'اختتامی ایکویٹی بیلنس شیٹ کی ایکویٹی سے اتنی مختلف ہے'],
+  ['Posting profile', 'ملف الترحيل', 'پوسٹنگ پروفائل'],
+  ['Every ledger line on this bank account starts from these dimension tags.', 'كل قيد على هذا الحساب البنكي يبدأ بأوسمة الأبعاد هذه.', 'اس بینک اکاؤنٹ کی ہر لیجر لائن انہی ڈائمنشن ٹیگز سے شروع ہوتی ہے۔'],
+  ['Documents for this party post to the account below and start from these dimension tags. Leave empty to use the company default.', 'مستندات هذا الطرف تُرحَّل إلى الحساب أدناه وتبدأ بأوسمة الأبعاد هذه. اتركه فارغًا لاستخدام الافتراضي للشركة.', 'اس فریق کے دستاویزات نیچے دیے گئے اکاؤنٹ میں پوسٹ ہوتے ہیں اور انہی ڈائمنشن ٹیگز سے شروع ہوتے ہیں۔ کمپنی ڈیفالٹ کے لیے خالی چھوڑیں۔'],
+  ['Receivable account', 'حساب الذمم المدينة', 'قابلِ وصول اکاؤنٹ'],
+  ['Payable account', 'حساب الذمم الدائنة', 'قابلِ ادائیگی اکاؤنٹ'],
+  ['Company default', 'افتراضي الشركة', 'کمپنی ڈیفالٹ'],
+  ['No other control accounts yet. Mark an account as a customer or vendor control account in the Chart of Accounts.', 'لا توجد حسابات رقابة أخرى بعد. حدّد حسابًا كحساب رقابة للعملاء أو الموردين في دليل الحسابات.', 'ابھی کوئی دوسرا کنٹرول اکاؤنٹ نہیں۔ چارٹ آف اکاؤنٹس میں کسی اکاؤنٹ کو کسٹمر یا وینڈر کنٹرول اکاؤنٹ بنائیں۔'],
+  ['Control account for', 'حساب رقابة لـ', 'کنٹرول اکاؤنٹ برائے'],
+  ['Not a control account', 'ليس حساب رقابة', 'کنٹرول اکاؤنٹ نہیں'],
+  ['Customers (receivable)', 'العملاء (ذمم مدينة)', 'کسٹمرز (قابلِ وصول)'],
+  ['Vendors (payable)', 'الموردون (ذمم دائنة)', 'وینڈرز (قابلِ ادائیگی)'],
+  ['A control account takes the postings of its customers or vendors only, never manual journals. Choose it on the customer or vendor to post their documents here instead of the company default. It can be set or removed only while the account has no postings.', 'حساب الرقابة يستقبل قيود عملائه أو مورديه فقط، ولا يقبل القيود اليدوية أبدًا. اخترْه في العميل أو المورد لترحيل مستنداتهم إليه بدل الحساب الافتراضي للشركة. لا يمكن تعيينه أو إزالته إلا ما دام الحساب بلا قيود.', 'کنٹرول اکاؤنٹ صرف اپنے کسٹمرز یا وینڈرز کی پوسٹنگ لیتا ہے، مینول جرنل کبھی نہیں۔ کمپنی ڈیفالٹ کی بجائے ان کے دستاویزات یہاں پوسٹ کرنے کے لیے اسے کسٹمر یا وینڈر پر منتخب کریں۔ اسے صرف تب لگایا یا ہٹایا جا سکتا ہے جب اکاؤنٹ میں کوئی پوسٹنگ نہ ہو۔'],
+  ['Customers', 'العملاء', 'کسٹمرز'],
+  ['Vendors', 'الموردون', 'وینڈرز'],
 ];
 
 // A stable id per key (the same on every machine), so the bundled fallback and the database row for a key never disagree about identity.

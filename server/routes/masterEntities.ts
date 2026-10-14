@@ -1,4 +1,5 @@
 import { ensureBankAccount } from '../lib/chartOfAccounts.js';
+import { checkProfileInput } from '../lib/partyProfile.js';
 import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
@@ -142,6 +143,9 @@ router.post('/customers', withTenantDb, async (req: any, res) => {
     // No separate db.transaction() wrapper needed here — withTenantDb already wraps the
     // entire request in one transaction (BEGIN in the middleware, COMMIT/ROLLBACK on
     // response finish), so these two statements are already atomic within it.
+    // posting profile (control account, default dimensions): validated here, never written straight from the payload
+    try { Object.assign(data, await checkProfileInput(tdb, req, 'customer', data, existing)); }
+    catch (e: any) { return res.status(e.status || 500).json({ error: e.message }); }
     const todayIso = new Date().toISOString().slice(0, 10);
     if (!existing) {
       data.customerCode = await getAndIncrementDocumentNumber(tdb, data.companyId, 'customerCode', todayIso);
@@ -265,6 +269,8 @@ router.post('/vendors', withTenantDb, async (req: any, res) => {
 
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
     // request in one transaction.
+    try { Object.assign(data, await checkProfileInput(tdb, req, 'vendor', data, existing)); }
+    catch (e: any) { return res.status(e.status || 500).json({ error: e.message }); }
     const todayIso = new Date().toISOString().slice(0, 10);
     if (!existing) {
       data.vendorCode = await getAndIncrementDocumentNumber(tdb, data.companyId, 'vendorCode', todayIso);
@@ -703,14 +709,17 @@ router.post('/banks', withTenantDb, async (req: any, res) => {
     const data = { ...req.body };
 
     // Deliberately the superuser `db` — same hijack-detection reasoning as POST /customers.
+    let existingBank: typeof schema.bankAccounts.$inferSelect | undefined;
     if (data.id) {
-      const [existing] = await db.select().from(schema.bankAccounts).where(eq(schema.bankAccounts.id, data.id));
-      if (!assertOwnsRow(existing, req)) {
+      [existingBank] = await db.select().from(schema.bankAccounts).where(eq(schema.bankAccounts.id, data.id));
+      if (!assertOwnsRow(existingBank, req)) {
         return res.status(403).json({ error: 'Forbidden: this bank account belongs to another company' });
       }
     }
 
     data.companyId = req.targetCompanyId;
+    try { Object.assign(data, await checkProfileInput(tdb, req, 'bank', data, existingBank)); }
+    catch (e: any) { return res.status(e.status || 500).json({ error: e.message }); }
 
     // At most one default bank per company (unique_default_bank partial index) — clear
     // any existing default for this company first, atomically with the insert, same
@@ -752,6 +761,10 @@ router.patch('/banks/:id', withTenantDb, async (req: any, res) => {
 
     const { bankName, accountTitle, accountNumber, openingBalance, isDefault } = req.body;
     const update: Record<string, any> = {};
+    if (req.body.defaultDimensions !== undefined) {
+      try { Object.assign(update, await checkProfileInput(tdb, req, 'bank', { defaultDimensions: req.body.defaultDimensions }, existing)); }
+      catch (e: any) { return res.status(e.status || 500).json({ error: e.message }); }
+    }
     if (bankName !== undefined) update.bankName = bankName;
     if (accountTitle !== undefined) update.accountTitle = accountTitle;
     if (accountNumber !== undefined) update.accountNumber = accountNumber;

@@ -10,8 +10,9 @@ import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
 import { hasPermission } from '../lib/authz.js';
 import { recordAuditLog } from '../lib/audit.js';
 import { nowDate } from '../lib/clock.js';
-import { ACCOUNT_TYPES, isDebitNormal, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_DEFAULTS } from '../lib/chartOfAccounts.js';
+import { ACCOUNT_TYPES, isDebitNormal, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_DEFAULTS, SUBLEDGER_OF_ROLE } from '../lib/chartOfAccounts.js';
 import { accountTotals, branchIdsFor, round2 } from '../lib/ledgerQueries.js';
+import { profileOf } from '../lib/partyProfile.js';
 import {
   CHART_IMPORT_MAX_ROWS, buildChartTemplate, buildChartExport, parseChartWorkbook, validateChartRows, commitChartRows,
 } from '../lib/chartImport.js';
@@ -124,6 +125,24 @@ router.put('/accounts/:id', withTenantDb, async (req: any, res) => {
       if (kids.length > 0) return fail(res, 400, 'Move or retype the accounts under this heading first.');
       patch.type = body.type;
     }
+    // A control account of the customer or vendor subledger: only customers' / vendors' documents post to it, and a customer or vendor can be pointed at it
+    // (Customers and Vendors forms, "Receivable account" / "Payable account"). Allowed only on an ordinary postable account that has no postings yet,
+    // so the subledger and its control account start in step; removed only when no customer or vendor uses it.
+    if (body.subledgerType !== undefined && (body.subledgerType || null) !== (acct.subledgerType || null)) {
+      const want = body.subledgerType ? String(body.subledgerType) : null;
+      if (want !== null && !['customer', 'vendor'].includes(want)) return fail(res, 400, 'A control account is for customers or vendors.');
+      if (acct.systemKey || acct.bankId) return fail(res, 400, 'The subledger of a system role or bank account cannot change.');
+      if (acct.isGroup) return fail(res, 400, 'A heading cannot be a control account.');
+      if (usage.lines > 0 || usage.draftLines > 0) return fail(res, 400, 'This account already has postings (or journal drafts), so it cannot change into or out of a control account.');
+      if (want === 'customer' && (patch.type || acct.type) !== 'Asset') return fail(res, 400, 'A customer control account must be an Asset account.');
+      if (want === 'vendor' && (patch.type || acct.type) !== 'Liability') return fail(res, 400, 'A vendor control account must be a Liability account.');
+      if (want === null) {
+        const [c] = await tdb.select({ id: schema.customers.id }).from(schema.customers).where(and(eq(schema.customers.companyId, companyId), eq(schema.customers.controlAccountId, acct.id))).limit(1);
+        const [v] = await tdb.select({ id: schema.vendors.id }).from(schema.vendors).where(and(eq(schema.vendors.companyId, companyId), eq(schema.vendors.controlAccountId, acct.id))).limit(1);
+        if (c || v) return fail(res, 400, 'A customer or vendor still uses this as its control account. Change them first.');
+      }
+      patch.subledgerType = want; patch.isControl = want !== null;
+    }
     if (body.parentId !== undefined && (body.parentId || null) !== (acct.parentId || null)) {
       if (body.parentId) {
         const parent = await loadAccount(tdb, companyId, String(body.parentId));
@@ -141,6 +160,35 @@ router.put('/accounts/:id', withTenantDb, async (req: any, res) => {
     await tdb.update(schema.companyAccounts).set(patch).where(and(eq(schema.companyAccounts.id, acct.id), eq(schema.companyAccounts.companyId, companyId)));
     recordAuditLog(req, 'UPDATE_ACCOUNT', 'company_account', acct.id, { before: { code: acct.code, name: acct.name, nameAr: acct.nameAr, type: acct.type }, change: patch });
     res.json({ success: true });
+  } catch (e: any) { fail(res, e.status || 500, e.message); }
+});
+
+// ---- posting profile of a customer, vendor or bank: the control accounts it can use and what it currently has ----
+const PROFILE_READ: Record<string, string[]> = { customer: ['customers.read', 'customers.update', 'customers.create'], vendor: ['vendors.read', 'vendors.update', 'vendors.create'], bank: ['banks.read', 'banks.update', 'banks.create'] };
+router.get('/control-accounts', withTenantDb, async (req: any, res) => {
+  try {
+    const kind = String(req.query.kind || '');
+    if (!['customer', 'vendor'].includes(kind)) return fail(res, 400, 'Choose customer or vendor.');
+    if (![...PROFILE_READ[kind], 'accountMapping.read', 'chartOfAccounts.read'].some(k => hasPermission(req.user, k))) return fail(res, 403, 'Forbidden');
+    const tdb = tenantDb(); const companyId = req.targetCompanyId;
+    const rows = await tdb.select().from(schema.companyAccounts).where(and(eq(schema.companyAccounts.companyId, companyId), eq(schema.companyAccounts.subledgerType, kind), eq(schema.companyAccounts.isActive, true)));
+    // the company's own role account (AR / AP) is what "default" means, so only additional control accounts are offered
+    const own = rows.filter((a: any) => !a.systemKey && !a.isGroup).sort((a: any, b: any) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+    res.json({ accounts: own.map((a: any) => ({ id: a.id, code: a.code, name: a.name, nameAr: a.nameAr })) });
+  } catch (e: any) { fail(res, e.status || 500, e.message); }
+});
+
+router.get('/party-profile', withTenantDb, async (req: any, res) => {
+  try {
+    const kind = String(req.query.kind || ''); const id = String(req.query.id || '');
+    if (!PROFILE_READ[kind]) return fail(res, 400, 'Unknown kind.');
+    if (![...PROFILE_READ[kind], 'accountMapping.read'].some(k => hasPermission(req.user, k))) return fail(res, 403, 'Forbidden');
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return fail(res, 400, 'Invalid id.');
+    const tdb = tenantDb(); const companyId = req.targetCompanyId;
+    const table: any = kind === 'customer' ? schema.customers : kind === 'vendor' ? schema.vendors : schema.bankAccounts;
+    const [row] = await tdb.select().from(table).where(and(eq(table.id, id), eq(table.companyId, companyId)));
+    if (!row) return fail(res, 404, 'Not found.');
+    res.json(await profileOf(tdb, companyId, row));
   } catch (e: any) { fail(res, e.status || 500, e.message); }
 });
 
@@ -300,8 +348,8 @@ router.put('/mapping/role', withTenantDb, async (req: any, res) => {
     if (target.systemKey && target.systemKey !== key) return fail(res, 400, `${target.code} is already the account of another role (${target.systemKey}).`);
     const [current] = await tdb.select().from(schema.companyAccounts).where(and(eq(schema.companyAccounts.companyId, companyId), eq(schema.companyAccounts.systemKey, key)));
     if (current && current.id === target.id) return res.json({ success: true, unchanged: true });
-    if (current) await tdb.update(schema.companyAccounts).set({ systemKey: null, isControl: false }).where(and(eq(schema.companyAccounts.id, current.id), eq(schema.companyAccounts.companyId, companyId)));
-    await tdb.update(schema.companyAccounts).set({ systemKey: key, isControl: CONTROL_ROLES.has(key) }).where(and(eq(schema.companyAccounts.id, target.id), eq(schema.companyAccounts.companyId, companyId)));
+    if (current) await tdb.update(schema.companyAccounts).set({ systemKey: null, isControl: false, subledgerType: null }).where(and(eq(schema.companyAccounts.id, current.id), eq(schema.companyAccounts.companyId, companyId)));
+    await tdb.update(schema.companyAccounts).set({ systemKey: key, isControl: CONTROL_ROLES.has(key), subledgerType: SUBLEDGER_OF_ROLE[key] || null }).where(and(eq(schema.companyAccounts.id, target.id), eq(schema.companyAccounts.companyId, companyId)));
     recordAuditLog(req, 'CHANGE_ACCOUNT_MAPPING', 'company_account', target.id, { role: key, from: current?.code || null, to: target.code });
     res.json({ success: true });
   } catch (e: any) { fail(res, e.status || 500, e.message); }

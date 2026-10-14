@@ -124,6 +124,10 @@ router.delete('/:id', async (req: any, res) => {
       await tx.delete(schema.reportColumns).where(byCompany(schema.reportColumns));
       await tx.delete(schema.reportDefinitions).where(byCompany(schema.reportDefinitions));
       // Dimensions: tags on lines first (a line points at a combination), then the combinations, rules, values, types and cost centres.
+      // Posting profiles point at control accounts and default dimensions: cut them before those go.
+      await tx.update(schema.customers).set({ controlAccountId: null, defaultDimensionCombinationId: null }).where(byCompany(schema.customers));
+      await tx.update(schema.vendors).set({ controlAccountId: null, defaultDimensionCombinationId: null }).where(byCompany(schema.vendors));
+      await tx.update(schema.bankAccounts).set({ defaultDimensionCombinationId: null }).where(byCompany(schema.bankAccounts));
       await tx.update(schema.manualJournalLines).set({ dimensionCombinationId: null }).where(byCompany(schema.manualJournalLines));
       await tx.update(schema.journalLines).set({ dimensionCombinationId: null }).where(byCompany(schema.journalLines));
       await tx.delete(schema.dimensionCombinationEntries).where(byCompany(schema.dimensionCombinationEntries));
