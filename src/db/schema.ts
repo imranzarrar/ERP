@@ -1287,7 +1287,9 @@ export const companyAccounts = pgTable('company_accounts', {
 }, (table) => ({
   companyIdIdx: index('company_accounts_company_id_idx').on(table.companyId),
   codeUnique: uniqueIndex('company_accounts_company_code_unique').on(table.companyId, table.code),
-  idCompanyUnique: unique('company_accounts_id_company_unique').on(table.id, table.companyId),
+  // Target of the composite (id, company_id) foreign keys that keep every reference inside one company. Declared (company_id, id): drizzle-kit reads a
+  // constraint's columns back in that order, and a different declared order makes every db:push try to drop and re-add it (which fails: foreign keys depend on it).
+  idCompanyUnique: unique('company_accounts_id_company_unique').on(table.companyId, table.id),
   systemKeyUnique: uniqueIndex('company_accounts_company_system_key_unique').on(table.companyId, table.systemKey).where(sql`system_key IS NOT NULL`),
   bankUnique: uniqueIndex('company_accounts_company_bank_unique').on(table.companyId, table.bankId).where(sql`bank_id IS NOT NULL`),
   parentFk: foreignKey({ name: 'company_accounts_parent_company_fk', columns: [table.parentId, table.companyId], foreignColumns: [table.id, table.companyId] }),
@@ -2267,7 +2269,7 @@ export const manualJournals = pgTable('manual_journals', {
 }, (table) => ({
   companyIdIdx: index('manual_journals_company_id_idx').on(table.companyId),
   numberUnique: uniqueIndex('manual_journals_company_number_unique').on(table.companyId, table.number),
-  idCompanyUnique: unique('manual_journals_id_company_unique').on(table.id, table.companyId),
+  idCompanyUnique: unique('manual_journals_id_company_unique').on(table.companyId, table.id),
   reversalFk: foreignKey({ name: 'manual_journals_reversal_company_fk', columns: [table.reversalOfId, table.companyId], foreignColumns: [table.id, table.companyId] }),
   reversedByFk: foreignKey({ name: 'manual_journals_reversed_by_company_fk', columns: [table.reversedById, table.companyId], foreignColumns: [table.id, table.companyId] }),
   oneReversalUnique: uniqueIndex('manual_journals_one_reversal_unique').on(table.reversalOfId).where(sql`reversal_of_id IS NOT NULL`),
