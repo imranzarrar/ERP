@@ -422,6 +422,8 @@ export const branches = pgTable('branches', {
   defaultWarehouseId: uuid('default_warehouse_id').references(() => warehouses.id),
 }, (table) => ({
   companyIdIdx: index('branches_company_id_idx').on(table.companyId),
+  // Target of the composite (company_id, id) foreign keys that keep dimension tags inside one company (declared (company_id, id): see company_accounts).
+  idCompanyUnique: unique('branches_id_company_unique').on(table.companyId, table.id),
   unique_default_branch: uniqueIndex('unique_default_branch').on(table.companyId).where(sql`is_default = true`),
   tenantIsolationPolicy: pgPolicy('branches_tenant_isolation', {
     for: 'all',
@@ -1358,8 +1360,12 @@ export const journalLines = pgTable('journal_lines', {
   // Set only when accountKey = 'BANK' — Bank isn't one pooled account, it's N separate
   // ones, same as vouchers.bankId.
   bankId: uuid('bank_id').references(() => bankAccounts.id),
+  // Branch / Department / any custom dimension tags of this line, resolved to one deduplicated combination (Finance Core Blueprint FR-DIM-01).
+  dimensionCombinationId: uuid('dimension_combination_id'),
 }, (table) => ({
   companyIdIdx: index('journal_lines_company_id_idx').on(table.companyId),
+  dimensionCombinationIdx: index('journal_lines_dimension_combination_idx').on(table.companyId, table.dimensionCombinationId),
+  dimensionCombinationFk: foreignKey({ name: 'journal_lines_dimension_combination_company_fk', columns: [table.dimensionCombinationId, table.companyId], foreignColumns: [dimensionCombinations.id, dimensionCombinations.companyId] }),
   journalEntryIdIdx: index('journal_lines_journal_entry_id_idx').on(table.journalEntryId),
   accountKeyIdx: index('journal_lines_account_key_idx').on(table.accountKey),
   accountIdIdx: index('journal_lines_account_id_idx').on(table.accountId),
@@ -2292,8 +2298,10 @@ export const manualJournalLines = pgTable('manual_journal_lines', {
   credit: decimal('credit', { precision: 14, scale: 2 }).notNull().default('0'),
   note: text('note'),
   sortOrder: integer('sort_order').notNull().default(0),
+  dimensionCombinationId: uuid('dimension_combination_id'),
 }, (table) => ({
   companyIdIdx: index('manual_journal_lines_company_id_idx').on(table.companyId),
+  dimensionCombinationFk: foreignKey({ name: 'manual_journal_lines_dimension_combination_company_fk', columns: [table.dimensionCombinationId, table.companyId], foreignColumns: [dimensionCombinations.id, dimensionCombinations.companyId] }),
   journalIdx: index('manual_journal_lines_journal_id_idx').on(table.journalId),
   journalFk: foreignKey({ name: 'manual_journal_lines_journal_company_fk', columns: [table.journalId, table.companyId], foreignColumns: [manualJournals.id, manualJournals.companyId] }),
   accountFk: foreignKey({ name: 'manual_journal_lines_account_company_fk', columns: [table.accountId, table.companyId], foreignColumns: [companyAccounts.id, companyAccounts.companyId] }),
@@ -2366,4 +2374,135 @@ export const openingBalanceRuns = pgTable('opening_balance_runs', {
     using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
     withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
   }),
+})).enableRLS();
+
+// ---- General Ledger Step 1.5: dynamic dimensions (Finance Core Blueprint FR-DIM). See docs/gl-step1-5-decisions.md. ----
+// A company defines as many dimension types as it needs (Profit Centre, Project, Department ...). Branch and Department are seeded. Values of a Custom type
+// live in dimension_values; Branch and Department are linked to the branches / cost_centers masters. A ledger line carries ONE combination of tags.
+const tenantPolicy = (name: string, table: any) => pgPolicy(name, {
+  for: 'all',
+  to: TENANT_DB_ROLE,
+  using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+});
+
+// Department / cost centre master: optional home branch (a centre with none is shared and eligible for allocation), hierarchical.
+export const costCenters = pgTable('cost_centers', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  code: text('code').notNull(),
+  name: text('name').notNull(),
+  nameAr: text('name_ar'),
+  homeBranchId: uuid('home_branch_id'),
+  parentId: uuid('parent_id'),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull(),
+}, (table) => ({
+  companyIdIdx: index('cost_centers_company_id_idx').on(table.companyId),
+  idCompanyUnique: unique('cost_centers_id_company_unique').on(table.companyId, table.id),
+  codeUnique: uniqueIndex('cost_centers_company_code_unique').on(table.companyId, table.code),
+  homeBranchFk: foreignKey({ name: 'cost_centers_home_branch_company_fk', columns: [table.homeBranchId, table.companyId], foreignColumns: [branches.id, branches.companyId] }),
+  parentFk: foreignKey({ name: 'cost_centers_parent_company_fk', columns: [table.parentId, table.companyId], foreignColumns: [table.id, table.companyId] }),
+  tenantIsolationPolicy: tenantPolicy('cost_centers_tenant_isolation', table),
+})).enableRLS();
+
+export const dimensionTypes = pgTable('dimension_types', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  code: text('code').notNull(),
+  name: text('name').notNull(),
+  nameAr: text('name_ar'),
+  valueSource: text('value_source').notNull(), // 'Custom' (values in dimension_values) | 'LinkedEntity' (branches / cost_centers)
+  linkedEntity: text('linked_entity'), // 'branches' | 'cost_centers' when LinkedEntity
+  isHierarchical: boolean('is_hierarchical').notNull().default(false),
+  isSystem: boolean('is_system').notNull().default(false), // the seeded Branch and Department types: renamable, never removed or re-sourced
+  sortOrder: integer('sort_order').notNull().default(0),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull(),
+}, (table) => ({
+  companyIdIdx: index('dimension_types_company_id_idx').on(table.companyId),
+  idCompanyUnique: unique('dimension_types_id_company_unique').on(table.companyId, table.id),
+  codeUnique: uniqueIndex('dimension_types_company_code_unique').on(table.companyId, table.code),
+  sourceCheck: check('dimension_types_source_check', sql`(${table.valueSource} = 'Custom' AND ${table.linkedEntity} IS NULL) OR (${table.valueSource} = 'LinkedEntity' AND ${table.linkedEntity} IN ('branches','cost_centers'))`),
+  tenantIsolationPolicy: tenantPolicy('dimension_types_tenant_isolation', table),
+})).enableRLS();
+
+export const dimensionValues = pgTable('dimension_values', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  dimensionTypeId: uuid('dimension_type_id').notNull(),
+  code: text('code').notNull(),
+  name: text('name').notNull(),
+  nameAr: text('name_ar'),
+  parentValueId: uuid('parent_value_id'), // a value can sit under another value of the same type; filtering on a parent includes its children
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull(),
+}, (table) => ({
+  companyIdIdx: index('dimension_values_company_id_idx').on(table.companyId),
+  typeIdx: index('dimension_values_type_idx').on(table.dimensionTypeId),
+  idCompanyUnique: unique('dimension_values_id_company_unique').on(table.companyId, table.id),
+  codeUnique: uniqueIndex('dimension_values_type_code_unique').on(table.dimensionTypeId, table.code),
+  typeFk: foreignKey({ name: 'dimension_values_type_company_fk', columns: [table.dimensionTypeId, table.companyId], foreignColumns: [dimensionTypes.id, dimensionTypes.companyId] }),
+  parentFk: foreignKey({ name: 'dimension_values_parent_company_fk', columns: [table.parentValueId, table.companyId], foreignColumns: [table.id, table.companyId] }),
+  tenantIsolationPolicy: tenantPolicy('dimension_values_tenant_isolation', table),
+})).enableRLS();
+
+// A deduplicated set of tags: every line with the same tags points at the same row, so a dimension filter is one indexed lookup.
+export const dimensionCombinations = pgTable('dimension_combinations', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  dedupKey: text('dedup_key').notNull(), // hash of the sorted "typeId=entityId" members
+  label: text('label'), // cached display text, e.g. "Jeddah / Marketing"
+  createdAt: timestamp('created_at').notNull(),
+}, (table) => ({
+  companyIdIdx: index('dimension_combinations_company_id_idx').on(table.companyId),
+  idCompanyUnique: unique('dimension_combinations_id_company_unique').on(table.companyId, table.id),
+  dedupUnique: uniqueIndex('dimension_combinations_company_dedup_unique').on(table.companyId, table.dedupKey),
+  tenantIsolationPolicy: tenantPolicy('dimension_combinations_tenant_isolation', table),
+})).enableRLS();
+
+// One tag of a combination. The entity is stored in a typed column with a real foreign key (never a bare polymorphic id); entityId repeats it for filtering.
+export const dimensionCombinationEntries = pgTable('dimension_combination_entries', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  combinationId: uuid('combination_id').notNull(),
+  dimensionTypeId: uuid('dimension_type_id').notNull(),
+  entityId: uuid('entity_id').notNull(),
+  valueId: uuid('value_id'),
+  branchId: uuid('branch_id'),
+  costCenterId: uuid('cost_center_id'),
+}, (table) => ({
+  companyIdIdx: index('dimension_combination_entries_company_id_idx').on(table.companyId),
+  oneTagPerType: uniqueIndex('dimension_combination_entries_combo_type_unique').on(table.combinationId, table.dimensionTypeId),
+  filterIdx: index('dimension_combination_entries_filter_idx').on(table.companyId, table.dimensionTypeId, table.entityId, table.combinationId),
+  comboFk: foreignKey({ name: 'dimension_combination_entries_combo_company_fk', columns: [table.combinationId, table.companyId], foreignColumns: [dimensionCombinations.id, dimensionCombinations.companyId] }),
+  typeFk: foreignKey({ name: 'dimension_combination_entries_type_company_fk', columns: [table.dimensionTypeId, table.companyId], foreignColumns: [dimensionTypes.id, dimensionTypes.companyId] }),
+  valueFk: foreignKey({ name: 'dimension_combination_entries_value_company_fk', columns: [table.valueId, table.companyId], foreignColumns: [dimensionValues.id, dimensionValues.companyId] }),
+  branchFk: foreignKey({ name: 'dimension_combination_entries_branch_company_fk', columns: [table.branchId, table.companyId], foreignColumns: [branches.id, branches.companyId] }),
+  costCenterFk: foreignKey({ name: 'dimension_combination_entries_cost_center_company_fk', columns: [table.costCenterId, table.companyId], foreignColumns: [costCenters.id, costCenters.companyId] }),
+  entityCheck: check('dimension_combination_entries_entity_check', sql`num_nonnulls(${table.valueId}, ${table.branchId}, ${table.costCenterId}) = 1 AND ${table.entityId} = COALESCE(${table.valueId}, ${table.branchId}, ${table.costCenterId})`),
+  tenantIsolationPolicy: tenantPolicy('dimension_combination_entries_tenant_isolation', table),
+})).enableRLS();
+
+// The link between the chart of accounts and a dimension: must / may / must not carry a tag of this type, with an optional default tag.
+export const accountDimensionRules = pgTable('account_dimension_rules', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  accountId: uuid('account_id').notNull(),
+  dimensionTypeId: uuid('dimension_type_id').notNull(),
+  rule: text('rule').notNull(), // 'optional' | 'required' | 'not_allowed'
+  defaultValueId: uuid('default_value_id'),
+  defaultBranchId: uuid('default_branch_id'),
+  defaultCostCenterId: uuid('default_cost_center_id'),
+}, (table) => ({
+  companyIdIdx: index('account_dimension_rules_company_id_idx').on(table.companyId),
+  pairUnique: uniqueIndex('account_dimension_rules_account_type_unique').on(table.accountId, table.dimensionTypeId),
+  accountFk: foreignKey({ name: 'account_dimension_rules_account_company_fk', columns: [table.accountId, table.companyId], foreignColumns: [companyAccounts.id, companyAccounts.companyId] }),
+  typeFk: foreignKey({ name: 'account_dimension_rules_type_company_fk', columns: [table.dimensionTypeId, table.companyId], foreignColumns: [dimensionTypes.id, dimensionTypes.companyId] }),
+  valueFk: foreignKey({ name: 'account_dimension_rules_value_company_fk', columns: [table.defaultValueId, table.companyId], foreignColumns: [dimensionValues.id, dimensionValues.companyId] }),
+  branchFk: foreignKey({ name: 'account_dimension_rules_branch_company_fk', columns: [table.defaultBranchId, table.companyId], foreignColumns: [branches.id, branches.companyId] }),
+  costCenterFk: foreignKey({ name: 'account_dimension_rules_cost_center_company_fk', columns: [table.defaultCostCenterId, table.companyId], foreignColumns: [costCenters.id, costCenters.companyId] }),
+  ruleCheck: check('account_dimension_rules_rule_check', sql`${table.rule} IN ('optional','required','not_allowed')`),
+  oneDefaultCheck: check('account_dimension_rules_one_default_check', sql`num_nonnulls(${table.defaultValueId}, ${table.defaultBranchId}, ${table.defaultCostCenterId}) <= 1 AND (${table.rule} <> 'not_allowed' OR num_nonnulls(${table.defaultValueId}, ${table.defaultBranchId}, ${table.defaultCostCenterId}) = 0)`),
+  tenantIsolationPolicy: tenantPolicy('account_dimension_rules_tenant_isolation', table),
 })).enableRLS();
