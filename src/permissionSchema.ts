@@ -59,6 +59,7 @@ export const PERMISSION_GROUPS: PermissionGroupDef[] = [
   { id: 'pos', label: 'POS' },
   { id: 'sales', label: 'Sales & Receivable' },
   { id: 'procurements', label: 'Procurements' },
+  { id: 'general_ledger', label: 'General Ledger' },
   { id: 'inventory', label: 'Inventory & Procurement' },
   { id: 'master_registries', label: 'Master Registries' },
   { id: 'reports', label: 'Financial Reports' },
@@ -224,6 +225,42 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
     ]
   },
   {
+    // General Ledger Step 1. "delete" never erases a financial record: for an account it is Deactivate; for a journal it is Discard (a Draft only).
+    // A posted journal is reversed, never deleted. See docs/gl-step1-plan.md.
+    id: 'chartOfAccounts', groupId: 'general_ledger', label: 'Chart of Accounts', leaves: [
+      { key: 'create', label: 'Create Accounts' },
+      { key: 'read', label: 'View Chart of Accounts' },
+      { key: 'update', label: 'Edit Accounts' },
+      { key: 'delete', label: 'Deactivate Accounts' },
+      { key: 'import', label: 'Import Chart from Excel' },
+      { key: 'export', label: 'Export Chart to Excel' },
+    ]
+  },
+  {
+    id: 'accountMapping', groupId: 'general_ledger', label: 'Account Mapping', leaves: [
+      { key: 'read', label: 'View Account Mapping' },
+      { key: 'update', label: 'Change Account Mapping' },
+    ]
+  },
+  {
+    // Maker and checker: create = prepare and submit; post = approve and post, or reject (never your own unless the company allows it).
+    id: 'journals', groupId: 'general_ledger', label: 'Manual Journals & Approval', leaves: [
+      { key: 'create', label: 'Prepare and Submit Journals' },
+      { key: 'read', label: 'View Journals' },
+      { key: 'update', label: 'Edit Own Draft Journals' },
+      { key: 'delete', label: 'Discard Draft Journals' },
+      { key: 'post', label: 'Approve, Post or Reject Journals' },
+      { key: 'reverse', label: 'Start Journal Reversals' },
+    ]
+  },
+  {
+    id: 'openingBalances', groupId: 'general_ledger', label: 'Opening Balances', leaves: [
+      { key: 'read', label: 'View Opening Balances' },
+      { key: 'preview', label: 'Preview Opening Balances (dry run)' },
+      { key: 'post', label: 'Post Opening Balances' },
+    ]
+  },
+  {
     // One flag per real report (ReportViewer.tsx's actual report-type buttons), not a
     // single blanket 'access' gate — a Sales Rep and an Accountant have genuinely
     // different business reasons to see different reports (VAT/P&L are financial-
@@ -241,6 +278,10 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
       { key: 'vatReturnSummary', label: 'VAT Return Summary' },
       { key: 'investorProfitShare', label: 'Investor Profit Share' },
       { key: 'fiscalMonthClosingHistory', label: 'Fiscal Month Closing History' },
+      // General Ledger (ledger-based reports, shown in the General Ledger menu)
+      { key: 'generalLedger', label: 'General Ledger (account detail)' },
+      { key: 'trialBalanceLedger', label: 'Trial Balance (Ledger)' },
+      { key: 'ledgerReconciliation', label: 'Ledger vs Documents Report' },
       // Sales
       { key: 'salesRegister', label: 'Sales Register' },
       { key: 'itemWiseSales', label: 'Item-wise Sales Report' },

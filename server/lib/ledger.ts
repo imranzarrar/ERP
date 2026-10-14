@@ -22,7 +22,10 @@ import { nowDate } from './clock.js';
 const ROUNDING_MATERIALITY_CEILING = 0.05;
 
 export interface JournalLineInput {
-  accountKey: string;
+  // A document names its posting role (accountKey); a manual journal or an opening entry names a company account directly (accountId) and has no key.
+  accountKey?: string | null;
+  // Optional override for a keyed line: a finer account than the role's default (e.g. an expense category's own account).
+  accountId?: string | null;
   debit?: number;
   credit?: number;
   // Set only when accountKey === 'BANK' — Bank isn't one pooled account, it's N separate
@@ -78,6 +81,10 @@ export async function postJournalEntry(tx: any, input: PostJournalEntryInput): P
     throw err;
   }
 
+  // Stamp every line with the company account it posts to AT THIS MOMENT (the role's current account, the bank's own account, or the explicit
+  // account). A later change of Account Mapping therefore only affects postings made after it; entries already posted keep their account.
+  const accountIds = await resolveLineAccountIds(tx, input.companyId, realLines);
+
   const entryId = generateId();
   await tx.insert(schema.journalEntries).values({
     id: entryId,
@@ -93,16 +100,38 @@ export async function postJournalEntry(tx: any, input: PostJournalEntryInput): P
     createdById: input.createdById,
     createdAt: nowDate(),
   });
-  await tx.insert(schema.journalLines).values(realLines.map(l => ({
+  await tx.insert(schema.journalLines).values(realLines.map((l, i) => ({
     id: generateId(),
     journalEntryId: entryId,
     companyId: input.companyId,
-    accountKey: l.accountKey,
+    accountKey: l.accountKey || null,
+    accountId: accountIds[i],
     debit: String(round2(l.debit || 0)),
     credit: String(round2(l.credit || 0)),
     bankId: l.bankId || null,
   })));
   return entryId;
+}
+
+// Which company account each line posts to now. null when the company has no chart yet (reports then fall back to resolving by role).
+export async function resolveLineAccountIds(tx: any, companyId: string, lines: JournalLineInput[]): Promise<(string | null)[]> {
+  const keys = [...new Set(lines.map(l => l.accountKey).filter(Boolean) as string[])];
+  const bankIds = [...new Set(lines.map(l => l.bankId).filter(Boolean) as string[])];
+  const byKey = new Map<string, string>();
+  const byBank = new Map<string, string>();
+  if (keys.length > 0 || bankIds.length > 0) {
+    const rows = await tx.select({ id: schema.companyAccounts.id, systemKey: schema.companyAccounts.systemKey, bankId: schema.companyAccounts.bankId })
+      .from(schema.companyAccounts).where(eq(schema.companyAccounts.companyId, companyId));
+    for (const r of rows) {
+      if (r.systemKey && keys.includes(r.systemKey)) byKey.set(r.systemKey, r.id);
+      if (r.bankId && bankIds.includes(r.bankId)) byBank.set(r.bankId, r.id);
+    }
+  }
+  return lines.map(l => {
+    if (l.accountId) return l.accountId;
+    if (l.accountKey === 'BANK' && l.bankId && byBank.has(l.bankId)) return byBank.get(l.bankId)!;
+    return l.accountKey ? (byKey.get(l.accountKey) || null) : null;
+  });
 }
 
 // Reverses every NOT-YET-reversed journal entry for one source document, posting a
@@ -141,6 +170,7 @@ export async function reverseAllEntriesFor(
     // changed since the original sale).
     const reversedLines: JournalLineInput[] = lines.map((l: any) => ({
       accountKey: l.accountKey,
+      accountId: l.accountId || undefined,
       debit: Number(l.credit) > 0 ? Number(l.credit) : undefined,
       credit: Number(l.debit) > 0 ? Number(l.debit) : undefined,
       bankId: l.bankId || undefined,

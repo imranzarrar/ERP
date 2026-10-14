@@ -1,3 +1,4 @@
+import { ensureBankAccount } from '../lib/chartOfAccounts.js';
 import express from 'express';
 import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
@@ -724,6 +725,8 @@ router.post('/banks', withTenantDb, async (req: any, res) => {
       target: schema.bankAccounts.id,
       set: data
     });
+    // Every bank / cash account owns one ledger account (idempotent: an existing one is kept, including any rename the accountant made).
+    await ensureBankAccount(tdb, req.targetCompanyId, { id: data.id, bankName: data.bankName, accountTitle: data.accountTitle });
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

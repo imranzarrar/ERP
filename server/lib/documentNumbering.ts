@@ -18,6 +18,7 @@ export const DOCUMENT_TYPE_REGISTRY: { key: string; label: string; defaultPrefix
   { key: 'debitNote', label: 'Debit Note', defaultPrefix: 'DN' },
   { key: 'expense', label: 'Expense', defaultPrefix: 'EXP' },
   { key: 'voucher', label: 'Voucher', defaultPrefix: 'VCH' },
+  { key: 'manualJournal', label: 'Manual Journal', defaultPrefix: 'MJ' },
   { key: 'pr', label: 'Purchase Requisition', defaultPrefix: 'PR' },
   { key: 'po', label: 'Purchase Order', defaultPrefix: 'PO' },
   { key: 'grn', label: 'Goods Receipt Note', defaultPrefix: 'GRN' },

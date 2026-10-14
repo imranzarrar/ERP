@@ -1,5 +1,5 @@
 import { relations, sql } from 'drizzle-orm';
-import { integer, bigint, pgTable, serial, text, timestamp, boolean, decimal, jsonb, uuid, primaryKey, uniqueIndex, index, pgPolicy, check, customType } from 'drizzle-orm/pg-core';
+import { integer, bigint, pgTable, serial, text, timestamp, boolean, decimal, jsonb, uuid, primaryKey, uniqueIndex, unique, foreignKey, index, pgPolicy, check, customType } from 'drizzle-orm/pg-core';
 
 // Postgres bytea <-> Node Buffer (drizzle-orm/pg-core ships no bytea builder).
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => 'bytea' });
@@ -72,6 +72,8 @@ export const companies = pgTable('companies', {
   // environment. Auto-flipped true when that environment's onboarding completes
   // (see server/routes/zatca.ts); can also be toggled manually by a Super Admin.
   zatcaEnabled: boolean('zatca_enabled').default(false),
+  // General Ledger: may the person who prepared a manual journal also approve it? Off by default (segregation of duties); only the owner switches it.
+  journalSelfApproval: boolean('journal_self_approval').notNull().default(false),
   // 'Trial' | 'Registered' | 'Cancelled'. Defaults 'Registered' so every existing company
   // (created before this field existed, or created directly by a super-admin via the old
   // Companies Directory "Register New Organization" form) is unaffected — only the
@@ -1263,6 +1265,41 @@ export const systemAccounts = pgTable('system_accounts', {
   }),
 })).enableRLS();
 
+// A company's own chart of accounts (General Ledger Step 1). Every company gets a standard Saudi starter chart (server/lib/chartOfAccounts.ts) that it
+// may rename, recode and extend. `systemKey` ties an account to one of the fixed posting roles above (AR, AP, VAT output...): the document routes keep
+// posting by systemKey, and this table is what makes that key mean "this company's account 1100" without changing a single existing journal line.
+// Foreign keys that carry the company (parent, journal lines, manual journal lines) are COMPOSITE (id, company_id), so the database itself refuses a
+// reference to another company's account, on top of the row-level-security policy and the route's own ownership checks.
+export const companyAccounts = pgTable('company_accounts', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  code: text('code').notNull(),
+  name: text('name').notNull(),
+  nameAr: text('name_ar'),
+  type: text('type').notNull(), // 'Asset' | 'Liability' | 'Equity' | 'Revenue' | 'Expense'
+  parentId: uuid('parent_id'),
+  isGroup: boolean('is_group').notNull().default(false), // a heading: takes no postings of its own
+  systemKey: text('system_key').references(() => systemAccounts.key),
+  isControl: boolean('is_control').notNull().default(false), // receivables, payables, inventory, GR/IR, VAT, vendor credit, banks: no manual lines
+  bankId: uuid('bank_id').references(() => bankAccounts.id), // set on the account auto-made for a bank / cash account
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull(),
+}, (table) => ({
+  companyIdIdx: index('company_accounts_company_id_idx').on(table.companyId),
+  codeUnique: uniqueIndex('company_accounts_company_code_unique').on(table.companyId, table.code),
+  idCompanyUnique: unique('company_accounts_id_company_unique').on(table.id, table.companyId),
+  systemKeyUnique: uniqueIndex('company_accounts_company_system_key_unique').on(table.companyId, table.systemKey).where(sql`system_key IS NOT NULL`),
+  bankUnique: uniqueIndex('company_accounts_company_bank_unique').on(table.companyId, table.bankId).where(sql`bank_id IS NOT NULL`),
+  parentFk: foreignKey({ name: 'company_accounts_parent_company_fk', columns: [table.parentId, table.companyId], foreignColumns: [table.id, table.companyId] }),
+  typeCheck: check('company_accounts_type_check', sql`${table.type} IN ('Asset','Liability','Equity','Revenue','Expense')`),
+  tenantIsolationPolicy: pgPolicy('company_accounts_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
+
 // Journal entry header — one row per posted transaction. Every report that needs a
 // real, reconciling account balance (AR, AP, VAT, COGS, ...) reads from journalLines
 // below, never straight from invoices/expenses/purchaseBills, the same way vouchers
@@ -1310,7 +1347,10 @@ export const journalLines = pgTable('journal_lines', {
   // this table is queried heavily ("sum every AP line for company X") and shouldn't need a
   // join back to the header just to scope by company.
   companyId: uuid('company_id').notNull().references(() => companies.id),
-  accountKey: text('account_key').notNull().references(() => systemAccounts.key),
+  // A line made by a document names its posting role (accountKey). A line made by a manual journal or an opening entry names a company account
+  // directly (accountId) and has no key. At least one of the two is always set.
+  accountKey: text('account_key').references(() => systemAccounts.key),
+  accountId: uuid('account_id'),
   debit: decimal('debit', { precision: 14, scale: 2 }).notNull().default('0'),
   credit: decimal('credit', { precision: 14, scale: 2 }).notNull().default('0'),
   // Set only when accountKey = 'BANK' — Bank isn't one pooled account, it's N separate
@@ -1320,6 +1360,9 @@ export const journalLines = pgTable('journal_lines', {
   companyIdIdx: index('journal_lines_company_id_idx').on(table.companyId),
   journalEntryIdIdx: index('journal_lines_journal_entry_id_idx').on(table.journalEntryId),
   accountKeyIdx: index('journal_lines_account_key_idx').on(table.accountKey),
+  accountIdIdx: index('journal_lines_account_id_idx').on(table.accountId),
+  accountCompanyFk: foreignKey({ name: 'journal_lines_account_company_fk', columns: [table.accountId, table.companyId], foreignColumns: [companyAccounts.id, companyAccounts.companyId] }),
+  keyOrAccountCheck: check('journal_lines_key_or_account_check', sql`${table.accountKey} IS NOT NULL OR ${table.accountId} IS NOT NULL`),
   // Exactly one of debit/credit is non-zero per line — a real double-entry line is never
   // both or neither.
   exactlyOneSideCheck: check('journal_lines_exactly_one_side_check', sql`(${table.debit} > 0 AND ${table.credit} = 0) OR (${table.debit} = 0 AND ${table.credit} > 0)`),
@@ -2194,5 +2237,130 @@ export const warehouseReceivingItems = pgTable('warehouse_receiving_items', {
     to: TENANT_DB_ROLE,
     using: sql`EXISTS (SELECT 1 FROM ${warehouseReceivings} WHERE ${warehouseReceivings.id} = ${table.receivingId} AND ${warehouseReceivings.companyId} = current_setting('app.company_id', true)::uuid)`,
     withCheck: sql`EXISTS (SELECT 1 FROM ${warehouseReceivings} WHERE ${warehouseReceivings.id} = ${table.receivingId} AND ${warehouseReceivings.companyId} = current_setting('app.company_id', true)::uuid)`,
+  }),
+})).enableRLS();
+
+// ---- General Ledger Step 1: manual journals with approval, category accounts, opening balances ----
+
+// A manual journal lives here (Draft -> Pending -> Posted, or Rejected back to Draft) and only becomes a journal_entries row when it is approved and
+// posted. That keeps "every row in journal_entries is posted" true for every report that reads it today.
+export const manualJournals = pgTable('manual_journals', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  number: text('number').notNull(),
+  date: text('date').notNull(), // YYYY-MM-DD, same text-date convention as documents
+  description: text('description').notNull(),
+  reference: text('reference'),
+  preparerNote: text('preparer_note'),
+  branchId: uuid('branch_id').references(() => branches.id),
+  status: text('status').notNull(), // 'Draft' | 'Pending' | 'Rejected' | 'Posted'
+  preparedById: uuid('prepared_by_id').notNull().references(() => users.id),
+  preparedAt: timestamp('prepared_at').notNull(),
+  submittedAt: timestamp('submitted_at'),
+  decidedById: uuid('decided_by_id').references(() => users.id), // approver or rejecter
+  decidedAt: timestamp('decided_at'),
+  decisionNote: text('decision_note'), // the written reason of a rejection
+  selfApproved: boolean('self_approved').notNull().default(false),
+  journalEntryId: uuid('journal_entry_id').references(() => journalEntries.id), // set when posted
+  reversalOfId: uuid('reversal_of_id'), // this journal reverses that posted manual journal
+  reversedById: uuid('reversed_by_id'), // that posted journal has been reversed by this one
+}, (table) => ({
+  companyIdIdx: index('manual_journals_company_id_idx').on(table.companyId),
+  numberUnique: uniqueIndex('manual_journals_company_number_unique').on(table.companyId, table.number),
+  idCompanyUnique: unique('manual_journals_id_company_unique').on(table.id, table.companyId),
+  reversalFk: foreignKey({ name: 'manual_journals_reversal_company_fk', columns: [table.reversalOfId, table.companyId], foreignColumns: [table.id, table.companyId] }),
+  reversedByFk: foreignKey({ name: 'manual_journals_reversed_by_company_fk', columns: [table.reversedById, table.companyId], foreignColumns: [table.id, table.companyId] }),
+  oneReversalUnique: uniqueIndex('manual_journals_one_reversal_unique').on(table.reversalOfId).where(sql`reversal_of_id IS NOT NULL`),
+  statusCheck: check('manual_journals_status_check', sql`${table.status} IN ('Draft','Pending','Rejected','Posted')`),
+  statusIdx: index('manual_journals_company_status_idx').on(table.companyId, table.status),
+  tenantIsolationPolicy: pgPolicy('manual_journals_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
+
+export const manualJournalLines = pgTable('manual_journal_lines', {
+  id: uuid('id').primaryKey(),
+  journalId: uuid('journal_id').notNull(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  accountId: uuid('account_id').notNull(),
+  debit: decimal('debit', { precision: 14, scale: 2 }).notNull().default('0'),
+  credit: decimal('credit', { precision: 14, scale: 2 }).notNull().default('0'),
+  note: text('note'),
+  sortOrder: integer('sort_order').notNull().default(0),
+}, (table) => ({
+  companyIdIdx: index('manual_journal_lines_company_id_idx').on(table.companyId),
+  journalIdx: index('manual_journal_lines_journal_id_idx').on(table.journalId),
+  journalFk: foreignKey({ name: 'manual_journal_lines_journal_company_fk', columns: [table.journalId, table.companyId], foreignColumns: [manualJournals.id, manualJournals.companyId] }),
+  accountFk: foreignKey({ name: 'manual_journal_lines_account_company_fk', columns: [table.accountId, table.companyId], foreignColumns: [companyAccounts.id, companyAccounts.companyId] }),
+  oneSideCheck: check('manual_journal_lines_one_side_check', sql`(${table.debit} > 0 AND ${table.credit} = 0) OR (${table.debit} = 0 AND ${table.credit} > 0)`),
+  tenantIsolationPolicy: pgPolicy('manual_journal_lines_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
+
+// The approval trail: who prepared, submitted, approved, rejected, reversed, and when. Rows are only ever added.
+export const manualJournalEvents = pgTable('manual_journal_events', {
+  id: uuid('id').primaryKey(),
+  journalId: uuid('journal_id').notNull(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  action: text('action').notNull(), // 'Prepared' | 'Edited' | 'Submitted' | 'Approved' | 'Rejected' | 'Posted' | 'Discarded' | 'ReversalStarted'
+  userId: uuid('user_id').notNull().references(() => users.id),
+  note: text('note'),
+  createdAt: timestamp('created_at').notNull(),
+}, (table) => ({
+  companyIdIdx: index('manual_journal_events_company_id_idx').on(table.companyId),
+  journalIdx: index('manual_journal_events_journal_id_idx').on(table.journalId),
+  journalFk: foreignKey({ name: 'manual_journal_events_journal_company_fk', columns: [table.journalId, table.companyId], foreignColumns: [manualJournals.id, manualJournals.companyId] }),
+  tenantIsolationPolicy: pgPolicy('manual_journal_events_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
+
+// Account Mapping for expenses: which account each fixed expense category posts to. A category with no row posts to the default expense account.
+export const expenseCategoryAccounts = pgTable('expense_category_accounts', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  category: text('category').notNull(), // one of the fixed expense categories ('Admin Expenses', 'Staff Salaries', ...)
+  accountId: uuid('account_id').notNull(),
+  updatedAt: timestamp('updated_at').notNull(),
+  updatedById: uuid('updated_by_id').references(() => users.id),
+}, (table) => ({
+  companyIdIdx: index('expense_category_accounts_company_id_idx').on(table.companyId),
+  categoryUnique: uniqueIndex('expense_category_accounts_company_category_unique').on(table.companyId, table.category),
+  accountFk: foreignKey({ name: 'expense_category_accounts_account_company_fk', columns: [table.accountId, table.companyId], foreignColumns: [companyAccounts.id, companyAccounts.companyId] }),
+  tenantIsolationPolicy: pgPolicy('expense_category_accounts_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+  }),
+})).enableRLS();
+
+// One row per posted opening-balance entry (a company may post one per cut-off date; each is reversed, never edited).
+export const openingBalanceRuns = pgTable('opening_balance_runs', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  cutOffDate: text('cut_off_date').notNull(),
+  journalEntryId: uuid('journal_entry_id').notNull().references(() => journalEntries.id),
+  summary: jsonb('summary').notNull(),
+  postedById: uuid('posted_by_id').notNull().references(() => users.id),
+  postedAt: timestamp('posted_at').notNull(),
+}, (table) => ({
+  companyIdIdx: index('opening_balance_runs_company_id_idx').on(table.companyId),
+  cutOffUnique: uniqueIndex('opening_balance_runs_company_cutoff_unique').on(table.companyId, table.cutOffDate),
+  tenantIsolationPolicy: pgPolicy('opening_balance_runs_tenant_isolation', {
+    for: 'all',
+    to: TENANT_DB_ROLE,
+    using: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
+    withCheck: sql`${table.companyId} = current_setting('app.company_id', true)::uuid`,
   }),
 })).enableRLS();

@@ -27,6 +27,7 @@ import usersRouter from './server/routes/users.js';
 import rolesRouter from './server/routes/roles.js';
 import transactionsRouter from './server/routes/transactions.js';
 import expensesRouter from './server/routes/expenses.js';
+import ledgerAccountsRouter from './server/routes/ledgerAccounts.js';
 import posRouter from './server/routes/pos.js';
 import zatcaRouter from './server/routes/zatca.js';
 import inventoryRouter from './server/routes/inventory.js';
@@ -871,6 +872,7 @@ async function startServer() {
   app.use('/api/roles', rolesRouter);
   app.use('/api/transactions', transactionsRouter);
   app.use('/api/expenses', expensesRouter);
+  app.use('/api/ledger', ledgerAccountsRouter);
   app.use('/api/pos', posRouter);
   app.use('/api/zatca', zatcaRouter);
   app.use('/api/inventory', inventoryRouter);

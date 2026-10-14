@@ -2,6 +2,7 @@ import * as schema from '../../src/db/schema.js';
 import { generateId } from '../../src/id.js';
 import { buildCompactA4Layout, DETAILED_TAX_INVOICE_LAYOUT } from '../../src/documentTemplateDefaults.js';
 import { getAndIncrementDocumentNumber } from './documentNumbering.js';
+import { seedCompanyChart } from './chartOfAccounts.js';
 
 // Server-side, atomic equivalent of AdminSettings.tsx's handleAddCompany starter-resource
 // bundle (bank account, walk-in customer, cash vendor, MAIN warehouse, standard document
@@ -160,4 +161,7 @@ export async function provisionStarterResources(tx: any, params: { companyId: st
     status: 'Open',
     companyId,
   });
+
+  // The standard chart of accounts (and one ledger account per bank), so the General Ledger works from the first day.
+  await seedCompanyChart(tx, companyId);
 }
