@@ -25,6 +25,11 @@ await db.insert(schema.companies).values({
 } as any);
 await db.transaction(async (tx: any) => provisionStarterResources(tx, { companyId, companyName: name }));
 await db.insert(schema.users).values({ id: userId, username, password: await bcrypt.hash(password, 10), role: 'admin', companyId, isSuperAdmin: false });
-fs.writeFileSync('ux-test.credentials.local', JSON.stringify({ company: name, companyId, username, password }, null, 2));
+// A second admin of the same company, so maker-checker flows (one prepares, another approves) can be driven by hand.
+const userId2 = generateId();
+const username2 = `ux_${userId2.slice(-8)}`;
+const password2 = crypto.randomBytes(9).toString('base64url') + 'aA1!';
+await db.insert(schema.users).values({ id: userId2, username: username2, password: await bcrypt.hash(password2, 10), role: 'admin', companyId, isSuperAdmin: false });
+fs.writeFileSync('ux-test.credentials.local', JSON.stringify({ company: name, companyId, username, password, second: { username: username2, password: password2 } }, null, 2));
 console.log(`Created "${name}" (${companyId}). Login saved to ux-test.credentials.local`);
 process.exit(0);

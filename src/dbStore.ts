@@ -48,6 +48,7 @@ import {
   UserBranchAssignment
 } from './types';
 import { generateId } from './id';
+import { GL_TRANSLATION_ITEMS } from './glTranslations';
 export { generateId };
 
 export interface DatabaseState {
@@ -708,6 +709,8 @@ export const SEED_TRANSLATIONS: TranslationItem[] = [
   { id: '82d71a12-9844-4519-b8ec-5e4f9f5a829f', key: 'Cancelled', en: 'Cancelled', ar: 'ملغي', ur: 'منسوخ شدہ' },
   { id: 'a51c2f67-300d-46d3-baca-d9bda6dcfbbb', key: 'Pending', en: 'Pending', ar: 'معلق', ur: 'زیر التواء' }
 ];
+// General Ledger screens: Arabic / Urdu for their fixed text (also applied to the shared translations table by scripts/apply-gl-translations.ts).
+SEED_TRANSLATIONS.push(...GL_TRANSLATION_ITEMS.filter(item => !SEED_TRANSLATIONS.some(existing => existing.key === item.key)));
 
 export const INITIAL_DB: DatabaseState = {
   companies: SEED_COMPANIES,

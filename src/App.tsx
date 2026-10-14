@@ -31,6 +31,7 @@ const CompanyOnboardingScreen = React.lazy(() => import('./components/CompanyOnb
 const ConfirmOnboardingEmailScreen = React.lazy(() => import('./components/ConfirmOnboardingEmailScreen'));
 const InventoryModule = React.lazy(() => import('./components/InventoryModule'));
 const EmployeesModule = React.lazy(() => import('./components/EmployeesModule'));
+const LedgerModule = React.lazy(() => import('./components/LedgerModule'));
 const ModifierGroupsModule = React.lazy(() => import('./components/ModifierGroupsModule'));
 
 // Importing Icons
@@ -41,6 +42,8 @@ import {
  TrendingDown,
  RefreshCw,
  FolderTree,
+ BookOpen,
+ Scale,
  Settings,
  Menu,
  X,
@@ -456,6 +459,11 @@ export default function App() {
   // navigating to 'invoices-view' (post-create, or a list row's own View link).
   const [viewTarget, setViewTarget] = React.useState<{ id: string } | null>(null);
 
+  // General Ledger: the journal / account the next ledger screen should open on. Lives here (not inside the ledger screens) because a tab change
+  // remounts them; each screen reads it once and clears it.
+  const [ledgerFocus, setLedgerFocus] = React.useState<{ kind: 'manual' | 'entry'; id: string } | null>(null);
+  const [ledgerAccountFocus, setLedgerAccountFocus] = React.useState<{ accountId: string; from: string; to: string } | null>(null);
+
   // Whichever transactional form is currently open reports its own live dirty state here
   // (via onDirtyChange, see useDirtyGuard in hooks.ts) so handleNavigate — the single
   // choke point nearly all navigation already funnels through — can warn before
@@ -751,6 +759,40 @@ type NavSection = {
         ]
       }
     ],
+    {
+      title: t('General Ledger'),
+      // Accounting's own home: the company's chart of accounts, manual journals with approval, the ledger reports, and the opening balances.
+      // Every entry is gated by its own permission (chartOfAccounts / accountMapping / journals / reports / openingBalances), so a role sees only
+      // what it was given. Customer, supplier, stock and bank accounts are posted by their documents, never typed here.
+      items: [
+        {
+          id: 'gl-chart', label: t('Chart of Accounts'), icon: BookOpen, adminOnly: false,
+          subItems: [
+            { id: 'gl-accounts', label: t('Accounts'), permissionKey: 'chartOfAccounts.read' },
+            { id: 'gl-accounts-add', label: t('New Account'), permissionKey: 'chartOfAccounts.create' },
+            { id: 'gl-mapping', label: t('Account Mapping'), permissionKey: 'accountMapping.read' },
+            { id: 'gl-import', label: t('Import / Export'), permissionKey: ['chartOfAccounts.import', 'chartOfAccounts.export'] }
+          ]
+        },
+        {
+          id: 'gl-journal-group', label: t('Journals'), icon: FileText, adminOnly: false,
+          subItems: [
+            { id: 'gl-journals', label: t('Journal Listing'), permissionKey: ['journals.read', 'journals.create', 'journals.post'] },
+            { id: 'gl-journal-new', label: t('New Manual Journal'), permissionKey: 'journals.create' },
+            { id: 'gl-pending', label: t('Pending Approval'), permissionKey: 'journals.post' }
+          ]
+        },
+        {
+          id: 'gl-report-group', label: t('Ledger Reports'), icon: Scale, adminOnly: false,
+          subItems: [
+            { id: 'gl-general-ledger', label: t('General Ledger'), permissionKey: 'reports.generalLedger' },
+            { id: 'gl-trial-balance', label: t('Trial Balance (Ledger)'), permissionKey: 'reports.trialBalanceLedger' },
+            { id: 'gl-reconciliation', label: t('Ledger vs Documents'), permissionKey: 'reports.ledgerReconciliation' }
+          ]
+        },
+        { id: 'gl-opening', label: t('Opening Balances'), icon: BookOpen, adminOnly: false, permissionKey: ['openingBalances.read', 'openingBalances.post'] }
+      ]
+    },
     {
       title: t('Master Registries'),
       // Three category accordions instead of one flat 12-entry list — same reasoning and
@@ -1586,6 +1628,17 @@ type NavSection = {
  activeTab === 'inventory-stocktakes' ? t('Physical Stock Takes') :
  activeTab === 'inventory-dispatch' ? t('Warehouse Dispatch') :
  activeTab === 'inventory-receiving' ? t('Warehouse Receiving') :
+ activeTab === 'gl-accounts' ? t('Chart of Accounts') :
+ activeTab === 'gl-accounts-add' ? t('New Account') :
+ activeTab === 'gl-import' ? t('Import / Export Chart of Accounts') :
+ activeTab === 'gl-mapping' ? t('Account Mapping') :
+ activeTab === 'gl-journals' ? t('Journal Listing') :
+ activeTab === 'gl-journal-new' ? (editTarget?.module === 'journals' ? t('Edit Manual Journal') : t('New Manual Journal')) :
+ activeTab === 'gl-pending' ? t('Pending Approval') :
+ activeTab === 'gl-general-ledger' ? t('General Ledger') :
+ activeTab === 'gl-trial-balance' ? t('Trial Balance (Ledger)') :
+ activeTab === 'gl-reconciliation' ? t('Ledger vs Documents') :
+ activeTab === 'gl-opening' ? t('Opening Balances') :
  activeTab === 'settings' ? t('Settings & Companies') :
  t(activeTab)}
  </h2>
@@ -1607,6 +1660,15 @@ type NavSection = {
  {activeTab === 'units' && t('Configure standardized weights, dimensions, volumes, and UoM conversion units.')}
  {(activeTab === 'modifier-groups' || activeTab === 'modifier-groups-add') && t('Reusable POS customization options — Size, Milk, Extra Shot — attached optionally to whichever products need them.')}
  {activeTab === 'warehouses' && t('Setup and govern multiple physical storage locations, distribution centers, and shop floors.')}
+ {(activeTab === 'gl-accounts' || activeTab === 'gl-accounts-add' || activeTab === 'gl-import') && t('The ledger accounts of your company: add, rename, group, deactivate, and bring in from Excel.')}
+ {activeTab === 'gl-mapping' && t('Choose which ledger account each kind of document posts to.')}
+ {activeTab === 'gl-journals' && t('Every posting in the ledger and every manual journal, with its approval status.')}
+ {activeTab === 'gl-journal-new' && t('Prepare an adjusting entry. It reaches the ledger only after someone else approves it.')}
+ {activeTab === 'gl-pending' && t('Manual journals waiting for review: approve to post them, or reject with a reason.')}
+ {activeTab === 'gl-general-ledger' && t('Every movement of one account with its running balance.')}
+ {activeTab === 'gl-trial-balance' && t('Opening, movement and closing balance of every account, built from the ledger.')}
+ {activeTab === 'gl-reconciliation' && t('Check that the ledger agrees with the document-based reports.')}
+ {activeTab === 'gl-opening' && t('Bring forward the balances your books start with.')}
  {activeTab === 'settings' && t('Administrative settings, company config, and month closures.')}
  </p>
  </div>
@@ -1814,6 +1876,22 @@ type NavSection = {
            onUpdateDbLocal={handleUpdateDbLocal}
            onRefreshDb={triggerDbRefresh}
            currentUser={currentUser}
+         />
+       )}
+
+       {activeTab.startsWith('gl-') && (
+         <LedgerModule
+           db={activeDb}
+           tab={activeTab}
+           editJournalId={editTarget?.module === 'journals' ? editTarget.id : undefined}
+           focus={ledgerFocus}
+           accountFocus={ledgerAccountFocus}
+           onFocusConsumed={() => setLedgerFocus(null)}
+           onNavigate={(tab) => handleNavigate(tab)}
+           onFocusJournal={(f) => setLedgerFocus(f)}
+           onEditJournal={(id) => { setEditTarget({ module: 'journals', id }); handleNavigate('gl-journal-new', true); }}
+           onDrill={(f) => { setLedgerAccountFocus(f); handleNavigate('gl-general-ledger'); }}
+           onDirtyChange={(dirty) => { isCurrentFormDirtyRef.current = dirty; }}
          />
        )}
 

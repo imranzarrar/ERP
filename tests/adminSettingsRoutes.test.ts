@@ -108,6 +108,8 @@ afterAll(async () => {
   await db.delete(schema.auditLogs).where(eq(schema.auditLogs.userId, ownerUserId));
   await db.delete(schema.auditLogs).where(eq(schema.auditLogs.userId, otherCompanyUserId));
   await db.delete(schema.investors).where(eq(schema.investors.companyId, companyAId));
+  await db.delete(schema.expenseCategoryAccounts).where(eq(schema.expenseCategoryAccounts.companyId, companyAId));
+  await db.delete(schema.companyAccounts).where(eq(schema.companyAccounts.companyId, companyAId)); // each bank owns a ledger account
   await db.delete(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, companyAId));
   await db.delete(schema.taxSlabs).where(eq(schema.taxSlabs.companyId, companyAId));
   await db.delete(schema.users).where(eq(schema.users.id, ownerUserId));
@@ -198,6 +200,7 @@ describe('POST /api/banks', () => {
     const [fixture] = await db.select().from(schema.bankAccounts).where(eq(schema.bankAccounts.id, fixtureBankId));
     expect(fixture.isDefault).toBe(true);
 
+    await db.delete(schema.companyAccounts).where(eq(schema.companyAccounts.bankId, newId)); // the bank's own ledger account
     await db.delete(schema.bankAccounts).where(eq(schema.bankAccounts.id, newId));
   });
 
@@ -219,6 +222,7 @@ describe('POST /api/banks', () => {
     expect(fixture.isDefault).toBe(false);
 
     // Restore fixture as default for subsequent tests.
+    await db.delete(schema.companyAccounts).where(eq(schema.companyAccounts.bankId, newId)); // the bank's own ledger account
     await db.delete(schema.bankAccounts).where(eq(schema.bankAccounts.id, newId));
     await db.update(schema.bankAccounts).set({ isDefault: true }).where(eq(schema.bankAccounts.id, fixtureBankId));
   });

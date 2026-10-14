@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import bcrypt from 'bcrypt';
 import pg from 'pg';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { generateId } from '../src/id.js';
@@ -184,11 +184,11 @@ describe('approval (maker-checker)', () => {
   it('re-checks the period at approval: a month closed after submission blocks posting', async () => {
     const d = await newDraft({ date: D('06') });
     await post(prep, `/api/ledger/manual-journals/${d.id}/submit`);
-    await db.update(schema.fiscalMonths).set({ status: 'Closed' }).where(eq(schema.fiscalMonths.id, MONTH));
+    await db.update(schema.fiscalMonths).set({ status: 'Closed' }).where(and(eq(schema.fiscalMonths.id, MONTH), eq(schema.fiscalMonths.companyId, A.id)));
     try {
       const r = await post(appr, `/api/ledger/manual-journals/${d.id}/approve`);
       expect(r.status).toBe(400); expect(r.body.error).toMatch(/closed/i);
-    } finally { await db.update(schema.fiscalMonths).set({ status: 'Open' }).where(eq(schema.fiscalMonths.id, MONTH)); }
+    } finally { await db.update(schema.fiscalMonths).set({ status: 'Open' }).where(and(eq(schema.fiscalMonths.id, MONTH), eq(schema.fiscalMonths.companyId, A.id))); }
   });
 });
 
@@ -399,6 +399,38 @@ describe('opening balances', () => {
     expect(tb.rows.find((r: any) => r.code === '3010')?.closing || 0).toBe(0);
     const again = await post(C.admin, '/api/ledger/opening-balances/post', { ...body({ lines: [{ accountId: cId.bank, debit: 4000 }, { accountId: cId.capital, credit: 4000 }] }), confirm: true });
     expect(again.status).toBe(200);
+  });
+});
+
+describe('expenses post to the account their category is mapped to', () => {
+  it('a Govt Expenses expense lands on its mapped account, a re-mapping is not retroactive, and the cancel reversal hits the original account', async () => {
+    const list = await accounts(A.admin);
+    const govt = acct(list, '6400'); // default account for Govt Expenses
+    const rent = (await post(A.admin, '/api/ledger/accounts', { code: '6410', name: 'Licences', type: 'Expense', parentId: ids.heading })).body;
+    const [vendor] = await db.select().from(schema.vendors).where(eq(schema.vendors.companyId, A.id));
+    const [slab] = await db.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.companyId, A.id));
+    const [bank] = await db.select().from(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, A.id));
+    const mk = async (n: string) => post(A.admin, '/api/expenses', { date: TODAY, vendorId: vendor.id, taxSlabId: slab.id, bankId: bank.id, description: n, billNumber: n, amount: 115, status: 'Active', type: 'Actual', paymentStatus: 'Unpaid', expenseType: 'Govt Expenses' });
+    expect((await mk('B-1')).status).toBe(200);
+    expect((await put(A.admin, '/api/ledger/mapping/category', { category: 'Govt Expenses', accountId: rent.id })).status).toBe(200);
+    expect((await mk('B-2')).status).toBe(200);
+    const rows = await db.select().from(schema.expenses).where(eq(schema.expenses.companyId, A.id));
+    const lineFor = async (expenseId: string) => {
+      const l = await db.select().from(schema.journalLines).innerJoin(schema.journalEntries, eq(schema.journalEntries.id, schema.journalLines.journalEntryId)).where(eq(schema.journalEntries.referenceId, expenseId));
+      return l.map(x => x.journal_lines).filter(x => x.accountKey === 'DIRECT_OPEX' && Number(x.debit) > 0);
+    };
+    const e1 = rows.find(r => r.billNumber === 'B-1')!, e2 = rows.find(r => r.billNumber === 'B-2')!;
+    expect((await lineFor(e1.id))[0].accountId).toBe(govt.id);
+    expect((await lineFor(e2.id))[0].accountId).toBe(rent.id);
+    // cancelling the first (before the mapping changed it) credits the very account it was debited to
+    const c = await post(A.admin, `/api/expenses/${e1.id}/cancel`, {});
+    expect(c.status).toBe(200);
+    const all = await db.select().from(schema.journalLines).innerJoin(schema.journalEntries, eq(schema.journalEntries.id, schema.journalLines.journalEntryId)).where(eq(schema.journalEntries.referenceId, e1.id));
+    const onGovt = all.map(x => x.journal_lines).filter(x => x.accountId === govt.id);
+    expect(onGovt.reduce((sum, x) => sum + Number(x.debit) - Number(x.credit), 0)).toBeCloseTo(0, 2);
+    // and the ledger reports see the split
+    const tb = (await get(appr, `/api/ledger/reports/trial-balance?from=${D('01')}&to=${TODAY}`)).body;
+    expect(tb.rows.find((r: any) => r.code === '6410').debit).toBeCloseTo(100, 2);
   });
 });
 

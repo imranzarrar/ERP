@@ -185,6 +185,8 @@ afterAll(async () => {
     await db.delete(schema.taxSlabs).where(eq(schema.taxSlabs.companyId, companyId));
     await db.delete(schema.vendors).where(eq(schema.vendors.companyId, companyId));
     await db.delete(schema.customers).where(eq(schema.customers.companyId, companyId));
+    await db.delete(schema.expenseCategoryAccounts).where(eq(schema.expenseCategoryAccounts.companyId, companyId));
+    await db.delete(schema.companyAccounts).where(eq(schema.companyAccounts.companyId, companyId)); // the company's chart (each bank owns a ledger account)
     await db.delete(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, companyId));
     await db.delete(schema.documentCounters).where(eq(schema.documentCounters.companyId, companyId));
     await db.delete(schema.companies).where(eq(schema.companies.id, companyId));

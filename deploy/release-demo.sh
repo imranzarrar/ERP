@@ -8,8 +8,8 @@
 #
 # This script can only ever touch the demo: it refuses to run unless the folder, the branch, the database name and the port all say
 # "demo", it never touches Nginx, the maintenance page, the live PM2 app (named "erp"; this one is "erp-demo"), or the live database.
-# Steps: 1 pull v2 + build  2 db:push (YOU read the plan)  3 row-level-security policies + grants  4 chart of accounts
-#        5 start/reload erp-demo on 127.0.0.1:4000 and health-check it.
+# Steps: 1 pull v2 + build  2 db:push (YOU read the plan)  3 row-level-security policies + grants  4 system accounts
+#        5 General Ledger: every company's chart of accounts + the screens' Arabic/Urdu text  6 start/reload erp-demo on 127.0.0.1:4000 and health-check it.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -47,12 +47,12 @@ echo "Branch: $BRANCH   Commits to deploy: $AHEAD   (HEAD now: $(git rev-parse -
 git log --oneline HEAD..@{upstream} | head -20
 [ "$DRY_RUN" = "1" ] && { say "Dry run only — nothing changed."; exit 0; }
 
-say "[1/5] Pull v2 and build"
+say "[1/6] Pull v2 and build"
 git merge --ff-only "@{upstream}"
 npm ci
 npm run build
 
-say "[2/5] Database schema (db:push) on the DEMO database erp_demo — READ THE PLAN"
+say "[2/6] Database schema (db:push) on the DEMO database erp_demo — READ THE PLAN"
 SCHEMA_CHANGED=1
 if git rev-parse -q --verify refs/tags/last-release-demo >/dev/null && git diff --quiet last-release-demo HEAD -- src/db/schema.ts; then SCHEMA_CHANGED=0; fi
 [ "$FORCE_SCHEMA" = "1" ] && SCHEMA_CHANGED=1
@@ -64,17 +64,21 @@ else
   echo "schema.ts unchanged since the last demo release — db:push skipped."
 fi
 
-say "[3/5] Row-level security policies + grants"
+say "[3/6] Row-level security policies + grants"
 npx tsx scripts/apply-rls-policies.mjs
 PGPASSWORD="$(read_secret SQL_PASSWORD)" psql -h "$(read_secret SQL_HOST)" -U "$(read_secret SQL_USER)" -d "$(read_secret SQL_DB_NAME)" -v ON_ERROR_STOP=1 -q \
   -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO erp_app_tenant" \
   -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO erp_app_tenant"
 npx tsx scripts/verify-tenant-isolation.ts
 
-say "[4/5] Chart of accounts (idempotent)"
+say "[4/6] System accounts (idempotent)"
 npx tsx scripts/seed-system-accounts.ts --apply
 
-say "[5/5] Start / reload erp-demo and health-check it"
+say "[5/6] General Ledger: company charts of accounts and translations (idempotent)"
+npx tsx scripts/seed-company-charts.ts --apply
+npx tsx scripts/apply-gl-translations.ts --apply
+
+say "[6/6] Start / reload erp-demo and health-check it"
 pm2 startOrReload deploy/ecosystem.demo.config.cjs
 sleep 5
 pm2 status
