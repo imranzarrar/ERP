@@ -5,10 +5,10 @@ import { sql } from 'drizzle-orm';
 // A line belongs to the account it was stamped with when it was posted (journal_lines.account_id). Lines that were never stamped (a company with
 // no chart at the time) fall back to the CURRENT account of their posting role, or of their bank.
 // drizzle spreads a JS array into a placeholder list, so build the Postgres array explicitly.
-function uuidArray(ids: string[]) {
+export function uuidArray(ids: string[]) {
   return ids.length ? sql`ARRAY[${sql.join(ids.map(i => sql`${i}::uuid`), sql`, `)}]` : sql`ARRAY[]::uuid[]`;
 }
-function textArray(vals: string[]) {
+export function textArray(vals: string[]) {
   return vals.length ? sql`ARRAY[${sql.join(vals.map(v => sql`${v}::text`), sql`, `)}]` : sql`ARRAY[]::text[]`;
 }
 

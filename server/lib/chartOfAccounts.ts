@@ -120,3 +120,12 @@ export async function seedCompanyChart(tx: any, companyId: string): Promise<{ cr
   }
   return { created, banks: bankCount };
 }
+
+// The ledger account an ordinary (OpEx) expense of this category posts to (Account Mapping screen). null = the category has no mapping (or the
+// expense has no category), in which case the line falls back to the company's default expense role (DIRECT_OPEX).
+export async function expenseCategoryAccountId(tx: any, companyId: string, category: string | null | undefined): Promise<string | null> {
+  if (!category) return null;
+  const [row] = await tx.select({ accountId: schema.expenseCategoryAccounts.accountId }).from(schema.expenseCategoryAccounts)
+    .where(and(eq(schema.expenseCategoryAccounts.companyId, companyId), eq(schema.expenseCategoryAccounts.category, category)));
+  return row?.accountId || null;
+}

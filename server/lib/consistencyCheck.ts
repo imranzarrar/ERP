@@ -1,5 +1,5 @@
 import * as schema from '../../src/db/schema.js';
-import { eq, and, lte, inArray } from 'drizzle-orm';
+import { eq, and, lte, inArray, sql } from 'drizzle-orm';
 import { round2 } from './businessLogic.js';
 import { todayStr } from './clock.js';
 import { getQuarterDateRange, computeVatReturnFigures } from './vatReturn.js';
@@ -18,6 +18,7 @@ import {
 //   R4  a locked period never moves              (closed months keep their stored profit, filed VAT returns keep their figures)
 //   R5  the books balance at every month end     (as-at reports are right, not just today's)
 //   R6  the ledger agrees with the documents     (informational: every account, document-based vs the journal)
+//   R7  the journal is sound                     (every entry balances, every line sits on a chart account, every posted manual journal has its entry)
 export interface ConsistencyCheck { id: string; rule: string; ok: boolean; severity: 'error' | 'warn'; detail: string; }
 export interface ConsistencyReport { asOf: string; ok: boolean; errors: number; warnings: number; checks: ConsistencyCheck[]; }
 
@@ -141,6 +142,17 @@ export async function computeConsistencyCheck(executor: any, companyId: string, 
     const diffs = pairs.filter(([, a, b]) => !near(a, b));
     add('R6.1', 'The journal agrees with the document-based reports, account by account', diffs.length === 0, diffs.map(([k, a, b]) => `${k} ledger ${a} vs reports ${b}`).join('; '), 'warn');
   }
+
+  // ---------------- R7: the journal itself is sound ----------------
+  const bad: any = await executor.execute(sql`SELECT COUNT(*)::int AS n FROM (
+      SELECT l.journal_entry_id FROM journal_lines l WHERE l.company_id = ${companyId}::uuid GROUP BY l.journal_entry_id
+      HAVING ABS(SUM(l.debit) - SUM(l.credit)) > 0.011) x`);
+  add('R7.1', 'Every journal entry balances (debits = credits)', Number(bad.rows[0].n) === 0, `${bad.rows[0].n} entr(ies) out of balance`);
+  const noAcct: any = await executor.execute(sql`SELECT COUNT(*)::int AS n FROM journal_lines WHERE company_id = ${companyId}::uuid AND account_id IS NULL`);
+  add('R7.2', 'Every journal line sits on an account of the chart', Number(noAcct.rows[0].n) === 0, `${noAcct.rows[0].n} line(s) have no chart account (run the chart seeding / check Account Mapping)`, 'warn');
+  const mj: any = await executor.execute(sql`SELECT COUNT(*)::int AS n FROM manual_journals mj WHERE mj.company_id = ${companyId}::uuid AND mj.status = 'Posted'
+      AND (mj.journal_entry_id IS NULL OR (SELECT COALESCE(SUM(debit),0) FROM manual_journal_lines WHERE journal_id = mj.id) <> (SELECT COALESCE(SUM(debit),0) FROM journal_lines WHERE journal_entry_id = mj.journal_entry_id))`);
+  add('R7.3', 'Every posted manual journal has a ledger entry of the same amount', Number(mj.rows[0].n) === 0, `${mj.rows[0].n} posted journal(s) do not match their ledger entry`);
 
   const errors = checks.filter(c => !c.ok && c.severity === 'error').length;
   const warnings = checks.filter(c => !c.ok && c.severity === 'warn').length;

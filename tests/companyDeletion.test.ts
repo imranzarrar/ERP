@@ -175,6 +175,27 @@ describe('Company registration status + Delete Company & All Data', () => {
       id: generateId(), grnId, productId, quantityReceived: '1.000', unitCost: '10.00',
     });
 
+    // The general ledger: a posted manual journal with its reversal (self-references both ways), an opening run, and a ledger entry that reverses another.
+    const acctIds = await db.select().from(schema.companyAccounts).where(eq(schema.companyAccounts.companyId, companyId));
+    const exp = acctIds.find(a => a.code === '6200')!, inc = acctIds.find(a => a.code === '4100')!;
+    const mjOrig = generateId(), mjRev = generateId();
+    const e1 = generateId(), e2 = generateId();
+    const ts = new Date();
+    await db.insert(schema.journalEntries).values([
+      { id: e1, companyId, date: '2026-01-02', referenceType: 'Manual', referenceId: mjOrig, description: 'orig', createdById: targetUserId, createdAt: ts },
+      { id: e2, companyId, date: '2026-01-03', referenceType: 'Manual', referenceId: mjRev, description: 'rev', createdById: targetUserId, createdAt: ts, reversalOfId: e1 },
+    ]);
+    await db.insert(schema.journalLines).values([
+      { id: generateId(), journalEntryId: e1, companyId, accountId: exp.id, debit: '5', credit: '0' }, { id: generateId(), journalEntryId: e1, companyId, accountId: inc.id, debit: '0', credit: '5' },
+      { id: generateId(), journalEntryId: e2, companyId, accountId: exp.id, debit: '0', credit: '5' }, { id: generateId(), journalEntryId: e2, companyId, accountId: inc.id, debit: '5', credit: '0' },
+    ]);
+    await db.insert(schema.manualJournals).values({ id: mjOrig, companyId, number: 'MJ-T1', date: '2026-01-02', description: 'orig', status: 'Posted', preparedById: targetUserId, preparedAt: ts, journalEntryId: e1 });
+    await db.insert(schema.manualJournals).values({ id: mjRev, companyId, number: 'MJ-T2', date: '2026-01-03', description: 'rev', status: 'Posted', preparedById: targetUserId, preparedAt: ts, journalEntryId: e2, reversalOfId: mjOrig });
+    await db.update(schema.manualJournals).set({ reversedById: mjRev }).where(eq(schema.manualJournals.id, mjOrig));
+    await db.insert(schema.manualJournalLines).values({ id: generateId(), journalId: mjOrig, companyId, accountId: exp.id, debit: '5', credit: '0' });
+    await db.insert(schema.manualJournalEvents).values({ id: generateId(), journalId: mjOrig, companyId, action: 'Prepared', userId: targetUserId, createdAt: ts });
+    await db.insert(schema.openingBalanceRuns).values({ id: generateId(), companyId, cutOffDate: '2026-01-01', journalEntryId: e1, summary: {}, postedById: targetUserId, postedAt: ts });
+
     // 3. Registration-status guard rails.
     expect((await api(companyAdminSessionId, `/api/companies/${companyId}/registration-status`, { method: 'PATCH', body: JSON.stringify({ status: 'Cancelled' }) })).status).toBe(403);
     expect((await api(superAdminSessionId, `/api/companies/${companyId}`, { method: 'DELETE' })).status).toBe(400); // still Trial — refused

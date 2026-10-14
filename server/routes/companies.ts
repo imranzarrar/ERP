@@ -116,6 +116,20 @@ router.delete('/:id', async (req: any, res) => {
       await tx.delete(schema.modifierChoices).where(inArray(schema.modifierChoices.modifierGroupId, modifierGroups_));
       await tx.delete(schema.productModifierGroups).where(inArray(schema.productModifierGroups.productId, productsServices_));
 
+      // The general ledger: manual journals (and their trail), opening runs, the journal itself, then the company's chart. Self-references
+      // (a reversal pointing at its original, an account at its parent) are cut first. No other table points at these.
+      await tx.delete(schema.manualJournalEvents).where(byCompany(schema.manualJournalEvents));
+      await tx.delete(schema.manualJournalLines).where(byCompany(schema.manualJournalLines));
+      await tx.update(schema.manualJournals).set({ reversalOfId: null, reversedById: null }).where(byCompany(schema.manualJournals));
+      await tx.delete(schema.manualJournals).where(byCompany(schema.manualJournals));
+      await tx.delete(schema.openingBalanceRuns).where(byCompany(schema.openingBalanceRuns));
+      await tx.delete(schema.expenseCategoryAccounts).where(byCompany(schema.expenseCategoryAccounts));
+      await tx.delete(schema.journalLines).where(byCompany(schema.journalLines));
+      await tx.update(schema.journalEntries).set({ reversalOfId: null }).where(byCompany(schema.journalEntries));
+      await tx.delete(schema.journalEntries).where(byCompany(schema.journalEntries));
+      await tx.update(schema.companyAccounts).set({ parentId: null }).where(byCompany(schema.companyAccounts));
+      await tx.delete(schema.companyAccounts).where(byCompany(schema.companyAccounts));
+
       await tx.delete(schema.auditLogs).where(byCompany(schema.auditLogs));
       await tx.delete(schema.productUnitConversions).where(byCompany(schema.productUnitConversions));
       await tx.delete(schema.productWarehouses).where(byCompany(schema.productWarehouses));

@@ -2253,7 +2253,7 @@ export const manualJournals = pgTable('manual_journals', {
   reference: text('reference'),
   preparerNote: text('preparer_note'),
   branchId: uuid('branch_id').references(() => branches.id),
-  status: text('status').notNull(), // 'Draft' | 'Pending' | 'Rejected' | 'Posted'
+  status: text('status').notNull(), // 'Draft' | 'Pending' | 'Rejected' | 'Posted' | 'Discarded' (a draft that was thrown away; its number stays visible, nothing is erased)
   preparedById: uuid('prepared_by_id').notNull().references(() => users.id),
   preparedAt: timestamp('prepared_at').notNull(),
   submittedAt: timestamp('submitted_at'),
@@ -2271,7 +2271,7 @@ export const manualJournals = pgTable('manual_journals', {
   reversalFk: foreignKey({ name: 'manual_journals_reversal_company_fk', columns: [table.reversalOfId, table.companyId], foreignColumns: [table.id, table.companyId] }),
   reversedByFk: foreignKey({ name: 'manual_journals_reversed_by_company_fk', columns: [table.reversedById, table.companyId], foreignColumns: [table.id, table.companyId] }),
   oneReversalUnique: uniqueIndex('manual_journals_one_reversal_unique').on(table.reversalOfId).where(sql`reversal_of_id IS NOT NULL`),
-  statusCheck: check('manual_journals_status_check', sql`${table.status} IN ('Draft','Pending','Rejected','Posted')`),
+  statusCheck: check('manual_journals_status_check', sql`${table.status} IN ('Draft','Pending','Rejected','Posted','Discarded')`),
   statusIdx: index('manual_journals_company_status_idx').on(table.companyId, table.status),
   tenantIsolationPolicy: pgPolicy('manual_journals_tenant_isolation', {
     for: 'all',
@@ -2356,7 +2356,8 @@ export const openingBalanceRuns = pgTable('opening_balance_runs', {
   postedAt: timestamp('posted_at').notNull(),
 }, (table) => ({
   companyIdIdx: index('opening_balance_runs_company_id_idx').on(table.companyId),
-  cutOffUnique: uniqueIndex('opening_balance_runs_company_cutoff_unique').on(table.companyId, table.cutOffDate),
+  // One live opening run per company; a reversed run (summary.reversedAt set) steps aside so a corrected one can be posted.
+  oneLiveRunUnique: uniqueIndex('opening_balance_runs_one_live_unique').on(table.companyId).where(sql`(summary->>'reversedAt') IS NULL`),
   tenantIsolationPolicy: pgPolicy('opening_balance_runs_tenant_isolation', {
     for: 'all',
     to: TENANT_DB_ROLE,

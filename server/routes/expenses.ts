@@ -4,6 +4,7 @@ import * as schema from '../../src/db/schema.js';
 import { eq, and, asc, desc, inArray, sql, count, gte, lte, ne } from 'drizzle-orm';
 import { validateTransactionDate, syncVoucherForExpense, round2, computePaymentStatus, assertQuarterNotFiled, assertQuarterNotFrozen, cancelExpense, splitExpenseTaxInclusiveAmount } from '../lib/businessLogic.js';
 import { postJournalEntry } from '../lib/ledger.js';
+import { expenseCategoryAccountId } from '../lib/chartOfAccounts.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { normalizePermissions } from '../../src/types.js';
 import { parseLimitOffset, parsePageSort, wantsPaged } from '../lib/pagination.js';
@@ -156,6 +157,8 @@ router.post('/', withTenantDb, async (req: any, res) => {
     const taxPct = taxSlab ? Number(taxSlab.percentage) : 0;
     const { netAmount, taxAmount } = splitExpenseTaxInclusiveAmount(totalAmount, taxPct);
     const expenseAccountKey = data.classification === 'Asset' ? 'FIXED_ASSETS' : 'DIRECT_OPEX';
+    // An ordinary expense lands on the account its category is mapped to (Account Mapping); a fixed asset purchase keeps its own role account.
+    const categoryAccountId = data.classification === 'Asset' ? null : await expenseCategoryAccountId(tdb, data.companyId, data.expenseType);
     await postJournalEntry(tdb, {
       companyId: data.companyId,
       branchId: data.branchId,
@@ -165,7 +168,7 @@ router.post('/', withTenantDb, async (req: any, res) => {
       description: `Expense ${data.expenseNumber} raised`,
       createdById: req.user.id,
       lines: [
-        { accountKey: expenseAccountKey, debit: netAmount },
+        { accountKey: expenseAccountKey, accountId: categoryAccountId, debit: netAmount },
         ...(taxAmount > 0 ? [{ accountKey: 'VAT_INPUT', debit: taxAmount }] : []),
         { accountKey: 'AP', credit: totalAmount },
       ],
@@ -378,6 +381,12 @@ router.post('/:id/reverse', withTenantDb, async (req: any, res) => {
     const [slab] = orig.taxSlabId ? await tdb.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, orig.taxSlabId)) : [undefined];
     const { netAmount, taxAmount } = splitExpenseTaxInclusiveAmount(gross, slab ? Number(slab.percentage) : 0);
 
+    // Reverse onto the very account the original cost was posted to (a later change of the category mapping must not split the two).
+    const [origCostLine] = await tdb.select({ accountId: schema.journalLines.accountId }).from(schema.journalLines)
+      .innerJoin(schema.journalEntries, eq(schema.journalEntries.id, schema.journalLines.journalEntryId))
+      .where(and(eq(schema.journalEntries.companyId, companyId), eq(schema.journalEntries.referenceType, 'Expense'), eq(schema.journalEntries.referenceId, id),
+        eq(schema.journalLines.accountKey, orig.classification === 'Asset' ? 'FIXED_ASSETS' : 'DIRECT_OPEX'), sql`${schema.journalLines.debit} > 0`)).limit(1);
+    const origExpenseAccountId = origCostLine?.accountId || null;
     const expenseNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'expense', today, orig.branchId);
     const reversalId = generateId();
     // amountPaid carries the part that is NOT payable any more: what had already been paid out becomes a credit owed back by the vendor,
@@ -396,7 +405,7 @@ router.post('/:id/reverse', withTenantDb, async (req: any, res) => {
       lines: [
         ...(unpaid > 0 ? [{ accountKey: 'AP', debit: unpaid }] : []),
         ...(paid > 0 ? [{ accountKey: 'VENDOR_CREDIT_RECEIVABLE', debit: paid }] : []),
-        { accountKey: orig.classification === 'Asset' ? 'FIXED_ASSETS' : 'DIRECT_OPEX', credit: netAmount },
+        { accountKey: orig.classification === 'Asset' ? 'FIXED_ASSETS' : 'DIRECT_OPEX', accountId: origExpenseAccountId, credit: netAmount },
         ...(taxAmount > 0 ? [{ accountKey: 'VAT_INPUT', credit: taxAmount }] : []),
       ],
     });
