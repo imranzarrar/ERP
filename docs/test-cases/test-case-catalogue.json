@@ -1885,8 +1885,8 @@
       "when": "A vendor payment and a vendor bill are created",
       "then": "Both post immediately, exactly as before",
       "layer": "API",
-      "automation": "Candidate",
-      "status": "Candidate"
+      "automation": "tests/approvals.test.ts",
+      "status": "Automated"
     },
     {
       "id": "APR-002",
@@ -1900,8 +1900,8 @@
       "when": "A payment of 6000 is submitted",
       "then": "No voucher, no ledger entry, no bank movement; the document is Pending Approval",
       "layer": "API+DB",
-      "automation": "Candidate",
-      "status": "Candidate"
+      "automation": "tests/approvals.test.ts",
+      "status": "Automated"
     },
     {
       "id": "APR-003",
@@ -1915,8 +1915,8 @@
       "when": "Payments of 5000.00 and 5000.01",
       "then": "The first follows the rule defined for its band, the second the next band, with no gap or overlap",
       "layer": "API",
-      "automation": "Candidate",
-      "status": "Candidate"
+      "automation": "tests/approvals.test.ts",
+      "status": "Automated"
     },
     {
       "id": "APR-004",
@@ -1930,8 +1930,8 @@
       "when": "Level 2 tries first, then level 1 approves, then level 2",
       "then": "Level 2 first is refused; after level 1 then level 2 the payment posts once",
       "layer": "API+DB",
-      "automation": "Candidate",
-      "status": "Candidate"
+      "automation": "tests/approvals.test.ts",
+      "status": "Automated"
     },
     {
       "id": "APR-005",
@@ -1945,8 +1945,8 @@
       "when": "The submitter approves their own payment, bill, credit note and journal",
       "then": "Each is refused server-side at every level",
       "layer": "API",
-      "automation": "Candidate",
-      "status": "Candidate"
+      "automation": "tests/approvals.test.ts",
+      "status": "Automated"
     },
     {
       "id": "APR-006",
@@ -1960,8 +1960,8 @@
       "when": "The submitter approves their own payment",
       "then": "It posts; flagged self-approved; the audit log shows the setting change and the use",
       "layer": "API+DB",
-      "automation": "Candidate",
-      "status": "Candidate"
+      "automation": "tests/approvals.test.ts",
+      "status": "Automated"
     },
     {
       "id": "APR-007",
@@ -1975,8 +1975,8 @@
       "when": "They change the setting",
       "then": "403; the setting is unchanged",
       "layer": "API",
-      "automation": "Candidate",
-      "status": "Candidate"
+      "automation": "tests/approvals.test.ts",
+      "status": "Automated"
     },
     {
       "id": "APR-008",
@@ -1990,8 +1990,8 @@
       "when": "The submitter submits; the manager approves",
       "then": "Only that manager (or a valid delegate) may approve",
       "layer": "API",
-      "automation": "Candidate",
-      "status": "Candidate"
+      "automation": "tests/approvals.test.ts",
+      "status": "Automated"
     },
     {
       "id": "APR-009",
@@ -2005,8 +2005,8 @@
       "when": "An approver rejects without, then with remarks",
       "then": "Refused without remarks; with remarks the document is Draft and the history shows them",
       "layer": "API+DB",
-      "automation": "Candidate",
-      "status": "Candidate"
+      "automation": "tests/approvals.test.ts",
+      "status": "Automated"
     },
     {
       "id": "APR-010",
@@ -2050,8 +2050,8 @@
       "when": "The last level approves; company B calls company A requests",
       "then": "Posting is refused by the guard; company B gets 404 and sees none of the rules or requests",
       "layer": "API",
-      "automation": "Candidate",
-      "status": "Candidate"
+      "automation": "tests/approvals.test.ts",
+      "status": "Automated"
     },
     {
       "id": "AR-001",

@@ -12,6 +12,7 @@ import ReportRunScreen from './ledger/ReportRunScreen';
 import ReportDesignerScreen from './ledger/ReportDesignerScreen';
 import PostingControlScreen from './ledger/PostingControlScreen';
 import { PrintDocContext } from './ledger/ui';
+import { ApprovalRulesScreen, MyApprovalsScreen } from './ledger/ApprovalScreens';
 import { BankReconciliationScreen } from './ledger/BankReconciliationScreens';
 import { SettlementEntryScreen, SettlementListScreen } from './ledger/SettlementScreens';
 import { SubledgerAgingScreen, PartyLedgerScreen, type PartyFocus } from './ledger/SubledgerScreens';
@@ -29,6 +30,8 @@ function LedgerScreens({ db, tab, editJournalId, focus, accountFocus, onFocusCon
   const openParty = (f: PartyFocus) => { setPartyFocus(f); onNavigate(f.kind === 'customer' ? 'gl-customer-ledger' : 'gl-vendor-ledger'); };
   const openEntry = (id: string) => { onFocusJournal({ kind: 'entry', id }); onNavigate('gl-journals'); };
   switch (tab) {
+    case 'gl-approval-rules': return <ApprovalRulesScreen db={db} />;
+    case 'gl-my-approvals': return <MyApprovalsScreen db={db} />;
     case 'gl-bank-reconciliation': return <BankReconciliationScreen db={db} />;
     case 'gl-receive-payment': return <SettlementEntryScreen db={db} kind="customer" />;
     case 'gl-receipts': return <SettlementListScreen db={db} kind="customer" onNew={() => onNavigate('gl-receive-payment')} />;

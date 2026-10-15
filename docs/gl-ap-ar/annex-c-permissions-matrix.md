@@ -42,6 +42,11 @@ Source of truth: `src/permissionSchema.ts`. A user's rights are the union of all
 | general_ledger | bankReconciliation — Bank Reconciliation | bankReconciliation.adjust | Post a bank fee, interest or correction from a reconciliation |
 | general_ledger | bankReconciliation — Bank Reconciliation | bankReconciliation.complete | Complete a Reconciliation |
 | general_ledger | bankReconciliation — Bank Reconciliation | bankReconciliation.reopen | Reopen a Completed Reconciliation |
+| general_ledger | approvalRules — Approval Rules | approvalRules.create | Create Approval Rules |
+| general_ledger | approvalRules — Approval Rules | approvalRules.read | View Approval Rules |
+| general_ledger | approvalRules — Approval Rules | approvalRules.update | Change Approval Rules |
+| general_ledger | approvalRules — Approval Rules | approvalRules.delete | Deactivate Approval Rules |
+| general_ledger | approvals — My Approvals (decide what is routed to you) | approvals.read | See and decide the approvals routed to me |
 | general_ledger | accountMapping — Account Mapping | accountMapping.read | View Account Mapping |
 | general_ledger | accountMapping — Account Mapping | accountMapping.update | Change Account Mapping |
 | general_ledger | dimensions — Dimensions (Branch, Department, Profit Centre ...) | dimensions.create | Add Dimensions, Values and Cost Centres |

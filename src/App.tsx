@@ -760,10 +760,9 @@ type NavSection = {
       }
     ],
     {
-      title: t('General Ledger'),
-      // Accounting's own home: the company's chart of accounts, manual journals with approval, the ledger reports, and the opening balances.
-      // Every entry is gated by its own permission (chartOfAccounts / accountMapping / journals / reports / openingBalances), so a role sees only
-      // what it was given. Customer, supplier, stock and bank accounts are posted by their documents, never typed here.
+      title: t('General Ledger Setup'),
+      // The ledger is set up once, in this order: the chart of accounts and how documents map to it, the analysis dimensions, the opening balances, the posting rules
+      // (who may post how far back), and who must approve what. Daily work and reports follow in the next two sections.
       items: [
         {
           id: 'gl-chart', label: t('Chart of Accounts'), icon: BookOpen, adminOnly: false,
@@ -775,6 +774,26 @@ type NavSection = {
           ]
         },
         {
+          // Set up in this order: define the dimensions, add their values, assign them to accounts.
+          id: 'gl-dim-group', label: t('Dimensions'), icon: Layers, adminOnly: false,
+          subItems: [
+            { id: 'gl-dim-types', label: t('1 Dimension Types'), permissionKey: 'dimensions.read' },
+            { id: 'gl-dim-values', label: t('2 Dimension Values'), permissionKey: 'dimensions.read' },
+            { id: 'gl-cost-centers', label: t('2 Cost Centres'), permissionKey: 'dimensions.read' },
+            { id: 'gl-dim-rules', label: t('3 Account Dimension Rules'), permissionKey: 'accountDimensionRules.read' }
+          ]
+        },
+        { id: 'gl-opening', label: t('Opening Balances'), icon: BookOpen, adminOnly: false, permissionKey: ['openingBalances.read', 'openingBalances.post'] },
+        { id: 'gl-posting-control', label: t('Posting Control'), icon: Lock, adminOnly: false, permissionKey: 'postingControl.read' },
+        { id: 'gl-approval-rules', label: t('Approval Rules'), icon: Lock, adminOnly: false, permissionKey: 'approvalRules.read' }
+      ]
+    },
+    {
+      title: t('Accounting Operations'),
+      // The daily work of the accountant and the clerks, in the order money moves: what waits for me, journals, money in, money out, then the bank.
+      items: [
+        { id: 'gl-my-approvals', label: t('My Approvals'), icon: FileText, adminOnly: false, permissionKey: 'approvals.read' },
+        {
           id: 'gl-journal-group', label: t('Journals'), icon: FileText, adminOnly: false,
           subItems: [
             { id: 'gl-journals', label: t('Journal Listing'), permissionKey: ['journals.read', 'journals.create', 'journals.post'] },
@@ -782,6 +801,27 @@ type NavSection = {
             { id: 'gl-pending', label: t('Pending Approval'), permissionKey: 'journals.post' }
           ]
         },
+        {
+          id: 'gl-receivables-group', label: t('Receivables'), icon: FileText, adminOnly: false,
+          subItems: [
+            { id: 'gl-receive-payment', label: t('Receive Payment'), permissionKey: 'customerReceipts.create' },
+            { id: 'gl-receipts', label: t('Receipts'), permissionKey: 'customerReceipts.read' }
+          ]
+        },
+        {
+          id: 'gl-payables-group', label: t('Payables'), icon: FileText, adminOnly: false,
+          subItems: [
+            { id: 'gl-pay-vendor', label: t('Pay Vendor'), permissionKey: 'vendorPayments.create' },
+            { id: 'gl-vendor-payments', label: t('Vendor Payments'), permissionKey: 'vendorPayments.read' }
+          ]
+        },
+        { id: 'gl-bank-reconciliation', label: t('Bank Reconciliation'), icon: Scale, adminOnly: false, permissionKey: 'bankReconciliation.read' }
+      ]
+    },
+    {
+      title: t('General Ledger Reports'),
+      // What the ledger says: the statements first, then who owes what (aging and party ledgers), then your own layouts and the check against the documents.
+      items: [
         {
           id: 'gl-report-group', label: t('Ledger Reports'), icon: Scale, adminOnly: false,
           subItems: [
@@ -799,34 +839,7 @@ type NavSection = {
             { id: 'gl-report-designer', label: t('Report Designer'), permissionKey: 'reportDefinitions.read' },
             { id: 'gl-reconciliation', label: t('Ledger vs Documents'), permissionKey: 'reports.ledgerReconciliation' }
           ]
-        },
-        {
-          // Set up in this order: define the dimensions, add their values, assign them to accounts.
-          id: 'gl-dim-group', label: t('Dimensions'), icon: Layers, adminOnly: false,
-          subItems: [
-            { id: 'gl-dim-types', label: t('1 Dimension Types'), permissionKey: 'dimensions.read' },
-            { id: 'gl-dim-values', label: t('2 Dimension Values'), permissionKey: 'dimensions.read' },
-            { id: 'gl-cost-centers', label: t('2 Cost Centres'), permissionKey: 'dimensions.read' },
-            { id: 'gl-dim-rules', label: t('3 Account Dimension Rules'), permissionKey: 'accountDimensionRules.read' }
-          ]
-        },
-        {
-          id: 'gl-receivables-group', label: t('Receivables'), icon: FileText, adminOnly: false,
-          subItems: [
-            { id: 'gl-receive-payment', label: t('Receive Payment'), permissionKey: 'customerReceipts.create' },
-            { id: 'gl-receipts', label: t('Receipts'), permissionKey: 'customerReceipts.read' }
-          ]
-        },
-        {
-          id: 'gl-payables-group', label: t('Payables'), icon: FileText, adminOnly: false,
-          subItems: [
-            { id: 'gl-pay-vendor', label: t('Pay Vendor'), permissionKey: 'vendorPayments.create' },
-            { id: 'gl-vendor-payments', label: t('Vendor Payments'), permissionKey: 'vendorPayments.read' }
-          ]
-        },
-        { id: 'gl-bank-reconciliation', label: t('Bank Reconciliation'), icon: Scale, adminOnly: false, permissionKey: 'bankReconciliation.read' },
-        { id: 'gl-opening', label: t('Opening Balances'), icon: BookOpen, adminOnly: false, permissionKey: ['openingBalances.read', 'openingBalances.post'] },
-        { id: 'gl-posting-control', label: t('Posting Control'), icon: Lock, adminOnly: false, permissionKey: 'postingControl.read' }
+        }
       ]
     },
     {
@@ -1675,6 +1688,8 @@ type NavSection = {
  activeTab === 'gl-trial-balance' ? t('Trial Balance (Ledger)') :
  activeTab === 'gl-income-statement' ? t('Income Statement') :
  activeTab === 'gl-balance-sheet' ? t('Balance Sheet (Ledger)') :
+ activeTab === 'gl-approval-rules' ? t('Approval Rules') :
+ activeTab === 'gl-my-approvals' ? t('My Approvals') :
  activeTab === 'gl-bank-reconciliation' ? t('Bank Reconciliation') :
  activeTab === 'gl-receive-payment' ? t('Receive Payment') :
  activeTab === 'gl-receipts' ? t('Receipts') :
@@ -1725,6 +1740,8 @@ type NavSection = {
  {activeTab === 'gl-trial-balance' && t('Opening, movement and closing balance of every account, built from the ledger.')}
  {activeTab === 'gl-income-statement' && t('Revenue, cost of sales and expenses for a period, from the ledger, with comparatives.')}
  {activeTab === 'gl-balance-sheet' && t('Assets, liabilities and equity as at a date, from the ledger.')}
+ {activeTab === 'gl-approval-rules' && t('Who must approve a payment above which amount, level by level, and whether the person who submits may approve.')}
+ {activeTab === 'gl-my-approvals' && t('The payments waiting for your decision, and the status of what you submitted.')}
  {activeTab === 'gl-bank-reconciliation' && t('Check the bank statement against the books line by line, post the bank fee or interest the books are missing, and lock the result.')}
  {activeTab === 'gl-receive-payment' && t('Record money received from a customer: put it against several invoices at once, or keep it on account.')}
  {activeTab === 'gl-receipts' && t('Every receipt from customers, what it settled and what is still held on account.')}

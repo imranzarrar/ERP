@@ -17,7 +17,7 @@ Sprints are numbered. Done sprints list the commits that delivered them (git, br
 | S8 | Bank reconciliation | Done | 2026-10-15 | Reconciliation sessions per FR-BANK-01..05. |
 | S9 | Print-outs and test catalogue | Done | 2026-10-15 | Vouchers and reconciliation prints; automation-ready test cases. |
 | S10 | Documentation set | In progress | 2026-10-15 | BRD, SRS, design, test strategy, manual, sprint log and traceability generated from one source. |
-| S11 | Approval rules | Planned | TBD | Amount-threshold, multi-level approval for journals, bills, payments and credit notes. |
+| S11 | Approval rules | In progress | 2026-10-15 → | Amount-threshold, multi-level approval for journals, bills, payments and credit notes. |
 | S12 | Period control | Planned | TBD | Restricted month, adjustment period, readiness checklist, ledger-verified month close, per-module close. |
 | S13 | Year-end close | Planned | TBD | One closing entry into retained earnings; next year opens automatically. |
 | S14 | Tax postings | Planned | TBD | Tax-code tags on lines, VAT settlement entry, cash rounding account. |
@@ -147,7 +147,7 @@ BRD, SRS, design, test strategy, manual, sprint log and traceability generated f
 |---|---|---|---|
 | S10-01 | Generated BRD, SRS, sprint log, traceability matrix and annexes | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
 
-## Sprint 11 — Approval rules (Planned)
+## Sprint 11 — Approval rules (In progress)
 
 Amount-threshold, multi-level approval for journals, bills, payments and credit notes.
 
@@ -262,7 +262,7 @@ Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to
 | BR-JNL-07 | Self-approval safeguard | Built | S1, S11 |
 | BR-JNL-08 | Journal listing and entry detail | Built | S1 |
 | BR-JNL-09 | Opening balances | Built | S1 |
-| BR-JNL-10 | Amount-threshold approval rules | Planned | S11, S11 |
+| BR-JNL-10 | Amount-threshold approval rules | Partial | S11, S11 |
 | BR-PER-01 | Open fiscal month rule | Built | S5 |
 | BR-PER-02 | VAT quarter freeze | Built | S5 |
 | BR-PER-03 | Lock date | Built | S5 |
@@ -350,7 +350,6 @@ Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to
 
 | Sprint | Name | Delivers |
 |---|---|---|
-| S11 | Approval rules | BR-JNL-10; BR-JNL-10; BR-JNL-07; BR-JNL-01 |
 | S12 | Period control | BR-PER-07; BR-PER-08; BR-PER-09; BR-PER-11 |
 | S13 | Year-end close | BR-PER-10 |
 | S14 | Tax postings | BR-TAX-02; BR-TAX-01, BR-TAX-03 |

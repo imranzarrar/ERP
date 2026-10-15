@@ -29,7 +29,7 @@ Before 2.0 the system computed every report from documents (invoices, expenses, 
 
 ## 4. Scope
 
-**In scope:** 100 business requirements in 14 areas (section 6). 77 are built, 4 partly built, 19 planned.
+**In scope:** 100 business requirements in 14 areas (section 6). 77 are built, 5 partly built, 18 planned.
 
 **Out of scope (this programme):**
 * Fixed assets and depreciation (classes, CWIP, methods, runs, disposal, transfer, documents) (FR-FA-01..10) — A later phase; the ledger and dimensions are designed not to block it.
@@ -110,8 +110,8 @@ Every posting of the company, from documents and from manual journals, can be li
 **BR-JNL-09 Opening balances** — Must, Built, source Decision, sprint S1.
 A company that starts using the ledger part-way can post an opening entry: previewed first, balanced (a difference may be put to an equity account), posted once, with a confirmation, and reversible with a reason.
 
-**BR-JNL-10 Amount-threshold approval rules** — Should, Planned, Blueprint FR-APR-01, FR-APR-02, FR-APR-03, FR-APR-04, FR-APR-05, FR-APR-06, source Blueprint, sprint S11, S11.
-Approval rules per document type (journal, vendor bill, vendor payment, credit note) by amount, with several sequential levels, server-enforced, with no self-approval at any level and a full approval history; a document without a matching rule posts directly.
+**BR-JNL-10 Amount-threshold approval rules** — Should, Partial, Blueprint FR-APR-01, FR-APR-02, FR-APR-03, FR-APR-04, FR-APR-05, FR-APR-06, source Blueprint, sprint S11, S11.
+Approval rules per document type (journal, vendor bill, vendor payment, credit note) by amount, with several sequential levels, server-enforced, with no self-approval at any level and a full approval history; a document without a matching rule posts directly. Delivered so far: vendor payments (Sprint 11); bills, credit notes and journals follow.
 
 ### PER — Periods, posting control and close
 

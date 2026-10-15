@@ -96,6 +96,7 @@ export function SettlementEntryScreen({ db, kind, onSaved }: { db: DatabaseState
     setSaving(true);
     try {
       const r = await erpApi<any>(`/api/settlements/${isCustomer ? 'receipts' : 'payments'}`, { method: 'POST', body: { partyId, bankId, docDate, amount: amountNum, reference, notes, allocations: toAllocations(items, values) } });
+      if (r.pendingApproval) { show('success', t('Sent for approval. It will be posted when every level has approved; follow it in My Approvals.')); setAmount(''); setReference(''); setNotes(''); setValues({}); return; }
       setDone(r); show('success', `${r.voucherNumber} ${t('saved.')}`); onSaved?.(r.voucherId);
     } catch (e: any) { show('error', e.message); } finally { setSaving(false); }
   };

@@ -49,6 +49,10 @@ const exp = accts.find(a => a.type === 'Expense' && !a.isGroup && a.code === '62
 const liab = accts.find(a => a.type === 'Liability' && !a.isGroup && !a.isControl);
 await call('/api/ledger/manual-journals', { docDate: day(2), description: 'Accrue November rent', reference: 'LEASE-11', lines: [{ accountId: exp.id, debit: 3500 }, { accountId: liab.id, credit: 3500 }] }).then(async (d: any) => call(`/api/ledger/manual-journals/${d.id}/submit`, {}));
 await call('/api/ledger/posting-policy', { maxBackDays: 45, reasonAfterDays: 14 }, 'PUT').catch(() => {});
+// an approval rule: vendor payments above 500 need the finance manager's approval; one payment is submitted and waits
+const roleId = generateId(); await db.insert(schema.roles).values({ id: roleId, companyId, name: 'Finance Manager', permissions: { approvals: { read: { enabled: true } }, vendorPayments: { read: { enabled: true } } } } as any);
+await call('/api/approvals/rules', { name: 'Payments above 500', documentType: 'VendorPayment', minAmount: 500, maxAmount: null, priority: 10, levels: [{ approverType: 'Role', approverRef: roleId }] });
+const pendingPay = await call('/api/settlements/payments', { partyId: vends[0], bankId: bank, docDate: day(1), amount: 1000, reference: 'TT 88120', allocations: [] });
 
 // ---- the browser ----
 const browser = await chromium.launch({ channel: process.env.PW_CHANNEL || 'chrome', args: ['--no-sandbox', '--disable-gpu'] }).catch(async (e) => { await purgeCompany(companyId); throw e; });
@@ -103,6 +107,10 @@ await call(`/api/bank-reconciliations/${sess}/adjustment`, { statementLineId: fe
 await call(`/api/bank-reconciliations/${sess}/complete`, {}).catch((e: any) => console.log('complete', e.message.slice(0, 120)));
 await page.reload(); await page.waitForTimeout(4000); await nav(null, 'Bank Reconciliation'); try { await page.locator('tbody tr').first().click(); await page.waitForTimeout(1500); await shot('bank-reconciliation-completed'); await page.getByText('Print report').first().click(); await shot('bank-reconciliation-statement-print', 2000); } catch (e: any) { console.log('rec print', e.message.slice(0, 100)); }
 
+await reset(); await nav(null, 'Approval Rules'); await shot('approval-rules');
+await nav(null, 'My Approvals'); await shot('my-approvals');
+try { await page.locator('tbody tr').last().click(); await page.waitForTimeout(1200); await shot('approval-request'); } catch (e: any) { console.log('approval request', e.message.slice(0, 100)); }
+void pendingPay;
 await browser.close();
 await purgeCompany(companyId);
 fs.writeFileSync(`${OUT}/_index.json`, JSON.stringify(done, null, 1));

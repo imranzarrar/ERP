@@ -3,59 +3,68 @@
 Feature: Approval rules (Sprint 11)
   Reference: Blueprint FR-APR-01..06; docs/gl-ap-ar/s11-approval-rules-tier1-research.md
 
-  @APR-001 @P1 @Regression @API @candidate
+  @APR-001 @P1 @Regression @API @automated
   Scenario: A document with no matching rule posts directly
     Given A company with no approval rules
     When A vendor payment and a vendor bill are created
     Then Both post immediately, exactly as before
+    # automated by tests/approvals.test.ts
 
-  @APR-002 @P1 @Functional @API+DB @candidate
+  @APR-002 @P1 @Functional @API+DB @automated
   Scenario: A payment inside a rule band enters Pending Approval and posts nothing
     Given A rule: payments above 5000 need one approval
     When A payment of 6000 is submitted
     Then No voucher, no ledger entry, no bank movement; the document is Pending Approval
+    # automated by tests/approvals.test.ts
 
-  @APR-003 @P1 @Boundary @API @candidate
+  @APR-003 @P1 @Boundary @API @automated
   Scenario: Amount band boundaries: exactly at the threshold and just above it
     Given Threshold 5000
     When Payments of 5000.00 and 5000.01
     Then The first follows the rule defined for its band, the second the next band, with no gap or overlap
+    # automated by tests/approvals.test.ts
 
-  @APR-004 @P1 @Functional @API+DB @candidate
+  @APR-004 @P1 @Functional @API+DB @automated
   Scenario: A two-level chain needs both approvals in order
     Given A rule with level 1 (accountant role) and level 2 (finance manager)
     When Level 2 tries first, then level 1 approves, then level 2
     Then Level 2 first is refused; after level 1 then level 2 the payment posts once
+    # automated by tests/approvals.test.ts
 
-  @APR-005 @P1 @Security @API @candidate
+  @APR-005 @P1 @Security @API @automated
   Scenario: The submitter cannot approve while self-approval is off
     Given The company setting is off
     When The submitter approves their own payment, bill, credit note and journal
     Then Each is refused server-side at every level
+    # automated by tests/approvals.test.ts
 
-  @APR-006 @P1 @Functional @API+DB @candidate
+  @APR-006 @P1 @Functional @API+DB @automated
   Scenario: With self-approval on the submitter may approve and the document is flagged
     Given The company setting is on (changed by the owner, audited)
     When The submitter approves their own payment
     Then It posts; flagged self-approved; the audit log shows the setting change and the use
+    # automated by tests/approvals.test.ts
 
-  @APR-007 @P1 @Security @API @candidate
+  @APR-007 @P1 @Security @API @automated
   Scenario: Only owner/admin may change the self-approval setting
     Given A finance manager without admin rights
     When They change the setting
     Then 403; the setting is unchanged
+    # automated by tests/approvals.test.ts
 
-  @APR-008 @P2 @Functional @API @candidate
+  @APR-008 @P2 @Functional @API @automated
   Scenario: A manager of the submitter can be the approver
     Given A user with a manager; a level naming manager of the submitter
     When The submitter submits; the manager approves
     Then Only that manager (or a valid delegate) may approve
+    # automated by tests/approvals.test.ts
 
-  @APR-009 @P1 @Functional @API+DB @candidate
+  @APR-009 @P1 @Functional @API+DB @automated
   Scenario: Rejection returns the document to draft with remarks and nothing posts
     Given A pending payment
     When An approver rejects without, then with remarks
     Then Refused without remarks; with remarks the document is Draft and the history shows them
+    # automated by tests/approvals.test.ts
 
   @APR-010 @P2 @Functional @API @candidate
   Scenario: Editing a pending document recalls it; raising the amount restarts approval
@@ -69,8 +78,9 @@ Feature: Approval rules (Sprint 11)
     When The deputy approves inside and after the period
     Then Allowed inside, refused after; both recorded with the delegator
 
-  @APR-012 @P1 @Security @API @candidate
+  @APR-012 @P1 @Security @API @automated
   Scenario: The posting guard is re-checked at final approval and tenant isolation holds
     Given A pending payment dated before a lock date set after submission; two companies
     When The last level approves; company B calls company A requests
     Then Posting is refused by the guard; company B gets 404 and sees none of the rules or requests
+    # automated by tests/approvals.test.ts

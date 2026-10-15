@@ -14,7 +14,7 @@ Sign in with your user name and password. The first time, you may be asked to ch
 
 ![Dashboard](user-manual/screens/02-dashboard.png)
 
-The left menu is the whole system. Work in this chapter lives under **General Ledger** (Chart of Accounts, Journals, Ledger Reports, Dimensions, **Receivables**, **Payables**, **Bank Reconciliation**, Opening Balances, **Posting Control**). Your menu shows only what your roles allow. The top of the menu shows your company and the open fiscal month. Use **Filter menu…** to find a screen by name.
+The left menu is the whole system. Work in this manual lives in three menu sections that follow the order of the work: **General Ledger Setup** (Chart of Accounts, Dimensions, Opening Balances, Posting Control, Approval Rules), **Accounting Operations** (My Approvals, Journals, Receivables, Payables, Bank Reconciliation) and **General Ledger Reports**. Your menu shows only what your roles allow. The top of the menu shows your company and the open fiscal month. Use **Filter menu…** to find a screen by name.
 
 ---
 
@@ -24,7 +24,7 @@ The left menu is the whole system. Work in this chapter lives under **General Le
 
 ![Chart of accounts](user-manual/screens/03-chart-of-accounts.png)
 
-**General Ledger › Chart of Accounts › Accounts.** Every company starts with a standard Saudi chart. Headings (bold) group accounts and show totals; only accounts take postings. You can:
+**General Ledger Setup › Chart of Accounts › Accounts.** Every company starts with a standard Saudi chart. Headings (bold) group accounts and show totals; only accounts take postings. You can:
 * **New Account** (menu *New Account*): code, name, Arabic name, type, parent heading.
 * Rename or recode an account. You cannot change the **type** of an account that has postings, a role or a bank.
 * **Deactivate** an account only when its balance is zero; accounts that documents depend on (roles, banks, control accounts) cannot be deactivated.
@@ -109,6 +109,20 @@ Expenses, goods receipts and purchase bills are entered in **Procurements** (unc
 ![Vendor payments](user-manual/screens/13-vendor-payments-list.png)
 
 A payment kept on account is an **advance to the vendor**: it appears as an asset until it is applied.
+
+### 4.1 Approval of large payments (BR-JNL-10)
+
+![Approval rules](user-manual/screens/33-approval-rules.png)
+
+**General Ledger Setup › Approval Rules** (setup, once). A rule says: *vendor payments above this amount (up to an optional ceiling) need these approvers, level by level*. Each level names a **role**, a **named user**, **anyone holding a permission**, or the **manager of the submitter** (the manager chain is set on the user). Lower priority numbers are checked first. A payment that matches no rule posts directly, as before. The switch at the top decides whether the person who submits a payment may approve it themselves: **off** (recommended) means someone else must always approve; only the company owner / administrator can change it, and every use of it is marked and audited.
+
+![My approvals](user-manual/screens/34-my-approvals.png)
+
+When a payment falls inside a rule, **Save Payment** sends it for approval and **nothing is posted**: no voucher, no ledger entry, no bank movement. **Accounting Operations › My Approvals** lists what waits for you and what you submitted.
+
+![Approval request](user-manual/screens/35-approval-request.png)
+
+Open a request to see who submitted it, the date, the reference, the level and the history. **Approve** moves it to the next level; the last approval creates the payment (the posting-control rules are checked again at that moment). **Reject** needs a reason and nothing is posted. A person cannot approve a level for a payment they submitted (unless the company switch is on) or act twice on the same request.
 
 ---
 
@@ -268,11 +282,13 @@ Choose the language at sign-in or in your profile. Screens mirror right-to-left;
 | Chart of Accounts / New Account / Import–Export | General Ledger › Chart of Accounts | COA |
 | Account Mapping | Chart of Accounts › Account Mapping | COA-06 |
 | Dimension Types / Values / Cost Centres / Rules | Dimensions | DIM |
-| Posting Control | General Ledger › Posting Control | PER |
+| Posting Control | General Ledger Setup › Posting Control | PER |
+| Approval Rules | General Ledger Setup › Approval Rules | JNL-10 |
+| My Approvals | Accounting Operations › My Approvals | JNL-10 |
 | Receive Payment / Receipts | Receivables | AR-03…05 |
 | Pay Vendor / Vendor Payments | Payables | AP-05 |
 | Receivables Aging / Customer Ledger / Payables Aging / Vendor Ledger | Ledger Reports | AR-06, 07; AP-06 |
 | Journal Listing / New Manual Journal / Pending Approval | Journals | JNL |
 | General Ledger, Trial Balance, Income Statement, Balance Sheet, Cash Flow, Changes in Equity, Custom Reports, Report Designer, Ledger vs Documents | Ledger Reports | RPT |
-| Bank Reconciliation | General Ledger › Bank Reconciliation | BNK |
-| Opening Balances | General Ledger › Opening Balances | JNL-09 |
+| Bank Reconciliation | Accounting Operations › Bank Reconciliation | BNK |
+| Opening Balances | General Ledger Setup › Opening Balances | JNL-09 |

@@ -25,7 +25,7 @@ Coverage: 100 business requirements → 108 system requirements → 302 of 302 t
 | BR-JNL-07 | Self-approval safeguard | Built | FR-JNL-07.1 | 2: JV-010, JV-011 | S1, S11 |
 | BR-JNL-08 | Journal listing and entry detail | Built | FR-JNL-08.1 | 3: JV-024, JV-018, JV-019 | S1 |
 | BR-JNL-09 | Opening balances | Built | FR-JNL-09.1 | 6: OPN-001, OPN-002, OPN-003, OPN-004, OPN-005, OPN-006 | S1 |
-| BR-JNL-10 | Amount-threshold approval rules | Planned | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | 12: APR-001, APR-002, APR-003, APR-004, APR-005, APR-006 … | S11, S11 |
+| BR-JNL-10 | Amount-threshold approval rules | Partial | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | 12: APR-001, APR-002, APR-003, APR-004, APR-005, APR-006 … | S11, S11 |
 | BR-PER-01 | Open fiscal month rule | Built | FR-PER-01.1 | 1: PC-012 | S5 |
 | BR-PER-02 | VAT quarter freeze | Built | FR-PER-02.1 | 2: PC-013, PC-014 | S5 |
 | BR-PER-03 | Lock date | Built | FR-PER-03.1 | 5: PC-001, PC-002, PC-003, PC-004, PC-017 | S5 |
@@ -231,18 +231,18 @@ Coverage: 100 business requirements → 108 system requirements → 302 of 302 t
 | RPT-021 | The consistency check passes all error-level rules after a day of mixed activity | tests/bankReconciliation.test.ts | FR-RPT-08.1 | BR-RPT-08 |
 | RPT-022 | A report over 100000 ledger lines returns within the agreed time | Candidate | FR-RPT-09.1 | BR-RPT-09 |
 | RPT-023 | Branch-restricted users see branch totals only and are told so | Candidate | FR-DIM-05.1, FR-RPT-10.1 | BR-DIM-05, BR-RPT-10 |
-| APR-001 | A document with no matching rule posts directly | Candidate | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
-| APR-002 | A payment inside a rule band enters Pending Approval and posts nothing | Candidate | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
-| APR-003 | Amount band boundaries: exactly at the threshold and just above it | Candidate | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
-| APR-004 | A two-level chain needs both approvals in order | Candidate | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
-| APR-005 | The submitter cannot approve while self-approval is off | Candidate | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
-| APR-006 | With self-approval on the submitter may approve and the document is flagged | Candidate | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
-| APR-007 | Only owner/admin may change the self-approval setting | Candidate | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
-| APR-008 | A manager of the submitter can be the approver | Candidate | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
-| APR-009 | Rejection returns the document to draft with remarks and nothing posts | Candidate | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
+| APR-001 | A document with no matching rule posts directly | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
+| APR-002 | A payment inside a rule band enters Pending Approval and posts nothing | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
+| APR-003 | Amount band boundaries: exactly at the threshold and just above it | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
+| APR-004 | A two-level chain needs both approvals in order | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
+| APR-005 | The submitter cannot approve while self-approval is off | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
+| APR-006 | With self-approval on the submitter may approve and the document is flagged | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
+| APR-007 | Only owner/admin may change the self-approval setting | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
+| APR-008 | A manager of the submitter can be the approver | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
+| APR-009 | Rejection returns the document to draft with remarks and nothing posts | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
 | APR-010 | Editing a pending document recalls it; raising the amount restarts approval | Candidate | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
 | APR-011 | A delegate with a valid period may decide; outside it may not | Candidate | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
-| APR-012 | The posting guard is re-checked at final approval and tenant isolation holds | Candidate | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
+| APR-012 | The posting guard is re-checked at final approval and tenant isolation holds | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
 | AR-001 | An invoice posts Dr receivable, Cr revenue and VAT output, the receivable line tagged with the customer | tests/ledgerSubledger.test.ts | FR-AR-01.1, FR-TAX-01.1 | BR-AR-01, BR-TAX-01 |
 | AR-002 | An invoice for a customer with a posting profile uses the profile control account and tags | tests/ledgerPostingProfile.test.ts | FR-AR-02.1 | BR-AR-02 |
 | AR-003 | A credit note reverses revenue and VAT and keeps the customer tag | tests/ledgerSubledger.test.ts | FR-AR-01.1 | BR-AR-01 |
@@ -480,14 +480,14 @@ None.
 | FR-AP-03 | BR-AP-03 | Built |
 | FR-AP-04 | BR-AP-05 | Built |
 | FR-AP-04 | BR-AP-06 | Built |
-| FR-APR-01 | BR-JNL-10 | Planned |
-| FR-APR-02 | BR-JNL-10 | Planned |
+| FR-APR-01 | BR-JNL-10 | Partial |
+| FR-APR-02 | BR-JNL-10 | Partial |
 | FR-APR-02 | BR-AP-08 | Planned |
 | FR-APR-03 | BR-JNL-07 | Built |
-| FR-APR-03 | BR-JNL-10 | Planned |
-| FR-APR-04 | BR-JNL-10 | Planned |
-| FR-APR-05 | BR-JNL-10 | Planned |
-| FR-APR-06 | BR-JNL-10 | Planned |
+| FR-APR-03 | BR-JNL-10 | Partial |
+| FR-APR-04 | BR-JNL-10 | Partial |
+| FR-APR-05 | BR-JNL-10 | Partial |
+| FR-APR-06 | BR-JNL-10 | Partial |
 | FR-AR-01 | BR-AR-01 | Built |
 | FR-AR-02 | BR-AR-03 | Built |
 | FR-AR-02 | BR-AR-04 | Built |
