@@ -27,6 +27,10 @@ which track a request belongs to if it is not clear, and never run a Live releas
 
 One concept, one name, on every table: snake_case in the database, the same word in camelCase in code and JSON; dates are `<meaning>_date` / `<meaning>_at`, every document has `doc_date`, a ledger-posting one also `posting_date`. Read `.claude/skills/consistent-column-names/SKILL.md` and `docs/date-fields-standard.md` before adding or changing any column.
 
+## Documentation (GL / AR / AP 2.0)
+
+The finance-core document set is in `docs/gl-ap-ar/` (start at its `README.md`): BRD, SRS, solution and technical design, test strategy and catalogue, user manual with captured screens, sprint log and traceability matrix, annexes. **After any development on it, follow the skill `.claude/skills/update-docs-after-development/SKILL.md` before saying the work is done.**
+
 ## Architecture
 
 - **Multi-tenant.** Every business table carries a `companyId`. The active company for a request (`req.targetCompanyId`) is resolved per-request in `server.ts`'s auth middleware (`isAuthenticated`) from the session user's own `companyId`, or an explicit override for super-admins only.

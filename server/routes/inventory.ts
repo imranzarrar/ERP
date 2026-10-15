@@ -5,7 +5,7 @@ import { eq, and, isNull, inArray, ne } from 'drizzle-orm';
 import { round2, round4, writeStockLedgerEntry, assertQuarterNotFiled, assertQuarterNotFrozen, assertProductsOwnedByCompany, validateTransactionDate } from '../lib/businessLogic.js';
 import { postJournalEntry, reverseAllEntriesFor, postInventoryAdjustment, postInventoryRevaluation, totalOnHand, snapshotInventory, settleInventoryValuation } from '../lib/ledger.js';
 import { createPurchaseBillForGrns, purchaseBillTotals, payPurchaseBillInFull, normalizePurchaseBillForClient } from '../lib/purchasing.js';
-import { submitForApproval, registerApprovalExecutor } from '../lib/approvals.js';
+import { submitForApproval, registerApprovalExecutor, findRule } from '../lib/approvals.js';
 import { recordAuditLog } from '../lib/audit.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { computeVendorCreditBalance } from '../lib/financialReports.js';
@@ -599,6 +599,13 @@ router.post('/goods-receipt-notes', withTenantDb, async (req: any, res) => {
     // received-but-half-billed receipt behind.
     let autoPostedBill: any = null;
     if (grnData.autoPostBillPaid) {
+      // Creating AND paying a bill at delivery is two money-out steps at once; when an approval rule would hold either of them the shortcut is refused (and the receipt with it, in this
+      // same transaction) so the rule cannot be bypassed: receive the goods, then bill and pay through the normal screens, which route them to the approvers.
+      const totals = await purchaseBillTotals(tdb, companyId, [grnId]);
+      for (const type of ['VendorBill', 'VendorPayment'] as const) {
+        const hit = await findRule(tdb, companyId, type, totals.grandTotal);
+        if (hit) return res.status(400).json({ error: `This receipt would create and pay a bill of ${totals.grandTotal.toFixed(2)} in one step, but the approval rule "${hit.rule.name}" applies to it. Save the receipt without "paid at delivery", then bill and pay it through the normal screens so it can be approved.` });
+      }
       const bill = await createPurchaseBillForGrns(tdb, {
         companyId,
         grnIds: [grnId],

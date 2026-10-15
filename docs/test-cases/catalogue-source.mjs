@@ -187,6 +187,7 @@ add('APR', [
   ['A delegate with a valid period may decide; outside it may not', 'Functional', 'P2', 'A delegation from manager to deputy for 3 days', 'The deputy approves inside and after the period', 'Allowed inside, refused after; both recorded with the delegator', 'API', 'Candidate'],
   ['The posting guard is re-checked at final approval and tenant isolation holds', 'Security', 'P1', 'A pending payment dated before a lock date set after submission; two companies', 'The last level approves; company B calls company A requests', 'Posting is refused by the guard; company B gets 404 and sees none of the rules or requests', 'API', 'tests/approvals.test.ts'],
   ['A vendor bill follows the same rules: above the band it waits and creates nothing, the last approval creates it once', 'Functional', 'P1', 'A rule for vendor bills above 500', 'A bill of 100 and a bill of 1150 are submitted; the submitter and then the level holder try to approve', 'The small bill posts; the large one waits (no bill, GRN unbilled); the submitter is refused; the approver creates the bill and the GRN is billed', 'API+DB', 'tests/approvals.test.ts'],
+  ['The "paid at delivery" shortcut cannot bypass an approval rule', 'Security', 'P1', 'A rule for vendor bills above 500', 'A goods receipt of 1150 is saved with auto-post-bill-and-pay; then with no rule', 'It is refused whole (no receipt kept) with the rule named; with no rule it is allowed', 'API+DB', 'tests/approvals.test.ts'],
 ]);
 
 add('AR', [

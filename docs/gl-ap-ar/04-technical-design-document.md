@@ -83,6 +83,14 @@ Balance per party = Σ(debit − credit) of lines tagged with the party on the c
 
 Definition = rows × columns. Rows: Heading, Accounts (selectors: account, parent rollup, range, type, role; include/exclude; value rule Net/Debit/Credit/Debit-only/Credit-only/Split; show rule), Subtotal, Calculated (formula over row numbers), Text, Spacer, ProfitToDate. Columns: `periodBasis` × `valueBasis` × presentation × optional dimension filter, plus variance columns. Per column the engine fetches per-account debit/credit totals once through `resolvedLines`. Every cell returns `{ accountIds, from, to, dims, basis }` for drill-down. Formatting is validated by one shared module. The legacy `/reports/trial-balance` is an adapter over the seeded definition.
 
+## 11a. Approvals (`server/lib/approvals.ts`, `server/routes/approvals.ts`)
+
+* Tables: `approval_rules` (document type, amount band: above `min_amount` up to and including `max_amount`, priority), `approval_rule_levels` (1..5; approver type Role / User / Permission / Manager with `manager_steps`), `approval_requests` (intent `payload`, rule **snapshot** `levels`, current level, status, submitter, `self_approved`, `result_document_id`), `approval_actions` (append-only). `users.manager_id` feeds the Manager approver.
+* `submitForApproval(tx, req, {documentType, amount, summary, payload})`: lowest-priority active rule whose band contains the amount; none = `{pending:false}` and the caller continues exactly as before.
+* `decideRequest`: row-locks the request; refuses the submitter unless `companies.journal_self_approval` is on; checks the level authority (`holdsLevelAuthority`), that the actor has not acted before, requires remarks to reject; on the last approval calls the registered **executor**, which runs `assertPostingAllowed` for the approver and creates the document as the submitter. Any refusal rolls back the whole decision (no action row is kept).
+* Executors: `VendorPayment` (settlements route, `recordSettlement`), `VendorBill` (inventory route, `createPurchaseBillForGrns`). A bill's amount comes from `purchaseBillTotals` (the same function the bill is built from). The goods-receipt "paid at delivery" shortcut calls `findRule` and is refused when a rule would hold the bill or its payment.
+* Add a document type: register an executor, add the type to `SUPPORTED` in the routes and to the table check, route its create endpoint through `submitForApproval`, add tests, update the BRD/SRS/manual.
+
 ## 12. Consistency checks (`GET /api/reports/consistency-check`)
 
 R1.1 balance sheet balances · R1.2 trial balance balances · R2.x balances tie to registers · R3 stock register = quantity · R4 locked periods never move · R5.1 balance sheet balances at every earlier month end · R6.1 ledger agrees with documents per account (AR/AP net of money on account) · R7 journal soundness · R8.1–R8.4 party tags and subledger ties. Error-severity failures fail the test suites that call it.

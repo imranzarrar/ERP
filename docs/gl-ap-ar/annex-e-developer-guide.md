@@ -10,6 +10,9 @@ Read the Solution Design (03) principles first. This page is the practical check
 5. If older reports must see it, extend the single translator (`settlementFacts.ts` / `financialReports.ts`), not each report.
 6. Add rows to Annex D, tests, translations, permission leaf (registry first, then the route check), audit call.
 
+## Route a document through approval rules
+In its create route, build the document's intent (payload), call `submitForApproval`; if `pending`, return `{pendingApproval: true, requestId}` and write nothing. Register an executor with `registerApprovalExecutor(type, { execute })` that runs the posting guard for the approver and creates the document as the submitter. Add the type to `SUPPORTED` in `server/routes/approvals.ts`. Refuse any shortcut that would create the document without the rule (see the goods-receipt flow).
+
 ## Add a table
 Company column + RLS policy + index + composite `(company_id, id)` unique if referenced; `db:push`; `apply-rls-policies.mjs`; add to `pre-push-keys.mjs` if an existing populated table gains the unique key; build routes on `withTenantDb`; isolation test; `check:isolation`.
 

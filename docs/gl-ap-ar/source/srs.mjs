@@ -31,7 +31,7 @@ export const SRS = {
     ['Every decision shall be appended with actor, level, action, remarks and time and shown in the document history; rejection returns the document to Draft with the remarks.', 'planned: approval_actions'],
     ['Editing a pending document shall recall its request; an increase of the amount shall restart approval; the final approval shall call the document post function in the same transaction, re-running the posting guard.', 'planned'],
     ['Delegations with a validity period shall let a delegate decide for the delegator for chosen document types; a My approvals worklist and a menu count shall show what waits for the signed-in user.', 'planned: approval_delegations; screen My Approvals'],
-  ], tests: ['APR-001..APR-013'] },
+  ], tests: ['APR-001..APR-014'] },
 
   'BR-PER-01': { fr: [['The posting guard shall refuse a posting date outside an existing open fiscal month or in the future.', G]], tests: ['PC-012'] },
   'BR-PER-02': { fr: [['The guard shall refuse a tax document in a generated or filed VAT quarter and a non-tax posting in a filed quarter.', `${G}; server/lib/businessLogic.ts`]], tests: ['PC-013', 'PC-014'] },

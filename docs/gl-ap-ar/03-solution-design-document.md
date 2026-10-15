@@ -72,6 +72,9 @@ External systems: ZATCA (e-invoicing, outside this programme), SMTP (notificatio
 | D12 | Documents print from one server-resolved posting payload | Print, screen and ledger cannot disagree |
 | D13 | Ledger and document-based reports run side by side until a gated cut-over | De-risks go-live; "Ledger vs Documents" proves agreement |
 | D14 | Maker-checker approval for manual journals now; amount-threshold rules later (Sprint 11) | Delivers control early without blocking on the rules engine |
+| D15 | An approval request holds the **intent** (payload) of a document, never a half-posted document; the document is created by its own executor when the last level approves | Nothing can leak into the ledger, reports or payment runs while waiting; one engine serves every document type |
+| D16 | A shortcut that would create and pay a document in one step is refused whole when a rule would hold either step | A rule cannot be bypassed by a convenience flow |
+| D17 | One company setting decides whether the submitter may approve, for every document type | One place, owner/admin only, audited |
 
 ## 5. Key flows
 

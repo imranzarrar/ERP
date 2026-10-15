@@ -22,3 +22,7 @@
 | RLS | PostgreSQL row-level security: the database refuses another company's rows |
 | Blueprint | `docs/Finance-Core-Blueprint.pdf`, the requirements baseline |
 | BR / FR / S | Business requirement / system requirement / sprint ids used in this set |
+| Approval rule | An amount band for one document type with the levels that must approve it |
+| Approval request | A document waiting for approval: it holds the intent of the document and posts nothing |
+| Approver level | One step of a rule: a role, a user, a permission or the manager of the submitter |
+| Self-approved | Approved by its own submitter under the company switch; flagged and audited |

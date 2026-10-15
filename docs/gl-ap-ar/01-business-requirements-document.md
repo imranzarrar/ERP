@@ -111,7 +111,7 @@ Every posting of the company, from documents and from manual journals, can be li
 A company that starts using the ledger part-way can post an opening entry: previewed first, balanced (a difference may be put to an equity account), posted once, with a confirmation, and reversible with a reason.
 
 **BR-JNL-10 Amount-threshold approval rules** — Should, Partial, Blueprint FR-APR-01, FR-APR-02, FR-APR-03, FR-APR-04, FR-APR-05, FR-APR-06, source Blueprint, sprint S11, S11.
-Approval rules per document type (journal, vendor bill, vendor payment, credit note) by amount, with several sequential levels, server-enforced, with no self-approval at any level and a full approval history; a document without a matching rule posts directly. Delivered so far: vendor payments (Sprint 11); bills, credit notes and journals follow.
+Approval rules per document type (journal, vendor bill, vendor payment, credit note) by amount, with several sequential levels, server-enforced, with no self-approval at any level and a full approval history; a document without a matching rule posts directly. Delivered so far: vendor payments and vendor bills (Sprint 11), and the "paid at delivery" goods-receipt shortcut cannot bypass a rule; credit notes and manual journals follow, then delegation with validity dates.
 
 ### PER — Periods, posting control and close
 

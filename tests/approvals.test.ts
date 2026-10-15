@@ -237,4 +237,15 @@ describe('vendor bills follow the same rules (Sprint 11)', () => {
     expect(await billRows()).toBe(before + 1);
     expect((await db.select().from(schema.goodsReceiptNotes).where(eq(schema.goodsReceiptNotes.id, big)))[0].isBilled).toBe(true);
   });
+
+  it('APR-014 the "paid at delivery" shortcut cannot bypass a rule: it is refused whole, and allowed when no rule applies', async () => {
+    const grnCount = async () => ((await db.execute(sql`SELECT COUNT(*)::int AS n FROM goods_receipt_notes WHERE company_id = ${A_}::uuid`)) as any).rows[0].n as number;
+    const before = await grnCount();
+    const refused = await post(admin, '/api/inventory/goods-receipt-notes', { grnData: { isDsd: true, vendorId: vend, warehouseId, receivedBy: 'Test', autoPostBillPaid: true, billBankId: bankId, vendorBillNumber: 'AP-1', items: [{ productId, quantityReceived: 10, unitCost: 100, taxRate: 15 }] } });
+    expect(refused.status).toBe(400); expect(refused.body.error).toMatch(/approval rule/i);
+    expect(await grnCount()).toBe(before);                                                    // the receipt was not kept
+    await deactivateAll();
+    const ok = await post(admin, '/api/inventory/goods-receipt-notes', { grnData: { isDsd: true, vendorId: vend, warehouseId, receivedBy: 'Test', autoPostBillPaid: true, billBankId: bankId, vendorBillNumber: 'AP-2', items: [{ productId, quantityReceived: 10, unitCost: 100, taxRate: 15 }] } });
+    expect(ok.status).toBe(200); expect(await grnCount()).toBe(before + 1);
+  });
 });

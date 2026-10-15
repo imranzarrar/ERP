@@ -91,3 +91,10 @@ Feature: Approval rules (Sprint 11)
     When A bill of 100 and a bill of 1150 are submitted; the submitter and then the level holder try to approve
     Then The small bill posts; the large one waits (no bill, GRN unbilled); the submitter is refused; the approver creates the bill and the GRN is billed
     # automated by tests/approvals.test.ts
+
+  @APR-014 @P1 @Security @API+DB @automated
+  Scenario: The "paid at delivery" shortcut cannot bypass an approval rule
+    Given A rule for vendor bills above 500
+    When A goods receipt of 1150 is saved with auto-post-bill-and-pay; then with no rule
+    Then It is refused whole (no receipt kept) with the rule named; with no rule it is allowed
+    # automated by tests/approvals.test.ts

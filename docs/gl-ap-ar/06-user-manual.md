@@ -110,11 +110,11 @@ Expenses, goods receipts and purchase bills are entered in **Procurements** (unc
 
 A payment kept on account is an **advance to the vendor**: it appears as an asset until it is applied.
 
-### 4.1 Approval of large payments (BR-JNL-10)
+### 4.1 Approval of large payments and bills (BR-JNL-10)
 
 ![Approval rules](user-manual/screens/33-approval-rules.png)
 
-**General Ledger Setup › Approval Rules** (setup, once). A rule says: *vendor payments above this amount (up to an optional ceiling) need these approvers, level by level*. Each level names a **role**, a **named user**, **anyone holding a permission**, or the **manager of the submitter** (the manager chain is set on the user). Lower priority numbers are checked first. A payment that matches no rule posts directly, as before. The switch at the top decides whether the person who submits a payment may approve it themselves: **off** (recommended) means someone else must always approve; only the company owner / administrator can change it, and every use of it is marked and audited.
+**General Ledger Setup › Approval Rules** (setup, once). A rule says: *vendor payments (or vendor bills) above this amount (up to an optional ceiling) need these approvers, level by level*. Each level names a **role**, a **named user**, **anyone holding a permission**, or the **manager of the submitter** (the manager chain is set on the user). Lower priority numbers are checked first. A payment or bill that matches no rule posts directly, as before. A vendor bill that matches a rule waits in the same way (nothing is created and the goods receipt stays unbilled until the last approval). The goods-receipt option *paid at delivery* is refused when a rule would hold the bill or its payment: receive the goods, then bill and pay through the normal screens. The switch at the top decides whether the person who submits a payment may approve it themselves: **off** (recommended) means someone else must always approve; only the company owner / administrator can change it, and every use of it is marked and audited.
 
 ![My approvals](user-manual/screens/34-my-approvals.png)
 
@@ -251,6 +251,7 @@ The session shows, left, every posted line of that bank's ledger account up to t
 | "…locked" / "…back-date window" / "…reason" | Posting Control rule: choose a later date, give a reason, or ask an authorised user |
 | "…month is closed" / "…VAT quarter…" | The fiscal month or VAT quarter is closed or filed; date it in the open period |
 | "…settled through receipt / payment …" | Cancel that receipt/payment first |
+| "…the approval rule … applies to it" | The receipt's *paid at delivery* option would bypass an approval rule: save the receipt without it, then bill and pay normally |
 | "…cleared in a bank reconciliation…" | Open the reconciliation, un-clear the line (or have it reopened), then cancel |
 | "The reconciliation does not balance" | Post an entry for what is missing (fee/interest) or fix the document; never force it |
 | "…control account…" | Post through the customer/vendor document, not a manual journal |

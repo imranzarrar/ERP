@@ -33,4 +33,6 @@ Earlier working documents (still valid as history and rationale): `docs/gl-step1
 3. `npx tsx scripts/build-gl-docs.mjs` regenerates 01, 02, 07, 08 and annexes A–C; `node scripts/build-test-catalogue.mjs` regenerates the catalogue; `npx tsx scripts/capture-manual-screens.ts` (server on 3001 running) regenerates the manual's screens.
 4. Hand-written documents (03, 04, 05, 06, D–G) are updated by the developer who changes the behaviour; the Definition of Done in the test strategy lists the check.
 
+**After any development, run the skill `update-docs-after-development`** (`.claude/skills/update-docs-after-development/SKILL.md`): it lists every document to update, the generators, the screenshots, translations and the final gate. All means all.
+
 Never edit a generated file by hand.
