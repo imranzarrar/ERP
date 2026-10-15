@@ -2346,6 +2346,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  // company has onboarded at least one active employee (server/routes/users.ts);
  // empty string here means "not linked," same convention as primaryBranchId.
  employeeId: '',
+ managerId: '',
  // Only ever this account's own data when employeeId is blank — once an employee is
  // linked, these are auto-filled from (and read-only against) that employee's own
  // name/phone, and the server forces both to null on save regardless of what's sent,
@@ -2709,6 +2710,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
   branchIds: userForm.branchIds,
   primaryBranchId: userForm.primaryBranchId || undefined,
   employeeId: userForm.employeeId || null,
+  managerId: userForm.managerId || null,
   fullName: userForm.employeeId ? null : (userForm.fullName.trim() || null),
   phone: userForm.employeeId ? null : (userForm.phone.trim() || null),
  } as any;
@@ -2755,6 +2757,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
   branchIds: userForm.branchIds,
   primaryBranchId: userForm.primaryBranchId || undefined,
   employeeId: userForm.employeeId || null,
+  managerId: userForm.managerId || null,
   fullName: userForm.employeeId ? null : (userForm.fullName.trim() || null),
   phone: userForm.employeeId ? null : (userForm.phone.trim() || null),
  };
@@ -2795,6 +2798,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  branchIds: [],
  primaryBranchId: '',
  employeeId: '',
+ managerId: '',
  fullName: '',
  phone: '',
   });
@@ -6755,6 +6759,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  branchIds: [],
  primaryBranchId: '',
  employeeId: '',
+ managerId: '',
  fullName: '',
  phone: '',
   });
@@ -6802,6 +6807,14 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
  className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-semibold"
  />
+ </div>
+
+ <div className="space-y-1">
+ <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('Manager (used by approval rules)')}</label>
+ <select value={userForm.managerId || ''} onChange={(e) => setUserForm({ ...userForm, managerId: e.target.value })} className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 rounded-2xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+ <option value="">{t('No manager')}</option>
+ {(db.users || []).filter((u: any) => u.isActive !== false && (!userForm.companyId || u.companyId === userForm.companyId)).map((u: any) => (<option key={u.id} value={u.id}>{u.username}</option>))}
+ </select>
  </div>
 
  <div className="grid grid-cols-2 gap-3">
@@ -7136,6 +7149,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
   branchIds: (u as any).branchIds ?? (db.userBranches || []).filter(ub => ub.userId === u.id).map(ub => ub.branchId),
   primaryBranchId: (u as any).primaryBranchId ?? ((db.userBranches || []).find(ub => ub.userId === u.id && ub.isPrimary)?.branchId || ''),
   employeeId: (u as any).employeeId || '',
+  managerId: (u as any).managerId || '',
   fullName: (u as any).fullName || '',
   phone: (u as any).phone || '',
                         });

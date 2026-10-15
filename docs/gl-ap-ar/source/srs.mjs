@@ -24,14 +24,14 @@ export const SRS = {
   'BR-JNL-09': { fr: [['The opening-balance route shall preview without saving, refuse control, P&L, heading and foreign accounts, require an equity plug for a difference, post once with the post right and confirmation, and support reversal with a reason.', 'server/routes/ledgerOpening.ts']], tests: ['OPN-001..OPN-006'] },
   'BR-JNL-10': { fr: [
     ['The system shall hold approval rules per document type (vendor payment, vendor bill, credit note, manual journal) by amount band with a priority; a document with no matching active rule shall post directly as today (Sprint 11; vendor payments and vendor bills are routed, credit notes and journals follow).', 'server/lib/approvals.ts; server/routes/approvals.ts'],
-    ['A rule shall have sequential levels; a level names its approvers by role, user, permission or manager of the submitter (up to a set number of steps), mode any-one or all, and an optional escalation time reserved for 1.1.', 'planned: approval_rule_levels; users.manager_id'],
+    ['A rule shall have sequential levels; a level names its approvers by role, user, permission or manager of the submitter (up to a set number of steps), mode any-one or all, and an optional escalation time reserved for 1.1. A user's manager is set on the user form (same company, no loops).', 'approval_rule_levels; users.manager_id; server/routes/users.ts; Settings > Users'],
     ['A matching document shall enter Pending Approval, post nothing and (for a vendor payment) write no voucher and release no funds, until every level has approved; the rule shall be snapshotted into the request at submit.', 'planned: approval_requests'],
     ['The server shall refuse an approval by the submitter unless the company setting "allow self-approval" is on; the setting applies to every document type, is changed only by owner/admin, is audited, and an approval under it is flagged self-approved.', 'planned: company GL settings'],
     ['The server shall refuse a level decision from anyone without that level\'s authority (role, user, permission, manager or a valid delegation) or who already acted at an earlier level of the same request.', 'planned'],
     ['Every decision shall be appended with actor, level, action, remarks and time and shown in the document history; rejection returns the document to Draft with the remarks.', 'planned: approval_actions'],
     ['Editing a pending document shall recall its request; an increase of the amount shall restart approval; the final approval shall call the document post function in the same transaction, re-running the posting guard.', 'planned'],
     ['Delegations with a validity period shall let a delegate decide for the delegator for chosen document types; a My approvals worklist and a menu count shall show what waits for the signed-in user.', 'planned: approval_delegations; screen My Approvals'],
-  ], tests: ['APR-001..APR-014'] },
+  ], tests: ['APR-001..APR-015'] },
 
   'BR-PER-01': { fr: [['The posting guard shall refuse a posting date outside an existing open fiscal month or in the future.', G]], tests: ['PC-012'] },
   'BR-PER-02': { fr: [['The guard shall refuse a tax document in a generated or filed VAT quarter and a non-tax posting in a filed quarter.', `${G}; server/lib/businessLogic.ts`]], tests: ['PC-013', 'PC-014'] },

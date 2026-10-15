@@ -202,6 +202,19 @@ router.post('/', async (req: any, res) => {
       return res.status(400).json({ error: `An account with the email "${cleanEmail}" already exists.` });
     }
 
+    // The manager (used by approval rules: "manager of the submitter") must be another user of the SAME company, and the chain must not loop back to this user.
+    let managerId: string | null = data.managerId !== undefined ? (data.managerId || null) : ((existingUser as any)?.managerId ?? null);
+    if (managerId) {
+      if (managerId === data.id) return res.status(400).json({ error: 'A user cannot be their own manager.' });
+      let cur: string | null = managerId; let hops = 0;
+      while (cur && hops++ < 20) {
+        const [m] = await db.select({ id: schema.users.id, companyId: schema.users.companyId, managerId: schema.users.managerId }).from(schema.users).where(eq(schema.users.id, cur));
+        if (!m || m.companyId !== data.companyId) return res.status(400).json({ error: 'The manager must be a user of the same company.' });
+        if (m.managerId === data.id) return res.status(400).json({ error: 'That would make two people each other\'s manager.' });
+        cur = m.managerId;
+      }
+    }
+
     // Sanitize user payload for schema.users table
     const userRecord: any = {
       id: data.id,
@@ -218,6 +231,7 @@ router.post('/', async (req: any, res) => {
       // same reasoning as warehouses.isCompanyDefault's own "preserve unless explicitly
       // sent" handling.
       employeeId: data.employeeId !== undefined ? (data.employeeId || null) : (existingUser?.employeeId ?? null),
+      managerId,
     };
     // fullName/phone are only ever this account's own data when it has NO linked
     // employee — once employeeId is set, the employees row (which already carries its

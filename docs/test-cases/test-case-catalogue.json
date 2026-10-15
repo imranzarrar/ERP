@@ -2084,6 +2084,21 @@
       "status": "Automated"
     },
     {
+      "id": "APR-015",
+      "module": "Approval rules (Sprint 11)",
+      "moduleId": "APR",
+      "ref": "Blueprint FR-APR-01..06; docs/gl-ap-ar/s11-approval-rules-tier1-research.md",
+      "title": "A user's manager must be a user of the same company, never themselves, and the chain cannot loop",
+      "type": "Negative",
+      "priority": "P2",
+      "given": "Users in two companies",
+      "when": "A user is saved with a manager of another company, with themselves, and with someone who already reports to them",
+      "then": "Each is refused with a message; a valid same-company manager is saved",
+      "layer": "API+DB",
+      "automation": "tests/approvals.test.ts",
+      "status": "Automated"
+    },
+    {
       "id": "AR-001",
       "module": "Receivables: invoices and credit notes",
       "moduleId": "AR",

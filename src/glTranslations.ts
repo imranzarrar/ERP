@@ -768,6 +768,8 @@ export const GL_TRANSLATIONS: [key: string, ar: string, ur: string][] = [
   ['Approved: the payment was created.', 'تم الاعتماد: أُنشئت الدفعة.', 'منظور: ادائیگی بن گئی۔'],
   ['Approved: the document was created.', 'تم الاعتماد: أُنشئ المستند.', 'منظور: دستاویز بن گئی۔'],
   ['Vendor bill', 'فاتورة مورد', 'سپلائر بل'],
+  ['Manager (used by approval rules)', 'المدير (تستخدمه قواعد الاعتماد)', 'مینیجر (منظوری کے قواعد میں استعمال)'],
+  ['No manager', 'بلا مدير', 'کوئی مینیجر نہیں'],
   ['Saved.', 'تم الحفظ.', 'محفوظ ہو گیا۔'],
   ['Sent for approval. It will be posted when every level has approved; follow it in My Approvals.', 'أُرسلت للاعتماد. ستُرحَّل عند اعتماد جميع المستويات؛ تابعها في اعتماداتي.', 'منظوری کے لیے بھیج دی گئی۔ تمام درجوں کی منظوری پر پوسٹ ہوگی؛ میری منظوریوں میں دیکھیں۔'],
 ];

@@ -249,3 +249,20 @@ describe('vendor bills follow the same rules (Sprint 11)', () => {
     expect(ok.status).toBe(200); expect(await grnCount()).toBe(before + 1);
   });
 });
+
+describe('the manager of a user (feeds the Manager approver)', () => {
+  it('APR-015 a manager must be a user of the same company, never the user themselves, and the chain cannot loop', async () => {
+    const mk = async (id: string, extra: any) => { const r = await post(admin, '/api/users', { id, password: PW, email: `mgr_${id.slice(-8)}@example.com`, role: 'user', companyId: A_, ...extra }); return r; };
+    const u1 = generateId();
+    expect((await mk(u1, { managerId: M.id })).status).toBe(200);
+    expect((await db.select().from(schema.users).where(eq(schema.users.id, u1)))[0].managerId).toBe(M.id);
+    const foreign = (await db.insert(schema.users).values({ id: generateId(), username: 'fm_' + generateId().slice(-8), password: 'x', role: 'user', companyId: other.id, isSuperAdmin: false, uiLanguage: 'en' } as any).returning())[0];
+    expect((await mk(generateId(), { managerId: foreign.id })).status).toBe(400);                 // another company's user
+    const u2 = generateId(); expect((await mk(u2, {})).status).toBe(200);
+    expect((await mk(u2, { managerId: u2 })).status).toBe(400);                                    // their own manager
+    await db.update(schema.users).set({ managerId: u1 }).where(eq(schema.users.id, M.id));         // M reports to u1 ...
+    expect((await mk(u1, { managerId: M.id })).status).toBe(400);                                  // ... so u1 cannot report to M
+    await db.update(schema.users).set({ managerId: null }).where(eq(schema.users.id, M.id));
+    await db.delete(schema.users).where(eq(schema.users.id, foreign.id));
+  });
+});

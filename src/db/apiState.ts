@@ -35,6 +35,7 @@ export async function getFullState(companyId?: string | null) {
       uiLanguage: schema.users.uiLanguage,
       isDeleted: schema.users.isDeleted,
       employeeId: schema.users.employeeId,
+      managerId: schema.users.managerId,
     }).from(schema.users);
     const roles = await db.select().from(schema.roles);
     const userRoles = await db.select().from(schema.userRoles);

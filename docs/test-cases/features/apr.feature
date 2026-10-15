@@ -98,3 +98,10 @@ Feature: Approval rules (Sprint 11)
     When A goods receipt of 1150 is saved with auto-post-bill-and-pay; then with no rule
     Then It is refused whole (no receipt kept) with the rule named; with no rule it is allowed
     # automated by tests/approvals.test.ts
+
+  @APR-015 @P2 @Negative @API+DB @automated
+  Scenario: A user's manager must be a user of the same company, never themselves, and the chain cannot loop
+    Given Users in two companies
+    When A user is saved with a manager of another company, with themselves, and with someone who already reports to them
+    Then Each is refused with a message; a valid same-company manager is saved
+    # automated by tests/approvals.test.ts

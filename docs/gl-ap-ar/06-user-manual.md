@@ -114,7 +114,7 @@ A payment kept on account is an **advance to the vendor**: it appears as an asse
 
 ![Approval rules](user-manual/screens/33-approval-rules.png)
 
-**General Ledger Setup › Approval Rules** (setup, once). A rule says: *vendor payments (or vendor bills) above this amount (up to an optional ceiling) need these approvers, level by level*. Each level names a **role**, a **named user**, **anyone holding a permission**, or the **manager of the submitter** (the manager chain is set on the user). Lower priority numbers are checked first. A payment or bill that matches no rule posts directly, as before. A vendor bill that matches a rule waits in the same way (nothing is created and the goods receipt stays unbilled until the last approval). The goods-receipt option *paid at delivery* is refused when a rule would hold the bill or its payment: receive the goods, then bill and pay through the normal screens. The switch at the top decides whether the person who submits a payment may approve it themselves: **off** (recommended) means someone else must always approve; only the company owner / administrator can change it, and every use of it is marked and audited.
+**General Ledger Setup › Approval Rules** (setup, once). A rule says: *vendor payments (or vendor bills) above this amount (up to an optional ceiling) need these approvers, level by level*. Each level names a **role**, a **named user**, **anyone holding a permission**, or the **manager of the submitter** (set each person's **Manager** on their user record in Settings › Users: it must be someone in the same company and cannot loop back). Lower priority numbers are checked first. A payment or bill that matches no rule posts directly, as before. A vendor bill that matches a rule waits in the same way (nothing is created and the goods receipt stays unbilled until the last approval). The goods-receipt option *paid at delivery* is refused when a rule would hold the bill or its payment: receive the goods, then bill and pay through the normal screens. The switch at the top decides whether the person who submits a payment may approve it themselves: **off** (recommended) means someone else must always approve; only the company owner / administrator can change it, and every use of it is marked and audited.
 
 ![My approvals](user-manual/screens/34-my-approvals.png)
 
@@ -268,6 +268,7 @@ Set in **Settings › Roles**. Suggested bundles (each leaf is *module.leaf*; se
 | Finance manager | Accountant + `journals.post`, `journals.reverse`, `accountMapping`, `postingControl.update`, `bankReconciliation.reopen`, `customerReceipts/vendorPayments.delete` |
 | Controller | Finance manager + `postingControl.backDate`, `postingControl.overrideLock`, `openingBalances.post` |
 | AR / AP clerk | `customerReceipts` / `vendorPayments` create, read; aging reports |
+| Approver (any level) | `approvals.read`, plus whatever the rule names (a role, a named user, a permission, or being the submitter's manager) |
 | Auditor | All `read` leaves and reports; no create/update |
 
 A person's rights are the union of their roles. Administrators hold every right. Branch-restricted users see their branches' figures only, and the screens say so.
