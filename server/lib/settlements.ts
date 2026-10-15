@@ -80,6 +80,17 @@ async function checkAllocations(tx: any, companyId: string, kind: SettlementKind
   return sum;
 }
 
+// Early validation of a settlement that is about to wait for approval: the same checks recordSettlement makes, so a hopeless one is refused at submit, not at the last approval.
+export async function validateSettlement(tx: any, req: any, input: { kind: SettlementKind; partyId: string; bankId: string; amount: number; allocations: AllocationInput[] }) {
+  const companyId = req.targetCompanyId; const amount = round2(Number(input.amount));
+  if (!(amount > 0)) throw fail(400, 'Enter an amount greater than zero.');
+  await partyRow(tx, companyId, input.kind, input.partyId);
+  const [bank] = await tx.select().from(schema.bankAccounts).where(and(eq(schema.bankAccounts.id, input.bankId), eq(schema.bankAccounts.companyId, companyId)));
+  if (!bank) throw fail(400, 'Choose a bank or cash account of this company.');
+  if (bank.isActive === false) throw fail(400, 'That bank account is inactive.');
+  await checkAllocations(tx, companyId, input.kind, input.partyId, input.allocations || [], amount, null);
+}
+
 export async function recordSettlement(tx: any, req: any, input: { kind: SettlementKind; partyId: string; bankId: string; docDate: string; amount: number; reference?: string | null; notes?: string | null; allocations: AllocationInput[] }) {
   const companyId = req.targetCompanyId;
   const { kind, partyId, bankId, docDate } = input;

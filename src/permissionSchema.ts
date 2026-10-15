@@ -274,6 +274,19 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
     ]
   },
   {
+    id: 'approvalRules', groupId: 'general_ledger', label: 'Approval Rules', leaves: [
+      { key: 'create', label: 'Create Approval Rules' },
+      { key: 'read', label: 'View Approval Rules' },
+      { key: 'update', label: 'Change Approval Rules' },
+      { key: 'delete', label: 'Deactivate Approval Rules' },
+    ]
+  },
+  {
+    id: 'approvals', groupId: 'general_ledger', label: 'My Approvals (decide what is routed to you)', leaves: [
+      { key: 'read', label: 'See and decide the approvals routed to me' },
+    ]
+  },
+  {
     id: 'accountMapping', groupId: 'general_ledger', label: 'Account Mapping', leaves: [
       { key: 'read', label: 'View Account Mapping' },
       { key: 'update', label: 'Change Account Mapping' },

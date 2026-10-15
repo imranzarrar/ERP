@@ -168,6 +168,7 @@ export const users = pgTable('users', {
   uid: text('uid'),
   username: text('username').notNull(),
   password: text('password'),
+  managerId: uuid('manager_id'), // the user's manager (approval rules can route to "manager of the submitter"); nullable, same company
   // Nullable at the DB level so existing accounts and every test fixture that inserts a
   // user row directly (bypassing the real create-user route) keep working unchanged —
   // "mandatory" is enforced at the application layer instead: POST/PATCH /api/users (the
@@ -2805,4 +2806,78 @@ export const bankStatementLines = pgTable('bank_statement_lines', {
   amountCheck: check('bank_statement_lines_amount_check', sql`${table.amount} <> 0`),
   matchedCheck: check('bank_statement_lines_matched_check', sql`(${table.isMatched} = (${table.matchedJournalLineId} IS NOT NULL))`),
   tenantIsolationPolicy: tenantPolicy('bank_statement_lines_tenant_isolation', table),
+})).enableRLS();
+
+// Approval rules (Blueprint FR-APR-01..06, docs/gl-ap-ar/s11-approval-rules-tier1-research.md). A rule applies to one document type and an amount band; a document with no matching rule posts directly.
+// A matching document is held as an approval REQUEST carrying the intent (payload) of the document, and nothing is posted until every level has approved.
+export const approvalRules = pgTable('approval_rules', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  name: text('name').notNull(),
+  documentType: text('document_type').notNull(), // 'VendorPayment' | 'VendorBill' | 'CreditNote' | 'Journal'
+  minAmount: decimal('min_amount', { precision: 14, scale: 2 }).notNull().default('0'), // the rule applies to amounts ABOVE this
+  maxAmount: decimal('max_amount', { precision: 14, scale: 2 }),                       // ...and up to and including this (null = no ceiling)
+  priority: integer('priority').notNull().default(100),                                 // lowest number is checked first
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull(),
+  createdById: uuid('created_by_id').references(() => users.id),
+}, (table) => ({
+  companyIdIdx: index('approval_rules_company_id_idx').on(table.companyId, table.documentType),
+  idCompanyUnique: unique('approval_rules_id_company_unique').on(table.companyId, table.id),
+  typeCheck: check('approval_rules_type_check', sql`${table.documentType} IN ('VendorPayment','VendorBill','CreditNote','Journal')`),
+  tenantIsolationPolicy: tenantPolicy('approval_rules_tenant_isolation', table),
+})).enableRLS();
+
+export const approvalRuleLevels = pgTable('approval_rule_levels', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  ruleId: uuid('rule_id').notNull(),
+  level: integer('level').notNull(),
+  approverType: text('approver_type').notNull(), // 'Role' | 'User' | 'Permission' | 'Manager'
+  approverRef: text('approver_ref'),             // role id, user id or permission key (null for Manager)
+  managerSteps: integer('manager_steps').notNull().default(1), // Manager: how many steps up the chain count
+}, (table) => ({
+  ruleIdx: index('approval_rule_levels_rule_idx').on(table.companyId, table.ruleId),
+  ruleFk: foreignKey({ name: 'approval_rule_levels_rule_company_fk', columns: [table.ruleId, table.companyId], foreignColumns: [approvalRules.id, approvalRules.companyId] }),
+  levelUnique: uniqueIndex('approval_rule_levels_unique').on(table.ruleId, table.level),
+  typeCheck: check('approval_rule_levels_type_check', sql`${table.approverType} IN ('Role','User','Permission','Manager')`),
+  tenantIsolationPolicy: tenantPolicy('approval_rule_levels_tenant_isolation', table),
+})).enableRLS();
+
+export const approvalRequests = pgTable('approval_requests', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  documentType: text('document_type').notNull(),
+  amount: decimal('amount', { precision: 14, scale: 2 }).notNull(),
+  summary: text('summary').notNull().default(''),     // one line shown in the worklist
+  payload: jsonb('payload').notNull(),               // the intent of the document; it is created only when the last level approves
+  ruleId: uuid('rule_id'),
+  levels: jsonb('levels').notNull(),                  // snapshot of the rule's levels at submit time
+  currentLevel: integer('current_level').notNull().default(1),
+  status: text('status').notNull().default('Pending'), // 'Pending' | 'Approved' | 'Rejected'
+  submittedById: uuid('submitted_by_id').notNull().references(() => users.id),
+  submittedAt: timestamp('submitted_at').notNull(),
+  decidedAt: timestamp('decided_at'),
+  selfApproved: boolean('self_approved').notNull().default(false),
+  resultDocumentId: uuid('result_document_id'),       // the document created on final approval
+}, (table) => ({
+  companyIdx: index('approval_requests_company_idx').on(table.companyId, table.status),
+  idCompanyUnique: unique('approval_requests_id_company_unique').on(table.companyId, table.id),
+  statusCheck: check('approval_requests_status_check', sql`${table.status} IN ('Pending','Approved','Rejected')`),
+  tenantIsolationPolicy: tenantPolicy('approval_requests_tenant_isolation', table),
+})).enableRLS();
+
+export const approvalActions = pgTable('approval_actions', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  requestId: uuid('request_id').notNull(),
+  level: integer('level').notNull(),
+  actorId: uuid('actor_id').notNull().references(() => users.id),
+  action: text('action').notNull(), // 'Approved' | 'Rejected'
+  remarks: text('remarks'),
+  createdAt: timestamp('created_at').notNull(),
+}, (table) => ({
+  requestIdx: index('approval_actions_request_idx').on(table.companyId, table.requestId),
+  requestFk: foreignKey({ name: 'approval_actions_request_company_fk', columns: [table.requestId, table.companyId], foreignColumns: [approvalRequests.id, approvalRequests.companyId] }),
+  tenantIsolationPolicy: tenantPolicy('approval_actions_tenant_isolation', table),
 })).enableRLS();

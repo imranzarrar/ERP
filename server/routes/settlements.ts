@@ -7,7 +7,8 @@ import { recordAuditLog } from '../lib/audit.js';
 import { nowDate } from '../lib/clock.js';
 import { branchIdsFor } from '../lib/ledgerQueries.js';
 import { assertPostingAllowed } from '../lib/postingGuard.js';
-import { applyOnAccount, cancelSettlement, listSettlements, openItems, recordSettlement, settlementDetail, type SettlementKind } from '../lib/settlements.js';
+import { submitForApproval, registerApprovalExecutor } from '../lib/approvals.js';
+import { applyOnAccount, cancelSettlement, listSettlements, openItems, recordSettlement, settlementDetail, validateSettlement, type SettlementKind } from '../lib/settlements.js';
 
 const router = express.Router();
 const fail = (res: any, status: number, error: string) => res.status(status).json({ error });
@@ -45,6 +46,19 @@ router.get('/settlements/:id', withTenantDb, async (req: any, res) => {
   } catch (e: any) { fail(res, e.status || 500, e.message); }
 });
 
+// A vendor payment that matches an approval rule waits as a request; the last approval creates it (voucher, entry, allocations) as if the submitter had saved it, after the
+// posting guard has run again for the approver. Nothing is written to the books while it waits.
+registerApprovalExecutor('VendorPayment', {
+  async execute(tx, approverReq, request) {
+    const p = request.payload as any;
+    await assertPostingAllowed(approverReq, p.docDate, { vat: 'none' });
+    const submitterReq = { targetCompanyId: request.companyId, user: { id: request.submittedById } };
+    const r = await recordSettlement(tx, submitterReq, p);
+    recordAuditLog(approverReq, 'PAY_VENDOR', 'voucher', r.voucherId, { voucherNumber: r.voucherNumber, partyId: p.partyId, amount: r.amount, applied: r.applied, unapplied: r.unapplied, approvalRequestId: request.id });
+    return r.voucherId;
+  },
+});
+
 const create = (kind: SettlementKind) => async (req: any, res: any) => {
   try {
     if (!can(req, kind, 'create')) return fail(res, 403, 'Forbidden');
@@ -54,7 +68,13 @@ const create = (kind: SettlementKind) => async (req: any, res: any) => {
     if (!ID.test(bankId)) return fail(res, 400, 'Choose a bank or cash account.');
     const docDate = dateOr(b.docDate, today());
     await assertPostingAllowed(req, docDate, { vat: 'none' });
-    const r = await recordSettlement(tenantDb(), req, { kind, partyId, bankId, docDate, amount: Number(b.amount), reference: b.reference, notes: b.notes, allocations: Array.isArray(b.allocations) ? b.allocations : [] });
+    const input = { kind, partyId, bankId, docDate, amount: Number(b.amount), reference: b.reference, notes: b.notes, allocations: Array.isArray(b.allocations) ? b.allocations : [] };
+    if (kind === 'vendor') {
+      await validateSettlement(tenantDb(), req, input);
+      const sub = await submitForApproval(tenantDb(), req, { documentType: 'VendorPayment', amount: input.amount, summary: `Payment of ${input.amount.toFixed(2)} to vendor`, payload: input });
+      if (sub.pending) { recordAuditLog(req, 'SUBMIT_FOR_APPROVAL', 'approval_request', sub.requestId, { documentType: 'VendorPayment', amount: input.amount }); return res.json({ success: true, pendingApproval: true, requestId: sub.requestId }); }
+    }
+    const r = await recordSettlement(tenantDb(), req, input);
     recordAuditLog(req, kind === 'customer' ? 'RECEIVE_PAYMENT' : 'PAY_VENDOR', 'voucher', r.voucherId, { voucherNumber: r.voucherNumber, partyId, amount: r.amount, applied: r.applied, unapplied: r.unapplied });
     res.json({ success: true, ...r });
   } catch (e: any) { fail(res, e.status || 500, e.message); }
