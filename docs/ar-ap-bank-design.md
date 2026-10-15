@@ -1,6 +1,6 @@
 # AR, AP and bank reconciliation: design against the Finance Core Blueprint (Demo / 2.0)
 
-Written 2026-10-15 before building (architecture-first). Sources: `docs/Finance-Core-Blueprint.pdf` (FR-APR-06, FR-AR-01..03, FR-AP-01..04, FR-BANK-01..05, data model pages 21-28),
+Written 2026-10-15 before building (architecture-first). Sources: `docs/Finance-Core-Blueprint.pdf` (FR-AR-01..03, FR-AP-01..04, FR-BANK-01..05, data model pages 21-28),
 `docs/gl-step1-5-decisions.md` (posting profiles, control accounts), the code as it stands.
 
 ## What the code already has
@@ -15,9 +15,9 @@ Written 2026-10-15 before building (architecture-first). Sources: `docs/Finance-
 
 | Requirement | Gap |
 |---|---|
-| FR-APR-06 a posted invoice / credit note posts to the AR control account **tagged with the customer** | the line is on the right account, but carries no customer: `journal_lines.customer_id / vendor_id` do not exist |
-| FR-AR-02 aging and statements are **a live query over posted journal lines** on the control account, never a separate balance | they are document-based |
-| FR-AR-01 / FR-AP-03 a receipt / payment applies across one or more open invoices / bills, or is held on account, through a **payment allocation record** | one voucher = one document; nothing on account |
+| FR-AR-01 a posted invoice / credit note posts to the AR control account **tagged with the customer** | the line is on the right account, but carries no customer: `journal_lines.customer_id / vendor_id` do not exist |
+| FR-AR-03 aging and statements are **a live query over posted journal lines** on the control account, never a separate balance | they are document-based |
+| FR-AR-02 / FR-AP-04 a receipt / payment applies across one or more open invoices / bills, or is held on account, through a **payment allocation record** | one voucher = one document; nothing on account |
 | FR-AP-02 expenses and bills share one AP control account and vendor subledger | true for the account; the vendor tag is missing, so one vendor position cannot be read from the ledger |
 | FR-BANK-01..05 reconciliation session per bank per statement period, uncleared lines, live formula, complete only when it balances, discrepancy by journal entry, completed lines locked, reopening needs permission and is audited | nothing |
 | FR-JE-04 / FR-APR-01..05 approval rules per document type and amount | not built (journals have maker-checker only) |
@@ -58,3 +58,4 @@ E. the automation-ready test-case catalogue
 * **Locking.** "A completed reconciliation locks its cleared lines" is enforced where reversal happens: `reverseAllEntriesFor` (ledger.ts) refuses to reverse an entry that has a bank line cleared by a reconciliation. The cancel of a receipt / payment / invoice payment therefore fails as a whole (its transaction rolls back), with a message naming the way out (un-clear, or reopen).
 * **Print model.** Vouchers, journal vouchers and the reconciliation statement are printed from one server-resolved payload (`server/lib/postingPrint.ts`: entries with account, party and dimension labels), rendered by `DocumentRenderer` as three new internal document types that follow the viewer's language and direction.
 * **Permissions** follow the Blueprint list (`bankReconciliation`: create, read, match, complete, reopen) plus one added leaf, `adjust`, because posting an entry is a different authority from ticking lines.
+> Note: Blueprint ids in this document were corrected on 2026-10-15 (allocation = FR-AR-02 / FR-AP-04, aging = FR-AR-03, invoice posting = FR-AR-01). The traceable register is docs/gl-ap-ar.

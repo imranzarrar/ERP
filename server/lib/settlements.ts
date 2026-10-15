@@ -1,4 +1,4 @@
-// Customer receipts and vendor payments that settle several documents at once, or are held on account (Blueprint FR-AR-01 / FR-AP-03). One receipt is ONE voucher, ONE journal
+// Customer receipts and vendor payments that settle several documents at once, or are held on account (Blueprint FR-AR-02 / FR-AP-04). One receipt is ONE voucher, ONE journal
 // entry (the party's control account against the bank, tagged with the party by the posting engine) and N allocation rows (payment_allocations) saying which documents it
 // settles; whatever is not allocated stays on account with the party and can be applied later. The documents' own amount_paid / payment status are kept in step here, in the
 // same transaction, so a document and its allocations cannot drift. Cancelling a receipt reverses the entry, the voucher and the allocations together.

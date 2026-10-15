@@ -2731,7 +2731,7 @@ export const postingPolicies = pgTable('posting_policies', {
   tenantIsolationPolicy: tenantPolicy('posting_policies_tenant_isolation', table),
 })).enableRLS();
 
-// Payment allocation (Blueprint FR-AR-01 / FR-AP-03): which documents a receipt or payment settles, and for how much. A multi-document receipt (CustomerReceipt) or payment
+// Payment allocation (Blueprint FR-AR-02 / FR-AP-04): which documents a receipt or payment settles, and for how much. A multi-document receipt (CustomerReceipt) or payment
 // (VendorPayment) is one voucher + one journal entry (the party's control account against the bank) + these rows; what is not allocated stays on account with the party.
 // An allocation is never edited: cancelling the receipt marks its rows reversed and gives the money back to the documents.
 export const paymentAllocations = pgTable('payment_allocations', {
