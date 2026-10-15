@@ -2754,7 +2754,7 @@ export default function DocumentRenderer({
       <div className="text-end">
        <h2 className="text-xl font-bold uppercase text-indigo-700 tracking-wider mb-1">{t('Warehouse Dispatch Note')}</h2>
        <p className="text-slate-500"><span className="font-semibold">{t('Dispatch Number')}:</span> {dispatch.dispatchNumber}</p>
-       <p className="text-slate-500"><span className="font-semibold">{t('Date')}:</span> {new Date(dispatch.date).toLocaleDateString()}</p>
+       <p className="text-slate-500"><span className="font-semibold">{t('Date')}:</span> {new Date(dispatch.docDate).toLocaleDateString()}</p>
       </div>
      </div>
 
@@ -2882,7 +2882,7 @@ export default function DocumentRenderer({
       <div className="text-end">
        <h2 className="text-xl font-bold uppercase text-emerald-700 tracking-wider mb-1">{t('Warehouse Receiving Note')}</h2>
        <p className="text-slate-500"><span className="font-semibold">{t('Receiving Number')}:</span> {receiving.receivingNumber}</p>
-       <p className="text-slate-500"><span className="font-semibold">{t('Date')}:</span> {new Date(receiving.date).toLocaleDateString()}</p>
+       <p className="text-slate-500"><span className="font-semibold">{t('Date')}:</span> {new Date(receiving.docDate).toLocaleDateString()}</p>
        <p className="text-slate-500"><span className="font-semibold">{t('Dispatch #:')}</span> {dispatch?.dispatchNumber || '-'}</p>
       </div>
      </div>

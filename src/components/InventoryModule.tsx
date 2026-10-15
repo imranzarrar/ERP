@@ -2364,7 +2364,7 @@ export default function InventoryModule({
                 </div>
                 <div>
                   <span className="text-gray-500">{t('PO Date:')}</span>
-                  <p className="font-semibold text-gray-900 mt-0.5">{new Date(viewingPo.date).toLocaleString()}</p>
+                  <p className="font-semibold text-gray-900 mt-0.5">{new Date(viewingPo.createdAt || viewingPo.docDate).toLocaleString()}</p>
                 </div>
                 <div>
                   <span className="text-gray-500">{t('Expected Delivery:')}</span>
@@ -2472,7 +2472,7 @@ export default function InventoryModule({
                 </div>
                 <div>
                   <span className="text-gray-500">{t('Date Received:')}</span>
-                  <p className="font-semibold text-gray-900 mt-0.5">{new Date(viewingGrn.date).toLocaleString()}</p>
+                  <p className="font-semibold text-gray-900 mt-0.5">{new Date(viewingGrn.createdAt || viewingGrn.docDate).toLocaleString()}</p>
                 </div>
                 <div>
                   <span className="text-gray-500">{t('Received By:')}</span>
@@ -2621,7 +2621,7 @@ export default function InventoryModule({
                   </div>
                   <div>
                     <span className="text-gray-500">{t('Date:')}</span>
-                    <p className="font-semibold text-gray-900 mt-0.5">{new Date(viewingDispatch.date).toLocaleString()}</p>
+                    <p className="font-semibold text-gray-900 mt-0.5">{new Date(viewingDispatch.createdAt || viewingDispatch.docDate).toLocaleString()}</p>
                   </div>
                   <div>
                     <span className="text-gray-500">{t('Dispatched By:')}</span>
@@ -2762,7 +2762,7 @@ export default function InventoryModule({
                   </div>
                   <div>
                     <span className="text-gray-500">{t('Date:')}</span>
-                    <p className="font-semibold text-gray-900 mt-0.5">{new Date(viewingReceiving.date).toLocaleString()}</p>
+                    <p className="font-semibold text-gray-900 mt-0.5">{new Date(viewingReceiving.createdAt || viewingReceiving.docDate).toLocaleString()}</p>
                   </div>
                   <div>
                     <span className="text-gray-500">{t('Received By:')}</span>

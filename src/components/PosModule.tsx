@@ -1629,7 +1629,7 @@ function PosSalesHistory({ db, activeCompanyId, currentUser, restricted, onViewI
               return (
                 <tr key={inv.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                   <td className="p-4 font-bold text-indigo-600">{inv.invoiceNumber}</td>
-                  <td className="p-4 text-slate-600">{new Date(inv.date).toLocaleDateString()}</td>
+                  <td className="p-4 text-slate-600">{new Date(inv.docDate).toLocaleDateString()}</td>
                   <td className="p-4 text-slate-800">{cust?.name || t("Walk-in")}</td>
                   <td className="p-4 font-bold text-slate-900">{currency} {calculateInvoiceTotals(db, inv.items, inv.taxSlabId, inv.discountPercentage).grandTotal.toFixed(2)}</td>
                   <td className="p-4"><StatusPill tone={inv.status === 'Active' ? 'good' : 'critical'}>{t(inv.status)}</StatusPill></td>

@@ -27,20 +27,26 @@ ZATCA: an invoice's issue date IS `doc_date`; `posting_date` of an invoice alway
 `required_by_date` (needed by), `delivery_date` (promised delivery), `expected_arrival_date`, `value_date` (bank value date), `cut_off_date` (opening balances), `received_date` (physical receipt).
 A column with no screen and no rule behind it is not added yet: each is added with the feature that needs it, under this name.
 
-## Per table (slice 1 = the sales documents and the ledger; the rest follow in slices 2 and 3)
+## Per table (all done 2026-10-15)
 
-| Table | `doc_date` | `posting_date` | Other dates |
+| Table | `doc_date` | `posting_date` | Other dates / audit |
 |---|---|---|---|
-| quotations | was `date` | - (posts nothing) | `valid_until_date`, `updated_at/by` |
-| invoices (incl. credit notes) | was `date` | yes | `supply_date`, `due_date`, `payment_date` (existing), `updated_at/by` |
-| expenses | was `date` | yes | `due_date`, `payment_date` (existing), `updated_at/by` |
-| vouchers | was `date` | yes | `value_date` |
-| journal_entries (the ledger header) | new, from the source document | was `date` | |
-| manual_journals | was `date` | yes (user may set it) | |
-| purchase_requisitions / purchase_orders | slice 2 | - | `required_by_date` / `delivery_date` |
-| goods_receipt_notes / purchase_bills / purchase_returns | slice 2 | yes | `due_date` (bills) |
-| warehouse_dispatches / warehouse_receivings / physical_stock_takes | slice 3 | yes | `expected_arrival_date` |
-| stock_ledger_transactions | - | was `date` (a movement ledger) | `moved_at` keeps the time for ordering |
+| quotations | yes | - (posts nothing) | `valid_until_date`, `updated_at/by` |
+| invoices (incl. credit notes) | yes (= the ZATCA issue date) | yes (= `doc_date`) | `supply_date`, `due_date`, `payment_date`, `updated_at/by` |
+| expenses | yes (the vendor bill's date) | yes | `due_date`, `payment_date`, `updated_at/by` |
+| vouchers | yes | yes | `value_date` |
+| journal_entries (ledger header) | yes (the source document's date) | yes (the ledger date) | |
+| manual_journals | yes | yes (user may set it apart) | |
+| purchase_requisitions, purchase_orders | yes | - | `created_at/by`, `delivery_date` (PO) |
+| goods_receipt_notes, purchase_returns, physical_stock_takes | yes | yes | `created_at/by` |
+| purchase_bills | yes (the supplier invoice date) | yes | `due_date`, `created_at/by` |
+| warehouse_dispatches, warehouse_receivings | yes | yes | `created_at/by`, `expected_arrival_date` (dispatch) |
+| stock_ledger_transactions (a movement ledger) | - | yes | `created_at` = the moment (orders movements within a day; average cost depends on it) |
+
+Known exceptions, to be converted with the feature that reworks them: `payment_date` on invoices and expenses is still a timestamp (AR / AP payment allocation), batch `expiry_date` columns are timestamps.
+
+Which report reads which date: **financial statements, bank ledger, period / back-date locks read `posting_date`; registers, customer / vendor statements, aging, VAT registers and quotation reports read `doc_date`.**
+Report DTO rows keep a display field called `date`; table columns and API document rows carry the standard names.
 
 ## Migration rule
 
