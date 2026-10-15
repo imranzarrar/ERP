@@ -824,6 +824,7 @@ type NavSection = {
             { id: 'gl-vendor-payments', label: t('Vendor Payments'), permissionKey: 'vendorPayments.read' }
           ]
         },
+        { id: 'gl-bank-reconciliation', label: t('Bank Reconciliation'), icon: Scale, adminOnly: false, permissionKey: 'bankReconciliation.read' },
         { id: 'gl-opening', label: t('Opening Balances'), icon: BookOpen, adminOnly: false, permissionKey: ['openingBalances.read', 'openingBalances.post'] },
         { id: 'gl-posting-control', label: t('Posting Control'), icon: Lock, adminOnly: false, permissionKey: 'postingControl.read' }
       ]
@@ -1674,6 +1675,7 @@ type NavSection = {
  activeTab === 'gl-trial-balance' ? t('Trial Balance (Ledger)') :
  activeTab === 'gl-income-statement' ? t('Income Statement') :
  activeTab === 'gl-balance-sheet' ? t('Balance Sheet (Ledger)') :
+ activeTab === 'gl-bank-reconciliation' ? t('Bank Reconciliation') :
  activeTab === 'gl-receive-payment' ? t('Receive Payment') :
  activeTab === 'gl-receipts' ? t('Receipts') :
  activeTab === 'gl-pay-vendor' ? t('Pay Vendor') :
@@ -1723,6 +1725,7 @@ type NavSection = {
  {activeTab === 'gl-trial-balance' && t('Opening, movement and closing balance of every account, built from the ledger.')}
  {activeTab === 'gl-income-statement' && t('Revenue, cost of sales and expenses for a period, from the ledger, with comparatives.')}
  {activeTab === 'gl-balance-sheet' && t('Assets, liabilities and equity as at a date, from the ledger.')}
+ {activeTab === 'gl-bank-reconciliation' && t('Check the bank statement against the books line by line, post the bank fee or interest the books are missing, and lock the result.')}
  {activeTab === 'gl-receive-payment' && t('Record money received from a customer: put it against several invoices at once, or keep it on account.')}
  {activeTab === 'gl-receipts' && t('Every receipt from customers, what it settled and what is still held on account.')}
  {activeTab === 'gl-pay-vendor' && t('Record a payment to a vendor: put it against several bills and expenses at once, or keep it on account.')}

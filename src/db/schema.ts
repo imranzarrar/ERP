@@ -1411,8 +1411,14 @@ export const journalLines = pgTable('journal_lines', {
   // posts to a customer or vendor control account, from the same party context that picked the account, so the subledger of a party is a query over these lines.
   customerId: uuid('customer_id'),
   vendorId: uuid('vendor_id'),
+  // Bank reconciliation (Blueprint FR-BANK-02/05): a line of a bank account is 'cleared' by one reconciliation session; once that session is completed the line is locked
+  // (the entry that carries it cannot be reversed until the session is reopened). Null = not cleared yet.
+  bankReconciliationId: uuid('bank_reconciliation_id'),
+  reconciledAt: timestamp('reconciled_at'),
 }, (table) => ({
   companyIdIdx: index('journal_lines_company_id_idx').on(table.companyId),
+  reconciliationIdx: index('journal_lines_reconciliation_idx').on(table.companyId, table.bankReconciliationId).where(sql`bank_reconciliation_id IS NOT NULL`),
+  reconciliationFk: foreignKey({ name: 'journal_lines_reconciliation_company_fk', columns: [table.bankReconciliationId, table.companyId], foreignColumns: [bankReconciliations.id, bankReconciliations.companyId] }),
   customerIdx: index('journal_lines_customer_idx').on(table.companyId, table.customerId).where(sql`customer_id IS NOT NULL`),
   vendorIdx: index('journal_lines_vendor_idx').on(table.companyId, table.vendorId).where(sql`vendor_id IS NOT NULL`),
   customerFk: foreignKey({ name: 'journal_lines_customer_company_fk', columns: [table.customerId, table.companyId], foreignColumns: [customers.id, customers.companyId] }),
@@ -2749,4 +2755,54 @@ export const paymentAllocations = pgTable('payment_allocations', {
   typeCheck: check('payment_allocations_type_check', sql`${table.documentType} IN ('Invoice','Expense','PurchaseBill')`),
   amountCheck: check('payment_allocations_amount_check', sql`${table.amount} > 0`),
   tenantIsolationPolicy: tenantPolicy('payment_allocations_tenant_isolation', table),
+})).enableRLS();
+
+// Bank reconciliation (Blueprint FR-BANK-01..05). One session per bank account per statement period: the statement's ending balance and date are entered, every posted ledger line of
+// the bank's account up to that date is listed, and each is marked cleared (matched to a statement line, or ticked). It can be completed only when the cleared balance equals the statement
+// balance and every statement line is matched; a completed session locks its lines. A bank fee / interest / timing error is fixed by a journal entry posted from inside the session.
+export const bankReconciliations = pgTable('bank_reconciliations', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  bankId: uuid('bank_id').notNull().references(() => bankAccounts.id),
+  statementDate: businessDate('statement_date').notNull(),
+  statementEndingBalance: decimal('statement_ending_balance', { precision: 14, scale: 2 }).notNull(),
+  glBalanceAtReconciliation: decimal('gl_balance_at_reconciliation', { precision: 14, scale: 2 }), // the book balance on the statement date, frozen when the session is completed
+  status: text('status').notNull().default('InProgress'), // 'InProgress' | 'Completed'
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull(),
+  createdById: uuid('created_by_id').references(() => users.id),
+  completedAt: timestamp('completed_at'),
+  completedById: uuid('completed_by_id').references(() => users.id),
+  reopenedAt: timestamp('reopened_at'),
+  reopenedById: uuid('reopened_by_id').references(() => users.id),
+  reopenReason: text('reopen_reason'),
+}, (table) => ({
+  companyIdIdx: index('bank_reconciliations_company_id_idx').on(table.companyId),
+  bankIdx: index('bank_reconciliations_bank_idx').on(table.companyId, table.bankId, table.statementDate),
+  oneOpenPerBank: uniqueIndex('bank_reconciliations_one_open_idx').on(table.companyId, table.bankId).where(sql`status = 'InProgress'`),
+  idCompanyUnique: unique('bank_reconciliations_id_company_unique').on(table.companyId, table.id), // target of the composite keys of journal_lines and bank_statement_lines
+  statusCheck: check('bank_reconciliations_status_check', sql`${table.status} IN ('InProgress','Completed')`),
+  tenantIsolationPolicy: tenantPolicy('bank_reconciliations_tenant_isolation', table),
+})).enableRLS();
+
+export const bankStatementLines = pgTable('bank_statement_lines', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  bankReconciliationId: uuid('bank_reconciliation_id').notNull(),
+  statementDate: businessDate('statement_date').notNull(),   // the date printed on the bank statement for this line
+  description: text('description').notNull().default(''),
+  reference: text('reference'),
+  amount: decimal('amount', { precision: 14, scale: 2 }).notNull(), // signed as the bank shows it: money in is positive, money out is negative
+  matchedJournalLineId: uuid('matched_journal_line_id').references(() => journalLines.id),
+  isMatched: boolean('is_matched').notNull().default(false),
+  createdAt: timestamp('created_at').notNull(),
+  createdById: uuid('created_by_id').references(() => users.id),
+}, (table) => ({
+  companyIdIdx: index('bank_statement_lines_company_id_idx').on(table.companyId),
+  sessionIdx: index('bank_statement_lines_session_idx').on(table.companyId, table.bankReconciliationId),
+  oneStatementLinePerLedgerLine: uniqueIndex('bank_statement_lines_matched_idx').on(table.companyId, table.matchedJournalLineId).where(sql`matched_journal_line_id IS NOT NULL`),
+  sessionFk: foreignKey({ name: 'bank_statement_lines_session_company_fk', columns: [table.bankReconciliationId, table.companyId], foreignColumns: [bankReconciliations.id, bankReconciliations.companyId] }),
+  amountCheck: check('bank_statement_lines_amount_check', sql`${table.amount} <> 0`),
+  matchedCheck: check('bank_statement_lines_matched_check', sql`(${table.isMatched} = (${table.matchedJournalLineId} IS NOT NULL))`),
+  tenantIsolationPolicy: tenantPolicy('bank_statement_lines_tenant_isolation', table),
 })).enableRLS();

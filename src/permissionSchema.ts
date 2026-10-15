@@ -264,6 +264,16 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
     ]
   },
   {
+    id: 'bankReconciliation', groupId: 'general_ledger', label: 'Bank Reconciliation', leaves: [
+      { key: 'create', label: 'Start and discard a reconciliation' },
+      { key: 'read', label: 'View Reconciliations' },
+      { key: 'match', label: 'Enter statement lines, match and clear lines' },
+      { key: 'adjust', label: 'Post a bank fee, interest or correction from a reconciliation' },
+      { key: 'complete', label: 'Complete a Reconciliation' },
+      { key: 'reopen', label: 'Reopen a Completed Reconciliation' },
+    ]
+  },
+  {
     id: 'accountMapping', groupId: 'general_ledger', label: 'Account Mapping', leaves: [
       { key: 'read', label: 'View Account Mapping' },
       { key: 'update', label: 'Change Account Mapping' },

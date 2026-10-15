@@ -10,7 +10,7 @@
 // never the tables directly, so "can this ever get out of balance" has one, auditable
 // answer.
 import * as schema from '../../src/db/schema.js';
-import { eq, and, inArray, gte, lte } from 'drizzle-orm';
+import { eq, and, inArray, gte, lte, isNotNull } from 'drizzle-orm';
 import { generateId } from '../../src/id.js';
 import { round2 } from './businessLogic.js';
 import { toBaseQuantity } from './uomConversion.js';
@@ -210,6 +210,15 @@ export async function resolveLineAccountIds(tx: any, companyId: string, lines: J
 // mirrored, sign-flipped entry for each — structurally closes the "only reverses the
 // first voucher found" bug class (Findings 7/8 in the review): there is no first-row
 // destructure here, every matching entry gets its own reversal.
+// An entry with a line that a bank reconciliation has cleared cannot be reversed: the bank has already confirmed that movement (Blueprint FR-BANK-05). Un-clear the line, or reopen the
+// reconciliation (needs its own permission), then cancel the document.
+export async function assertNoReconciledLines(tx: any, companyId: string, entryIds: string[]) {
+  if (!entryIds.length) return;
+  const rows: any[] = await tx.select({ id: schema.journalLines.id }).from(schema.journalLines)
+    .where(and(eq(schema.journalLines.companyId, companyId), inArray(schema.journalLines.journalEntryId, entryIds), isNotNull(schema.journalLines.bankReconciliationId))).limit(1);
+  if (rows.length) throw Object.assign(new Error('A bank line of this document was cleared in a bank reconciliation, so it cannot be cancelled. Open that reconciliation, un-clear the line (or ask someone with permission to reopen it), then cancel.'), { status: 400 });
+}
+
 export async function reverseAllEntriesFor(
   tx: any,
   companyId: string,
@@ -232,6 +241,7 @@ export async function reverseAllEntriesFor(
     .where(inArray(schema.journalEntries.reversalOfId, entryIds));
   const alreadyReversed = new Set(reversalRows.map((r: any) => r.reversalOfId));
   const toReverse = entries.filter((e: any) => !alreadyReversed.has(e.id));
+  await assertNoReconciledLines(tx, companyId, toReverse.map((e: any) => e.id));
 
   const newIds: string[] = [];
   for (const entry of toReverse) {

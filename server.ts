@@ -34,6 +34,7 @@ import ledgerOpeningRouter from './server/routes/ledgerOpening.js';
 import ledgerPostingPolicyRouter from './server/routes/ledgerPostingPolicy.js';
 import ledgerSubledgerRouter from './server/routes/ledgerSubledger.js';
 import settlementsRouter from './server/routes/settlements.js';
+import bankReconciliationRouter from './server/routes/bankReconciliation.js';
 import ledgerDimensionsRouter from './server/routes/ledgerDimensions.js';
 import ledgerReportDefsRouter from './server/routes/ledgerReportDefs.js';
 import posRouter from './server/routes/pos.js';
@@ -888,6 +889,7 @@ async function startServer() {
   app.use('/api/ledger', ledgerPostingPolicyRouter);
   app.use('/api/ledger', ledgerSubledgerRouter);
   app.use('/api', settlementsRouter);
+  app.use('/api/bank-reconciliations', bankReconciliationRouter);
   app.use('/api/ledger', ledgerReportDefsRouter);
   app.use('/api/pos', posRouter);
   app.use('/api/zatca', zatcaRouter);

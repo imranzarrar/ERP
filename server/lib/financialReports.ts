@@ -181,9 +181,28 @@ export interface BankBalance { bankId: string; bankName: string; balance: number
 // with no row cap, computing only the ending balance — every caller in this module only
 // ever needs the final number, never the ledger rows themselves (ReportViewer.tsx's own
 // Bank Ledger report view is untouched and keeps using the existing client-side function).
+// Bank fees and bank interest found while reconciling a statement (server/lib/bankReconciliation.ts): cash movements with no invoice or expense behind them. Their cash is a
+// voucher (so every bank balance already carries it); their profit-and-loss side is read from the ledger entry, exactly as Cost of Goods Sold is, so a cancelled one (the reversing
+// entry) takes itself back out. charge = cost to the company, income = money earned.
+export async function bankAdjustmentRows(executor: any, companyId: string, startDate: string, endDate: string): Promise<{ date: string; charge: number; income: number }[]> {
+  const rows: any[] = await executor.select({ debit: schema.journalLines.debit, credit: schema.journalLines.credit, date: schema.journalEntries.postingDate, ref: schema.journalEntries.referenceType, key: schema.journalLines.accountKey })
+    .from(schema.journalLines).innerJoin(schema.journalEntries, eq(schema.journalLines.journalEntryId, schema.journalEntries.id))
+    .where(and(eq(schema.journalLines.companyId, companyId), inArray(schema.journalEntries.referenceType, ['BankCharge', 'BankInterest']),
+      gte(schema.journalEntries.postingDate, startDate), lte(schema.journalEntries.postingDate, endDate)));
+  return rows.filter(r => r.key !== 'BANK').map(r => ({
+    date: String(r.date).slice(0, 10),
+    charge: r.ref === 'BankCharge' ? round2(Number(r.debit) - Number(r.credit)) : 0,
+    income: r.ref === 'BankInterest' ? round2(Number(r.credit) - Number(r.debit)) : 0,
+  }));
+}
+export async function bankAdjustmentTotals(executor: any, companyId: string, startDate: string, endDate: string) {
+  const rows = await bankAdjustmentRows(executor, companyId, startDate, endDate);
+  return { bankCharges: round2(rows.reduce((n, r) => n + r.charge, 0)), bankInterest: round2(rows.reduce((n, r) => n + r.income, 0)) };
+}
+
 // A Reversal voucher is money going OUT when it undoes a receipt (an invoice refund, a vendor refund, a cancelled customer receipt) and money coming IN when it undoes a payment.
 export function reversalIsCashOut(referenceType: string): boolean {
-  return referenceType === 'Invoice' || referenceType === 'VendorRefund' || referenceType === 'CustomerReceipt';
+  return referenceType === 'Invoice' || referenceType === 'VendorRefund' || referenceType === 'CustomerReceipt' || referenceType === 'BankInterest';
 }
 export async function computeAllBankBalances(executor: any, companyId: string, asOfDate?: string): Promise<BankBalance[]> {
   const banks = await executor.select().from(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, companyId));
@@ -285,6 +304,8 @@ export async function computeTrialBalance(executor: any, companyId: string, star
     side('Sales Revenue', -periodPl.totalRevenue),
     side('Cost of Goods Sold', periodPl.costOfGoodsSold),
     side('Direct Operating Expenses', periodPl.totalExpenses),
+    side('Bank Charges', periodPl.bankCharges),
+    side('Bank Interest Income', -periodPl.bankInterest),
   ];
   const totalDebits = round2(ledgers.reduce((sum, l) => sum + l.debit, 0));
   const totalCredits = round2(ledgers.reduce((sum, l) => sum + l.credit, 0));
@@ -300,6 +321,9 @@ export interface ProfitLossFigures {
   totalRevenue: number;
   costOfGoodsSold: number;
   totalExpenses: number;
+  // Bank fees paid and bank interest earned, found when reconciling a bank statement (they have no invoice or expense behind them).
+  bankCharges: number;
+  bankInterest: number;
   netProfit: number;
   operatingInflows: number;
   operatingOutflows: number;
@@ -412,7 +436,8 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
       }, 0));
   }
 
-  const netProfit = round2(totalRevenue - costOfGoodsSold - totalExpenses);
+  const { bankCharges, bankInterest } = await bankAdjustmentTotals(executor, companyId, startDate, endDate);
+  const netProfit = round2(totalRevenue - costOfGoodsSold - totalExpenses - bankCharges + bankInterest);
 
   const vendorRefundsReceived = round2(periodVouchers
     .filter(v => v.referenceType === 'VendorRefund' && (v.type === 'Receipt' || v.type === 'Reversal'))
@@ -420,7 +445,7 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
   // Cash that came in through a customer receipt (whether or not it was put against invoices yet) is an operating inflow on the day it arrived; a receipt cancelled later is money handed back.
   const settlementReceipts = round2(periodVouchers.filter(v => v.referenceType === 'CustomerReceipt' && v.type === 'Receipt').reduce((sum, v) => sum + Number(v.amount), 0));
   const settlementReceiptReversals = round2(periodVouchers.filter(v => v.referenceType === 'CustomerReceipt' && v.type === 'Reversal').reduce((sum, v) => sum + Number(v.amount), 0));
-  const operatingInflows = round2(vendorRefundsReceived + settlementReceipts + periodVouchers
+  const operatingInflows = round2(vendorRefundsReceived + settlementReceipts + bankInterest + periodVouchers
     .filter(v => v.referenceType === 'Invoice' && v.type === 'Receipt')
     .reduce((sum, v) => sum + Number(v.amount), 0));
   // Outflows = operating expense payments (net of their reversals) + money handed back to customers
@@ -443,7 +468,7 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
   // A vendor payment that settles several bills / expenses is operating cash out, net of cancellations (its documents' CapEx / OpEx split is not known at payment time).
   const settlementPayments = round2(periodVouchers.filter(v => v.referenceType === 'VendorPayment' && (v.type === 'Payment' || v.type === 'Reversal'))
     .reduce((sum, v) => sum + (v.type === 'Payment' ? Number(v.amount) : -Number(v.amount)), 0));
-  const operatingOutflows = round2(expenseOutflows + customerRefunds + settlementReceiptReversals + billPayments + settlementPayments);
+  const operatingOutflows = round2(expenseOutflows + customerRefunds + settlementReceiptReversals + billPayments + settlementPayments + bankCharges);
   const investingOutflows = round2(periodVouchers
     .filter(v => v.referenceType === 'Expense' && (v.type === 'Payment' || v.type === 'Reversal'))
     .reduce((sum, v) => {
@@ -467,7 +492,7 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
   }));
 
   return {
-    accountingBasis: basis, totalRevenue, costOfGoodsSold, totalExpenses, netProfit,
+    accountingBasis: basis, totalRevenue, costOfGoodsSold, totalExpenses, bankCharges, bankInterest, netProfit,
     operatingInflows, operatingOutflows, investingOutflows, financingInflows, netCashFlow,
     investorShares,
   };
@@ -704,7 +729,8 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   const openCogs = cogsRows
     .filter((r: any) => monthIsOpen(r.date))
     .reduce((sum: number, r: any) => sum + (Number(r.debit) - Number(r.credit)), 0);
-  const currentPeriodEarnings = round2(openRevenue - openCogs - openExpenses);
+  const openBankNet = (await bankAdjustmentRows(executor, companyId, '1900-01-01', asOfDate)).filter(r => monthIsOpen(r.date)).reduce((n, r) => n + r.income - r.charge, 0);
+  const currentPeriodEarnings = round2(openRevenue - openCogs - openExpenses + openBankNet);
 
   // Goods received, not billed: every unreversed GRN still waiting for its supplier bill, at cost (tax-exclusive),
   // less anything already returned to the supplier against it. Inventory counts these units from the day they arrive;
@@ -856,6 +882,10 @@ export async function computeMonthPnL(executor: any, companyId: string, monthId:
     ));
   const costOfGoodsSold = round2(cogsLines.reduce((sum: number, l: any) => sum + (Number(l.debit) - Number(l.credit)), 0));
 
+  // Bank fees / interest of the month: cash events, so they count in both views. Shown with the expenses (a net cost; negative when interest earned is larger).
+  const monthBank = await bankAdjustmentTotals(executor, companyId, monthStart, monthEnd);
+  const bankNetCost = round2(monthBank.bankCharges - monthBank.bankInterest);
+  paidExpenses = round2(paidExpenses + bankNetCost); totalExpenses = round2(totalExpenses + bankNetCost);
   return {
     // "Paid" (cash-collected) revenue has no clean COGS-matching convention in this
     // simplified model (COGS posts at sale, not at collection) — subtracted from both
@@ -1031,7 +1061,8 @@ export async function computeDashboardSummary(
   const dashExpenses = monthExpenses.filter(exp => exp.status === 'Active' && exp.classification !== 'Asset');
   const dashVariances = await settlementVariances(executor, companyId, dashExpenses, dashPctBySlab);
   const netExpenseActual = round2(dashExpenses.reduce((sum, exp) => sum + recognisedCost(exp, dashPctBySlab, dashVariances), 0));
-  const netProfit = round2(netSalesExVat - costOfGoodsSold - netExpenseActual);
+  const dashBank = await bankAdjustmentTotals(executor, companyId, startDate, endDate);
+  const netProfit = round2(netSalesExVat - costOfGoodsSold - netExpenseActual - dashBank.bankCharges + dashBank.bankInterest);
   // Margin is profit over TAX-EXCLUSIVE sales (the same basis as the profit itself); dividing by the VAT-inclusive
   // 'Gross Month Sales' understated it.
   const netProfitMargin = netSalesExVat > 0 ? round2((netProfit / netSalesExVat) * 100) : 0;

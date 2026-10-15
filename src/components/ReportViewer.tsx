@@ -409,6 +409,8 @@ const getProfitLossData = () => {
  // account. Not reproduced here since nothing reads this function's actual output.
  costOfGoodsSold: 0,
  totalExpenses,
+ bankCharges: 0,
+ bankInterest: 0,
  netProfit,
  operatingInflows,
  operatingOutflows,
@@ -1406,6 +1408,18 @@ const getFiscalMonthClosingHistoryData = () => ({ months: (vd.rows || []) as any
  <span className="text-xs text-slate-500 font-medium">{t("Total Expenses")}</span>
  <span className="text-sm font-bold text-rose-600">{currencySymbol} {data.totalExpenses.toFixed(2)}</span>
  </div>
+ {(data.bankCharges ?? 0) > 0 && (
+ <div className="flex justify-between items-center py-2 border-b border-slate-50 ">
+ <span className="text-xs text-slate-500 font-medium">{t("Bank Charges")}</span>
+ <span className="text-sm font-bold text-rose-600">{currencySymbol} {data.bankCharges.toFixed(2)}</span>
+ </div>
+ )}
+ {(data.bankInterest ?? 0) > 0 && (
+ <div className="flex justify-between items-center py-2 border-b border-slate-50 ">
+ <span className="text-xs text-slate-500 font-medium">{t("Bank Interest Income")}</span>
+ <span className="text-sm font-bold text-emerald-600">{currencySymbol} {data.bankInterest.toFixed(2)}</span>
+ </div>
+ )}
  <div className="flex justify-between items-center py-3 mt-2 bg-indigo-50/50 px-4 rounded-xl">
  <span className="text-xs font-black text-indigo-900 uppercase tracking-wider">{t("Net Profit")}</span>
  <span className={`text-base font-black ${data.netProfit >= 0 ? 'text-indigo-700 ' : 'text-rose-600'}`}>
