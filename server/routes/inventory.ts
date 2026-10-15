@@ -4,7 +4,9 @@ import * as schema from '../../src/db/schema.js';
 import { eq, and, isNull, inArray, ne } from 'drizzle-orm';
 import { round2, round4, writeStockLedgerEntry, assertQuarterNotFiled, assertQuarterNotFrozen, assertProductsOwnedByCompany, validateTransactionDate } from '../lib/businessLogic.js';
 import { postJournalEntry, reverseAllEntriesFor, postInventoryAdjustment, postInventoryRevaluation, totalOnHand, snapshotInventory, settleInventoryValuation } from '../lib/ledger.js';
-import { createPurchaseBillForGrns, payPurchaseBillInFull, normalizePurchaseBillForClient } from '../lib/purchasing.js';
+import { createPurchaseBillForGrns, purchaseBillTotals, payPurchaseBillInFull, normalizePurchaseBillForClient } from '../lib/purchasing.js';
+import { submitForApproval, registerApprovalExecutor } from '../lib/approvals.js';
+import { recordAuditLog } from '../lib/audit.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { computeVendorCreditBalance } from '../lib/financialReports.js';
 import { hasPermission, resolveDocumentBranchId, branchAccessOk, branchAccessOkViaWarehouse } from '../lib/authz.js';
@@ -1430,6 +1432,18 @@ router.post('/stock-adjustments', withTenantDb, async (req: any, res) => {
 // only be billed once (goodsReceiptNotes.isBilled), preventing the same delivery from
 // being billed twice; all referenced GRNs must share one vendor, matching how a real
 // vendor invoice consolidates deliveries.
+// A vendor bill that matches an approval rule waits as a request (nothing is posted: no bill, no GR/IR clearing, no payable) and the last approval creates it through the same
+// function, after the posting guard has run again for the approver. Its amount comes from purchaseBillTotals, the same definition the bill is built from.
+registerApprovalExecutor('VendorBill', {
+  async execute(tx, approverReq, request) {
+    const p = request.payload as any;
+    await assertPostingAllowed(approverReq, p.docDate, { vat: 'frozen' });
+    const bill = await createPurchaseBillForGrns(tx, { companyId: request.companyId, grnIds: p.grnIds, branchId: p.branchId, bankId: p.bankId, dueDate: p.dueDate, vendorBillNumber: p.vendorBillNumber, docDate: p.docDate, userId: request.submittedById });
+    recordAuditLog(approverReq, 'CREATE_PURCHASE_BILL', 'purchase_bill', bill.id, { approvalRequestId: request.id, grnIds: p.grnIds });
+    return bill.id;
+  },
+});
+
 router.post('/purchase-bills', withTenantDb, async (req: any, res) => {
   try {
     if (!hasPermission(req.user, 'purchaseBills.create')) {
@@ -1471,6 +1485,11 @@ router.post('/purchase-bills', withTenantDb, async (req: any, res) => {
       return res.status(400).json({ error: 'A bill date is required.' });
     }
     await assertPostingAllowed(req, billDate, { vat: 'frozen' });
+
+    const billArgs = { companyId, grnIds: billData.grnIds, branchId: billBranchId, bankId: billData.bankId, dueDate: billData.dueDate, vendorBillNumber: billData.vendorBillNumber, docDate: billDate, userId: req.user.id };
+    const preview = await purchaseBillTotals(tdb, companyId, billData.grnIds);
+    const sub = await submitForApproval(tdb, req, { documentType: 'VendorBill', amount: Number(preview?.grandTotal || 0), summary: `Vendor bill of ${Number(preview?.grandTotal || 0).toFixed(2)}${billData.vendorBillNumber ? ` (vendor ref ${billData.vendorBillNumber})` : ''}`, payload: { grnIds: billData.grnIds, branchId: billBranchId, bankId: billData.bankId || null, dueDate: billData.dueDate || null, vendorBillNumber: billData.vendorBillNumber || null, docDate: billDate } });
+    if (sub.pending) { recordAuditLog(req, 'SUBMIT_FOR_APPROVAL', 'approval_request', sub.requestId, { documentType: 'VendorBill', amount: Number(preview?.grandTotal || 0) }); return res.json({ success: true, pendingApproval: true, requestId: sub.requestId }); }
 
     // Vendor Bill # is optional here (can be added later via PUT /purchase-bills/:id
     // while still Unpaid) — only the GRN auto-post-bill flow requires it upfront, since

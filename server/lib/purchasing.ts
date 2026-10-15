@@ -51,19 +51,9 @@ export interface CreatePurchaseBillInput {
 // Row 9 of the posting-rules table: Dr GR/IR Clearing (tax-exclusive, reversing row 8's
 // entry for each referenced GRN) / Dr VAT Input (tax amount, now claimable) / Cr AP
 // (full tax-inclusive total).
-export async function createPurchaseBillForGrns(tx: any, input: CreatePurchaseBillInput) {
-  const { companyId, grnIds, branchId, bankId, dueDate, vendorBillNumber, userId, docDate: date } = input;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) {
-    const err: any = new Error('A bill date is required (YYYY-MM-DD).');
-    err.status = 400;
-    throw err;
-  }
-  if (!grnIds || grnIds.length === 0) {
-    const err: any = new Error('At least one goods receipt note must be referenced.');
-    err.status = 400;
-    throw err;
-  }
-
+// What a bill over these goods receipts would be: every GRN must exist in the company, be neither reversed nor already billed, and come from one vendor; the totals are computed here from
+// the GRN items (never taken from the client). The one definition of a bill's total: the bill is created from it, and an approval rule reads its amount from it before anything is written.
+export async function purchaseBillTotals(tx: any, companyId: string, grnIds: string[]) {
   const grns: any[] = [];
   let vendorId: string | null = null;
   for (const grnId of grnIds) {
@@ -107,6 +97,23 @@ export async function createPurchaseBillForGrns(tx: any, input: CreatePurchaseBi
     taxTotal = round2(taxTotal + lineTax);
   }
   const grandTotal = round2(subTotal + taxTotal);
+  return { grns, vendorId, grnItems, subTotal, taxTotal, grandTotal };
+}
+
+export async function createPurchaseBillForGrns(tx: any, input: CreatePurchaseBillInput) {
+  const { companyId, grnIds, branchId, bankId, dueDate, vendorBillNumber, userId, docDate: date } = input;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) {
+    const err: any = new Error('A bill date is required (YYYY-MM-DD).');
+    err.status = 400;
+    throw err;
+  }
+  if (!grnIds || grnIds.length === 0) {
+    const err: any = new Error('At least one goods receipt note must be referenced.');
+    err.status = 400;
+    throw err;
+  }
+
+  const { grns, vendorId, grnItems, subTotal, taxTotal, grandTotal } = await purchaseBillTotals(tx, companyId, grnIds);
 
   const billDateStr = date;
   const billNumber = await getAndIncrementDocumentNumber(tx, companyId, 'bill', billDateStr, branchId);

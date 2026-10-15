@@ -70,7 +70,7 @@ const inv = async (id: string) => (await db.select().from(schema.invoices).where
 const receipt = (body: any, s = admin) => post(s, '/api/settlements/receipts', { partyId: cust, bankId, docDate: TODAY, ...body });
 const patch = (s: string, p: string, b: any = {}) => api(s, p, { method: 'PATCH', body: JSON.stringify(b) });
 let roleA = '', roleB = '', S = { s: '', id: '' }, UA = { s: '', id: '' }, Bu = { s: '', id: '' }, M = { s: '', id: '' }, S2 = { s: '', id: '' };
-const ROLE_PERMS = { vendorPayments: on('create', 'read', 'delete'), approvals: on('read') };
+const ROLE_PERMS = { vendorPayments: on('create', 'read', 'delete'), approvals: on('read'), purchaseBills: on('create', 'read') };
 async function mkU(permissions: any, roleId?: string) {
   const rid = roleId || generateId(), userId = generateId(), username = `ap_${userId.slice(-12)}`;
   if (!roleId) await db.insert(schema.roles).values({ id: rid, companyId: A_, name: `Role ${rid.slice(-6)}`, permissions });
@@ -206,5 +206,35 @@ describe('levels, self-approval, managers, rejection, the posting guard and isol
     expect((await get(other.admin, R('/rules'))).body.rules).toHaveLength(0);
     await deactivateAll(); await expense(1000, 'N8');
     expect((await post(admin, '/api/settlements/payments', payBody(400))).body.pendingApproval).toBeUndefined();
+  });
+});
+
+describe('vendor bills follow the same rules (Sprint 11)', () => {
+  let warehouseId = '', productId = '';
+  const grn = async (qty: number, cost: number) => {
+    const r = await post(admin, '/api/inventory/goods-receipt-notes', { grnData: { isDsd: true, vendorId: vend, warehouseId, receivedBy: 'Test', items: [{ productId, quantityReceived: qty, unitCost: cost, taxRate: 15 }] } });
+    if (r.status !== 200) throw new Error(`grn ${r.status} ${JSON.stringify(r.body)}`);
+    return r.body.goodsReceiptNote.id as string;
+  };
+  const billRows = async () => ((await db.execute(sql`SELECT COUNT(*)::int AS n FROM purchase_bills WHERE company_id = ${A_}::uuid`)) as any).rows[0].n as number;
+  const billBody = (grnId: string) => ({ billData: { docDate: TODAY, grnIds: [grnId], bankId, vendorBillNumber: 'V-' + grnId.slice(0, 6) } });
+  it('APR-013 a bill above the band waits (no bill, GRN still unbilled), a bill below posts, and the last approval creates the bill once', async () => {
+    await deactivateAll();
+    warehouseId = (await db.select().from(schema.warehouses).where(eq(schema.warehouses.companyId, A_)))[0]?.id;
+    if (!warehouseId) { warehouseId = generateId(); await db.insert(schema.warehouses).values({ id: warehouseId, name: 'Main', code: 'W1', companyId: A_ } as any); }
+    productId = generateId(); await db.insert(schema.productsServices).values({ id: productId, name: 'Approval Widget', description: 'x', unitPrice: '10.00', itemKind: 'item', companyId: A_ } as any);
+    expect((await rule({ name: 'Bills above 500', documentType: 'VendorBill', minAmount: 500 })).status).toBe(200);
+    const small = await grn(2, 50);                                                            // 100 + VAT: below the band
+    expect((await post(admin, '/api/inventory/purchase-bills', billBody(small))).body.pendingApproval).toBeUndefined();
+    const big = await grn(10, 100);                                                            // 1000 + VAT 150
+    const before = await billRows();
+    const p = await post(S.s, '/api/inventory/purchase-bills', billBody(big));
+    expect(p.status).toBe(200); expect(p.body.pendingApproval).toBe(true);
+    expect(await billRows()).toBe(before);                                                     // nothing written for the waiting bill
+    expect((await db.select().from(schema.goodsReceiptNotes).where(eq(schema.goodsReceiptNotes.id, big)))[0].isBilled).toBe(false);
+    expect((await post(S.s, R(`/requests/${p.body.requestId}/decide`), { action: 'Approved' })).status).toBe(403);   // the submitter
+    expect((await post(UA.s, R(`/requests/${p.body.requestId}/decide`), { action: 'Approved' })).body.status).toBe('Approved');
+    expect(await billRows()).toBe(before + 1);
+    expect((await db.select().from(schema.goodsReceiptNotes).where(eq(schema.goodsReceiptNotes.id, big)))[0].isBilled).toBe(true);
   });
 });

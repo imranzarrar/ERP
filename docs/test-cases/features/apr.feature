@@ -84,3 +84,10 @@ Feature: Approval rules (Sprint 11)
     When The last level approves; company B calls company A requests
     Then Posting is refused by the guard; company B gets 404 and sees none of the rules or requests
     # automated by tests/approvals.test.ts
+
+  @APR-013 @P1 @Functional @API+DB @automated
+  Scenario: A vendor bill follows the same rules: above the band it waits and creates nothing, the last approval creates it once
+    Given A rule for vendor bills above 500
+    When A bill of 100 and a bill of 1150 are submitted; the submitter and then the level holder try to approve
+    Then The small bill posts; the large one waits (no bill, GRN unbilled); the submitter is refused; the approver creates the bill and the GRN is billed
+    # automated by tests/approvals.test.ts

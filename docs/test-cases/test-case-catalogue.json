@@ -2054,6 +2054,21 @@
       "status": "Automated"
     },
     {
+      "id": "APR-013",
+      "module": "Approval rules (Sprint 11)",
+      "moduleId": "APR",
+      "ref": "Blueprint FR-APR-01..06; docs/gl-ap-ar/s11-approval-rules-tier1-research.md",
+      "title": "A vendor bill follows the same rules: above the band it waits and creates nothing, the last approval creates it once",
+      "type": "Functional",
+      "priority": "P1",
+      "given": "A rule for vendor bills above 500",
+      "when": "A bill of 100 and a bill of 1150 are submitted; the submitter and then the level holder try to approve",
+      "then": "The small bill posts; the large one waits (no bill, GRN unbilled); the submitter is refused; the approver creates the bill and the GRN is billed",
+      "layer": "API+DB",
+      "automation": "tests/approvals.test.ts",
+      "status": "Automated"
+    },
+    {
       "id": "AR-001",
       "module": "Receivables: invoices and credit notes",
       "moduleId": "AR",

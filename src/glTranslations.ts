@@ -766,6 +766,8 @@ export const GL_TRANSLATIONS: [key: string, ar: string, ur: string][] = [
   ['Remarks (required to reject)', 'ملاحظات (مطلوبة للرفض)', 'تبصرے (مسترد کرنے کے لیے ضروری)'],
   ['self-approved', 'معتمد ذاتياً', 'خود منظور شدہ'],
   ['Approved: the payment was created.', 'تم الاعتماد: أُنشئت الدفعة.', 'منظور: ادائیگی بن گئی۔'],
+  ['Approved: the document was created.', 'تم الاعتماد: أُنشئ المستند.', 'منظور: دستاویز بن گئی۔'],
+  ['Vendor bill', 'فاتورة مورد', 'سپلائر بل'],
   ['Saved.', 'تم الحفظ.', 'محفوظ ہو گیا۔'],
   ['Sent for approval. It will be posted when every level has approved; follow it in My Approvals.', 'أُرسلت للاعتماد. ستُرحَّل عند اعتماد جميع المستويات؛ تابعها في اعتماداتي.', 'منظوری کے لیے بھیج دی گئی۔ تمام درجوں کی منظوری پر پوسٹ ہوگی؛ میری منظوریوں میں دیکھیں۔'],
 ];

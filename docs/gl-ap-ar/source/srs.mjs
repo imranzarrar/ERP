@@ -23,7 +23,7 @@ export const SRS = {
   'BR-JNL-08': { fr: [['The system shall list journals and posted entries with status, period, source and text filters and paging, and show an entry with accounts, totals and source document number; entries of another company or hidden branch return 404.', `${J}; screen Journal Listing`]], tests: ['JV-024', 'JV-018', 'JV-019'] },
   'BR-JNL-09': { fr: [['The opening-balance route shall preview without saving, refuse control, P&L, heading and foreign accounts, require an equity plug for a difference, post once with the post right and confirmation, and support reversal with a reason.', 'server/routes/ledgerOpening.ts']], tests: ['OPN-001..OPN-006'] },
   'BR-JNL-10': { fr: [
-    ['The system shall hold approval rules per document type (vendor payment, vendor bill, credit note, manual journal) by amount band with a priority; a document with no matching active rule shall post directly as today (Sprint 11).', 'planned: approval_rules'],
+    ['The system shall hold approval rules per document type (vendor payment, vendor bill, credit note, manual journal) by amount band with a priority; a document with no matching active rule shall post directly as today (Sprint 11; vendor payments and vendor bills are routed, credit notes and journals follow).', 'server/lib/approvals.ts; server/routes/approvals.ts'],
     ['A rule shall have sequential levels; a level names its approvers by role, user, permission or manager of the submitter (up to a set number of steps), mode any-one or all, and an optional escalation time reserved for 1.1.', 'planned: approval_rule_levels; users.manager_id'],
     ['A matching document shall enter Pending Approval, post nothing and (for a vendor payment) write no voucher and release no funds, until every level has approved; the rule shall be snapshotted into the request at submit.', 'planned: approval_requests'],
     ['The server shall refuse an approval by the submitter unless the company setting "allow self-approval" is on; the setting applies to every document type, is changed only by owner/admin, is audited, and an approval under it is flagged self-approved.', 'planned: company GL settings'],
@@ -31,7 +31,7 @@ export const SRS = {
     ['Every decision shall be appended with actor, level, action, remarks and time and shown in the document history; rejection returns the document to Draft with the remarks.', 'planned: approval_actions'],
     ['Editing a pending document shall recall its request; an increase of the amount shall restart approval; the final approval shall call the document post function in the same transaction, re-running the posting guard.', 'planned'],
     ['Delegations with a validity period shall let a delegate decide for the delegator for chosen document types; a My approvals worklist and a menu count shall show what waits for the signed-in user.', 'planned: approval_delegations; screen My Approvals'],
-  ], tests: ['APR-001..APR-012'] },
+  ], tests: ['APR-001..APR-013'] },
 
   'BR-PER-01': { fr: [['The posting guard shall refuse a posting date outside an existing open fiscal month or in the future.', G]], tests: ['PC-012'] },
   'BR-PER-02': { fr: [['The guard shall refuse a tax document in a generated or filed VAT quarter and a non-tax posting in a filed quarter.', `${G}; server/lib/businessLogic.ts`]], tests: ['PC-013', 'PC-014'] },
