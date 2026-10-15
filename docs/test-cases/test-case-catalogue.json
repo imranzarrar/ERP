@@ -2099,6 +2099,21 @@
       "status": "Automated"
     },
     {
+      "id": "APR-016",
+      "module": "Approval rules (Sprint 11)",
+      "moduleId": "APR",
+      "ref": "Blueprint FR-APR-01..06; docs/gl-ap-ar/s11-approval-rules-tier1-research.md",
+      "title": "A credit note follows the same rules: above the band it waits and issues nothing; the last approval issues it once, created by the submitter",
+      "type": "Functional",
+      "priority": "P1",
+      "given": "A rule for credit notes above 500",
+      "when": "A credit note of 115 and one of 1150 are requested; the submitter and then the level holder try to approve",
+      "then": "The small one is issued; the large one waits (no note); the submitter is refused; the approver issues it with the submitter as creator; a second credit note against the same invoice is refused",
+      "layer": "API+DB",
+      "automation": "tests/approvals.test.ts",
+      "status": "Automated"
+    },
+    {
       "id": "AR-001",
       "module": "Receivables: invoices and credit notes",
       "moduleId": "AR",

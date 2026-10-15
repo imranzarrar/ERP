@@ -70,7 +70,7 @@ const inv = async (id: string) => (await db.select().from(schema.invoices).where
 const receipt = (body: any, s = admin) => post(s, '/api/settlements/receipts', { partyId: cust, bankId, docDate: TODAY, ...body });
 const patch = (s: string, p: string, b: any = {}) => api(s, p, { method: 'PATCH', body: JSON.stringify(b) });
 let roleA = '', roleB = '', S = { s: '', id: '' }, UA = { s: '', id: '' }, Bu = { s: '', id: '' }, M = { s: '', id: '' }, S2 = { s: '', id: '' };
-const ROLE_PERMS = { vendorPayments: on('create', 'read', 'delete'), approvals: on('read'), purchaseBills: on('create', 'read') };
+const ROLE_PERMS = { vendorPayments: on('create', 'read', 'delete'), approvals: on('read'), purchaseBills: on('create', 'read'), invoice: on('create', 'read') };
 async function mkU(permissions: any, roleId?: string) {
   const rid = roleId || generateId(), userId = generateId(), username = `ap_${userId.slice(-12)}`;
   if (!roleId) await db.insert(schema.roles).values({ id: rid, companyId: A_, name: `Role ${rid.slice(-6)}`, permissions });
@@ -301,5 +301,27 @@ describe('recall and delegation (Sprint 11)', () => {
     expect(await vouchersFor()).toBe(before + 1);
     expect((await get(admin, R(`/requests/${id}`))).body.actions[0].onBehalfOf).toBeTruthy();
     expect((await get(other.admin, R('/delegations'))).body.rows).toHaveLength(0);                         // another company sees none
+  });
+});
+
+describe('credit notes follow the same rules (Sprint 11)', () => {
+  it('APR-016 a credit note above the band waits (no note, original untouched); the approver issues it once, created by the submitter', async () => {
+    await deactivateAll();
+    const c = await customer(A_, 'Credit Co');
+    expect((await rule({ name: 'Credit notes above 500', documentType: 'CreditNote', minAmount: 500 })).status).toBe(200);
+    const small = await invoice(c, 100); const big = await invoice(c, 1000);                          // 115 and 1150
+    const notes = async () => ((await db.execute(sql`SELECT COUNT(*)::int AS n FROM invoices WHERE company_id = ${A_}::uuid AND document_type = 'CreditNote'`)) as any).rows[0].n as number;
+    const n0 = await notes();
+    expect((await post(admin, `/api/transactions/invoices/${small}/note`, { type: 'CreditNote', reason: 'returned' })).body.pendingApproval).toBeUndefined();   // below the band
+    expect(await notes()).toBe(n0 + 1);
+    const p = await post(S.s, `/api/transactions/invoices/${big}/note`, { type: 'CreditNote', reason: 'wrong goods' });
+    expect(p.status).toBe(200); expect(p.body.pendingApproval).toBe(true);
+    expect(await notes()).toBe(n0 + 1);                                                              // nothing issued while it waits
+    expect((await post(S.s, R(`/requests/${p.body.requestId}/decide`), { action: 'Approved' })).status).toBe(403);
+    expect((await post(UA.s, R(`/requests/${p.body.requestId}/decide`), { action: 'Approved' })).body.status).toBe('Approved');
+    expect(await notes()).toBe(n0 + 2);
+    const note = (await db.select().from(schema.invoices).where(eq(schema.invoices.originalInvoiceId, big)))[0];
+    expect(note).toMatchObject({ documentType: 'CreditNote', createdById: S.id });
+    expect((await post(admin, `/api/transactions/invoices/${big}/note`, { type: 'CreditNote' })).status).toBe(400);   // already credited
   });
 });

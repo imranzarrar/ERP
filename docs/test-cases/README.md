@@ -1,6 +1,6 @@
 # Test-case catalogue (generated)
 
-**305 cases** across 20 modules, written so a tool can run them. Generated from `catalogue-source.mjs` by `node scripts/build-test-catalogue.mjs`; edit the source, never these files.
+**306 cases** across 20 modules, written so a tool can run them. Generated from `catalogue-source.mjs` by `node scripts/build-test-catalogue.mjs`; edit the source, never these files.
 
 | Files | Use |
 |---|---|
@@ -19,7 +19,7 @@
 | OPN | Opening balances | 6 | 4 | 5 | 1 | 0 |
 | DIM | Dimensions (branch, department, custom) | 14 | 8 | 13 | 1 | 0 |
 | RPT | Ledger reports and the report designer | 23 | 13 | 21 | 2 | 0 |
-| APR | Approval rules (Sprint 11) | 15 | 11 | 15 | 0 | 0 |
+| APR | Approval rules (Sprint 11) | 16 | 12 | 16 | 0 | 0 |
 | AR | Receivables: invoices and credit notes | 16 | 14 | 10 | 5 | 1 |
 | RCP | Customer receipts (Receive Payment) | 27 | 17 | 20 | 3 | 4 |
 | AP | Payables: expenses, bills and returns | 15 | 10 | 12 | 3 | 0 |
@@ -32,7 +32,7 @@
 | I18N | Arabic / Urdu and right-to-left | 7 | 2 | 0 | 2 | 5 |
 | NFR | Performance, concurrency and resilience | 9 | 5 | 2 | 6 | 1 |
 | REL | Release and data migration | 9 | 7 | 2 | 0 | 7 |
-| | **Total** | **305** | **198** | **210** | **60** | **35** |
+| | **Total** | **306** | **199** | **211** | **60** | **35** |
 
 * **Automated**: mapped to the existing vitest file in `tests/` that exercises it, against a real server and real Postgres (no mocks). `--check` fails if the named file does not exist. The mapping is by area, so read it as "covered by that file", not "every Then clause is asserted": when you tighten a case or automate a Candidate, put its ID in the `it(...)` title so a run traces back to the catalogue.
 * **Candidate**: can be automated exactly as written, as an API test (same style as `tests/settlements.test.ts`) or a DB assertion.

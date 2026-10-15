@@ -774,6 +774,7 @@ export const GL_TRANSLATIONS: [key: string, ar: string, ur: string][] = [
   ['Who takes over', 'من يتولى المهمة', 'کون سنبھالے گا'], ['From', 'من', 'سے'], ['To', 'إلى', 'تک'], ['End now', 'إنهاء الآن', 'ابھی ختم کریں'],
   ['The person you choose can decide what you could decide, for these dates only. Approvals that need a specific permission cannot be delegated.', 'يستطيع من تختاره أن يقرر ما كنت تقرره، لهذه التواريخ فقط. لا يمكن تفويض الاعتمادات التي تتطلب صلاحية محددة.', 'جسے آپ چنیں وہ انہی تاریخوں میں وہ فیصلے کر سکتا ہے جو آپ کر سکتے تھے۔ جن منظوریوں کے لیے مخصوص اجازت درکار ہو وہ تفویض نہیں ہو سکتیں۔'],
   ['Recall', 'سحب', 'واپس لیں'], ['Recalled', 'مسحوب', 'واپس لیا گیا'], ['for', 'نيابةً عن', 'بطور نمائندہ'],
+  ['Credit note', 'إشعار دائن', 'کریڈٹ نوٹ'],
   ['Saved.', 'تم الحفظ.', 'محفوظ ہو گیا۔'],
   ['Sent for approval. It will be posted when every level has approved; follow it in My Approvals.', 'أُرسلت للاعتماد. ستُرحَّل عند اعتماد جميع المستويات؛ تابعها في اعتماداتي.', 'منظوری کے لیے بھیج دی گئی۔ تمام درجوں کی منظوری پر پوسٹ ہوگی؛ میری منظوریوں میں دیکھیں۔'],
 ];

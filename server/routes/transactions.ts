@@ -3,7 +3,8 @@ import { db } from '../../src/db/index.js';
 import * as schema from '../../src/db/schema.js';
 import { eq, inArray, and, asc, desc, or, isNull, count, sql, gte, lte, ne } from 'drizzle-orm';
 import { validateTransactionDate, syncVoucherForExpense, syncVoucherForInvoice, postCreditNoteReversalVoucher, round2, round4, computePaymentStatus, computeInvoiceServerTotals, deductStockForSale, restockForSaleReversal, assertQuarterNotFiled, assertQuarterNotFrozen, resolveSaleWarehouse, assertStockAvailable, assertProductsOwnedByCompany, cancelExpense, splitExpenseTaxInclusiveAmount } from '../lib/businessLogic.js';
-import { computeMonthPnL } from '../lib/financialReports.js';
+import { computeMonthPnL, computeInvoiceTotalsMap } from '../lib/financialReports.js';
+import { submitForApproval, registerApprovalExecutor } from '../lib/approvals.js';
 import { postJournalEntry, reverseAllEntriesFor, snapshotInventory, settleInventoryValuation } from '../lib/ledger.js';
 import { toBaseQuantity, toBaseUnitCost, loadZatcaCodesByUnitId } from '../lib/uomConversion.js';
 import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
@@ -1078,36 +1079,13 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
   }
 });
 
-// Credit/Debit Note — creates a new ZATCA document referencing an existing invoice,
-// reusing the same invoices/invoiceItems tables, counter mechanism, and background
-// ZATCA processing pipeline as a regular invoice (see schema.ts's documentType/
-// originalInvoiceId/creditNoteReason columns and processInvoice.ts's handling of them).
-// MVP scope: full-document reversal only (mirrors every line from the original invoice
-// verbatim) — a partial/line-selectable credit note is a larger feature, tracked for
-// later. No automatic refund/reversal voucher is generated here either; the accounting
-// treatment of the credit is a separate, explicitly deferred piece of work.
-//
-// This route fires processInvoiceZatca(savedNoteId) as fire-and-forget immediately after
-// its own write commits, deferred via runAfterTenantCommit() — see POST /invoices' own
-// comment above for the full reasoning.
-router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
-  try {
-    const tdb = tenantDb();
-    const user = req.user;
-    const permissions = normalizePermissions(user.permissions, user.role, user.isSuperAdmin);
-    if (!permissions.invoice.create.enabled) return res.status(403).json({ error: 'Forbidden' });
-
-    const { id: originalInvoiceId } = req.params;
-    const { type, reason } = req.body;
-    if (type !== 'CreditNote' && type !== 'DebitNote') {
-      return res.status(400).json({ error: 'type must be "CreditNote" or "DebitNote"' });
-    }
-
-    const companyId = req.targetCompanyId;
+// What a credit / debit note needs from its original, checked in one place for the route and for the approval executor: the original exists in the company and branch, is not cancelled, and
+// (credit note) has not been credited already, and has lines to mirror.
+async function loadNoteOriginal(req: any, tdb: any, companyId: string, originalInvoiceId: string, type: string) {
     const [original] = await tdb.select().from(schema.invoices)
       .where(and(eq(schema.invoices.id, originalInvoiceId), eq(schema.invoices.companyId, companyId)));
-    if (!original) return res.status(404).json({ error: 'Original invoice not found' });
-    if (!branchAccessOk(req, original.branchId)) return res.status(403).json({ error: 'Forbidden: you are not assigned to this branch.' });
+    if (!original) throw Object.assign(new Error('Original invoice not found'), { status: 404 });
+    if (!branchAccessOk(req, original.branchId)) throw Object.assign(new Error('Forbidden: you are not assigned to this branch.'), { status: 403 });
 
     // A cancelled invoice never charged the customer (or, if it had already reached
     // ZATCA, cancellation itself would have been refused above the /cancel route's own
@@ -1116,7 +1094,7 @@ router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
     // /cancel route's own restockForSaleReversal call already returned these units to
     // stock, and this route's identical call below would return them a second time.
     if (original.status === 'Cancelled') {
-      return res.status(400).json({ error: 'Cannot issue a Credit Note against a cancelled invoice.' });
+      throw Object.assign(new Error('Cannot issue a Credit Note against a cancelled invoice.'), { status: 400 });
     }
 
     // A Credit Note here is a full-document reversal (MVP scope, see the file comment
@@ -1132,21 +1110,20 @@ router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
           eq(schema.invoices.companyId, companyId)
         ));
       if (existingCreditNote) {
-        return res.status(400).json({ error: `A Credit Note (${existingCreditNote.invoiceNumber}) has already been issued for this invoice.` });
+        throw Object.assign(new Error(`A Credit Note (${existingCreditNote.invoiceNumber}) has already been issued for this invoice.`), { status: 400 });
       }
     }
 
     const originalItems = await tdb.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, originalInvoiceId));
     if (originalItems.length === 0) {
-      return res.status(400).json({ error: 'Original invoice has no line items to reference' });
+      throw Object.assign(new Error('Original invoice has no line items to reference'), { status: 400 });
     }
+  return { original, originalItems };
+}
 
-    // No separate db.transaction() wrapper — withTenantDb already wraps the whole
-    // request in one transaction.
-    // A credit note is dated the day it is ISSUED, never the original invoice's date: the original stays exactly as it was in its own
-    // period (which may be closed or already filed with ZATCA) and the correction — revenue, output VAT, stock, refund — lands in
-    // the current period. Today's month must be open and today's quarter unfiled. The original invoice's date remains reachable
-    // through originalInvoiceId.
+// Issues the note: the document, its lines, restock, reversal of the money, the ledger reversal and the ZATCA submission after commit. `user` is whoever the document is created as (the submitter when
+// an approval releases it); `req` carries the person whose rights the posting guard judges.
+async function issueInvoiceNote(req: any, tdb: any, user: any, companyId: string, original: any, originalItems: any[], originalInvoiceId: string, type: string, reason: any): Promise<string> {
     const issueDate = nowDate().toISOString().slice(0, 10);
     await assertPostingAllowed(req, issueDate, { vat: 'frozen' });
 
@@ -1260,6 +1237,53 @@ router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
       originalInvoiceNumber: original.invoiceNumber,
       reason: reason || '',
     });
+  return savedNoteId;
+}
+
+registerApprovalExecutor('CreditNote', {
+  async execute(tx, approverReq, request) {
+    const p = request.payload as any; const companyId = request.companyId;
+    const { original, originalItems } = await loadNoteOriginal({ ...approverReq, targetCompanyId: companyId }, tx, companyId, p.originalInvoiceId, 'CreditNote');
+    return issueInvoiceNote(approverReq, tx, { id: request.submittedById }, companyId, original, originalItems, p.originalInvoiceId, 'CreditNote', p.reason);
+  },
+});
+
+
+// Credit/Debit Note — creates a new ZATCA document referencing an existing invoice,
+// reusing the same invoices/invoiceItems tables, counter mechanism, and background
+// ZATCA processing pipeline as a regular invoice (see schema.ts's documentType/
+// originalInvoiceId/creditNoteReason columns and processInvoice.ts's handling of them).
+// MVP scope: full-document reversal only (mirrors every line from the original invoice
+// verbatim) — a partial/line-selectable credit note is a larger feature, tracked for
+// later. No automatic refund/reversal voucher is generated here either; the accounting
+// treatment of the credit is a separate, explicitly deferred piece of work.
+//
+// This route fires processInvoiceZatca(savedNoteId) as fire-and-forget immediately after
+// its own write commits, deferred via runAfterTenantCommit() — see POST /invoices' own
+// comment above for the full reasoning.
+router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
+  try {
+    const tdb = tenantDb();
+    const user = req.user;
+    const permissions = normalizePermissions(user.permissions, user.role, user.isSuperAdmin);
+    if (!permissions.invoice.create.enabled) return res.status(403).json({ error: 'Forbidden' });
+
+    const { id: originalInvoiceId } = req.params;
+    const { type, reason } = req.body;
+    if (type !== 'CreditNote' && type !== 'DebitNote') {
+      return res.status(400).json({ error: 'type must be "CreditNote" or "DebitNote"' });
+    }
+
+    const companyId = req.targetCompanyId;
+    const { original, originalItems } = await loadNoteOriginal(req, tdb, companyId, originalInvoiceId, type);
+
+    // A credit note above an approval rule's band waits for approval and posts nothing; the last approval issues it (same function) with the submitter as its creator.
+    if (type === 'CreditNote') {
+      const grand = (await computeInvoiceTotalsMap(tdb, [original])).get(original.id)!.grandTotal;
+      const sub = await submitForApproval(tdb, req, { documentType: 'CreditNote', amount: grand, summary: `Credit note of ${grand.toFixed(2)} against ${original.invoiceNumber}`, payload: { originalInvoiceId, type, reason: reason || null } });
+      if (sub.pending) { recordAuditLog(req, 'SUBMIT_FOR_APPROVAL', 'approval_request', sub.requestId, { documentType: 'CreditNote', amount: grand, originalInvoiceId }); return res.json({ success: true, pendingApproval: true, requestId: sub.requestId }); }
+    }
+    const savedNoteId = await issueInvoiceNote(req, tdb, user, companyId, original, originalItems, originalInvoiceId, type, reason);
     res.json({ success: true, noteId: savedNoteId });
   } catch (error: any) {
     res.status(error.status || 500).json({ error: error.message });

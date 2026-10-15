@@ -107,3 +107,10 @@ Feature: Approval rules (Sprint 11)
     When A user is saved with a manager of another company, with themselves, and with someone who already reports to them
     Then Each is refused with a message; a valid same-company manager is saved
     # automated by tests/approvals.test.ts
+
+  @APR-016 @P1 @Functional @API+DB @automated
+  Scenario: A credit note follows the same rules: above the band it waits and issues nothing; the last approval issues it once, created by the submitter
+    Given A rule for credit notes above 500
+    When A credit note of 115 and one of 1150 are requested; the submitter and then the level holder try to approve
+    Then The small one is issued; the large one waits (no note); the submitter is refused; the approver issues it with the submitter as creator; a second credit note against the same invoice is refused
+    # automated by tests/approvals.test.ts
