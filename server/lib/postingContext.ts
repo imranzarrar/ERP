@@ -21,10 +21,10 @@ const PARTY_OF_DOCUMENT: Record<string, { table: any; idCol: any; customerCol?: 
 };
 
 export async function partyOfDocument(tx: any, companyId: string, referenceType: string, referenceId: string): Promise<PostingContext> {
-  // a vendor refund's entry is posted against its voucher, which points at the vendor
-  if (referenceType === 'VendorRefund' && /^[0-9a-f-]{36}$/i.test(referenceId)) {
-    const [v] = await tx.select({ vendorId: schema.vouchers.referenceId }).from(schema.vouchers).where(and(eq(schema.vouchers.id, referenceId), eq(schema.vouchers.companyId, companyId)));
-    return { vendorId: v?.vendorId || null };
+  // a vendor refund, a customer receipt and a vendor payment are posted against their voucher, which points at the party
+  if ((referenceType === 'VendorRefund' || referenceType === 'VendorPayment' || referenceType === 'CustomerReceipt') && /^[0-9a-f-]{36}$/i.test(referenceId)) {
+    const [v] = await tx.select({ party: schema.vouchers.referenceId }).from(schema.vouchers).where(and(eq(schema.vouchers.id, referenceId), eq(schema.vouchers.companyId, companyId)));
+    return referenceType === 'CustomerReceipt' ? { customerId: v?.party || null } : { vendorId: v?.party || null };
   }
   const src = PARTY_OF_DOCUMENT[referenceType];
   if (!src || !/^[0-9a-f-]{36}$/i.test(referenceId)) return {};

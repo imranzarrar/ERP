@@ -99,6 +99,23 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
     ]
   },
   {
+    // One receipt settling several invoices, or held on account; applying money already on account; cancelling a receipt.
+    id: 'customerReceipts', groupId: 'sales', label: 'Customer Receipts (receive a payment across invoices)', leaves: [
+      { key: 'create', label: 'Receive a Payment' },
+      { key: 'read', label: 'View Receipts' },
+      { key: 'update', label: 'Apply Money Held on Account to Invoices' },
+      { key: 'delete', label: 'Cancel a Receipt' },
+    ]
+  },
+  {
+    id: 'vendorPayments', groupId: 'procurements', label: 'Vendor Payments (pay a vendor across bills)', leaves: [
+      { key: 'create', label: 'Pay a Vendor' },
+      { key: 'read', label: 'View Vendor Payments' },
+      { key: 'update', label: 'Apply Money Held on Account to Bills and Expenses' },
+      { key: 'delete', label: 'Cancel a Vendor Payment' },
+    ]
+  },
+  {
     id: 'expense', groupId: 'procurements', label: 'Expense & Vouchers Module', leaves: [
       { key: 'create', label: 'Create Expenses' },
       { key: 'read', label: 'View Expenses' },

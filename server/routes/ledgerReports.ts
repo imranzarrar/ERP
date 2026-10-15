@@ -141,7 +141,7 @@ router.get('/reports/ledger-vs-documents', withTenantDb, async (req: any, res) =
     const bs = await computeBalanceSheet(tdb, companyId, asOf);
     const pl = await computeProfitLoss(tdb, companyId, '1900-01-01', asOf, 'Accrual', { branchIds: null } as any);
     const pairs: [string, string, number, number][] = [
-      ['BANK', 'Cash and bank', net('BANK'), bs.bankBalance], ['AR', 'Accounts receivable', net('AR'), bs.accountsReceivable], ['AP', 'Accounts payable', -net('AP'), bs.accountsPayable],
+      ['BANK', 'Cash and bank', net('BANK'), bs.bankBalance], ['AR', 'Accounts receivable (net of receipts held on account)', net('AR'), round2(bs.accountsReceivable - bs.customerAdvances)], ['AP', 'Accounts payable (net of payments held on account)', -net('AP'), round2(bs.accountsPayable - bs.vendorAdvances)],
       ['INVENTORY', 'Inventory', net('INVENTORY'), bs.inventoryValue], ['FIXED_ASSETS', 'Fixed assets', net('FIXED_ASSETS'), bs.fixedAssets],
       ['VAT_INPUT', 'VAT input (recoverable)', net('VAT_INPUT'), bs.vatInputRecoverable], ['VAT_OUTPUT', 'VAT output (payable)', -net('VAT_OUTPUT'), bs.vatOutputPayable],
       ['GR_IR_CLEARING', 'Goods received not invoiced', -net('GR_IR_CLEARING'), bs.goodsReceivedNotBilled], ['VENDOR_CREDIT_RECEIVABLE', 'Vendor credit receivable', net('VENDOR_CREDIT_RECEIVABLE'), bs.vendorCreditReceivable],

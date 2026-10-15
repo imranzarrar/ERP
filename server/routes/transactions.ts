@@ -23,6 +23,7 @@ import { withTenantDb, tenantDb, runAfterTenantCommit } from '../lib/tenantDb.js
 import { nowDate } from '../lib/clock.js';
 import { documentDates } from '../lib/documentDates.js';
 import { assertPostingAllowed } from '../lib/postingGuard.js';
+import { assertNoActiveAllocations } from '../lib/settlements.js';
 
 const router = express.Router();
 
@@ -1476,6 +1477,7 @@ router.post('/invoices/:id/cancel', withTenantDb, async (req: any, res) => {
     // invoice out of that month's reports, so doing it after the month's profit has been closed and stored would leave
     // Retained Earnings holding revenue that no longer exists.
     await assertPostingAllowed(req, invoice.postingDate, { vat: 'frozen' });
+    await assertNoActiveAllocations(tdb, invoice.companyId, 'Invoice', id); // paid through a receipt: undo that first
 
     if (['SUBMITTING', 'CLEARED', 'REPORTED'].includes(invoice.zatcaStatus as string)) {
       const err: any = new Error('This invoice has already been submitted to ZATCA and cannot be cancelled. Issue a Credit Note instead.');

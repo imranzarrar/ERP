@@ -1272,6 +1272,7 @@ export const vouchers = pgTable('vouchers', {
   reversalOfVoucherId: uuid('reversal_of_voucher_id').references((): any => vouchers.id),
 }, (table) => ({
   docDateIdx: index('vouchers_company_doc_date_idx').on(table.companyId, table.docDate),
+  idCompanyUnique: unique('vouchers_id_company_unique').on(table.companyId, table.id), // target of the composite key of payment_allocations
   companyIdIdx: index('vouchers_company_id_idx').on(table.companyId),
   referenceIdIdx: index('vouchers_reference_id_idx').on(table.referenceId),
   reversalOfVoucherUniqueIdx: uniqueIndex('vouchers_reversal_of_voucher_unique_idx').on(table.reversalOfVoucherId).where(sql`${table.reversalOfVoucherId} IS NOT NULL`),
@@ -2722,4 +2723,30 @@ export const postingPolicies = pgTable('posting_policies', {
   companyUnique: uniqueIndex('posting_policies_company_unique').on(table.companyId),
   daysCheck: check('posting_policies_days_check', sql`(${table.maxBackDays} IS NULL OR ${table.maxBackDays} >= 0) AND (${table.reasonAfterDays} IS NULL OR ${table.reasonAfterDays} >= 0)`),
   tenantIsolationPolicy: tenantPolicy('posting_policies_tenant_isolation', table),
+})).enableRLS();
+
+// Payment allocation (Blueprint FR-AR-01 / FR-AP-03): which documents a receipt or payment settles, and for how much. A multi-document receipt (CustomerReceipt) or payment
+// (VendorPayment) is one voucher + one journal entry (the party's control account against the bank) + these rows; what is not allocated stays on account with the party.
+// An allocation is never edited: cancelling the receipt marks its rows reversed and gives the money back to the documents.
+export const paymentAllocations = pgTable('payment_allocations', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  voucherId: uuid('voucher_id').notNull(),
+  documentType: text('document_type').notNull(), // 'Invoice' | 'Expense' | 'PurchaseBill'
+  documentId: uuid('document_id').notNull(),     // polymorphic, like vouchers.reference_id
+  amount: decimal('amount', { precision: 14, scale: 2 }).notNull(),
+  appliedDate: businessDate('applied_date').notNull(),   // the day the money was put against the document (reports "as at" read this, not created_at)
+  createdAt: timestamp('created_at').notNull(),
+  createdById: uuid('created_by_id').references(() => users.id),
+  reversedDate: businessDate('reversed_date'),            // the day it was taken back off (cancelled receipt)
+  reversedAt: timestamp('reversed_at'),
+  reversedById: uuid('reversed_by_id').references(() => users.id),
+}, (table) => ({
+  companyIdIdx: index('payment_allocations_company_id_idx').on(table.companyId),
+  voucherIdx: index('payment_allocations_voucher_idx').on(table.companyId, table.voucherId),
+  documentIdx: index('payment_allocations_document_idx').on(table.companyId, table.documentType, table.documentId),
+  voucherFk: foreignKey({ name: 'payment_allocations_voucher_company_fk', columns: [table.voucherId, table.companyId], foreignColumns: [vouchers.id, vouchers.companyId] }),
+  typeCheck: check('payment_allocations_type_check', sql`${table.documentType} IN ('Invoice','Expense','PurchaseBill')`),
+  amountCheck: check('payment_allocations_amount_check', sql`${table.amount} > 0`),
+  tenantIsolationPolicy: tenantPolicy('payment_allocations_tenant_isolation', table),
 })).enableRLS();

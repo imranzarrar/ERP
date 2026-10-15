@@ -4,6 +4,7 @@ import * as schema from '../../src/db/schema.js';
 import { eq, and, or, gt, gte, lte, lt, ne, inArray, asc, sql, isNotNull } from 'drizzle-orm';
 import { round2, computeInvoiceServerTotals, splitExpenseTaxInclusiveAmount } from './businessLogic.js';
 import { nowDate } from './clock.js';
+import { allocationEvents, laterAllocationTotals, onAccountBalances } from './settlementFacts.js';
 
 // Real, server-side financial-report calculations — one function per report, each scoped
 // by companyId (+ a date range / customer / vendor / investor / shift id where relevant),
@@ -41,7 +42,7 @@ async function creditedOriginalIds(executor: any, companyId: string, asOfDate?: 
 // VAT (the VAT return claims it back and the ledger posts it to VAT Input), so profit reports must count
 // only the NET amount as cost — counting the gross understated profit by the recoverable VAT. Cash and
 // payables figures stay GROSS: that is the money that actually moves / is actually owed.
-async function taxPercentageBySlabId(executor: any, companyId: string): Promise<Map<string, number>> {
+export async function taxPercentageBySlabId(executor: any, companyId: string): Promise<Map<string, number>> {
   const rows = await executor.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.companyId, companyId));
   return new Map(rows.map((r: any) => [r.id, Number(r.percentage)]));
 }
@@ -73,7 +74,7 @@ async function settlementVariances(executor: any, companyId: string, exps: any[]
 // invoice (KSA VAT Implementing Regulations, Art. 49 / 53), so an accrual carries no recoverable VAT: what is owed (and
 // what is costed) is the net amount. The real invoice that later settles it is a normal expense and claims its own VAT,
 // in its own period — which also means a later settlement can never change a quarter that was already filed.
-function liabilityAmount(exp: any, pctBySlab: Map<string, number>): number {
+export function liabilityAmount(exp: any, pctBySlab: Map<string, number>): number {
   return exp.type === 'Accrual' ? expenseParts(exp, pctBySlab).netAmount : Number(exp.amount);
 }
 
@@ -147,7 +148,7 @@ interface InvoiceTotals { itemsSubtotal: number; headerDiscount: number; discoun
 // discountPercentage argument, silently ignoring any header discount on the invoice.
 // That's a real, separate bug (found while porting this), not a deliberate design this
 // port needs to preserve — every consumer here gets the correct, discount-aware total.
-async function computeInvoiceTotalsMap(executor: any, invoices: (typeof schema.invoices.$inferSelect)[]): Promise<Map<string, InvoiceTotals>> {
+export async function computeInvoiceTotalsMap(executor: any, invoices: (typeof schema.invoices.$inferSelect)[]): Promise<Map<string, InvoiceTotals>> {
   const result = new Map<string, InvoiceTotals>();
   if (invoices.length === 0) return result;
   const invoiceIds = invoices.map(inv => inv.id);
@@ -180,6 +181,10 @@ export interface BankBalance { bankId: string; bankName: string; balance: number
 // with no row cap, computing only the ending balance — every caller in this module only
 // ever needs the final number, never the ledger rows themselves (ReportViewer.tsx's own
 // Bank Ledger report view is untouched and keeps using the existing client-side function).
+// A Reversal voucher is money going OUT when it undoes a receipt (an invoice refund, a vendor refund, a cancelled customer receipt) and money coming IN when it undoes a payment.
+export function reversalIsCashOut(referenceType: string): boolean {
+  return referenceType === 'Invoice' || referenceType === 'VendorRefund' || referenceType === 'CustomerReceipt';
+}
 export async function computeAllBankBalances(executor: any, companyId: string, asOfDate?: string): Promise<BankBalance[]> {
   const banks = await executor.select().from(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, companyId));
   if (banks.length === 0) return [];
@@ -207,7 +212,7 @@ export async function computeAllBankBalances(executor: any, companyId: string, a
         // Same convention as generateBankLedger: a Reversal against an Invoice reverses a
         // Receipt (cash out), a Reversal against anything else (Expense) reverses a
         // Payment (cash in).
-        if (v.referenceType === 'Invoice' || v.referenceType === 'VendorRefund') balance -= amount;
+        if (reversalIsCashOut(v.referenceType)) balance -= amount;
         else balance += amount;
       }
     }
@@ -269,9 +274,11 @@ export async function computeTrialBalance(executor: any, companyId: string, star
     side('Capitalized Fixed Assets', bs.fixedAssets),
     side('VAT Input (Recoverable)', bs.vatInputRecoverable),
     side('Vendor Credit Receivable', bs.vendorCreditReceivable),
+    side('Vendor Advances (Paid on Account)', bs.vendorAdvances),
     side('Accounts Payable', -bs.accountsPayable),
     side('VAT Collected (Output Tax)', -bs.vatOutputPayable),
     side('Goods Received Not Billed', -bs.goodsReceivedNotBilled),
+    side('Customer Advances (Received on Account)', -bs.customerAdvances),
     side("Shareholders' Paid-in Capital", -totalCapital),
     side('Opening Balance Equity', -openingBalances),
     side('Retained Earnings (Opening)', -openingProfit),
@@ -312,6 +319,8 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
     lte(schema.vouchers.postingDate, endDate),
   ))).filter((v: any) => branchOk(v.branchId));
 
+  // Receipts / payments that settle several documents are split back to their documents here (server/lib/settlementFacts.ts), dated by the day each part was applied.
+  const documentAllocations = (await allocationEvents(executor, companyId, { fromDate: startDate, toDate: endDate })).filter(e => branchOk(e.branchId));
   let totalRevenue = 0;
   if (basis === 'Accrual') {
     const revenueInvoices = (await executor.select().from(schema.invoices).where(and(
@@ -330,7 +339,7 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
   } else {
     // Cash basis: customer receipts net of refunds (a Reversal voucher is money handed back), scaled to
     // each invoice's tax-exclusive share so VAT is excluded here too.
-    const cashVouchers = periodVouchers.filter((v: any) => v.referenceType === 'Invoice' && (v.type === 'Receipt' || v.type === 'Reversal'));
+    const cashVouchers = [...periodVouchers, ...documentAllocations].filter((v: any) => v.referenceType === 'Invoice' && (v.type === 'Receipt' || v.type === 'Reversal'));
     const cashInvoiceIds = Array.from(new Set(cashVouchers.map((v: any) => v.referenceId))) as string[];
     const cashInvoices = cashInvoiceIds.length
       ? await executor.select().from(schema.invoices).where(and(eq(schema.invoices.companyId, companyId), inArray(schema.invoices.id, cashInvoiceIds)))
@@ -390,7 +399,7 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
     totalExpenses = round2(opExInRange.reduce((sum, exp) => sum + recognisedCost(exp, plPctBySlab, plVariances), 0));
   } else {
     // Cash basis: each payment counts for its NET share (the recoverable VAT in it is not a cost).
-    totalExpenses = round2(periodVouchers
+    totalExpenses = round2([...periodVouchers, ...documentAllocations]
       .filter(v => v.referenceType === 'Expense' && (v.type === 'Payment' || v.type === 'Reversal'))
       .reduce((sum, v) => {
         const exp = expenseById.get(v.referenceId);
@@ -408,7 +417,10 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
   const vendorRefundsReceived = round2(periodVouchers
     .filter(v => v.referenceType === 'VendorRefund' && (v.type === 'Receipt' || v.type === 'Reversal'))
     .reduce((sum, v) => sum + (v.type === 'Receipt' ? Number(v.amount) : -Number(v.amount)), 0));
-  const operatingInflows = round2(vendorRefundsReceived + periodVouchers
+  // Cash that came in through a customer receipt (whether or not it was put against invoices yet) is an operating inflow on the day it arrived; a receipt cancelled later is money handed back.
+  const settlementReceipts = round2(periodVouchers.filter(v => v.referenceType === 'CustomerReceipt' && v.type === 'Receipt').reduce((sum, v) => sum + Number(v.amount), 0));
+  const settlementReceiptReversals = round2(periodVouchers.filter(v => v.referenceType === 'CustomerReceipt' && v.type === 'Reversal').reduce((sum, v) => sum + Number(v.amount), 0));
+  const operatingInflows = round2(vendorRefundsReceived + settlementReceipts + periodVouchers
     .filter(v => v.referenceType === 'Invoice' && v.type === 'Receipt')
     .reduce((sum, v) => sum + Number(v.amount), 0));
   // Outflows = operating expense payments (net of their reversals) + money handed back to customers
@@ -428,7 +440,10 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
   const billPayments = round2(periodVouchers
     .filter(v => v.referenceType === 'PurchaseBill' && (v.type === 'Payment' || v.type === 'Reversal'))
     .reduce((sum, v) => sum + (v.type === 'Payment' ? Number(v.amount) : -Number(v.amount)), 0));
-  const operatingOutflows = round2(expenseOutflows + customerRefunds + billPayments);
+  // A vendor payment that settles several bills / expenses is operating cash out, net of cancellations (its documents' CapEx / OpEx split is not known at payment time).
+  const settlementPayments = round2(periodVouchers.filter(v => v.referenceType === 'VendorPayment' && (v.type === 'Payment' || v.type === 'Reversal'))
+    .reduce((sum, v) => sum + (v.type === 'Payment' ? Number(v.amount) : -Number(v.amount)), 0));
+  const operatingOutflows = round2(expenseOutflows + customerRefunds + settlementReceiptReversals + billPayments + settlementPayments);
   const investingOutflows = round2(periodVouchers
     .filter(v => v.referenceType === 'Expense' && (v.type === 'Payment' || v.type === 'Reversal'))
     .reduce((sum, v) => {
@@ -471,6 +486,8 @@ export interface BalanceSheetFigures {
   vatInputRecoverable: number;
   // Refund due from suppliers for goods returned after the bill was already paid in full (a receivable, not netted into AP).
   vendorCreditReceivable: number;
+  // Money paid to a vendor that has not been put against any bill / expense yet (a payment on account) - an asset, the vendor owes goods or a refund for it.
+  vendorAdvances: number;
   totalAssets: number;
   accountsPayable: number;
   // Output VAT on sales (net of Credit Notes) — collected on the authority's behalf, so a liability.
@@ -478,6 +495,8 @@ export interface BalanceSheetFigures {
   // Goods received but not yet billed (the GR/IR clearing account): stock already sits in Inventory at cost, but the
   // supplier's invoice has not been recorded, so there is no Accounts Payable yet — this is what is owed for it.
   goodsReceivedNotBilled: number;
+  // Money received from a customer that has not been put against any invoice yet (a receipt on account) - a liability until it is applied.
+  customerAdvances: number;
   totalLiabilities: number;
   capitalContributed: number;
   retainedEarnings: number;
@@ -513,6 +532,11 @@ async function laterVoucherTotals(executor: any, companyId: string, referenceTyp
   ));
   const out = new Map<string, number>();
   for (const r of rows) out.set(r.referenceId, round2((out.get(r.referenceId) || 0) + Number(r.amount)));
+  // money put against the document through a receipt / payment after the date counts the same way (server/lib/settlementFacts.ts)
+  if ((type === 'Receipt' || type === 'Payment') && (referenceType === 'Invoice' || referenceType === 'Expense' || referenceType === 'PurchaseBill')) {
+    const later = laterAllocationTotals(await allocationEvents(executor, companyId, { documentType: referenceType }), referenceType, asOfDate);
+    for (const [id, v] of later) out.set(id, round2((out.get(id) || 0) + v));
+  }
   return out;
 }
 
@@ -718,8 +742,11 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   goodsReceivedNotBilled = round2(Math.max(0, goodsReceivedNotBilled));
 
   const vendorCreditReceivable = await computeVendorCreditBalance(executor, companyId, asOfDate);
-  const totalAssets = round2(bankBalance + accountsReceivable + inventoryValue + fixedAssets + vatInputRecoverable + vendorCreditReceivable);
-  const totalLiabilities = round2(accountsPayable + vatOutputPayable + goodsReceivedNotBilled);
+  const onAccount = await onAccountBalances(executor, companyId, asOfDate);
+  const vendorAdvances = onAccount.vendorAdvances;
+  const customerAdvances = onAccount.customerAdvances;
+  const totalAssets = round2(bankBalance + accountsReceivable + inventoryValue + fixedAssets + vatInputRecoverable + vendorCreditReceivable + vendorAdvances);
+  const totalLiabilities = round2(accountsPayable + vatOutputPayable + goodsReceivedNotBilled + customerAdvances);
 
   const investors = await executor.select().from(schema.investors).where(eq(schema.investors.companyId, companyId));
   // The investors' running total is as of NOW; as at an earlier date, capital paid in (or taken back) after it is not there yet.
@@ -738,8 +765,8 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   const totalEquity = round2(capitalContributed + retainedEarnings + currentPeriodEarnings);
 
   return {
-    asOfDate, bankBalance, accountsReceivable, inventoryValue, fixedAssets, vatInputRecoverable, vendorCreditReceivable, totalAssets,
-    accountsPayable, vatOutputPayable, goodsReceivedNotBilled, totalLiabilities,
+    asOfDate, bankBalance, accountsReceivable, inventoryValue, fixedAssets, vatInputRecoverable, vendorCreditReceivable, vendorAdvances, totalAssets,
+    accountsPayable, vatOutputPayable, goodsReceivedNotBilled, customerAdvances, totalLiabilities,
     capitalContributed, retainedEarnings, currentPeriodEarnings, totalEquity,
     balanceCheck: round2(totalAssets - (totalLiabilities + totalEquity)),
   };
@@ -956,8 +983,8 @@ export async function computeDashboardSummary(
   ));
   const monthVouchers = periodVouchers.filter(v => branchOk(v.branchId));
   const receivedSales = round2(
-    monthVouchers.filter(v => v.referenceType === 'Invoice' && v.type === 'Receipt').reduce((sum, v) => sum + Number(v.amount), 0) -
-    monthVouchers.filter(v => v.referenceType === 'Invoice' && v.type === 'Reversal').reduce((sum, v) => sum + Number(v.amount), 0)
+    monthVouchers.filter(v => (v.referenceType === 'Invoice' || v.referenceType === 'CustomerReceipt') && v.type === 'Receipt').reduce((sum, v) => sum + Number(v.amount), 0) -
+    monthVouchers.filter(v => (v.referenceType === 'Invoice' || v.referenceType === 'CustomerReceipt') && v.type === 'Reversal').reduce((sum, v) => sum + Number(v.amount), 0)
   );
 
   const allExpensesInRange = await executor.select().from(schema.expenses).where(and(
@@ -1207,6 +1234,10 @@ export async function computeCustomerStatement(executor: any, companyId: string,
     inArray(schema.vouchers.referenceId, invoiceIds),
   ))).filter(v => branchOk(v.branchId)) : [];
 
+  // A receipt that settles several invoices (or is held on account) is one voucher against the CUSTOMER: it lowers what the customer owes by its full amount on its own date.
+  const customerReceipts = (await executor.select().from(schema.vouchers).where(and(
+    eq(schema.vouchers.companyId, companyId), inArray(schema.vouchers.type, ['Receipt', 'Reversal']), eq(schema.vouchers.referenceType, 'CustomerReceipt'), eq(schema.vouchers.referenceId, customerId),
+  ))).filter((v: any) => branchOk(v.branchId));
   const entries: Omit<StatementEntry, 'runningBalance'>[] = [];
   for (const inv of custInvoices) {
     const total = totalsByInvoiceId.get(inv.id)!.grandTotal;
@@ -1215,6 +1246,10 @@ export async function computeCustomerStatement(executor: any, companyId: string,
   }
   for (const v of receipts) {
     if (v.type === 'Reversal') entries.push({ date: v.docDate, type: 'Refund', docNumber: v.voucherNumber, debit: Number(v.amount), credit: 0 });
+    else entries.push({ date: v.docDate, type: 'Receipt', docNumber: v.voucherNumber, debit: 0, credit: Number(v.amount) });
+  }
+  for (const v of customerReceipts) {
+    if (v.type === 'Reversal') entries.push({ date: v.docDate, type: 'Receipt Cancelled', docNumber: v.voucherNumber, debit: Number(v.amount), credit: 0 });
     else entries.push({ date: v.docDate, type: 'Receipt', docNumber: v.voucherNumber, debit: 0, credit: Number(v.amount) });
   }
   entries.sort((a, b) => a.date.localeCompare(b.date));
@@ -1384,6 +1419,14 @@ export async function computeVendorStatement(executor: any, companyId: string, v
   }
   for (const b of vendBills) entries.push({ date: b.docDate, type: 'Purchase Bill', docNumber: b.billNumber, debit: Number(b.grandTotal), credit: 0 });
   for (const v of payments) entries.push({ date: v.docDate, type: 'Payment', docNumber: v.voucherNumber, debit: 0, credit: Number(v.amount) });
+  // A payment that settles several bills / expenses (or is held on account) is one voucher against the VENDOR: full amount, on its own date.
+  const vendorPayments = (await executor.select().from(schema.vouchers).where(and(
+    eq(schema.vouchers.companyId, companyId), inArray(schema.vouchers.type, ['Payment', 'Reversal']), eq(schema.vouchers.referenceType, 'VendorPayment'), eq(schema.vouchers.referenceId, vendorId),
+  ))).filter((v: any) => branchOk(v.branchId));
+  for (const v of vendorPayments) {
+    if (v.type === 'Reversal') entries.push({ date: v.docDate, type: 'Payment Cancelled', docNumber: v.voucherNumber, debit: Number(v.amount), credit: 0 });
+    else entries.push({ date: v.docDate, type: 'Payment', docNumber: v.voucherNumber, debit: 0, credit: Number(v.amount) });
+  }
   entries.sort((a, b) => a.date.localeCompare(b.date));
 
   let running = 0;
@@ -1918,7 +1961,7 @@ function voucherEffect(v: { type: string; referenceType: string; amount: any }) 
   const amount = Number(v.amount);
   if (v.type === 'Receipt' || v.type === 'TransferIn') return { debit: amount, credit: 0 };
   if (v.type === 'Payment' || v.type === 'TransferOut') return { debit: 0, credit: amount };
-  if (v.type === 'Reversal') return v.referenceType === 'Invoice' || v.referenceType === 'VendorRefund' ? { debit: 0, credit: amount } : { debit: amount, credit: 0 };
+  if (v.type === 'Reversal') return reversalIsCashOut(v.referenceType) ? { debit: 0, credit: amount } : { debit: amount, credit: 0 };
   return { debit: 0, credit: 0 };
 }
 // Opening balance = bank opening balance + everything posted BEFORE startDate (the old

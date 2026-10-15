@@ -11,6 +11,7 @@ import AccountDimensionRulesScreen from './ledger/AccountDimensionRulesScreen';
 import ReportRunScreen from './ledger/ReportRunScreen';
 import ReportDesignerScreen from './ledger/ReportDesignerScreen';
 import PostingControlScreen from './ledger/PostingControlScreen';
+import { SettlementEntryScreen, SettlementListScreen } from './ledger/SettlementScreens';
 import { SubledgerAgingScreen, PartyLedgerScreen, type PartyFocus } from './ledger/SubledgerScreens';
 
 export type LedgerFocus = { kind: 'manual' | 'entry'; id: string };
@@ -26,6 +27,10 @@ export default function LedgerModule({ db, tab, editJournalId, focus, accountFoc
   const openParty = (f: PartyFocus) => { setPartyFocus(f); onNavigate(f.kind === 'customer' ? 'gl-customer-ledger' : 'gl-vendor-ledger'); };
   const openEntry = (id: string) => { onFocusJournal({ kind: 'entry', id }); onNavigate('gl-journals'); };
   switch (tab) {
+    case 'gl-receive-payment': return <SettlementEntryScreen db={db} kind="customer" />;
+    case 'gl-receipts': return <SettlementListScreen db={db} kind="customer" onNew={() => onNavigate('gl-receive-payment')} />;
+    case 'gl-pay-vendor': return <SettlementEntryScreen db={db} kind="vendor" />;
+    case 'gl-vendor-payments': return <SettlementListScreen db={db} kind="vendor" onNew={() => onNavigate('gl-pay-vendor')} />;
     case 'gl-receivables-aging': return <SubledgerAgingScreen db={db} kind="customer" onOpenParty={openParty} />;
     case 'gl-payables-aging': return <SubledgerAgingScreen db={db} kind="vendor" onOpenParty={openParty} />;
     case 'gl-customer-ledger': return <PartyLedgerScreen db={db} kind="customer" focus={partyFocus} onFocusConsumed={() => setPartyFocus(null)} onOpenEntry={openEntry} />;

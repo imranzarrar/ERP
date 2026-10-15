@@ -13,6 +13,7 @@ import { reverseAllEntriesFor } from './ledger.js';
 import { nowDate } from './clock.js';
 import { documentDates } from './documentDates.js';
 import { assertPostingAllowed } from './postingGuard.js';
+import { assertNoActiveAllocations } from './settlements.js';
 
 // Round-half-up to 2 decimals. Applied after every intermediate step in a money
 // calculation chain (not just once at the end via .toFixed(2)) so the value written to
@@ -657,6 +658,7 @@ export async function cancelExpense(tx: any, req: any, id: string, companyId: st
   if (!expense) { const err: any = new Error('Expense not found.'); err.status = 404; throw err; }
   if (!branchAccessOk(req, expense.branchId)) { const err: any = new Error('Forbidden: you are not assigned to this branch.'); err.status = 403; throw err; }
   if (expense.status === 'Cancelled') { const err: any = new Error('Expense is already cancelled.'); err.status = 400; throw err; }
+  await assertNoActiveAllocations(tx, companyId, 'Expense', id); // paid through a vendor payment: undo that first
 
   // Cancelling is an edit to this expense's status, same as the create/update route
   // already blocks once its quarter has been filed with ZATCA (a filed return's reported

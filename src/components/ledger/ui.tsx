@@ -5,8 +5,10 @@ import StatusPill from '../StatusPill';
 
 // Small shared pieces for the General Ledger screens: one fetch helper that turns a server error into a readable message, money formatting that
 // keeps columns aligned, and the page chrome (card, buttons, drawer) so every ledger screen looks and behaves the same.
-export async function ledgerApi<T = any>(path: string, init: { method?: string; body?: any } = {}): Promise<T> {
-  const res = await fetch(`/api/ledger${path}`, {
+export const ledgerApi = <T = any>(path: string, init: { method?: string; body?: any } = {}): Promise<T> => erpApi<T>(`/api/ledger${path}`, init);
+// the same call for any /api route (the receipts and payments screens live under /api/settlements)
+export async function erpApi<T = any>(url: string, init: { method?: string; body?: any } = {}): Promise<T> {
+  const res = await fetch(url, {
     method: init.method || 'GET',
     headers: init.body !== undefined && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : undefined,
     body: init.body === undefined ? undefined : init.body instanceof FormData ? init.body : JSON.stringify(init.body),

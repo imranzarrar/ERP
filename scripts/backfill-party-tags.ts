@@ -15,7 +15,8 @@ const STEPS: { label: string; col: 'customer_id' | 'vendor_id'; type: 'customer'
   { label: 'purchase bills', col: 'vendor_id', type: 'vendor', refs: ['PurchaseBill'], from: 'purchase_bills d', party: 'd.vendor_id', join: 'd.id = e.reference_id' },
   { label: 'goods receipts', col: 'vendor_id', type: 'vendor', refs: ['Grn'], from: 'goods_receipt_notes d', party: 'd.vendor_id', join: 'd.id = e.reference_id' },
   { label: 'purchase returns', col: 'vendor_id', type: 'vendor', refs: ['PurchaseReturn'], from: 'purchase_returns d', party: 'd.vendor_id', join: 'd.id = e.reference_id' },
-  { label: 'vendor refunds', col: 'vendor_id', type: 'vendor', refs: ['VendorRefund'], from: 'vouchers d', party: 'd.reference_id', join: 'd.id = e.reference_id' },
+  { label: 'vendor refunds and payments', col: 'vendor_id', type: 'vendor', refs: ['VendorRefund', 'VendorPayment'], from: 'vouchers d', party: 'd.reference_id', join: 'd.id = e.reference_id' },
+  { label: 'customer receipts', col: 'customer_id', type: 'customer', refs: ['CustomerReceipt'], from: 'vouchers d', party: 'd.reference_id', join: 'd.id = e.reference_id' },
 ];
 
 console.log(`${APPLY ? 'APPLY' : 'DRY RUN'}: party tags of ledger lines`);

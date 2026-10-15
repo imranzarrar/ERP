@@ -810,6 +810,20 @@ type NavSection = {
             { id: 'gl-dim-rules', label: t('3 Account Dimension Rules'), permissionKey: 'accountDimensionRules.read' }
           ]
         },
+        {
+          id: 'gl-receivables-group', label: t('Receivables'), icon: FileText, adminOnly: false,
+          subItems: [
+            { id: 'gl-receive-payment', label: t('Receive Payment'), permissionKey: 'customerReceipts.create' },
+            { id: 'gl-receipts', label: t('Receipts'), permissionKey: 'customerReceipts.read' }
+          ]
+        },
+        {
+          id: 'gl-payables-group', label: t('Payables'), icon: FileText, adminOnly: false,
+          subItems: [
+            { id: 'gl-pay-vendor', label: t('Pay Vendor'), permissionKey: 'vendorPayments.create' },
+            { id: 'gl-vendor-payments', label: t('Vendor Payments'), permissionKey: 'vendorPayments.read' }
+          ]
+        },
         { id: 'gl-opening', label: t('Opening Balances'), icon: BookOpen, adminOnly: false, permissionKey: ['openingBalances.read', 'openingBalances.post'] },
         { id: 'gl-posting-control', label: t('Posting Control'), icon: Lock, adminOnly: false, permissionKey: 'postingControl.read' }
       ]
@@ -1660,6 +1674,10 @@ type NavSection = {
  activeTab === 'gl-trial-balance' ? t('Trial Balance (Ledger)') :
  activeTab === 'gl-income-statement' ? t('Income Statement') :
  activeTab === 'gl-balance-sheet' ? t('Balance Sheet (Ledger)') :
+ activeTab === 'gl-receive-payment' ? t('Receive Payment') :
+ activeTab === 'gl-receipts' ? t('Receipts') :
+ activeTab === 'gl-pay-vendor' ? t('Pay Vendor') :
+ activeTab === 'gl-vendor-payments' ? t('Vendor Payments') :
  activeTab === 'gl-receivables-aging' ? t('Receivables Aging') :
  activeTab === 'gl-payables-aging' ? t('Payables Aging') :
  activeTab === 'gl-customer-ledger' ? t('Customer Ledger') :
@@ -1705,6 +1723,10 @@ type NavSection = {
  {activeTab === 'gl-trial-balance' && t('Opening, movement and closing balance of every account, built from the ledger.')}
  {activeTab === 'gl-income-statement' && t('Revenue, cost of sales and expenses for a period, from the ledger, with comparatives.')}
  {activeTab === 'gl-balance-sheet' && t('Assets, liabilities and equity as at a date, from the ledger.')}
+ {activeTab === 'gl-receive-payment' && t('Record money received from a customer: put it against several invoices at once, or keep it on account.')}
+ {activeTab === 'gl-receipts' && t('Every receipt from customers, what it settled and what is still held on account.')}
+ {activeTab === 'gl-pay-vendor' && t('Record a payment to a vendor: put it against several bills and expenses at once, or keep it on account.')}
+ {activeTab === 'gl-vendor-payments' && t('Every payment to vendors, what it settled and what is still held on account.')}
  {activeTab === 'gl-receivables-aging' && t('What each customer owes and how overdue it is, from the ledger.')}
  {activeTab === 'gl-payables-aging' && t('What we owe each vendor and how overdue it is, from the ledger.')}
  {activeTab === 'gl-customer-ledger' && t('Every posting of one customer with its running balance, from the ledger.')}

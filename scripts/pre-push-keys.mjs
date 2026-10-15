@@ -11,6 +11,7 @@ const KEYS = [
   ['branches', 'branches_id_company_unique', 'company_id, id'],
   ['customers', 'customers_id_company_unique', 'company_id, id'],
   ['vendors', 'vendors_id_company_unique', 'company_id, id'],
+  ['vouchers', 'vouchers_id_company_unique', 'company_id, id'],
 ];
 
 const pool = new pg.Pool({ host: process.env.SQL_HOST, user: process.env.SQL_USER, password: process.env.SQL_PASSWORD, database: process.env.SQL_DB_NAME });

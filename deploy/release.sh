@@ -195,6 +195,7 @@ if should_run 4; then
     echo "retypes, and anything unrelated to the changes listed above (db:push diffs the LIVE database)."
     echo "First the in-place date-field renames (idempotent; drizzle-kit would otherwise drop the old columns):"
     npx tsx scripts/migrate-date-fields.mjs
+    npx tsx scripts/pre-push-keys.mjs
     npm run db:push
     confirm "Did db:push finish applying ONLY the changes you expected, with no errors?"
   fi

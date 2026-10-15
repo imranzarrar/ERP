@@ -134,7 +134,7 @@ export async function computeConsistencyCheck(executor: any, companyId: string, 
   const net = (k: string) => round2(lines.filter(l => l.k === k).reduce((n, l) => n + Number(l.dr) - Number(l.cr), 0));
   if (lines.length > 0) {
     const pairs: [string, number, number][] = [
-      ['BANK', net('BANK'), bs.bankBalance], ['AR', net('AR'), bs.accountsReceivable], ['AP', -net('AP'), bs.accountsPayable],
+      ['BANK', net('BANK'), bs.bankBalance], ['AR', net('AR'), round2(bs.accountsReceivable - bs.customerAdvances)], ['AP', -net('AP'), round2(bs.accountsPayable - bs.vendorAdvances)],
       ['INVENTORY', net('INVENTORY'), bs.inventoryValue], ['FIXED_ASSETS', net('FIXED_ASSETS'), bs.fixedAssets],
       ['VAT_INPUT', net('VAT_INPUT'), bs.vatInputRecoverable], ['VAT_OUTPUT', -net('VAT_OUTPUT'), bs.vatOutputPayable],
       ['GR_IR_CLEARING', -net('GR_IR_CLEARING'), bs.goodsReceivedNotBilled], ['VENDOR_CREDIT', net('VENDOR_CREDIT_RECEIVABLE'), bs.vendorCreditReceivable],
