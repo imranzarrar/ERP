@@ -54,7 +54,7 @@ Every new user-visible string: add `[key, Arabic, Urdu]` to `src/glTranslations.
 ## 6. Final gate (all must pass before "done")
 1. `npm run lint` clean · `npm run check:isolation` clean.
 2. New and affected tests pass: `TEST_BASE_URL=http://localhost:3001 npx vitest run <files>`; before a release, the full suite (only the SMTP-dependent `companyOnboarding` / `passwordReset` may fail).
-3. `node scripts/build-test-catalogue.mjs` and `npx tsx scripts/build-gl-docs.mjs` run; `--check` prints OK.
+3. `node scripts/build-test-catalogue.mjs` and `npx tsx scripts/build-gl-docs.mjs` run; `--check` prints OK. **Chain the build, `--check`, lint and `git commit` with `&&` (never `;`) so a failure stops the commit and the push**: a source file with an unescaped apostrophe once broke the generators and was pushed.
 4. Every row of section 2 reviewed (state "reviewed, no change" only when true).
 5. `git add -A`, commit with the sprint item in the message, `git push origin v2` (2.0 only; never merge v2 into master).
 6. If the release needs it: say which release steps changed (annex F) and run the Demo release (`deploy/release-demo.sh`); report the result.
