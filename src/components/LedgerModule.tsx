@@ -11,6 +11,7 @@ import AccountDimensionRulesScreen from './ledger/AccountDimensionRulesScreen';
 import ReportRunScreen from './ledger/ReportRunScreen';
 import ReportDesignerScreen from './ledger/ReportDesignerScreen';
 import PostingControlScreen from './ledger/PostingControlScreen';
+import { PrintDocContext } from './ledger/ui';
 import { BankReconciliationScreen } from './ledger/BankReconciliationScreens';
 import { SettlementEntryScreen, SettlementListScreen } from './ledger/SettlementScreens';
 import { SubledgerAgingScreen, PartyLedgerScreen, type PartyFocus } from './ledger/SubledgerScreens';
@@ -19,7 +20,7 @@ export type LedgerFocus = { kind: 'manual' | 'entry'; id: string };
 
 // The General Ledger section. Which screen shows is purely driven by the left menu (one tab id per screen); App.tsx owns the little bit of state
 // that must survive a tab change (the journal being edited, the journal or account to open next).
-export default function LedgerModule({ db, tab, editJournalId, focus, accountFocus, onFocusConsumed, onNavigate, onFocusJournal, onEditJournal, onDrill, onDirtyChange }: {
+function LedgerScreens({ db, tab, editJournalId, focus, accountFocus, onFocusConsumed, onNavigate, onFocusJournal, onEditJournal, onDrill, onDirtyChange }: {
   db: DatabaseState; tab: string; editJournalId?: string; focus: LedgerFocus | null; accountFocus: AccountFocus | null;
   onFocusConsumed: () => void; onNavigate: (tab: string) => void; onFocusJournal: (f: LedgerFocus) => void; onEditJournal: (id: string) => void;
   onDrill: (f: any) => void; onDirtyChange: (dirty: boolean) => void;
@@ -65,4 +66,9 @@ export default function LedgerModule({ db, tab, editJournalId, focus, accountFoc
     case 'gl-dim-rules': return <AccountDimensionRulesScreen db={db} />;
     default: return null;
   }
+}
+
+export default function LedgerModule(props: Parameters<typeof LedgerScreens>[0] & { onPrintDoc: (type: 'SettlementVoucher' | 'JournalVoucher' | 'BankReconciliation', data: any) => void }) {
+  const { onPrintDoc, ...rest } = props;
+  return <PrintDocContext.Provider value={onPrintDoc}><LedgerScreens {...rest} /></PrintDocContext.Provider>;
 }

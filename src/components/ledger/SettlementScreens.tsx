@@ -2,7 +2,7 @@ import React from 'react';
 import { Save, Wand2, Eraser, Ban, Link2, Printer, FilePlus2 } from 'lucide-react';
 import { useTranslation } from '../../hooks';
 import type { DatabaseState } from '../../dbStore';
-import { erpApi, Card, Notice, Modal, Drawer, inputCls, labelCls, primaryBtn, ghostBtn, dangerBtn, money, todayIso, useBanner } from './ui';
+import { erpApi, Card, Notice, Modal, Drawer, inputCls, labelCls, primaryBtn, ghostBtn, dangerBtn, money, todayIso, useBanner, usePrintDoc } from './ui';
 
 // Receive Payment (customer) and Pay Vendor: one receipt / payment that settles several documents at once, or is kept on account (server/lib/settlements.ts).
 // The two screens are the same screen with the party kind swapped, so a customer receipt and a vendor payment can never drift apart in behaviour.
@@ -77,6 +77,7 @@ export function SettlementEntryScreen({ db, kind, onSaved }: { db: DatabaseState
   const [saving, setSaving] = React.useState(false);
   const [done, setDone] = React.useState<any>(null);
   const { banner, show } = useBanner();
+  const printDoc = usePrintDoc();
 
   const loadItems = React.useCallback(async (id: string) => {
     if (!id) { setItems([]); return; }
@@ -111,7 +112,7 @@ export function SettlementEntryScreen({ db, kind, onSaved }: { db: DatabaseState
           <div><div className={labelCls}>{t('Held on account')}</div><div className="font-mono font-bold text-emerald-700">{money(done.unapplied)} {currency}</div></div>
         </div>
         <div className="flex gap-2">
-          <button className={primaryBtn} onClick={() => window.open(`/api/settlements/${done.voucherId}/print`, '_blank')}><Printer className="w-3.5 h-3.5" />{t('Print voucher')}</button>
+          <button className={primaryBtn} onClick={async () => { try { printDoc('SettlementVoucher', await erpApi(`/api/settlements/${done.voucherId}`)); } catch (e: any) { show('error', e.message); } }}><Printer className="w-3.5 h-3.5" />{t('Print voucher')}</button>
           <button className={ghostBtn} onClick={again}><FilePlus2 className="w-3.5 h-3.5" />{t(isCustomer ? 'New receipt' : 'New payment')}</button>
         </div>
       </Card>
@@ -215,6 +216,7 @@ function SettlementDetailDrawer({ db, kind, id, currency, onClose, onChanged }: 
   const [cancel, setCancel] = React.useState(false);
   const [reason, setReason] = React.useState('');
   const [busy, setBusy] = React.useState(false);
+  const printDoc = usePrintDoc();
   const load = React.useCallback(async () => { try { setD(await erpApi(`/api/settlements/${id}`)); } catch (e: any) { setError(e.message); } }, [id]);
   React.useEffect(() => { load(); }, [load]);
   const doCancel = async () => {
@@ -224,7 +226,7 @@ function SettlementDetailDrawer({ db, kind, id, currency, onClose, onChanged }: 
   return (
     <Drawer title={d ? d.voucher.voucherNumber : t('Receipt')} onClose={onClose} width="max-w-xl"
       footer={d && !d.cancelled && (<>
-        <button className={ghostBtn} onClick={() => window.open(`/api/settlements/${id}/print`, '_blank')}><Printer className="w-3.5 h-3.5" />{t('Print voucher')}</button>
+        <button className={ghostBtn} onClick={() => printDoc('SettlementVoucher', d)}><Printer className="w-3.5 h-3.5" />{t('Print voucher')}</button>
         {d.unapplied > 0.005 && <button className={ghostBtn} onClick={() => setApply(true)}><Link2 className="w-3.5 h-3.5" />{t('Apply to documents')}</button>}
         <button className={dangerBtn} onClick={() => setCancel(true)}><Ban className="w-3.5 h-3.5" />{t('Cancel')}</button>
       </>)}>

@@ -5,6 +5,10 @@ import StatusPill from '../StatusPill';
 
 // Small shared pieces for the General Ledger screens: one fetch helper that turns a server error into a readable message, money formatting that
 // keeps columns aligned, and the page chrome (card, buttons, drawer) so every ledger screen looks and behaves the same.
+// The page's print overlay (App.tsx owns it: one DocumentRenderer for every printed document). A ledger screen hands it a document type and its server-resolved data.
+export const PrintDocContext = React.createContext<(type: 'SettlementVoucher' | 'JournalVoucher' | 'BankReconciliation', data: any) => void>(() => {});
+export const usePrintDoc = () => React.useContext(PrintDocContext);
+
 export const ledgerApi = <T = any>(path: string, init: { method?: string; body?: any } = {}): Promise<T> => erpApi<T>(`/api/ledger${path}`, init);
 // the same call for any /api route (the receipts and payments screens live under /api/settlements)
 export async function erpApi<T = any>(url: string, init: { method?: string; body?: any } = {}): Promise<T> {

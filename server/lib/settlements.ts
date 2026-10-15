@@ -10,6 +10,7 @@ import { round2, computePaymentStatus } from './businessLogic.js';
 import { getAndIncrementDocumentNumber } from './documentNumbering.js';
 import { documentDates } from './documentDates.js';
 import { postJournalEntry, reverseAllEntriesFor } from './ledger.js';
+import { postedEntriesOfReference } from './postingPrint.js';
 import { computeInvoiceTotalsMap, computeOutstanding, liabilityAmount, taxPercentageBySlabId } from './financialReports.js';
 
 export type SettlementKind = 'customer' | 'vendor';
@@ -183,7 +184,7 @@ export async function listSettlements(tx: any, companyId: string, kind: Settleme
 export async function settlementDetail(tx: any, companyId: string, voucherId: string) {
   const s = await loadSettlement(tx, companyId, voucherId);
   const table: any = s.kind === 'customer' ? schema.customers : schema.vendors;
-  const [party] = await tx.select({ id: table.id, name: table.name }).from(table).where(and(eq(table.id, s.voucher.referenceId), eq(table.companyId, companyId)));
+  const [party] = await tx.select({ id: table.id, name: table.name, phone: table.phone, email: table.email, address: table.address }).from(table).where(and(eq(table.id, s.voucher.referenceId), eq(table.companyId, companyId)));
   const lines = await Promise.all(s.allocations.map(async (a: any) => {
     const t: any = a.documentType === 'Invoice' ? schema.invoices : a.documentType === 'Expense' ? schema.expenses : schema.purchaseBills;
     const numCol = a.documentType === 'Invoice' ? schema.invoices.invoiceNumber : a.documentType === 'Expense' ? schema.expenses.expenseNumber : schema.purchaseBills.billNumber;
@@ -191,5 +192,8 @@ export async function settlementDetail(tx: any, companyId: string, voucherId: st
     return { id: a.id, documentType: a.documentType, documentId: a.documentId, documentNumber: d?.n || '', amount: Number(a.amount), reversed: !!a.reversedAt };
   }));
   const [bank] = await tx.select({ name: schema.bankAccounts.bankName }).from(schema.bankAccounts).where(eq(schema.bankAccounts.id, s.voucher.bankId));
-  return { voucher: { ...s.voucher, amount: Number(s.voucher.amount) }, kind: s.kind, party: party || null, bankName: bank?.name || '', cancelled: s.cancelled, allocations: lines, applied: s.applied, unapplied: s.cancelled ? 0 : s.unapplied };
+  // what it posted (and, once cancelled, the reversing entry) and who prepared it: the same payload prints the voucher
+  const posting = await postedEntriesOfReference(tx, companyId, s.voucher.referenceType, s.voucher.id);
+  const [by] = s.voucher.createdById ? await tx.select({ username: schema.users.username }).from(schema.users).where(eq(schema.users.id, s.voucher.createdById)) : [];
+  return { voucher: { ...s.voucher, amount: Number(s.voucher.amount) }, kind: s.kind, party: party || null, bankName: bank?.name || '', cancelled: s.cancelled, allocations: lines, applied: s.applied, unapplied: s.cancelled ? 0 : s.unapplied, posting, preparedBy: by?.username || '' };
 }

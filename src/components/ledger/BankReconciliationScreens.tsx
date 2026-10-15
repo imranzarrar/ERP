@@ -2,7 +2,7 @@ import React from 'react';
 import { Plus, Upload, Wand2, CheckCircle2, AlertTriangle, Lock, Unlock, Trash2, Unlink, Receipt, Undo2, ArrowLeft, Printer } from 'lucide-react';
 import { useTranslation } from '../../hooks';
 import type { DatabaseState } from '../../dbStore';
-import { erpApi, Card, Notice, Modal, inputCls, labelCls, primaryBtn, ghostBtn, dangerBtn, greenBtn, money, todayIso, useBanner } from './ui';
+import { erpApi, Card, Notice, Modal, inputCls, labelCls, primaryBtn, ghostBtn, dangerBtn, greenBtn, money, todayIso, useBanner, usePrintDoc } from './ui';
 
 // Bank reconciliation (server/lib/bankReconciliation.ts, Blueprint FR-BANK-01..05): pick a bank and the statement's date and ending balance, tick off (or match) every ledger
 // line the bank has confirmed, post the bank fee / interest the books do not have yet, and complete only when the cleared lines add up to the statement.
@@ -129,6 +129,7 @@ function ReconciliationSession({ db, id, onBack }: { db: DatabaseState; id: stri
   const currency = db.companySetup?.currency || 'SAR';
   const [d, setD] = React.useState<any>(null);
   const { banner, show } = useBanner();
+  const printDoc = usePrintDoc();
   const [adjust, setAdjust] = React.useState<any>(null);          // statement line being posted as an entry (or {} for a free one)
   const [imp, setImp] = React.useState<{ lines: any[]; errors: string[] } | null>(null);
   const [sugg, setSugg] = React.useState<any[] | null>(null);
@@ -161,7 +162,7 @@ function ReconciliationSession({ db, id, onBack }: { db: DatabaseState; id: stri
         <div className="text-sm font-bold text-slate-900">{d.bank.name} · {d.session.statementDate}</div>
         {open ? <span className="text-amber-600 text-xs font-bold">{t('In progress')}</span> : <span className="inline-flex items-center gap-1 text-emerald-700 text-xs font-bold"><Lock className="w-3 h-3" />{t('Completed')}</span>}
         <div className="ms-auto flex gap-2">
-          <button className={ghostBtn} onClick={() => window.open(`${API}/${id}/print`, '_blank')}><Printer className="w-3.5 h-3.5" />{t('Print report')}</button>
+          <button className={ghostBtn} onClick={() => printDoc('BankReconciliation', d)}><Printer className="w-3.5 h-3.5" />{t('Print report')}</button>
           {open && <button className={dangerBtn} onClick={() => setConfirmDiscard(true)}><Trash2 className="w-3.5 h-3.5" />{t('Discard')}</button>}
           {open && <button className={greenBtn} disabled={!s.canComplete} onClick={() => act(() => post('/complete'), t('Reconciliation completed.'))}><CheckCircle2 className="w-3.5 h-3.5" />{t('Complete')}</button>}
           {!open && <button className={ghostBtn} onClick={() => setReopen(true)}><Unlock className="w-3.5 h-3.5" />{t('Reopen')}</button>}

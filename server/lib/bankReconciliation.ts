@@ -79,12 +79,16 @@ export async function sessionDetail(tx: any, companyId: string, id: string) {
   const outstanding = lines.filter((l: any) => !l.cleared);
   const depositsInTransit = round2(outstanding.reduce((n: number, l: any) => n + l.debit, 0));
   const paymentsOutstanding = round2(outstanding.reduce((n: number, l: any) => n + l.credit, 0));
+  const people = new Map<string, string>();
+  const who = [s.createdById, s.completedById, s.reopenedById].filter(Boolean) as string[];
+  if (who.length) for (const u of await tx.select({ id: schema.users.id, username: schema.users.username }).from(schema.users).where(inArray(schema.users.id, who))) people.set(u.id, u.username);
   const statementBalance = round2(Number(s.statementEndingBalance));
   const difference = round2(statementBalance - totals.cleared);
   const unmatched = stmt.filter(x => !x.isMatched).length;
   return {
     session: { id: s.id, bankId: s.bankId, statementDate: String(s.statementDate).slice(0, 10), statementEndingBalance: statementBalance, glBalanceAtReconciliation: s.glBalanceAtReconciliation == null ? null : Number(s.glBalanceAtReconciliation),
-      status: s.status, notes: s.notes, createdAt: s.createdAt, completedAt: s.completedAt, reopenedAt: s.reopenedAt, reopenReason: s.reopenReason },
+      status: s.status, notes: s.notes, createdAt: s.createdAt, completedAt: s.completedAt, reopenedAt: s.reopenedAt, reopenReason: s.reopenReason,
+      createdByName: people.get(s.createdById) || '', completedByName: s.completedById ? people.get(s.completedById) || '' : '', reopenedByName: s.reopenedById ? people.get(s.reopenedById) || '' : '' },
     bank: { id: bank.id, name: bank.bankName, accountTitle: bank.accountTitle }, ledgerAccount: { id: account.id, code: account.code, name: account.name },
     lines,
     statementLines: stmt.map(x => ({ id: x.id, statementDate: String(x.statementDate).slice(0, 10), description: x.description, reference: x.reference, amount: Number(x.amount), matchedJournalLineId: x.matchedJournalLineId, isMatched: x.isMatched })),

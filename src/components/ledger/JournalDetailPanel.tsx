@@ -1,8 +1,8 @@
 import React from 'react';
-import { Pencil, Send, Trash2, CheckCircle2, XCircle, Undo2, History, ArrowRight } from 'lucide-react';
+import { Printer, Pencil, Send, Trash2, CheckCircle2, XCircle, Undo2, History, ArrowRight } from 'lucide-react';
 import { useTranslation, usePermissions } from '../../hooks';
 import type { DatabaseState } from '../../dbStore';
-import { ledgerApi, money, moneyOrBlank, todayIso, inputCls, labelCls, primaryBtn, ghostBtn, dangerBtn, greenBtn, Notice, Drawer, Modal, JournalStatusPill, SOURCE_LABEL } from './ui';
+import { ledgerApi, money, moneyOrBlank, todayIso, inputCls, labelCls, primaryBtn, ghostBtn, dangerBtn, greenBtn, Notice, Drawer, Modal, JournalStatusPill, SOURCE_LABEL, usePrintDoc } from './ui';
 
 interface Line { id: string; accountId: string | null; accountCode: string; accountName: string; accountNameAr: string | null; debit: number; credit: number; note?: string | null }
 
@@ -42,8 +42,12 @@ export default function JournalDetailPanel({ db, kind, id, onClose, onChanged, o
 
   const EVENT_LABEL: Record<string, string> = { Prepared: 'Prepared', Edited: 'Edited', Submitted: 'Submitted for approval', Approved: 'Approved', Rejected: 'Rejected', Posted: 'Posted to the ledger', Discarded: 'Discarded', ReversalStarted: 'Reversal started' };
 
+  const printDoc = usePrintDoc();
+  const print = async () => { try { printDoc('JournalVoucher', await ledgerApi(kind === 'manual' ? `/manual-journals/${id}/print-data` : `/journals/entries/${id}/print-data`)); } catch (e: any) { setError(e.message); } };
+  const printBtn = <button className={ghostBtn} onClick={print}><Printer className="w-3.5 h-3.5" />{t('Print voucher')}</button>;
   const actions = j && kind === 'manual' ? (
     <>
+      {printBtn}
       {(status === 'Draft' || status === 'Rejected') && can('journals.delete') && <button className={dangerBtn} disabled={busy} onClick={() => setModal('discard')}><Trash2 className="w-3.5 h-3.5" />{t('Discard')}</button>}
       {(status === 'Draft' || status === 'Rejected') && can('journals.update') && !j.reversalOfId && <button className={ghostBtn} disabled={busy} onClick={() => onEdit?.(j.id)}><Pencil className="w-3.5 h-3.5" />{t('Edit')}</button>}
       {(status === 'Draft' || status === 'Rejected') && (can('journals.create') || can('journals.update')) && <button className={primaryBtn} disabled={busy} onClick={() => run(() => ledgerApi(`/manual-journals/${j.id}/submit`, { method: 'POST', body: {} }))}><Send className="w-3.5 h-3.5" />{t('Submit for approval')}</button>}
@@ -51,7 +55,7 @@ export default function JournalDetailPanel({ db, kind, id, onClose, onChanged, o
       {canApprove && <button className={greenBtn} disabled={busy || selfBlocked} title={selfBlocked ? t('You prepared this journal, so someone else must approve it.') : ''} onClick={() => run(() => ledgerApi(`/manual-journals/${j.id}/approve`, { method: 'POST', body: {} }))}><CheckCircle2 className="w-3.5 h-3.5" />{t('Approve and post')}</button>}
       {status === 'Posted' && !j.reversalOfId && !j.reversedById && can('journals.reverse') && <button className={ghostBtn} disabled={busy} onClick={() => setModal('reverse')}><Undo2 className="w-3.5 h-3.5" />{t('Reverse')}</button>}
     </>
-  ) : null;
+  ) : (j ? printBtn : null);
 
   return (
     <Drawer width="max-w-3xl" title={j ? `${kind === 'manual' ? j.number : (j.documentNumber || t('Ledger entry'))}` : t('Journal')} onClose={onClose} footer={actions}>

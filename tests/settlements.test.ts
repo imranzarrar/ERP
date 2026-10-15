@@ -104,6 +104,11 @@ describe('a receipt across several invoices', () => {
     expect(d).toMatchObject({ kind: 'customer', cancelled: false, applied: 345, unapplied: 0 });
     expect(d.allocations.map((a: any) => a.amount).sort()).toEqual([115, 230]);
     expect(d.allocations[0].documentNumber).toMatch(/^INV-/);
+    // what the voucher print shows: the posting (bank against the customer's receivable, tagged with the party), who prepared it, the party's details
+    expect(d.posting).toHaveLength(1); expect(d.preparedBy).toBeTruthy(); expect(d.party.name).toBe('Alpha');
+    expect(d.posting[0].lines.find((l: any) => l.credit === 345)).toMatchObject({ accountCode: '1100', party: 'Alpha' });
+    const jv = (await get(admin, `/api/ledger/journals/entries/${d.posting[0].id}/print-data`)).body;
+    expect(jv).toMatchObject({ kind: 'Document', sourceLabel: 'Customer receipt', sourceNumber: d.voucher.voucherNumber, totalDebit: 345, totalCredit: 345 });
     const list = (await get(admin, '/api/settlements?kind=customer')).body.rows;
     expect(list.find((r: any) => r.id === rec.body.voucherId)).toMatchObject({ partyName: 'Alpha', amount: 345, applied: 345, unapplied: 0, cancelled: false });
   });

@@ -446,7 +446,7 @@ export default function App() {
   };
 
   const [printDoc, setPrintDoc] = React.useState<{
-    type: 'Quotation' | 'Invoice' | 'Expense' | 'Voucher' | 'PaymentReceipt' | 'Ledger' | 'Report' | 'WarehouseDispatch' | 'WarehouseReceiving';
+    type: 'Quotation' | 'Invoice' | 'Expense' | 'Voucher' | 'PaymentReceipt' | 'Ledger' | 'Report' | 'WarehouseDispatch' | 'WarehouseReceiving' | 'SettlementVoucher' | 'JournalVoucher' | 'BankReconciliation';
     data: any;
   } | null>(null);
 
@@ -1968,6 +1968,7 @@ type NavSection = {
            onEditJournal={(id) => { setEditTarget({ module: 'journals', id }); handleNavigate('gl-journal-new', true); }}
            onDrill={(f) => { setLedgerAccountFocus(f); handleNavigate('gl-general-ledger'); }}
            onDirtyChange={(dirty) => { isCurrentFormDirtyRef.current = dirty; }}
+           onPrintDoc={(type, data) => setPrintDoc({ type, data })}
          />
        )}
 

@@ -265,6 +265,14 @@ describe('journal listing and entry detail', () => {
     expect(e.body.totalDebit).toBe(e.body.totalCredit);
     expect(e.body.lines[0].accountCode).toBeTruthy();
     expect((await get(B.admin, `/api/ledger/journals/entries/${detail.journalEntryId}`)).status).toBe(404);
+    // the Journal Voucher print: one shape for a manual journal and for the entry it posted, with the approval trail, and invisible to another company
+    const pm = (await get(appr, `/api/ledger/manual-journals/${d.id}/print-data`)).body;
+    expect(pm).toMatchObject({ kind: 'Manual', number: d.number, status: 'Posted', sourceLabel: 'Manual journal' });
+    expect(pm.totalDebit).toBe(pm.totalCredit); expect(pm.lines.length).toBeGreaterThanOrEqual(2); expect(pm.preparedBy).toBeTruthy(); expect(pm.approvedBy).toBeTruthy();
+    const pe = (await get(appr, `/api/ledger/journals/entries/${detail.journalEntryId}/print-data`)).body;
+    expect(pe.number).toBe(pm.number); expect(pe.lines).toHaveLength(pm.lines.length);
+    expect((await get(B.admin, `/api/ledger/journals/entries/${detail.journalEntryId}/print-data`)).status).toBe(404);
+    expect((await get(B.admin, `/api/ledger/manual-journals/${d.id}/print-data`)).status).toBe(404);
     expect((await get(B.admin, `/api/ledger/manual-journals/${d.id}`)).status).toBe(404);
     expect((await post(B.admin, `/api/ledger/manual-journals/${d.id}/submit`)).status).toBe(404);
     expect((await post(B.admin, `/api/ledger/manual-journals/${d.id}/approve`)).status).toBe(404);

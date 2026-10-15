@@ -179,6 +179,7 @@ describe('completing, locking and reopening', () => {
     const c = await post(admin, R(`/${sess}/complete`)); expect(c.status).toBe(200);
     const d = await detail();
     expect(d.session).toMatchObject({ status: 'Completed', glBalanceAtReconciliation: 115 - X - 10 });
+    expect(d.session.createdByName).toBeTruthy(); expect(d.session.completedByName).toBeTruthy(); expect(d.bank.name).toBeTruthy();   // what the printed statement shows
     expect((await post(admin, R(`/${sess}/clear`), { lineIds: [d.lines[0].lineId], clear: false })).status).toBe(400);           // completed: nothing can be changed
     expect((await post(admin, R(), { bankId, statementDate: PREV_LAST, statementEndingBalance: 0 })).status).toBe(400);           // must be after the last completed one
     expect((await post(admin, R(`/${sess}/complete`))).status).toBe(400);

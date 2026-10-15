@@ -20,6 +20,7 @@ import { branchIdsFor, dimFilterSql, round2, uuidArray } from '../lib/ledgerQuer
 import { applyRules, entitiesOfType, loadRules, loadTypes, parseDimFilters, resolveCombination, tagsOfCombinations, type Tags } from '../lib/dimensions.js';
 import { documentDates } from '../lib/documentDates.js';
 import { assertPostingAllowed } from '../lib/postingGuard.js';
+import { postedEntry } from '../lib/postingPrint.js';
 
 const router = express.Router();
 const fail = (res: any, status: number, error: string) => res.status(status).json({ error });
@@ -509,6 +510,64 @@ router.post('/manual-journals/:id/reverse', withTenantDb, async (req: any, res) 
     recordAuditLog(req, 'START_JOURNAL_REVERSAL', 'manual_journal', orig.id, { number: orig.number, reversalNumber: number });
     res.json({ success: true, id, number });
   } catch (e: any) { fail(res, e.status || 500, e.message); }
+});
+
+// ---- Journal Voucher print data: ONE shape for a manual journal (any status) and for any posted ledger entry, so one renderer prints both ----
+const SOURCE_LABEL: Record<string, string> = {
+  Invoice: 'Invoice', CreditNote: 'Credit Note', Expense: 'Expense', PurchaseBill: 'Purchase Bill', PurchaseReturn: 'Purchase Return', Grn: 'Goods Receipt', Manual: 'Manual journal', Opening: 'Opening balance',
+  CustomerReceipt: 'Customer receipt', VendorPayment: 'Vendor payment', VendorRefund: 'Vendor refund', BankCharge: 'Bank charge', BankInterest: 'Bank interest', Transfer: 'Transfer', Voucher: 'Voucher',
+};
+async function sourceNumber(tdb: any, companyId: string, refType: string, refId: string): Promise<string | null> {
+  const pick = async (table: any, col: any) => { const [d] = await tdb.select({ n: col }).from(table).where(and(eq(table.id, refId), eq(table.companyId, companyId))); return d?.n || null; };
+  try {
+    if (refType === 'Invoice' || refType === 'CreditNote') return await pick(schema.invoices, schema.invoices.invoiceNumber);
+    if (refType === 'Expense') return await pick(schema.expenses, schema.expenses.expenseNumber);
+    if (refType === 'PurchaseBill') return await pick(schema.purchaseBills, schema.purchaseBills.billNumber);
+    if (['CustomerReceipt', 'VendorPayment', 'VendorRefund', 'BankCharge', 'BankInterest'].includes(refType)) return await pick(schema.vouchers, schema.vouchers.voucherNumber);
+  } catch { /* a document we cannot name is shown by its type only */ }
+  return null;
+}
+const manualVoucherData = (d: any) => ({
+  kind: 'Manual', number: d.number, status: d.status, entryId: d.journalEntryId || null, docDate: d.docDate, postingDate: d.postingDate, description: d.description, reference: d.reference || '',
+  sourceLabel: SOURCE_LABEL.Manual, sourceNumber: d.number, backDateReason: d.backDateReason || '', preparerNote: d.preparerNote || '',
+  lines: d.lines.map((l: any) => ({ accountCode: l.accountCode, accountName: l.accountName, accountNameAr: l.accountNameAr, party: null, note: l.note || '', debit: l.debit, credit: l.credit,
+    dimensions: (l.dimensionLabels || []).map((x: any) => `${x.typeName}: ${x.name}`) })),
+  totalDebit: d.totalDebit, totalCredit: d.totalCredit, preparedBy: d.preparedByName || '', preparedAt: d.preparedAt, approvedBy: d.decidedByName || '', approvedAt: d.decidedAt || null,
+  selfApproved: !!d.selfApproved, reversalOf: d.reversalOf?.number || null, reversedBy: d.reversedBy?.number || null,
+});
+
+router.get('/manual-journals/:id/print-data', withTenantDb, async (req: any, res) => {
+  try {
+    if (!canSee(req)) return fail(res, 403, 'Forbidden');
+    const tdb = tenantDb();
+    const j = await loadJournal(tdb, req.targetCompanyId, String(req.params.id));
+    if (!j || !branchVisible(req, j.branchId)) return fail(res, 404, 'Journal not found.');
+    res.json(manualVoucherData(await journalDetail(tdb, req, j)));
+  } catch (e: any) { fail(res, 500, e.message); }
+});
+
+router.get('/journals/entries/:id/print-data', withTenantDb, async (req: any, res) => {
+  try {
+    if (!canSee(req)) return fail(res, 403, 'Forbidden');
+    const tdb = tenantDb(); const companyId = req.targetCompanyId; const id = String(req.params.id);
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return fail(res, 404, 'Entry not found.');
+    const e = await postedEntry(tdb, companyId, id);
+    const [row] = e ? await tdb.select({ branchId: schema.journalEntries.branchId }).from(schema.journalEntries).where(and(eq(schema.journalEntries.id, id), eq(schema.journalEntries.companyId, companyId))) : [];
+    if (!e || !branchVisible(req, row?.branchId ?? null)) return fail(res, 404, 'Entry not found.');
+    if (e.referenceType === 'Manual') {
+      const [mj] = await tdb.select().from(schema.manualJournals).where(and(eq(schema.manualJournals.companyId, companyId), eq(schema.manualJournals.journalEntryId, id)));
+      if (mj) return res.json(manualVoucherData(await journalDetail(tdb, req, mj)));
+    }
+    const num = await sourceNumber(tdb, companyId, e.referenceType, e.referenceId);
+    const [rev] = await tdb.select({ id: schema.journalEntries.id }).from(schema.journalEntries).where(and(eq(schema.journalEntries.companyId, companyId), eq(schema.journalEntries.reversalOfId, id)));
+    res.json({
+      kind: e.reversalOfId ? 'Reversal' : 'Document', number: num || e.id.slice(0, 8).toUpperCase(), status: 'Posted', entryId: e.id, docDate: e.docDate, postingDate: e.postingDate, description: e.description, reference: '',
+      sourceLabel: SOURCE_LABEL[e.referenceType] || e.referenceType, sourceNumber: num, backDateReason: '', preparerNote: '',
+      lines: e.lines.map(l => ({ accountCode: l.accountCode, accountName: l.accountName, accountNameAr: l.accountNameAr, party: l.party, note: '', debit: l.debit, credit: l.credit, dimensions: l.dimensions })),
+      totalDebit: e.totalDebit, totalCredit: e.totalCredit, preparedBy: e.createdByName, preparedAt: e.createdAt, approvedBy: '', approvedAt: null, selfApproved: false,
+      reversalOf: e.reversalOfId ? e.reversalOfId.slice(0, 8).toUpperCase() : null, reversedBy: rev ? rev.id.slice(0, 8).toUpperCase() : null,
+    });
+  } catch (e: any) { fail(res, 500, e.message); }
 });
 
 export default router;

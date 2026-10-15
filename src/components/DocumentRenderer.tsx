@@ -27,7 +27,7 @@ const COUNTRY_NAME_TRANSLATION_KEYS: Record<string, string> = {
 };
 
 interface DocumentRendererProps {
- documentType: 'Quotation' | 'Invoice' | 'Expense' | 'Voucher' | 'PaymentReceipt' | 'Ledger' | 'Report' | 'WarehouseDispatch' | 'WarehouseReceiving';
+ documentType: 'Quotation' | 'Invoice' | 'Expense' | 'Voucher' | 'PaymentReceipt' | 'Ledger' | 'Report' | 'WarehouseDispatch' | 'WarehouseReceiving' | 'SettlementVoucher' | 'JournalVoucher' | 'BankReconciliation';
  data: any; // Can be Quotation, Invoice, Expense, Voucher, PaymentReceipt, or Ledger/Report data
  companySetup: CompanySetup;
  templates: DocumentTemplate[];
@@ -116,7 +116,10 @@ export default function DocumentRenderer({
  const isBilingualDoc = documentType === 'Quotation' || documentType === 'Invoice';
  const isArabic = currentTemplate?.language === 'Arabic' && isBilingualDoc;
  const isUrdu = currentTemplate?.language === 'Urdu' && isBilingualDoc;
- const isRTL = isArabic || isUrdu;
+ // The accounting print-outs (voucher with its posting, journal voucher, bank reconciliation) are internal documents: they follow the viewer's language and direction.
+ const isAccountingDoc = documentType === 'SettlementVoucher' || documentType === 'JournalVoucher' || documentType === 'BankReconciliation';
+ const viewerLang = (db?.currentUser?.uiLanguage || 'en') as 'en' | 'ar' | 'ur';
+ const isRTL = isAccountingDoc ? viewerLang !== 'en' : (isArabic || isUrdu);
  const dir = isRTL ? 'rtl' : 'ltr';
 
  // Quotation/Invoice translate according to the TEMPLATE's own configured language (a
@@ -240,7 +243,7 @@ export default function DocumentRenderer({
  if (forceThermalReceipt) {
  return 'w-[80mm] text-[10px]';
  }
- if (documentType === 'Expense' || documentType === 'Ledger' || documentType === 'Report' || documentType === 'WarehouseDispatch' || documentType === 'WarehouseReceiving') {
+ if (documentType === 'Expense' || documentType === 'Ledger' || documentType === 'Report' || documentType === 'WarehouseDispatch' || documentType === 'WarehouseReceiving' || isAccountingDoc) {
  return 'w-full min-w-[760px] max-w-4xl'; // Standard report size
  }
  const size = currentTemplate?.pageSize || '8.27in x 11.69in';
@@ -2981,6 +2984,194 @@ export default function DocumentRenderer({
   );
  };
 
+ // ---- Accounting print-outs (voucher with its posting, journal voucher, bank reconciliation statement) ----
+ // Everything these show is resolved by the server (server/lib/postingPrint.ts) and handed in as \`data\`, so a printed voucher can never disagree with the ledger it describes.
+ // They follow the viewing user's language and direction (Arabic / Urdu print right-to-left), like the other internal documents.
+ const n2 = (v: number) => Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+ const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+ const acctLabel = (l: any) => (viewerLang === 'ar' && l.accountNameAr) ? l.accountNameAr : l.accountName;
+ const SignatureRow = ({ labels }: { labels: string[] }) => (
+ <div className={`mt-10 grid gap-8 pt-6 ${labels.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+ {labels.map((label, i) => (
+ <div key={i} className="text-center">
+ <div className="border-b border-slate-300 w-full mx-auto mb-2 h-10"></div>
+ <p className="text-[10px] text-slate-500">{label}</p>
+ </div>
+ ))}
+ </div>
+ );
+ const PostingTable = ({ entries }: { entries: any[] }) => (
+ <div className="space-y-3">
+ {entries.map((e: any) => (
+ <div key={e.id}>
+ <p className="text-[10px] text-slate-500 mb-1">{e.reversalOfId ? t('Reversing entry') : t('Accounting entry')} · {t('Posting date')}: <span className="font-mono">{e.postingDate}</span></p>
+ <div className="overflow-x-auto"><table className="w-full text-[11px]">
+ <thead><tr className="bg-slate-100 text-slate-600">
+ <th className="py-1.5 px-2 text-start">{t('Account')}</th><th className="py-1.5 px-2 text-start">{t('Party')}</th>
+ <th className="py-1.5 px-2 text-end">{t('Debit')}</th><th className="py-1.5 px-2 text-end">{t('Credit')}</th>
+ </tr></thead>
+ <tbody>
+ {e.lines.map((l: any) => (
+ <tr key={l.lineId} className="border-b border-slate-100">
+ <td className="py-1.5 px-2"><span className="font-mono text-slate-500">{l.accountCode}</span> {acctLabel(l)}{l.dimensions?.length ? <span className="block text-[9px] text-slate-400">{l.dimensions.join(' · ')}</span> : null}</td>
+ <td className="py-1.5 px-2 text-slate-600">{l.party || ''}</td>
+ <td className="py-1.5 px-2 text-end font-mono tabular-nums">{l.debit > 0 ? n2(l.debit) : ''}</td>
+ <td className="py-1.5 px-2 text-end font-mono tabular-nums">{l.credit > 0 ? n2(l.credit) : ''}</td>
+ </tr>
+ ))}
+ </tbody>
+ <tfoot><tr className="font-bold text-slate-800"><td className="py-1.5 px-2" colSpan={2}>{t('Total')}</td><td className="py-1.5 px-2 text-end font-mono">{n2(e.totalDebit)}</td><td className="py-1.5 px-2 text-end font-mono">{n2(e.totalCredit)}</td></tr></tfoot>
+ </table></div>
+ </div>
+ ))}
+ </div>
+ );
+ const DocFooter = () => companySetup.customFooter ? (<div className="footer-text mt-10 pt-4 border-t border-slate-200 text-center text-[10px] text-slate-400">{companySetup.customFooter}</div>) : null;
+ const DocHeader = ({ title, rows, tone = 'text-indigo-700' }: { title: string; rows: [string, string][]; tone?: string }) => (
+ <div className="flex justify-between items-start border-b border-slate-200 pb-5 mb-5">
+ <div>
+ <h1 className="text-xl font-bold text-slate-900">{companySetup.name}</h1>
+ <p className="text-xs text-slate-500">{companySetup.address}</p>
+ {(companySetup.phone || companySetup.email) && <p className="text-xs text-slate-500">{[companySetup.phone, companySetup.email].filter(Boolean).join(' | ')}</p>}
+ </div>
+ <div className="text-end">
+ <h2 className={`text-xl font-bold uppercase tracking-wider mb-1 ${tone}`}>{title}</h2>
+ {rows.filter(r => r[1]).map(([k, v], i) => <p key={i} className="text-slate-500"><span className="font-semibold">{k}:</span> <span className="font-mono">{v}</span></p>)}
+ </div>
+ </div>
+ );
+
+ const renderSettlementVoucher = (d: any) => {
+  const isCustomer = d.kind === 'customer';
+  const v = d.voucher;
+  const title = isCustomer ? 'Receipt Voucher' : 'Payment Voucher';
+  return (
+   <div className="flex flex-col h-full justify-between text-xs">
+    <div>
+     <DocHeader title={t(title)} tone={isCustomer ? 'text-emerald-700' : 'text-indigo-700'} rows={[[t('Voucher Number'), v.voucherNumber], [t('Date'), v.docDate], [t('Posting date'), v.postingDate]]} />
+     {d.cancelled && <div className="mb-4 border-2 border-rose-400 text-rose-600 font-black text-center tracking-widest py-1 rounded-lg rotate-0">{t('CANCELLED')}</div>}
+     {d.party && (
+      <div className="mb-5">
+       <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{t(isCustomer ? 'Received From' : 'Paid To')}</p>
+       <p className="text-sm font-bold text-slate-900">{d.party.name}</p>
+       {(d.party.phone || d.party.email) && <p className="text-[11px] text-slate-500">{[d.party.phone, d.party.email].filter((x: string) => x && x !== '-').join(' | ')}</p>}
+       {d.party.address && d.party.address !== '-' && <p className="text-[11px] text-slate-500 whitespace-pre-line">{d.party.address}</p>}
+      </div>
+     )}
+     <div className={`${isCustomer ? 'bg-emerald-50 border-emerald-100' : 'bg-indigo-50 border-indigo-100'} border rounded-xl p-4 mb-4`}>
+      <div className="flex justify-between items-center">
+       <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">{t('Amount')}</span>
+       <span className="text-2xl font-black text-slate-900">{fmt(v.amount)}</span>
+      </div>
+      <p className="text-[11px] text-slate-700 mt-1 italic">{amountToWordsForCurrency(Number(v.amount), companySetup.currency)}</p>
+     </div>
+     <div className="grid grid-cols-2 gap-4 mb-5">
+      <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t(isCustomer ? 'Deposited to' : 'Paid from')}</p><p className="font-semibold text-slate-800">{d.bankName}</p></div>
+      <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Description')}</p><p className="text-slate-800">{v.description}</p></div>
+     </div>
+
+     <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{t('Settles')}</p>
+     <div className="overflow-x-auto mb-5"><table className="w-full text-[11px]">
+      <thead><tr className="bg-slate-100 text-slate-600"><th className="py-1.5 px-2 text-start">{t('Document')}</th><th className="py-1.5 px-2 text-start">{t('Type')}</th><th className="py-1.5 px-2 text-end">{t('Amount')}</th></tr></thead>
+      <tbody>
+       {d.allocations.length === 0 && <tr><td colSpan={3} className="py-2 px-2 text-slate-400">{t('Nothing has been applied to a document.')}</td></tr>}
+       {d.allocations.map((a: any) => (
+        <tr key={a.id} className={`border-b border-slate-100 ${a.reversed ? 'line-through text-slate-400' : ''}`}>
+         <td className="py-1.5 px-2 font-mono font-semibold">{a.documentNumber}</td><td className="py-1.5 px-2">{t(a.documentType === 'PurchaseBill' ? 'Purchase Bill' : a.documentType)}</td>
+         <td className="py-1.5 px-2 text-end font-mono tabular-nums">{n2(a.amount)}</td>
+        </tr>
+       ))}
+      </tbody>
+      <tfoot>
+       <tr className="font-bold"><td className="py-1.5 px-2" colSpan={2}>{t('Applied to documents')}</td><td className="py-1.5 px-2 text-end font-mono">{n2(d.applied)}</td></tr>
+       <tr className="font-bold text-emerald-700"><td className="py-1.5 px-2" colSpan={2}>{t('Held on account')}</td><td className="py-1.5 px-2 text-end font-mono">{n2(d.unapplied)}</td></tr>
+      </tfoot>
+     </table></div>
+
+     <PostingTable entries={d.posting || []} />
+     <SignatureRow labels={[`${t('Prepared by')}: ${d.preparedBy || ''}`, t('Approved by'), t(isCustomer ? 'Received by' : 'Paid by')]} />
+    </div>
+    <DocFooter />
+   </div>
+  );
+ };
+
+ const renderJournalVoucher = (d: any) => (
+  <div className="flex flex-col h-full justify-between text-xs">
+   <div>
+    <DocHeader title={t('Journal Voucher')} rows={[[t('Voucher Number'), d.number], [t('Date'), d.docDate], [t('Posting date'), d.postingDate]]} />
+    {d.status !== 'Posted' && <div className="mb-4 border-2 border-amber-400 text-amber-700 font-black text-center tracking-widest py-1 rounded-lg">{t('NOT POSTED')} · {t(d.status)}</div>}
+    <div className="grid grid-cols-2 gap-4 mb-5">
+     <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Source')}</p><p className="font-semibold text-slate-800">{t(d.sourceLabel)}{d.sourceNumber && d.kind !== 'Manual' ? <span className="font-mono"> · {d.sourceNumber}</span> : null}</p></div>
+     {d.reference ? <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Reference')}</p><p className="text-slate-800">{d.reference}</p></div> : <div />}
+     <div className="col-span-2"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Narration')}</p><p className="text-slate-800">{d.description}</p></div>
+     {d.backDateReason ? <div className="col-span-2"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Reason for back-dating')}</p><p className="text-slate-800">{d.backDateReason}</p></div> : null}
+     {d.reversalOf ? <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Reverses')}</p><p className="font-mono">{d.reversalOf}</p></div> : null}
+     {d.reversedBy ? <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('Reversed by')}</p><p className="font-mono">{d.reversedBy}</p></div> : null}
+    </div>
+    <div className="overflow-x-auto"><table className="w-full text-[11px]">
+     <thead><tr className="bg-slate-100 text-slate-600">
+      <th className="py-1.5 px-2 text-start w-8">#</th><th className="py-1.5 px-2 text-start">{t('Account')}</th><th className="py-1.5 px-2 text-start">{t('Party')}</th>
+      <th className="py-1.5 px-2 text-end">{t('Debit')}</th><th className="py-1.5 px-2 text-end">{t('Credit')}</th>
+     </tr></thead>
+     <tbody>
+      {d.lines.map((l: any, i: number) => (
+       <tr key={i} className="border-b border-slate-100">
+        <td className="py-1.5 px-2 text-slate-400">{i + 1}</td>
+        <td className="py-1.5 px-2"><span className="font-mono text-slate-500">{l.accountCode}</span> {acctLabel(l)}{l.note ? <span className="block text-[9px] text-slate-500">{l.note}</span> : null}{l.dimensions?.length ? <span className="block text-[9px] text-slate-400">{l.dimensions.join(' · ')}</span> : null}</td>
+        <td className="py-1.5 px-2 text-slate-600">{l.party || ''}</td>
+        <td className="py-1.5 px-2 text-end font-mono tabular-nums">{l.debit > 0 ? n2(l.debit) : ''}</td>
+        <td className="py-1.5 px-2 text-end font-mono tabular-nums">{l.credit > 0 ? n2(l.credit) : ''}</td>
+       </tr>
+      ))}
+     </tbody>
+     <tfoot><tr className="font-bold text-slate-800 border-t-2 border-slate-300"><td className="py-2 px-2" colSpan={3}>{t('Total')}</td><td className="py-2 px-2 text-end font-mono">{n2(d.totalDebit)}</td><td className="py-2 px-2 text-end font-mono">{n2(d.totalCredit)}</td></tr></tfoot>
+    </table></div>
+    <p className="mt-2 text-[11px] text-slate-600 italic">{amountToWordsForCurrency(Number(d.totalDebit), companySetup.currency)}</p>
+    {d.preparerNote ? <p className="mt-3 text-[11px] text-slate-600"><span className="font-semibold">{t('Preparer note')}:</span> {d.preparerNote}</p> : null}
+    <SignatureRow labels={[`${t('Prepared by')}: ${d.preparedBy || ''}`, `${t('Approved by')}: ${d.selfApproved ? t('(self-approved)') : (d.approvedBy || '')}`, t('Authorized Signature')]} />
+   </div>
+   <DocFooter />
+  </div>
+ );
+
+ const renderBankReconciliation = (d: any) => {
+  const s = d.summary; const inT = d.lines.filter((l: any) => !l.cleared && l.debit > 0); const outT = d.lines.filter((l: any) => !l.cleared && l.credit > 0);
+  const adj = d.lines.filter((l: any) => l.cleared && (l.referenceType === 'BankCharge' || l.referenceType === 'BankInterest'));
+  const Row = ({ label, value, strong }: { label: string; value: number; strong?: boolean }) => (<tr className={strong ? 'font-bold border-t-2 border-slate-300' : ''}><td className="py-1.5 px-2">{label}</td><td className="py-1.5 px-2 text-end font-mono tabular-nums">{n2(value)}</td></tr>);
+  const Items = ({ title, rows, field }: { title: string; rows: any[]; field: 'debit' | 'credit' }) => (
+   <div className="mb-4">
+    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{title}</p>
+    <div className="overflow-x-auto"><table className="w-full text-[11px]"><tbody>
+     {rows.length === 0 && <tr><td className="py-1.5 px-2 text-slate-400">{t('None')}</td></tr>}
+     {rows.map((l: any) => (<tr key={l.lineId} className="border-b border-slate-100"><td className="py-1.5 px-2 font-mono w-24">{l.postingDate}</td><td className="py-1.5 px-2">{l.description}</td><td className="py-1.5 px-2 text-end font-mono tabular-nums">{n2(l[field])}</td></tr>))}
+    </tbody></table></div>
+   </div>
+  );
+  return (
+   <div className="flex flex-col h-full justify-between text-xs">
+    <div>
+     <DocHeader title={t('Bank Reconciliation Statement')} rows={[[t('Bank / cash account'), d.bank.name], [t('Statement date'), d.session.statementDate], [t('Status'), t(d.session.status === 'Completed' ? 'Completed' : 'In progress')]]} />
+     <div className="overflow-x-auto mb-5"><table className="w-full text-[12px]"><tbody>
+      <Row label={t('Balance per bank statement')} value={s.statementBalance} />
+      <Row label={`+ ${t('Deposits in transit')}`} value={s.depositsInTransit} />
+      <Row label={`− ${t('Payments outstanding')}`} value={s.paymentsOutstanding} />
+      <Row label={t('Adjusted bank balance')} value={s.adjustedStatementBalance} strong />
+      <Row label={t('Balance per books (ledger)')} value={s.bookBalance} strong />
+      <Row label={t('Difference')} value={r2(s.adjustedStatementBalance - s.bookBalance)} />
+     </tbody></table></div>
+     <Items title={t('Deposits in transit')} rows={inT} field="debit" />
+     <Items title={t('Payments outstanding')} rows={outT} field="credit" />
+     {adj.length > 0 && <Items title={t('Bank charges and interest posted in this reconciliation')} rows={adj.map((l: any) => ({ ...l, debit: l.debit, credit: l.credit }))} field={adj[0].debit > 0 ? 'debit' : 'credit'} />}
+     <p className="text-[11px] text-slate-500">{t('Cleared lines')}: {d.lines.filter((l: any) => l.cleared).length}{d.session.glBalanceAtReconciliation != null ? ` · ${t('Book balance')} ${n2(d.session.glBalanceAtReconciliation)}` : ''}</p>
+     {d.session.reopenReason ? <p className="text-[11px] text-amber-700 mt-1">{t('Reopened')}: {d.session.reopenReason}</p> : null}
+     <SignatureRow labels={[`${t('Prepared by')}: ${d.session.createdByName || ''}`, `${t('Completed by')}: ${d.session.completedByName || ''}`, t('Reviewed by')]} />
+    </div>
+    <DocFooter />
+   </div>
+  );
+ };
+
  const renderDocumentBody = () => {
  switch (documentType) {
  case 'Quotation':
@@ -3000,6 +3191,12 @@ export default function DocumentRenderer({
  return renderWarehouseDispatch(data);
  case 'WarehouseReceiving':
  return renderWarehouseReceiving(data);
+ case 'SettlementVoucher':
+ return renderSettlementVoucher(data);
+ case 'JournalVoucher':
+ return renderJournalVoucher(data);
+ case 'BankReconciliation':
+ return renderBankReconciliation(data);
  default:
  return <div className="text-center p-8 text-rose-500"><AlertCircle className="mx-auto mb-2" /> Unsupported Document Type</div>;
  }
@@ -3036,7 +3233,7 @@ export default function DocumentRenderer({
  }
 
  return (
- <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex justify-center items-start overflow-y-auto p-4 md:p-8">
+ <div className={`fixed inset-0 ${isAccountingDoc ? 'z-[60]' : 'z-50'} bg-slate-950/40 backdrop-blur-sm flex justify-center items-start overflow-y-auto p-4 md:p-8`}>
  <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col w-full max-w-5xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
 
  {/* Controls Bar */}
