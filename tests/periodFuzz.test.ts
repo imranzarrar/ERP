@@ -159,7 +159,7 @@ async function simulate(seed: number) {
           }
           else if (roll < 0.40) {   // collect on an unpaid invoice
             const i = pick(invs.filter(x => !x.cancelled && !x.credited && x.paid < x.gross - 0.01));
-            if (i) { const amt = Math.round(Math.min(i.gross - i.paid, (i.gross - i.paid) * (0.3 + rand() * 0.7)) * 100) / 100; await step(`collect ${amt}`, () => call('POST', `/api/transactions/invoices/${i.id}/paid`, { paymentDate: today, bankId, amount: amt }), () => { i.paid = Math.round((i.paid + amt) * 100) / 100; }); }
+            if (i) { const amt = Math.round(Math.min(i.gross - i.paid, (i.gross - i.paid) * (0.3 + rand() * 0.7)) * 100) / 100; await step(`collect ${amt}`, () => call('POST', `/api/transactions/invoices/${i.id}/paid`, { docDate: today, bankId, amount: amt }), () => { i.paid = Math.round((i.paid + amt) * 100) / 100; }); }
           }
           else if (roll < 0.46) {   // credit note (any period; dated today)
             const i = pick(invs.filter(x => !x.cancelled && !x.credited && !x.pos));

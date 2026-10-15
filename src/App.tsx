@@ -791,6 +791,10 @@ type NavSection = {
             { id: 'gl-balance-sheet', label: t('Balance Sheet (Ledger)'), permissionKey: 'reports.balanceSheetLedger' },
             { id: 'gl-cash-flow', label: t('Cash Flow Statement'), permissionKey: 'reports.cashFlowLedger' },
             { id: 'gl-equity-changes', label: t('Changes in Equity'), permissionKey: 'reports.equityChangesLedger' },
+            { id: 'gl-receivables-aging', label: t('Receivables Aging'), permissionKey: 'reports.receivablesAging' },
+            { id: 'gl-customer-ledger', label: t('Customer Ledger'), permissionKey: 'reports.customerLedger' },
+            { id: 'gl-payables-aging', label: t('Payables Aging'), permissionKey: 'reports.payablesAging' },
+            { id: 'gl-vendor-ledger', label: t('Vendor Ledger'), permissionKey: 'reports.vendorLedger' },
             { id: 'gl-custom-reports', label: t('Custom Reports'), permissionKey: 'reports.customLedgerReports' },
             { id: 'gl-report-designer', label: t('Report Designer'), permissionKey: 'reportDefinitions.read' },
             { id: 'gl-reconciliation', label: t('Ledger vs Documents'), permissionKey: 'reports.ledgerReconciliation' }
@@ -1656,6 +1660,10 @@ type NavSection = {
  activeTab === 'gl-trial-balance' ? t('Trial Balance (Ledger)') :
  activeTab === 'gl-income-statement' ? t('Income Statement') :
  activeTab === 'gl-balance-sheet' ? t('Balance Sheet (Ledger)') :
+ activeTab === 'gl-receivables-aging' ? t('Receivables Aging') :
+ activeTab === 'gl-payables-aging' ? t('Payables Aging') :
+ activeTab === 'gl-customer-ledger' ? t('Customer Ledger') :
+ activeTab === 'gl-vendor-ledger' ? t('Vendor Ledger') :
  activeTab === 'gl-cash-flow' ? t('Cash Flow Statement') :
  activeTab === 'gl-equity-changes' ? t('Statement of Changes in Equity') :
  activeTab === 'gl-custom-reports' ? t('Custom Reports') :
@@ -1697,6 +1705,10 @@ type NavSection = {
  {activeTab === 'gl-trial-balance' && t('Opening, movement and closing balance of every account, built from the ledger.')}
  {activeTab === 'gl-income-statement' && t('Revenue, cost of sales and expenses for a period, from the ledger, with comparatives.')}
  {activeTab === 'gl-balance-sheet' && t('Assets, liabilities and equity as at a date, from the ledger.')}
+ {activeTab === 'gl-receivables-aging' && t('What each customer owes and how overdue it is, from the ledger.')}
+ {activeTab === 'gl-payables-aging' && t('What we owe each vendor and how overdue it is, from the ledger.')}
+ {activeTab === 'gl-customer-ledger' && t('Every posting of one customer with its running balance, from the ledger.')}
+ {activeTab === 'gl-vendor-ledger' && t('Every posting of one vendor with its running balance, from the ledger.')}
  {activeTab === 'gl-cash-flow' && t('Where cash came from and where it went in a period (indirect method), reconciled to the bank and cash accounts.')}
  {activeTab === 'gl-equity-changes' && t('Equity at the start of a period, what changed it, and equity at the end.')}
  {activeTab === 'gl-custom-reports' && t('Your own report layouts: any rows and columns you design.')}

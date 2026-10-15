@@ -37,6 +37,10 @@ export interface JournalLineInput {
   // resolved and validated instead.
   dimensions?: Tags;
   dimensionCombinationId?: string | null;
+  // The party of a receivable / payable line. Normally left out: the engine sets it on every line that posts to a customer or vendor control account, from the party of the
+  // source document. A reversal passes the original line's party.
+  customerId?: string | null;
+  vendorId?: string | null;
 }
 
 export interface PostJournalEntryInput {
@@ -103,6 +107,7 @@ export async function postJournalEntry(tx: any, input: PostJournalEntryInput): P
   const profile = await loadPostingProfile(tx, input.companyId, party, [...new Set(realLines.map(l => l.bankId).filter(Boolean) as string[])]);
   const accountIds = await resolveLineAccountIds(tx, input.companyId, realLines, profile);
   const combinationIds = await resolveLineCombinations(tx, input, realLines, accountIds, profile);
+  const partyTags = await resolvePartyTags(tx, input.companyId, realLines, accountIds, party);
 
   const entryId = generateId();
   await tx.insert(schema.journalEntries).values({
@@ -129,8 +134,28 @@ export async function postJournalEntry(tx: any, input: PostJournalEntryInput): P
     credit: String(round2(l.credit || 0)),
     bankId: l.bankId || null,
     dimensionCombinationId: combinationIds[i],
+    customerId: partyTags[i].customerId,
+    vendorId: partyTags[i].vendorId,
   })));
   return entryId;
+}
+
+// The customer / vendor of each line: a line on a customer control account belongs to the document's customer, on a vendor control account to its vendor (Blueprint
+// FR-APR-06). A reversal carries the original line's party. Lines on any other account carry none.
+async function resolvePartyTags(tx: any, companyId: string, lines: JournalLineInput[], accountIds: (string | null)[], party: PostingContext): Promise<{ customerId: string | null; vendorId: string | null }[]> {
+  const ids = [...new Set(accountIds.filter(Boolean) as string[])];
+  const kind = new Map<string, string | null>();
+  if (ids.length && (party.customerId || party.vendorId || lines.some(l => l.customerId || l.vendorId))) {
+    const rows = await tx.select({ id: schema.companyAccounts.id, t: schema.companyAccounts.subledgerType }).from(schema.companyAccounts).where(and(eq(schema.companyAccounts.companyId, companyId), inArray(schema.companyAccounts.id, ids)));
+    for (const r of rows) kind.set(r.id, r.t);
+  }
+  return lines.map((l, i) => {
+    const t = accountIds[i] ? kind.get(accountIds[i] as string) : null;
+    return {
+      customerId: l.customerId ?? (t === 'customer' ? party.customerId || null : null),
+      vendorId: l.vendorId ?? (t === 'vendor' ? party.vendorId || null : null),
+    };
+  });
 }
 
 // Each line's dimension combination: explicit tags over the entry's tags, then the account rules (defaults, Not allowed, Required). Lines without any tag
@@ -222,6 +247,8 @@ export async function reverseAllEntriesFor(
       credit: Number(l.debit) > 0 ? Number(l.debit) : undefined,
       bankId: l.bankId || undefined,
       dimensionCombinationId: l.dimensionCombinationId || undefined,
+      customerId: l.customerId || undefined,
+      vendorId: l.vendorId || undefined,
     }));
     const newId = await postJournalEntry(tx, {
       companyId,

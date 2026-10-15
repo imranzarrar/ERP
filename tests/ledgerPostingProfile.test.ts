@@ -204,7 +204,7 @@ describe('documents post through the profile', () => {
     expect(await balanceOf(A.id, '1105')).toBe(115);
     expect(await balanceOf(A.id, '1100')).toBe(0);
 
-    const paid = await post(A.admin, `/api/transactions/invoices/${inv}/paid`, { paymentDate: TODAY, bankId: A.bankId, amount: 115 });
+    const paid = await post(A.admin, `/api/transactions/invoices/${inv}/paid`, { docDate: TODAY, bankId: A.bankId, amount: 115 });
     expect(paid.status).toBe(200);
     expect(await balanceOf(A.id, '1105')).toBe(0); // the receipt relieves the same control account
 

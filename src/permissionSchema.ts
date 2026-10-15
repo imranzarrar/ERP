@@ -321,6 +321,10 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
       { key: 'cashFlowLedger', label: 'Cash Flow Statement (Ledger)' },
       { key: 'equityChangesLedger', label: 'Statement of Changes in Equity (Ledger)' },
       { key: 'customLedgerReports', label: 'Custom Ledger Reports' },
+      { key: 'customerLedger', label: 'Customer Ledger (from the ledger)' },
+      { key: 'vendorLedger', label: 'Vendor Ledger (from the ledger)' },
+      { key: 'receivablesAging', label: 'Receivables Aging (from the ledger)' },
+      { key: 'payablesAging', label: 'Payables Aging (from the ledger)' },
       // Sales
       { key: 'salesRegister', label: 'Sales Register' },
       { key: 'itemWiseSales', label: 'Item-wise Sales Report' },

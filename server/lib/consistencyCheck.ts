@@ -3,6 +3,7 @@ import { eq, and, lte, inArray, sql } from 'drizzle-orm';
 import { round2 } from './businessLogic.js';
 import { todayStr } from './clock.js';
 import { getQuarterDateRange, computeVatReturnFigures } from './vatReturn.js';
+import { subledgerReconciliation } from './subledger.js';
 import {
   computeBalanceSheet, computeTrialBalance, computeProfitLoss, computeAllBankBalances, computeBankLedger, computeCustomerStatement,
   computeVendorStatement, computeOutstanding, computeStockValuation, computeSalesVatRegister, computePurchaseVatRegister, computeMonthPnL,
@@ -153,6 +154,23 @@ export async function computeConsistencyCheck(executor: any, companyId: string, 
   const mj: any = await executor.execute(sql`SELECT COUNT(*)::int AS n FROM manual_journals mj WHERE mj.company_id = ${companyId}::uuid AND mj.status = 'Posted'
       AND (mj.journal_entry_id IS NULL OR (SELECT COALESCE(SUM(debit),0) FROM manual_journal_lines WHERE journal_id = mj.id) <> (SELECT COALESCE(SUM(debit),0) FROM journal_lines WHERE journal_entry_id = mj.journal_entry_id))`);
   add('R7.3', 'Every posted manual journal has a ledger entry of the same amount', Number(mj.rows[0].n) === 0, `${mj.rows[0].n} posted journal(s) do not match their ledger entry`);
+
+  // ---------------- R8: the customer and vendor subledgers are the ledger ----------------
+  const subledger: any = await executor.execute(sql`SELECT
+      COUNT(*) FILTER (WHERE a.subledger_type = 'customer' AND l.customer_id IS NULL)::int AS cust_untagged,
+      COUNT(*) FILTER (WHERE a.subledger_type = 'vendor' AND l.vendor_id IS NULL)::int AS vend_untagged,
+      COUNT(*) FILTER (WHERE l.customer_id IS NOT NULL AND COALESCE(a.subledger_type, '') <> 'customer')::int AS cust_wrong,
+      COUNT(*) FILTER (WHERE l.vendor_id IS NOT NULL AND COALESCE(a.subledger_type, '') <> 'vendor')::int AS vend_wrong
+    FROM journal_lines l JOIN journal_entries e ON e.id = l.journal_entry_id
+    JOIN company_accounts a ON a.company_id = l.company_id AND ((l.account_id IS NOT NULL AND a.id = l.account_id) OR (l.account_id IS NULL AND l.account_key IS NOT NULL AND a.system_key = l.account_key))
+    WHERE l.company_id = ${companyId}::uuid AND e.posting_date <= ${asOf}`);
+  const sl = subledger.rows[0];
+  add('R8.1', 'Every receivable line carries its customer and every payable line its vendor', Number(sl.cust_untagged) + Number(sl.vend_untagged) === 0, `${sl.cust_untagged} receivable and ${sl.vend_untagged} payable line(s) have no party (run scripts/backfill-party-tags.ts)`);
+  add('R8.2', 'A customer or vendor tag sits only on a control account of its own subledger', Number(sl.cust_wrong) + Number(sl.vend_wrong) === 0, `${sl.cust_wrong} customer and ${sl.vend_wrong} vendor tag(s) on a wrong account`);
+  for (const kind of ['customer', 'vendor'] as const) {
+    const rec = await subledgerReconciliation(executor, companyId, kind, asOf);
+    add(kind === 'customer' ? 'R8.3' : 'R8.4', `The ${kind} aging adds up to the ${kind === 'customer' ? 'receivable' : 'payable'} control accounts`, near(rec.difference, 0), `control accounts ${rec.controlBalance} vs parties ${rec.agingTotal}`);
+  }
 
   const errors = checks.filter(c => !c.ok && c.severity === 'error').length;
   const warnings = checks.filter(c => !c.ok && c.severity === 'warn').length;

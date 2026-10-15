@@ -163,7 +163,7 @@ export default function InvoiceViewScreen({ db, invoiceId, onBack, onPrintDoc, o
       const res = await fetch(`/api/transactions/invoices/${inv.id}/paid`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paymentDate: payDate, bankId: payBankId, amount: amt }),
+        body: JSON.stringify({ docDate: payDate, bankId: payBankId, amount: amt }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) throw new Error(data.error || 'Failed to record payment.');

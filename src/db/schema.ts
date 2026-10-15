@@ -684,6 +684,8 @@ export const customers = pgTable('customers', {
   defaultDimensionCombinationId: uuid('default_dimension_combination_id'),
 }, (table) => ({
   companyIdIdx: index('customers_company_id_idx').on(table.companyId),
+  // target of the composite (id, company_id) foreign keys of the ledger lines; declared (company_id, id) like every such key (drizzle-kit reads the columns back in that order)
+  idCompanyUnique: unique('customers_id_company_unique').on(table.companyId, table.id),
   controlAccountFk: foreignKey({ name: 'customers_control_account_company_fk', columns: [table.controlAccountId, table.companyId], foreignColumns: [companyAccounts.id, companyAccounts.companyId] }),
   defaultDimensionFk: foreignKey({ name: 'customers_default_dimension_company_fk', columns: [table.defaultDimensionCombinationId, table.companyId], foreignColumns: [dimensionCombinations.id, dimensionCombinations.companyId] }),
   // Proof-of-concept table for the tenantDb RLS rollout (see the TENANT_DB_ROLE comment
@@ -745,6 +747,7 @@ export const vendors = pgTable('vendors', {
   defaultDimensionCombinationId: uuid('default_dimension_combination_id'),
 }, (table) => ({
   companyIdIdx: index('vendors_company_id_idx').on(table.companyId),
+  idCompanyUnique: unique('vendors_id_company_unique').on(table.companyId, table.id),
   controlAccountFk: foreignKey({ name: 'vendors_control_account_company_fk', columns: [table.controlAccountId, table.companyId], foreignColumns: [companyAccounts.id, companyAccounts.companyId] }),
   defaultDimensionFk: foreignKey({ name: 'vendors_default_dimension_company_fk', columns: [table.defaultDimensionCombinationId, table.companyId], foreignColumns: [dimensionCombinations.id, dimensionCombinations.companyId] }),
   tenantIsolationPolicy: pgPolicy('vendors_tenant_isolation', {
@@ -1403,8 +1406,16 @@ export const journalLines = pgTable('journal_lines', {
   bankId: uuid('bank_id').references(() => bankAccounts.id),
   // Branch / Department / any custom dimension tags of this line, resolved to one deduplicated combination (Finance Core Blueprint FR-DIM-01).
   dimensionCombinationId: uuid('dimension_combination_id'),
+  // The party a receivable / payable line belongs to (Blueprint FR-APR-06: strongly typed, not part of the dimension bag). Set by the posting engine on every line that
+  // posts to a customer or vendor control account, from the same party context that picked the account, so the subledger of a party is a query over these lines.
+  customerId: uuid('customer_id'),
+  vendorId: uuid('vendor_id'),
 }, (table) => ({
   companyIdIdx: index('journal_lines_company_id_idx').on(table.companyId),
+  customerIdx: index('journal_lines_customer_idx').on(table.companyId, table.customerId).where(sql`customer_id IS NOT NULL`),
+  vendorIdx: index('journal_lines_vendor_idx').on(table.companyId, table.vendorId).where(sql`vendor_id IS NOT NULL`),
+  customerFk: foreignKey({ name: 'journal_lines_customer_company_fk', columns: [table.customerId, table.companyId], foreignColumns: [customers.id, customers.companyId] }),
+  vendorFk: foreignKey({ name: 'journal_lines_vendor_company_fk', columns: [table.vendorId, table.companyId], foreignColumns: [vendors.id, vendors.companyId] }),
   dimensionCombinationIdx: index('journal_lines_dimension_combination_idx').on(table.companyId, table.dimensionCombinationId),
   dimensionCombinationFk: foreignKey({ name: 'journal_lines_dimension_combination_company_fk', columns: [table.dimensionCombinationId, table.companyId], foreignColumns: [dimensionCombinations.id, dimensionCombinations.companyId] }),
   journalEntryIdIdx: index('journal_lines_journal_entry_id_idx').on(table.journalEntryId),

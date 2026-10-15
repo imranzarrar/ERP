@@ -1324,7 +1324,7 @@ router.post('/invoices/:id/paid', withTenantDb, async (req: any, res) => {
       throw err;
     }
 
-    const paymentDate = req.body?.paymentDate ? String(req.body.paymentDate) : nowDate().toISOString().split('T')[0];
+    const paymentDate = req.body?.docDate ? String(req.body.docDate) : nowDate().toISOString().split('T')[0]; // the receipt's own document date (docDate, like every payment endpoint)
     await assertPostingAllowed(req, paymentDate, { vat: 'none' });
 
     const invItems = await tdb.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, id));

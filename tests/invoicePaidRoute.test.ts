@@ -289,7 +289,7 @@ describe('POST /api/transactions/invoices/:id/paid', () => {
 
     const { status, body } = await api(adminSessionId, `/api/transactions/invoices/${invId}/paid`, {
       method: 'POST',
-      body: JSON.stringify({ paymentDate: new Date().toISOString().split('T')[0], bankId, amount: 115 }),
+      body: JSON.stringify({ docDate: new Date().toISOString().split('T')[0], bankId, amount: 115 }),
     });
     expect(status).toBe(200);
     expect(body.success).toBe(true);
@@ -311,7 +311,7 @@ describe('POST /api/transactions/invoices/:id/paid', () => {
 
     const { status, body } = await api(staffSessionId, `/api/transactions/invoices/${invId}/paid`, {
       method: 'POST',
-      body: JSON.stringify({ paymentDate: new Date().toISOString().split('T')[0], bankId, amount: 115 }),
+      body: JSON.stringify({ docDate: new Date().toISOString().split('T')[0], bankId, amount: 115 }),
     });
     expect(status).toBe(403);
     expect(body.error).toBeTruthy();
@@ -328,7 +328,7 @@ describe('POST /api/transactions/invoices/:id/paid', () => {
 
     const { status, body } = await api(adminSessionId, `/api/transactions/invoices/${foreignInvoiceId}/paid`, {
       method: 'POST',
-      body: JSON.stringify({ paymentDate: new Date().toISOString().split('T')[0], bankId, amount: 115 }),
+      body: JSON.stringify({ docDate: new Date().toISOString().split('T')[0], bankId, amount: 115 }),
     });
     expect(status).toBeGreaterThanOrEqual(400);
     expect(body.error).toMatch(/not found/i);

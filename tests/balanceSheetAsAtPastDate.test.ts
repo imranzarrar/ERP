@@ -69,7 +69,7 @@ describe('Balance Sheet / Trial Balance as at a past date', () => {
     ok(await post('/api/transactions/recurring-postings', { templateId: tpl.id, monthId: P, postType: 'Accrual', amount: 230, dateStr: pDay(20), paymentStatus: 'Unpaid', bankId }), 'accrual');
 
     // ---- this month: everything gets settled
-    ok(await post(`/api/transactions/invoices/${invoiceId}/paid`, { paymentDate: today, bankId, amount: 230 }), 'collect');
+    ok(await post(`/api/transactions/invoices/${invoiceId}/paid`, { docDate: today, bankId, amount: 230 }), 'collect');
     const rows = await db.select().from(schema.expenses).where(eq(schema.expenses.companyId, companyId)) as any[];
     const opex = rows.find(e => e.description === 'Prev month opex');
     ok(await post(`/api/expenses/${opex.id}/pay`, { docDate: today, bankId, amount: 115 }), 'pay expense');

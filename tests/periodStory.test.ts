@@ -165,7 +165,7 @@ describe('a quarter, day by day', () => {
     clock = day(M1, 25);
     ids.invC = await invoice([line(P, 'Stock sale C', 4, 150)], 0);              // 600 + 90 VAT
     clock = day(M1, 27);
-    ok(await post(`/api/transactions/invoices/${ids.invC}/paid`, { paymentDate: clock, bankId, amount: 400 }), 'collect C');
+    ok(await post(`/api/transactions/invoices/${ids.invC}/paid`, { docDate: clock, bankId, amount: 400 }), 'collect C');
     clock = day(M1, 28);
     await checkAll('end of the first month');
 
@@ -218,7 +218,7 @@ describe('a quarter, day by day', () => {
     clock = day(M2, 10);
     ids.invD = await invoice([line(P, 'Stock sale D', 5, 150)], 0);
     clock = day(M2, 12);
-    ok(await post(`/api/transactions/invoices/${ids.invD}/paid`, { paymentDate: clock, bankId, amount: 862.5 }), 'collect D');
+    ok(await post(`/api/transactions/invoices/${ids.invD}/paid`, { docDate: clock, bankId, amount: 862.5 }), 'collect D');
     clock = day(M2, 15);
     ids.invE = await invoice([line(S, 'Service E', 1, 400)], 0);
     clock = day(M2, 16);

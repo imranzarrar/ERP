@@ -29,7 +29,7 @@ export function resolvedLines(companyId: string, opts: { from?: string; to?: str
   const dims = (opts.dims || []).reduce((acc, f) => sql`${acc}${dimFilterSql(f)}`, sql``);
   return sql`(
     SELECT l.id AS line_id, l.journal_entry_id, e.posting_date, e.branch_id, e.reference_type, e.reference_id, e.created_at,
-           COALESCE(ax.id, ab.id, ak.id) AS account_id, l.debit::numeric AS debit, l.credit::numeric AS credit, l.account_key, l.bank_id, l.dimension_combination_id
+           COALESCE(ax.id, ab.id, ak.id) AS account_id, l.debit::numeric AS debit, l.credit::numeric AS credit, l.account_key, l.bank_id, l.dimension_combination_id, l.customer_id, l.vendor_id
     FROM journal_lines l
     JOIN journal_entries e ON e.id = l.journal_entry_id AND e.company_id = l.company_id
     LEFT JOIN company_accounts ax ON ax.id = l.account_id AND ax.company_id = l.company_id
