@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm start` — run the production build.
 - `npm run lint` — `tsc --noEmit`. Run after any non-trivial change.
 - `npm test` (or `npx vitest run`) — run the test suite. Tests make real HTTP requests against an already-running dev server plus direct Postgres assertions (no mocks) — start `npm run dev` first, restarted, before running tests.
-- `npx vitest run tests/<file>.test.ts` — run a single test file.
+- `npx vitest run tests/<file>.test.ts` — run a single test file. The tests talk to `TEST_BASE_URL` (default `http://localhost:3000`, the Live checkout's port); against the 2.0 dev server on 3001 run `TEST_BASE_URL=http://localhost:3001 npx vitest run`.
 - `npm run db:push` — apply `src/db/schema.ts` changes to the database via `drizzle-kit push`. There are no checked-in migration files; schema changes are pushed directly. This diffs the *live* database against the schema file, so it can surface and offer to apply unrelated drift accumulated from earlier hand-applied SQL — read its printed plan before it applies. It also does **not** update an existing CHECK constraint whose text changed (same name), nor RLS policy predicates: after every push run `npx tsx scripts/apply-check-constraints.mjs` and `npx tsx scripts/apply-rls-policies.mjs` (both idempotent; the release scripts do).
 - `npm run check:isolation` — static tripwire for cross-tenant/cross-branch data leaks (`scripts/check-data-isolation.mjs`; see `.claude/skills/data-isolation-guard/SKILL.md`). Run it after touching any file in `server/routes/*.ts`. No server or DB needed; exits non-zero on any finding.
 
