@@ -17,6 +17,7 @@ import { nowDate, todayStr } from '../lib/clock.js';
 import { postJournalEntry, reverseAllEntriesFor } from '../lib/ledger.js';
 import { validateTransactionDate, assertQuarterNotFiled } from '../lib/businessLogic.js';
 import { round2 } from '../lib/ledgerQueries.js';
+import { assertPostingAllowed } from '../lib/postingGuard.js';
 
 const router = express.Router();
 const fail = (res: any, status: number, error: string) => res.status(status).json({ error });
@@ -133,8 +134,7 @@ router.post('/opening-balances/post', withTenantDb, async (req: any, res) => {
     const earlier = r.warnings.some(w => /already posted before this opening date/.test(w));
     if (earlier && req.body?.acceptEarlierActivity !== true) return fail(res, 400, 'Entries are already posted before this opening date. Tick "I understand" to post anyway, or pick an earlier opening date.');
     const date = String(req.body.cutOffDate);
-    await validateTransactionDate(date, companyId);
-    await assertQuarterNotFiled(date, companyId);
+    await assertPostingAllowed(req, date, { vat: 'filed' });
     const runId = generateId();
     const lines = [
       ...r.lines.map(l => ({ accountId: l.accountId, debit: l.debit || undefined, credit: l.credit || undefined })),
@@ -168,8 +168,7 @@ router.post('/opening-balances/:id/reverse', withTenantDb, async (req: any, res)
     const date = req.body?.docDate ? String(req.body.docDate) : run.cutOffDate;
     if (!DATE_RE.test(date) || isNaN(Date.parse(date))) return fail(res, 400, 'Enter a valid date.');
     if (date < run.cutOffDate) return fail(res, 400, 'The reversal cannot be dated before the opening date.');
-    await validateTransactionDate(date, companyId);
-    await assertQuarterNotFiled(date, companyId);
+    await assertPostingAllowed(req, date, { vat: 'filed' });
     const ids = await reverseAllEntriesFor(tdb, companyId, 'Opening', id, date, `Reversal of opening balances as at ${run.cutOffDate}: ${reason}`, req.user.id);
     await tdb.update(schema.openingBalanceRuns).set({ summary: { ...summary, reversedAt: nowDate().toISOString(), reversedById: req.user.id, reversalReason: reason } })
       .where(and(eq(schema.openingBalanceRuns.id, id), eq(schema.openingBalanceRuns.companyId, companyId)));

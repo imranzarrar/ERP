@@ -12,6 +12,7 @@ import QuickAddPartyButton from './QuickAddPartyButton';
 import { usePaginatedList } from '../usePaginatedList';
 import { RowNumberTd, PaginationFooter } from './PaginationControls';
 import { handleLineItemGridKeyDown, handleFormSaveShortcut } from '../lineItemKeyboardNav';
+import { BackDateReason } from './ledger/postingPolicy';
 import {
   Plus,
   Trash,
@@ -163,6 +164,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
 
  // Form states
  const [formDate, setFormDate] = React.useState('');
+ const [backDateReason, setBackDateReason] = React.useState(''); // asked for only when the company's posting rules want a reason for this date
  const [formCustomerId, setFormCustomerId] = React.useState('');
  const [formTaxSlabId, setFormTaxSlabId] = React.useState('');
  const [formBankId, setFormBankId] = React.useState('');
@@ -436,7 +438,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
    const response = await fetch(`/api/transactions/invoices`, {
      method: 'POST',
      headers: { 'Content-Type': 'application/json' },
-     body: JSON.stringify({ invoiceData })
+     body: JSON.stringify({ invoiceData, backDateReason: backDateReason || undefined })
    });
 
    if (!response.ok) {
@@ -958,6 +960,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  onChange={(e) => setFormDate(e.target.value)}
  className="w-full bg-slate-50/70 hover:bg-white border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 font-medium focus:outline-none transition-all"
  />
+ <BackDateReason db={db} date={formDate} value={backDateReason} onChange={setBackDateReason} />
  </div>
 
  <div className="lg:col-span-3 space-y-0.5">

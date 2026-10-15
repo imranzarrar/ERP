@@ -237,6 +237,16 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
     ]
   },
   {
+    // Who may change the rules for dating a posting, and who may go past them. Three separate authorities: setting the policy, posting beyond the back-date window,
+    // posting on or before the lock date.
+    id: 'postingControl', groupId: 'general_ledger', label: 'Posting Control (lock date, back-dating)', leaves: [
+      { key: 'read', label: 'View Posting Control' },
+      { key: 'update', label: 'Change the lock date and back-dating rules' },
+      { key: 'backDate', label: 'Post entries dated beyond the back-date window' },
+      { key: 'overrideLock', label: 'Post entries dated on or before the lock date' },
+    ]
+  },
+  {
     id: 'accountMapping', groupId: 'general_ledger', label: 'Account Mapping', leaves: [
       { key: 'read', label: 'View Account Mapping' },
       { key: 'update', label: 'Change Account Mapping' },

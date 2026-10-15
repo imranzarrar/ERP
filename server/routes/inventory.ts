@@ -13,6 +13,7 @@ import { generateId } from '../../src/id.js';
 import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
 import { nowDate } from '../lib/clock.js';
 import { documentDates, entryStamp, systemDated } from '../lib/documentDates.js';
+import { assertPostingAllowed } from '../lib/postingGuard.js';
 
 const router = express.Router();
 
@@ -666,8 +667,7 @@ router.post('/goods-receipt-notes/:id/reverse', withTenantDb, async (req: any, r
     // A receipt of a closed month (or of a quarter whose VAT return is generated/filed) is locked with that period: reversing it would
     // drop it from that month's received-not-billed and stock figures. It is corrected the other way, with a return to the vendor dated today.
     const grnDay = grn.postingDate;
-    await validateTransactionDate(grnDay, companyId);
-    await assertQuarterNotFrozen(grnDay, companyId);
+    await assertPostingAllowed(req, grnDay, { vat: 'frozen' });
     // Closes a known guard gap (row 12 of the posting-rules design): once a GRN has been
     // billed, its GR/IR Clearing entry has already been cleared into AP/VAT Input by the
     // Bill (row 9) — reversing the GRN's own entry underneath that would leave GR/IR
@@ -1329,8 +1329,7 @@ router.post('/stock-adjustments', withTenantDb, async (req: any, res) => {
     const tdb = tenantDb();
     // Posts cost to the P&L dated today, so it must not land in a closed month or a quarter already filed with ZATCA.
     const guardDate = nowDate().toISOString().slice(0, 10);
-    await validateTransactionDate(guardDate, companyId);
-    await assertQuarterNotFiled(guardDate, companyId);
+    await assertPostingAllowed(req, guardDate, { vat: 'filed' });
     const delta = await toBaseQuantity(tdb, productId, unitOfMeasureId, companyId, Number(quantity));
     const adjustmentBefore = await snapshotInventory(tdb, companyId, [productId]);
 
@@ -1471,8 +1470,7 @@ router.post('/purchase-bills', withTenantDb, async (req: any, res) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(billDate)) {
       return res.status(400).json({ error: 'A bill date is required.' });
     }
-    await validateTransactionDate(billDate, companyId);
-    await assertQuarterNotFrozen(billDate, companyId);
+    await assertPostingAllowed(req, billDate, { vat: 'frozen' });
 
     // Vendor Bill # is optional here (can be added later via PUT /purchase-bills/:id
     // while still Unpaid) — only the GRN auto-post-bill flow requires it upfront, since
@@ -1582,8 +1580,7 @@ router.post('/vendor-refunds', withTenantDb, async (req: any, res) => {
     const [bank] = await tdb.select({ id: schema.bankAccounts.id }).from(schema.bankAccounts).where(and(eq(schema.bankAccounts.id, bankId), eq(schema.bankAccounts.companyId, companyId)));
     if (!bank) return res.status(400).json({ error: 'Selected bank account was not found for this company.' });
 
-    await validateTransactionDate(refundDate, companyId);       // existing, open, not in the future
-    await assertQuarterNotFiled(refundDate, companyId);          // not inside a quarter already filed with ZATCA
+    await assertPostingAllowed(req, refundDate, { vat: 'filed' });
 
     const available = await computeVendorCreditBalance(tdb, companyId, refundDate, vendorId);
     if (amt > available + 0.01) {
@@ -1643,8 +1640,7 @@ router.post('/vendor-refunds/:id/cancel', withTenantDb, async (req: any, res) =>
 
     // The reversal carries the ORIGINAL's date, so cancelling a refund received in a month that has since closed (or in a
     // filed quarter) is refused — exactly like the original could not have been entered there.
-    await validateTransactionDate(original.postingDate, companyId);
-    await assertQuarterNotFiled(original.postingDate, companyId);
+    await assertPostingAllowed(req, original.postingDate, { vat: 'filed' });
 
     const voucherNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'voucher', original.postingDate, null);
     await tdb.insert(schema.vouchers).values({
@@ -1702,8 +1698,7 @@ router.post('/purchase-bills/:id/pay', withTenantDb, async (req: any, res) => {
       return res.status(400).json({ error: `A payment cannot be dated before the bill itself (${bill.docDate}).` });
     }
     // A payment is a dated cash entry: never into a closed fiscal month, never inside a quarter already filed with ZATCA.
-    await validateTransactionDate(voucherDate, companyId);
-    await assertQuarterNotFiled(voucherDate, companyId);
+    await assertPostingAllowed(req, voucherDate, { vat: 'filed' });
     const { bill: newBill, voucher } = await payPurchaseBillInFull(tdb, {
       companyId,
       billId: id,
@@ -1776,8 +1771,7 @@ router.patch('/purchase-bills/:id/cancel', withTenantDb, async (req: any, res) =
     // Cancelling is an edit to this bill, same as its creation already blocks once its
     // quarter has been filed with ZATCA (a filed return's reported input VAT would
     // otherwise silently go stale).
-    await validateTransactionDate(bill.postingDate, companyId);   // not a closed month either
-    await assertQuarterNotFrozen(bill.postingDate, companyId);
+    await assertPostingAllowed(req, bill.postingDate, { vat: 'frozen' });
     const [newBill] = await tdb.update(schema.purchaseBills)
       .set({ status: 'Cancelled' })
       .where(eq(schema.purchaseBills.id, id))
@@ -1850,8 +1844,7 @@ router.post('/purchase-returns', withTenantDb, async (req: any, res) => {
     // Purchase Bills — no client-supplied backdating, so this is a same-day check only.
     // This route previously had neither the open-month nor the filed-quarter check at
     // all, unlike every sibling financial-document route.
-    await validateTransactionDate(nowDate().toISOString().slice(0, 10), companyId);
-    await assertQuarterNotFrozen(nowDate().toISOString().slice(0, 10), companyId);
+    await assertPostingAllowed(req, nowDate().toISOString().slice(0, 10), { vat: 'frozen' });
     // Belt-and-suspenders alongside the received-quantity check below (lines ~1244-1256
     // already reject returning more than was actually received against this GRN, which
     // in practice also rejects any productId that was never received at all — but that's
@@ -2107,8 +2100,7 @@ router.patch('/purchase-returns/:id/cancel', withTenantDb, async (req: any, res)
     }
     // Cancelling is an edit to this return, same as its creation now blocks once its
     // quarter has been filed with ZATCA.
-    await validateTransactionDate(ret.postingDate, companyId);   // not a closed month either
-    await assertQuarterNotFrozen(ret.postingDate, companyId);
+    await assertPostingAllowed(req, ret.postingDate, { vat: 'frozen' });
     // The part of this return that had already been paid is a vendor credit. If the vendor has refunded it (or it has been used), cancelling the
     // return would leave a refund with nothing to back it: reverse the refund first.
     {
@@ -2312,8 +2304,7 @@ router.post('/stock-takes/:id/finalize', withTenantDb, async (req: any, res) => 
     const tdb = tenantDb();
     // Posts cost to the P&L dated today, so it must not land in a closed month or a quarter already filed with ZATCA.
     const guardDate = nowDate().toISOString().slice(0, 10);
-    await validateTransactionDate(guardDate, companyId);
-    await assertQuarterNotFiled(guardDate, companyId);
+    await assertPostingAllowed(req, guardDate, { vat: 'filed' });
 
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
     // request in one transaction; the row lock below still applies within it.

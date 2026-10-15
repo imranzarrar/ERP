@@ -7,6 +7,7 @@ import { Expense, ExpenseItem, Vendor, TaxSlab, BankAccount, User, normalizePerm
 import ItemCatalogSearch from './ItemCatalogSearch';
 import { usePaginatedList } from '../usePaginatedList';
 import { RowNumberTd, PaginationFooter } from './PaginationControls';
+import { BackDateReason } from './ledger/postingPolicy';
 import {
  FileText,
  Plus,
@@ -125,6 +126,7 @@ export default function ExpenseModule({ db, onPrintDoc, mode, onDone, onCreateNe
 
  // Form states
  const [formDate, setFormDate] = React.useState('');
+ const [backDateReason, setBackDateReason] = React.useState(''); // asked for only when the company's posting rules want a reason for this date
  const [formVendorId, setFormVendorId] = React.useState('');
  const [formTaxSlabId, setFormTaxSlabId] = React.useState('');
  const [formBankId, setFormBankId] = React.useState('');
@@ -303,7 +305,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
 
  setIsSavingExpense(true);
  try {
-  const response = await fetch("/api/expenses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(expData) });
+  const response = await fetch("/api/expenses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...expData, backDateReason: backDateReason || undefined }) });
   const result = await response.json();
   // POST /api/expenses only ever returns { success: true } or { error }, never a full
   // `db` blob to merge back in — a real GET /api/state refetch (onRefreshDb) below is
@@ -697,6 +699,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  onChange={(e) => setFormDate(e.target.value)}
  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none"
  />
+ <BackDateReason db={db} date={formDate} value={backDateReason} onChange={setBackDateReason} />
  </div>
 
  <div className="space-y-1">

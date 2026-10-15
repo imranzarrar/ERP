@@ -16,6 +16,7 @@ import { recordAuditLog } from '../lib/audit.js';
 import { withTenantDb, tenantDb, runAfterTenantCommit } from '../lib/tenantDb.js';
 import { nowDate } from '../lib/clock.js';
 import { documentDates } from '../lib/documentDates.js';
+import { assertPostingAllowed } from '../lib/postingGuard.js';
 
 const router = express.Router();
 
@@ -445,8 +446,7 @@ router.post('/returns', withTenantDb, async (req: any, res) => {
 
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
     // request in one transaction.
-    await validateTransactionDate(todayStr, companyId);
-    await assertQuarterNotFrozen(todayStr, companyId);
+    await assertPostingAllowed(req, todayStr, { vat: 'frozen' });
 
     const noteNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'creditNote', todayStr, original.branchId);
     const savedNoteNumber = noteNumber;

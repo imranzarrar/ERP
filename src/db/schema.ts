@@ -2331,6 +2331,7 @@ export const manualJournals = pgTable('manual_journals', {
   number: text('number').notNull(),
   docDate: businessDate('doc_date').notNull(), // the date of the journal voucher
   postingDate: businessDate('posting_date').notNull(), // the ledger / period date; defaults to docDate
+  backDateReason: text('back_date_reason'), // why an entry dated before today was posted (required past the company's reason-after-days rule)
   description: text('description').notNull(),
   reference: text('reference'),
   preparerNote: text('preparer_note'),
@@ -2693,4 +2694,21 @@ export const reportColumns = pgTable('report_columns', {
   valueCheck: check('report_columns_value_check', sql`${table.valueBasis} IN ('Debit','Credit','Movement','OpeningBalance','ClosingBalance')`),
   presentationCheck: check('report_columns_presentation_check', sql`${table.presentation} IN ('Single','DrCr')`),
   tenantIsolationPolicy: tenantPolicy('report_columns_tenant_isolation', table),
+})).enableRLS();
+
+// Posting control (docs/posting-control.md): one row per company that wants rules on top of the open / closed fiscal month. A company with no row has none of
+// them. lock_date: nothing may be dated on or before it (except for the right postingControl.overrideLock); max_back_days: nothing may be dated more than
+// that many days before today (except for postingControl.backDate); reason_after_days: a posting older than that needs a written reason.
+export const postingPolicies = pgTable('posting_policies', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  lockDate: businessDate('lock_date'),
+  maxBackDays: integer('max_back_days'),
+  reasonAfterDays: integer('reason_after_days'),
+  updatedAt: timestamp('updated_at').notNull(),
+  updatedById: uuid('updated_by_id').references(() => users.id),
+}, (table) => ({
+  companyUnique: uniqueIndex('posting_policies_company_unique').on(table.companyId),
+  daysCheck: check('posting_policies_days_check', sql`(${table.maxBackDays} IS NULL OR ${table.maxBackDays} >= 0) AND (${table.reasonAfterDays} IS NULL OR ${table.reasonAfterDays} >= 0)`),
+  tenantIsolationPolicy: tenantPolicy('posting_policies_tenant_isolation', table),
 })).enableRLS();

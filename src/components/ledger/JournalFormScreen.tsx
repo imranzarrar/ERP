@@ -4,6 +4,7 @@ import { useTranslation, usePermissions } from '../../hooks';
 import type { DatabaseState } from '../../dbStore';
 import { ledgerApi, money, todayIso, inputCls, labelCls, primaryBtn, ghostBtn, Card, Notice } from './ui';
 import { LineDimensions, useDimensionOptions, type DimTags } from './dimensions';
+import { BackDateReason } from './postingPolicy';
 
 export interface Acct { id: string; code: string; name: string; nameAr: string | null; type: string; isGroup: boolean; isActive: boolean; isControl: boolean }
 interface FormLine { key: number; accountId: string; debit: string; credit: string; note: string; dims: DimTags }
@@ -48,6 +49,7 @@ export default function JournalFormScreen({ db, editId, onDone, onDirtyChange }:
   const [accounts, setAccounts] = React.useState<Acct[]>([]);
   const [date, setDate] = React.useState(todayIso()); // the document date
   const [postingDate, setPostingDate] = React.useState(''); // empty = the same as the document date
+  const [backDateReason, setBackDateReason] = React.useState('');
   const [description, setDescription] = React.useState('');
   const [reference, setReference] = React.useState('');
   const [preparerNote, setPreparerNote] = React.useState('');
@@ -69,7 +71,7 @@ export default function JournalFormScreen({ db, editId, onDone, onDirtyChange }:
   React.useEffect(() => {
     if (!editId) return;
     ledgerApi<any>(`/manual-journals/${editId}`).then(j => {
-      setNumber(j.number); setDate(j.docDate); setPostingDate(j.postingDate && j.postingDate !== j.docDate ? j.postingDate : ''); setDescription(j.description); setReference(j.reference || ''); setPreparerNote(j.preparerNote || ''); setBranchId(j.branchId || '');
+      setNumber(j.number); setDate(j.docDate); setPostingDate(j.postingDate && j.postingDate !== j.docDate ? j.postingDate : ''); setBackDateReason(j.backDateReason || ''); setDescription(j.description); setReference(j.reference || ''); setPreparerNote(j.preparerNote || ''); setBranchId(j.branchId || '');
       setLines(j.lines.map((l: any) => ({ key: lineKey++, accountId: l.accountId, debit: l.debit ? String(l.debit) : '', credit: l.credit ? String(l.credit) : '', note: l.note || '', dims: l.dimensions || {} })));
       setLoaded(true);
     }).catch(e => setError(e.message));
@@ -86,7 +88,7 @@ export default function JournalFormScreen({ db, editId, onDone, onDirtyChange }:
   const setLine = (key: number, patch: Partial<FormLine>) => { touch(); setLines(ls => ls.map(l => l.key === key ? { ...l, ...patch } : l)); };
 
   const payload = () => ({
-    docDate: date, ...(postingDate ? { postingDate } : {}), description, reference, preparerNote, branchId: branchId || null,
+    docDate: date, ...(postingDate ? { postingDate } : {}), backDateReason: backDateReason || null, description, reference, preparerNote, branchId: branchId || null,
     lines: filled.map(l => ({ accountId: l.accountId, debit: num(l.debit) || 0, credit: num(l.credit) || 0, note: l.note, dimensions: l.dims })),
   });
 
@@ -126,6 +128,7 @@ export default function JournalFormScreen({ db, editId, onDone, onDirtyChange }:
           )}
           <div className="md:col-span-3"><label className={labelCls}>{t('Note to the approver')}</label><input className={inputCls} value={preparerNote} maxLength={500} onChange={e => { touch(); setPreparerNote(e.target.value); }} placeholder={t('Optional: supporting detail for whoever reviews it')} /></div>
         </div>
+        <BackDateReason db={db} date={postingDate || date} value={backDateReason} onChange={v => { touch(); setBackDateReason(v); }} />
 
         <div className="border border-slate-200 rounded-xl">
           <table className="w-full text-xs text-start">

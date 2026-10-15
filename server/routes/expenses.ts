@@ -15,6 +15,7 @@ import { recordAuditLog } from '../lib/audit.js';
 import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
 import { nowDate } from '../lib/clock.js';
 import { documentDates } from '../lib/documentDates.js';
+import { assertPostingAllowed } from '../lib/postingGuard.js';
 
 const router = express.Router();
 
@@ -136,8 +137,7 @@ router.post('/', withTenantDb, async (req: any, res) => {
 
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
     // request in one transaction.
-    await validateTransactionDate(data.docDate, data.companyId);
-    await assertQuarterNotFrozen(data.docDate, data.companyId);
+    await assertPostingAllowed(req, data.docDate, { vat: 'frozen' });
     const expenseId = generateId();
 
     data.expenseNumber = await getAndIncrementDocumentNumber(tdb, data.companyId, 'expense', data.docDate, data.branchId);
@@ -236,7 +236,7 @@ router.post('/:id/pay', withTenantDb, async (req: any, res) => {
     if (reversedBy) throw new Error(`This expense has been reversed (${reversedBy.n}) and can no longer be paid.`);
     if (expense.paymentStatus === 'Paid') throw new Error('Expense is already paid.');
 
-    await validateTransactionDate(date, companyId);
+    await assertPostingAllowed(req, date, { vat: 'none' });
 
     const targetBankId = bankId || expense.bankId;
     // A client-supplied bankId must actually belong to this company — otherwise a
@@ -373,8 +373,7 @@ router.post('/:id/reverse', withTenantDb, async (req: any, res) => {
 
     // The reversal lands today, so today must be an open month outside any generated/filed VAT quarter.
     const today = nowDate().toISOString().slice(0, 10);
-    await validateTransactionDate(today, companyId);
-    await assertQuarterNotFrozen(today, companyId);
+    await assertPostingAllowed(req, today, { vat: 'frozen' });
 
     const gross = round2(Number(orig.amount));
     const paid = Math.min(gross, round2(Number(orig.amountPaid || 0)));

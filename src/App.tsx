@@ -806,7 +806,8 @@ type NavSection = {
             { id: 'gl-dim-rules', label: t('3 Account Dimension Rules'), permissionKey: 'accountDimensionRules.read' }
           ]
         },
-        { id: 'gl-opening', label: t('Opening Balances'), icon: BookOpen, adminOnly: false, permissionKey: ['openingBalances.read', 'openingBalances.post'] }
+        { id: 'gl-opening', label: t('Opening Balances'), icon: BookOpen, adminOnly: false, permissionKey: ['openingBalances.read', 'openingBalances.post'] },
+        { id: 'gl-posting-control', label: t('Posting Control'), icon: Lock, adminOnly: false, permissionKey: 'postingControl.read' }
       ]
     },
     {
@@ -1661,6 +1662,7 @@ type NavSection = {
  activeTab === 'gl-report-designer' ? t('Report Designer') :
  activeTab === 'gl-reconciliation' ? t('Ledger vs Documents') :
  activeTab === 'gl-opening' ? t('Opening Balances') :
+ activeTab === 'gl-posting-control' ? t('Posting Control') :
  activeTab === 'gl-dim-types' ? t('Dimension Types') :
  activeTab === 'gl-dim-values' ? t('Dimension Values') :
  activeTab === 'gl-cost-centers' ? t('Cost Centres') :
@@ -1701,6 +1703,7 @@ type NavSection = {
  {activeTab === 'gl-report-designer' && t('Design the rows, columns and formatting of every ledger report.')}
  {activeTab === 'gl-reconciliation' && t('Check that the ledger agrees with the document-based reports.')}
  {activeTab === 'gl-opening' && t('Bring forward the balances your books start with.')}
+ {activeTab === 'gl-posting-control' && t('The lock date and back-dating rules for every posting.')}
  {activeTab === 'gl-dim-types' && t('Define the labels you report by: Branch, Department, Profit Centre, Project and more.')}
  {activeTab === 'gl-dim-values' && t('The values of each dimension, as a list or a tree.')}
  {activeTab === 'gl-cost-centers' && t('Departments and cost centres, with their home branch.')}

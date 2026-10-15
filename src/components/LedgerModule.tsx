@@ -10,6 +10,7 @@ import DimensionsScreen from './ledger/DimensionsScreen';
 import AccountDimensionRulesScreen from './ledger/AccountDimensionRulesScreen';
 import ReportRunScreen from './ledger/ReportRunScreen';
 import ReportDesignerScreen from './ledger/ReportDesignerScreen';
+import PostingControlScreen from './ledger/PostingControlScreen';
 
 export type LedgerFocus = { kind: 'manual' | 'entry'; id: string };
 
@@ -42,6 +43,7 @@ export default function LedgerModule({ db, tab, editJournalId, focus, accountFoc
     case 'gl-report-designer': return <ReportDesignerScreen db={db} />;
     case 'gl-reconciliation': return <LedgerReportsScreen db={db} report="reconciliation" />;
     case 'gl-opening': return <OpeningBalancesScreen db={db} />;
+    case 'gl-posting-control': return <PostingControlScreen db={db} />;
     case 'gl-dim-types': return <DimensionsScreen db={db} mode="types" />;
     case 'gl-dim-values': return <DimensionsScreen db={db} mode="values" />;
     case 'gl-cost-centers': return <DimensionsScreen db={db} mode="cost-centers" />;

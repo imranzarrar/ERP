@@ -22,6 +22,7 @@ import { recordAuditLog } from '../lib/audit.js';
 import { withTenantDb, tenantDb, runAfterTenantCommit } from '../lib/tenantDb.js';
 import { nowDate } from '../lib/clock.js';
 import { documentDates } from '../lib/documentDates.js';
+import { assertPostingAllowed } from '../lib/postingGuard.js';
 
 const router = express.Router();
 
@@ -362,11 +363,8 @@ router.post('/quotations/:id/convert', withTenantDb, async (req: any, res) => {
     if (quotation.status !== 'Accepted') throw new Error(`Only accepted quotations can be converted. Current status: ${quotation.status}`);
 
     const companyId = req.targetCompanyId;
-    await validateTransactionDate(invoiceDate, companyId);
-    // This creates a brand-new invoice, same as POST /invoices — must be blocked the
-    // same way if invoiceDate falls in an already-filed quarter. This route reimplements
-    // invoice creation as its own parallel path and had never picked up this check.
-    await assertQuarterNotFrozen(invoiceDate, companyId);
+    // This creates a brand-new invoice, same as POST /invoices: the same guard (open month, VAT quarter, lock date, back-dating).
+    await assertPostingAllowed(req, invoiceDate, { vat: 'frozen' });
 
     const refError = await assertDocumentRefsOwnedByCompany(tdb, companyId, {
       customerId: customCustomerId,
@@ -902,8 +900,7 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     // request in one transaction; the row lock below still applies within it.
     // 1. Business logic
     const companyId = req.targetCompanyId;
-    await validateTransactionDate(invData.docDate, companyId);
-    await assertQuarterNotFrozen(invData.docDate, companyId);
+    await assertPostingAllowed(req, invData.docDate, { vat: 'frozen' });
     await assertProductsOwnedByCompany(tdb, companyId, (items || []).map((it: any) => it.productId));
 
     // 2. Increment Counter
@@ -1150,8 +1147,7 @@ router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
     // the current period. Today's month must be open and today's quarter unfiled. The original invoice's date remains reachable
     // through originalInvoiceId.
     const issueDate = nowDate().toISOString().slice(0, 10);
-    await validateTransactionDate(issueDate, companyId);
-    await assertQuarterNotFrozen(issueDate, companyId);
+    await assertPostingAllowed(req, issueDate, { vat: 'frozen' });
 
     const counterType = type === 'CreditNote' ? 'creditNote' : 'debitNote';
     const noteNumber = await getAndIncrementDocumentNumber(tdb, companyId, counterType, issueDate, original.branchId);
@@ -1329,7 +1325,7 @@ router.post('/invoices/:id/paid', withTenantDb, async (req: any, res) => {
     }
 
     const paymentDate = req.body?.paymentDate ? String(req.body.paymentDate) : nowDate().toISOString().split('T')[0];
-    await validateTransactionDate(paymentDate, invoice.companyId);
+    await assertPostingAllowed(req, paymentDate, { vat: 'none' });
 
     const invItems = await tdb.select().from(schema.invoiceItems).where(eq(schema.invoiceItems.invoiceId, id));
     const [taxSlab] = invoice.taxSlabId ? await tdb.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.id, invoice.taxSlabId)) : [undefined];
@@ -1476,11 +1472,10 @@ router.post('/invoices/:id/cancel', withTenantDb, async (req: any, res) => {
     // return's reported sales/VAT figures could silently go stale (cancelling drops it
     // out of every report's totals — see SalesReportsModule.tsx). POST /invoices and
     // /invoices/:id/note already enforce this; this route never did.
-    await assertQuarterNotFrozen(invoice.postingDate, req.targetCompanyId);
     // Same rule a Credit Note already enforces: the invoice's own fiscal month must still be open. Cancelling drops the
     // invoice out of that month's reports, so doing it after the month's profit has been closed and stored would leave
     // Retained Earnings holding revenue that no longer exists.
-    await validateTransactionDate(invoice.postingDate, req.targetCompanyId);
+    await assertPostingAllowed(req, invoice.postingDate, { vat: 'frozen' });
 
     if (['SUBMITTING', 'CLEARED', 'REPORTED'].includes(invoice.zatcaStatus as string)) {
       const err: any = new Error('This invoice has already been submitted to ZATCA and cannot be cancelled. Issue a Credit Note instead.');
@@ -1654,7 +1649,7 @@ router.post('/investors/:id/investment', withTenantDb, async (req: any, res) => 
       .where(and(eq(schema.investors.id, investorId), eq(schema.investors.companyId, companyId)));
     if (!investor) throw new Error('Selected investor not found.');
 
-    await validateTransactionDate(date, companyId);
+    await assertPostingAllowed(req, date, { vat: 'none' });
 
     if (!(amountNum > 0)) {
       const err: any = new Error('Investment amount must be greater than zero.');
@@ -1881,8 +1876,7 @@ router.post('/recurring-postings', withTenantDb, async (req: any, res) => {
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
     // request in one transaction.
     // 1. Validation
-    await validateTransactionDate(dateStr, companyId);
-    await assertQuarterNotFrozen(dateStr, companyId);   // a real expense (or the invoice that settles an accrual): not inside a generated or filed VAT quarter
+    await assertPostingAllowed(req, dateStr, { vat: 'frozen' });
 
     const [existingPosting] = await tdb.select().from(schema.recurringPostings).where(and(eq(schema.recurringPostings.templateId, templateId), eq(schema.recurringPostings.monthId, monthId), eq(schema.recurringPostings.companyId, companyId)));
     if (existingPosting && existingPosting.status !== 'Unposted') {
@@ -2022,8 +2016,7 @@ router.post('/settle-accrual', withTenantDb, async (req: any, res) => {
     if (accrualExpense.accrualSettled) throw new Error('Accrual is already settled.');
 
     // 2. Validate transaction date
-    await validateTransactionDate(actualDate, companyId);
-    await assertQuarterNotFrozen(actualDate, companyId);   // a real expense (or the invoice that settles an accrual): not inside a generated or filed VAT quarter
+    await assertPostingAllowed(req, actualDate, { vat: 'frozen' });
 
     // 3. Increment expense counter
     const expNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'expense', actualDate, null);
@@ -2350,7 +2343,7 @@ router.post('/interbank-transfer', withTenantDb, async (req: any, res) => {
     if (amount <= 0) throw Object.assign(new Error('Transfer amount must be greater than zero.'), { status: 400 });
 
     // 2. Validate transaction date
-    await validateTransactionDate(dateStr, companyId);
+    await assertPostingAllowed(req, dateStr, { vat: 'none' });
 
     const transferId = generateId();
 

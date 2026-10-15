@@ -12,6 +12,7 @@ import { branchAccessOk } from './authz.js';
 import { reverseAllEntriesFor } from './ledger.js';
 import { nowDate } from './clock.js';
 import { documentDates } from './documentDates.js';
+import { assertPostingAllowed } from './postingGuard.js';
 
 // Round-half-up to 2 decimals. Applied after every intermediate step in a money
 // calculation chain (not just once at the end via .toFixed(2)) so the value written to
@@ -668,8 +669,7 @@ export async function cancelExpense(tx: any, req: any, id: string, companyId: st
   // An expense whose month is closed (or whose VAT quarter is generated/filed) is locked and cannot be cancelled: cancelling drops it from
   // its own period's figures. The correction is a Reversal document dated today in the current period instead.
   try {
-    await assertQuarterNotFrozen(expense.postingDate, companyId);
-    await validateTransactionDate(expense.postingDate, companyId);
+    await assertPostingAllowed(req, expense.postingDate, { vat: 'frozen', companyId });
   } catch (lockErr: any) {
     lockErr.message = `${lockErr.message} This expense cannot be cancelled; use "Reverse" to post a correction dated today.`;
     throw lockErr;
@@ -678,8 +678,7 @@ export async function cancelExpense(tx: any, req: any, id: string, companyId: st
   // The reversal is posted on the day the cancellation happens (never back into the expense's own, earlier period), and
   // that day must itself be in an open fiscal month and outside any filed VAT quarter.
   const finalReversalDate = nowDate().toISOString().split('T')[0];
-  await validateTransactionDate(finalReversalDate, companyId);
-  await assertQuarterNotFrozen(finalReversalDate, companyId);
+  await assertPostingAllowed(req, finalReversalDate, { vat: 'frozen', companyId });
 
   await tx.update(schema.expenses).set({ status: 'Cancelled' }).where(eq(schema.expenses.id, id));
 

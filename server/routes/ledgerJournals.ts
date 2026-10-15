@@ -19,6 +19,7 @@ import { validateTransactionDate, assertQuarterNotFiled, assertQuarterNotFrozen 
 import { branchIdsFor, dimFilterSql, round2, uuidArray } from '../lib/ledgerQueries.js';
 import { applyRules, entitiesOfType, loadRules, loadTypes, parseDimFilters, resolveCombination, tagsOfCombinations, type Tags } from '../lib/dimensions.js';
 import { documentDates } from '../lib/documentDates.js';
+import { assertPostingAllowed } from '../lib/postingGuard.js';
 
 const router = express.Router();
 const fail = (res: any, status: number, error: string) => res.status(status).json({ error });
@@ -74,9 +75,8 @@ async function checkLines(tdb: any, companyId: string, raw: any, requireBalanced
 }
 
 // The period rules every posting date obeys: an open fiscal month, and (for a journal touching VAT) a VAT quarter that is not frozen.
-async function checkPeriod(companyId: string, date: string, touchesVat: boolean) {
-  await validateTransactionDate(date, companyId);
-  if (touchesVat) await assertQuarterNotFrozen(date, companyId); else await assertQuarterNotFiled(date, companyId);
+async function checkPeriod(req: any, date: string, touchesVat: boolean, reason?: string | null) {
+  await assertPostingAllowed(req, date, { vat: touchesVat ? 'frozen' : 'filed', reason: reason ?? '' });
 }
 
 // Resolves each line's dimension tags to a combination, through the account rules. A tag on a Not-allowed dimension is always an error; a Required tag that
@@ -320,7 +320,7 @@ router.post('/manual-journals', withTenantDb, async (req: any, res) => {
     const number = await getAndIncrementDocumentNumber(tdb, companyId, 'manualJournal', docDate, br.branchId);
     // isolation-ok: branchId was resolved by resolveBranch (this company's own branch the user may access) just above
     await tdb.insert(schema.manualJournals).values({
-      id, companyId, number, ...documentDates(docDate, postingDate), description, reference: String(b.reference ?? '').trim().slice(0, 100) || null, preparerNote: String(b.preparerNote ?? '').trim().slice(0, 500) || null,
+      id, companyId, number, ...documentDates(docDate, postingDate), backDateReason: String(b.backDateReason ?? '').trim().slice(0, 300) || null, description, reference: String(b.reference ?? '').trim().slice(0, 100) || null, preparerNote: String(b.preparerNote ?? '').trim().slice(0, 500) || null,
       branchId: br.branchId, status: 'Draft', preparedById: req.user.id, preparedAt: nowDate(),
     });
     // isolation-ok: every accountId was verified to be an active posting account of this company by checkLines above
@@ -361,6 +361,7 @@ router.put('/manual-journals/:id', withTenantDb, async (req: any, res) => {
     }
     await tdb.update(schema.manualJournals).set({
       docDate, postingDate, description, branchId,
+      backDateReason: b.backDateReason === undefined ? j.backDateReason : (String(b.backDateReason ?? '').trim().slice(0, 300) || null),
       reference: b.reference === undefined ? j.reference : (String(b.reference ?? '').trim().slice(0, 100) || null),
       preparerNote: b.preparerNote === undefined ? j.preparerNote : (String(b.preparerNote ?? '').trim().slice(0, 500) || null),
       status: 'Draft',
@@ -390,7 +391,7 @@ router.post('/manual-journals/:id/submit', withTenantDb, async (req: any, res) =
     if (checked.error) return fail(res, 400, checked.error);
     await lineCombinations(tdb, req, companyId, checked.lines, 'strict'); // Required dimensions must be present before it goes for approval
     const touchesVat = checked.lines.some(l => VAT_ROLES.includes(checked.accounts.get(l.accountId)?.systemKey));
-    await checkPeriod(companyId, j.postingDate, touchesVat);
+    await checkPeriod(req, j.postingDate, touchesVat, j.backDateReason);
     await tdb.update(schema.manualJournals).set({ status: 'Pending', submittedAt: nowDate(), decisionNote: null }).where(and(eq(schema.manualJournals.id, j.id), eq(schema.manualJournals.companyId, companyId)));
     await addEvent(tdb, req, j.id, 'Submitted', String(req.body?.note ?? '').trim().slice(0, 300) || null);
     recordAuditLog(req, 'SUBMIT_MANUAL_JOURNAL', 'manual_journal', j.id, { number: j.number });
@@ -416,7 +417,7 @@ router.post('/manual-journals/:id/approve', withTenantDb, async (req: any, res) 
     if (checked.error) return fail(res, 400, checked.error);
     const combos = await lineCombinations(tdb, req, companyId, checked.lines, j.reversalOfId ? 'draft' : 'strict'); // a reversal mirrors the original's tags as they were
     const touchesVat = checked.lines.some(l => VAT_ROLES.includes(checked.accounts.get(l.accountId)?.systemKey));
-    await checkPeriod(companyId, j.postingDate, touchesVat);
+    await checkPeriod(req, j.postingDate, touchesVat, j.backDateReason);
     // A reversal is posted as the mirror of the entry it reverses, linked to it.
     let reversalOfEntryId: string | null = null;
     if (j.reversalOfId) {
