@@ -46,7 +46,8 @@ export default function JournalFormScreen({ db, editId, onDone, onDirtyChange }:
   const { t, lang } = useTranslation(db);
   const { can } = usePermissions(db.currentUser);
   const [accounts, setAccounts] = React.useState<Acct[]>([]);
-  const [date, setDate] = React.useState(todayIso());
+  const [date, setDate] = React.useState(todayIso()); // the document date
+  const [postingDate, setPostingDate] = React.useState(''); // empty = the same as the document date
   const [description, setDescription] = React.useState('');
   const [reference, setReference] = React.useState('');
   const [preparerNote, setPreparerNote] = React.useState('');
@@ -68,7 +69,7 @@ export default function JournalFormScreen({ db, editId, onDone, onDirtyChange }:
   React.useEffect(() => {
     if (!editId) return;
     ledgerApi<any>(`/manual-journals/${editId}`).then(j => {
-      setNumber(j.number); setDate(j.date); setDescription(j.description); setReference(j.reference || ''); setPreparerNote(j.preparerNote || ''); setBranchId(j.branchId || '');
+      setNumber(j.number); setDate(j.docDate); setPostingDate(j.postingDate && j.postingDate !== j.docDate ? j.postingDate : ''); setDescription(j.description); setReference(j.reference || ''); setPreparerNote(j.preparerNote || ''); setBranchId(j.branchId || '');
       setLines(j.lines.map((l: any) => ({ key: lineKey++, accountId: l.accountId, debit: l.debit ? String(l.debit) : '', credit: l.credit ? String(l.credit) : '', note: l.note || '', dims: l.dimensions || {} })));
       setLoaded(true);
     }).catch(e => setError(e.message));
@@ -85,7 +86,7 @@ export default function JournalFormScreen({ db, editId, onDone, onDirtyChange }:
   const setLine = (key: number, patch: Partial<FormLine>) => { touch(); setLines(ls => ls.map(l => l.key === key ? { ...l, ...patch } : l)); };
 
   const payload = () => ({
-    date, description, reference, preparerNote, branchId: branchId || null,
+    docDate: date, ...(postingDate ? { postingDate } : {}), description, reference, preparerNote, branchId: branchId || null,
     lines: filled.map(l => ({ accountId: l.accountId, debit: num(l.debit) || 0, credit: num(l.credit) || 0, note: l.note, dimensions: l.dims })),
   });
 
@@ -111,8 +112,9 @@ export default function JournalFormScreen({ db, editId, onDone, onDirtyChange }:
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-900">{editId ? `${t('Edit journal')} ${number}` : t('New Manual Journal')}</h3>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <div><label className={labelCls}>{t('Date')}</label><input type="date" className={inputCls} value={date} onChange={e => { touch(); setDate(e.target.value); }} /></div>
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          <div><label className={labelCls}>{t('Document date')}</label><input type="date" className={inputCls} value={date} onChange={e => { touch(); setDate(e.target.value); }} /></div>
+          <div><label className={labelCls}>{t('Posting date')}</label><input type="date" className={inputCls} value={postingDate || date} onChange={e => { touch(); setPostingDate(e.target.value === date ? '' : e.target.value); }} /></div>
           <div className="md:col-span-2"><label className={labelCls}>{t('Description (narration)')}</label><input className={inputCls} value={description} maxLength={300} onChange={e => { touch(); setDescription(e.target.value); }} placeholder={t('What is this entry for?')} /></div>
           <div><label className={labelCls}>{t('Reference')}</label><input className={inputCls} value={reference} maxLength={100} onChange={e => { touch(); setReference(e.target.value); }} placeholder={t('Optional')} /></div>
           {branches.length > 0 && (

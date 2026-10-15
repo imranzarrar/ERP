@@ -640,7 +640,7 @@ function PosMainApp({ db, onUpdateDbLocal, onRefreshDb, currentUser, activeShift
       customerId: payCustomerId || (db.customers || []).find((c: any) => c.companyId === activeCompanyId && c.name.toLowerCase().includes('walk-in'))?.id || (db.customers || []).find((c: any) => c.companyId === activeCompanyId)?.id || '',
       taxSlabId: posTaxSlabId,
       bankId: finalBankId,
-      date: getPosSaleDate(),
+      docDate: getPosSaleDate(),
       paymentStatus: 'Paid',
       amountPaid: total,
       paymentDate: getPosSaleDate(),
@@ -1397,7 +1397,7 @@ function PosReturns({ db, onRefreshDb, currentUser, activeCompanyId, posSettings
             <button key={inv.id} onClick={() => selectInvoice(inv)} className="w-full text-start p-4 flex items-center justify-between hover:bg-slate-50 transition">
               <div>
                 <p className="font-bold text-slate-800">{inv.invoiceNumber}</p>
-                <p className="text-xs text-slate-500">{inv.date} · {inv.customerName}</p>
+                <p className="text-xs text-slate-500">{inv.docDate} · {inv.customerName}</p>
               </div>
               <span className="font-bold text-slate-700">{currency} {Number(inv.amountPaid || 0).toFixed(2)}</span>
             </button>
@@ -1408,7 +1408,7 @@ function PosReturns({ db, onRefreshDb, currentUser, activeCompanyId, posSettings
           <div className="flex items-center justify-between mb-4">
             <div>
               <p className="font-bold text-slate-800">{selectedInvoice.invoiceNumber}</p>
-              <p className="text-xs text-slate-500">{selectedInvoice.date} · {selectedInvoice.customerName}</p>
+              <p className="text-xs text-slate-500">{selectedInvoice.docDate} · {selectedInvoice.customerName}</p>
             </div>
             <button onClick={() => setSelectedInvoice(null)} className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition">{t('Back to search')}</button>
           </div>
@@ -1591,7 +1591,7 @@ function PosSalesHistory({ db, activeCompanyId, currentUser, restricted, onViewI
         if (!shift || shift.userId !== currentUser.id) return false;
         
         // Date restriction: today or yesterday
-        const invoiceDate = new Date(i.date);
+        const invoiceDate = new Date(i.docDate);
         return invoiceDate >= yesterday && invoiceDate <= today;
     }
     return true;

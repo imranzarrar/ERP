@@ -131,7 +131,7 @@ describe('POST /api/inventory/purchase-bills (3-way match)', () => {
     const { status, body } = await api(adminSessionId, '/api/inventory/purchase-bills', {
       method: 'POST',
       // Deliberately send a bogus grandTotal — the route must ignore it and compute its own.
-      body: JSON.stringify({ billData: { date: new Date().toISOString().slice(0, 10), grnIds: [grnId], grandTotal: 1, bankId } }),
+      body: JSON.stringify({ billData: { docDate: new Date().toISOString().slice(0, 10), grnIds: [grnId], grandTotal: 1, bankId } }),
     });
     expect(status).toBe(200);
     expect(Number(body.purchaseBill.subTotal)).toBe(1000);
@@ -147,13 +147,13 @@ describe('POST /api/inventory/purchase-bills (3-way match)', () => {
     const grnId = await createGrn(vendorId, 5, 50, 0);
     const first = await api(adminSessionId, '/api/inventory/purchase-bills', {
       method: 'POST',
-      body: JSON.stringify({ billData: { date: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
+      body: JSON.stringify({ billData: { docDate: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
     });
     expect(first.status).toBe(200);
 
     const second = await api(adminSessionId, '/api/inventory/purchase-bills', {
       method: 'POST',
-      body: JSON.stringify({ billData: { date: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
+      body: JSON.stringify({ billData: { docDate: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
     });
     expect(second.status).toBe(400);
     expect(second.body.error).toMatch(/already been billed/i);
@@ -165,7 +165,7 @@ describe('POST /api/inventory/purchase-bills (3-way match)', () => {
 
     const { status, body } = await api(adminSessionId, '/api/inventory/purchase-bills', {
       method: 'POST',
-      body: JSON.stringify({ billData: { date: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
+      body: JSON.stringify({ billData: { docDate: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
     });
     expect(status).toBe(400);
     expect(body.error).toMatch(/reversed/i);
@@ -177,7 +177,7 @@ describe('POST /api/inventory/purchase-bills (3-way match)', () => {
 
     const { status, body } = await api(adminSessionId, '/api/inventory/purchase-bills', {
       method: 'POST',
-      body: JSON.stringify({ billData: { date: new Date().toISOString().slice(0, 10), grnIds: [grnA, grnB], bankId } }),
+      body: JSON.stringify({ billData: { docDate: new Date().toISOString().slice(0, 10), grnIds: [grnA, grnB], bankId } }),
     });
     expect(status).toBe(400);
     expect(body.error).toMatch(/same vendor/i);
@@ -187,7 +187,7 @@ describe('POST /api/inventory/purchase-bills (3-way match)', () => {
     const grnId = await createGrn(vendorId, 1, 10, 0);
     const { status } = await api(staffSessionId, '/api/inventory/purchase-bills', {
       method: 'POST',
-      body: JSON.stringify({ billData: { date: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
+      body: JSON.stringify({ billData: { docDate: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
     });
     expect(status).toBe(403);
   });
@@ -198,13 +198,13 @@ describe('POST /api/inventory/purchase-bills/:id/pay + PATCH .../cancel', () => 
     const grnId = await createGrn(vendorId, 10, 100, 0); // grandTotal 1000
     const { body: billBody } = await api(adminSessionId, '/api/inventory/purchase-bills', {
       method: 'POST',
-      body: JSON.stringify({ billData: { date: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
+      body: JSON.stringify({ billData: { docDate: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
     });
     const billId = billBody.purchaseBill.id;
 
     const partial = await api(adminSessionId, `/api/inventory/purchase-bills/${billId}/pay`, {
       method: 'POST',
-      body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), amount: 400 }),
+      body: JSON.stringify({ docDate: new Date().toISOString().slice(0, 10), amount: 400 }),
     });
     expect(partial.status).toBe(200);
     let [bill] = await db.select().from(schema.purchaseBills).where(eq(schema.purchaseBills.id, billId));
@@ -213,7 +213,7 @@ describe('POST /api/inventory/purchase-bills/:id/pay + PATCH .../cancel', () => 
 
     const final = await api(adminSessionId, `/api/inventory/purchase-bills/${billId}/pay`, {
       method: 'POST',
-      body: JSON.stringify({ date: new Date().toISOString().slice(0, 10) }), // no amount -> pays the remainder
+      body: JSON.stringify({ docDate: new Date().toISOString().slice(0, 10) }), // no amount -> pays the remainder
     });
     expect(final.status).toBe(200);
     [bill] = await db.select().from(schema.purchaseBills).where(eq(schema.purchaseBills.id, billId));
@@ -229,11 +229,11 @@ describe('POST /api/inventory/purchase-bills/:id/pay + PATCH .../cancel', () => 
     const grnId = await createGrn(vendorId, 1, 100, 0);
     const { body: billBody } = await api(adminSessionId, '/api/inventory/purchase-bills', {
       method: 'POST',
-      body: JSON.stringify({ billData: { date: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
+      body: JSON.stringify({ billData: { docDate: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
     });
     const { status } = await api(adminSessionId, `/api/inventory/purchase-bills/${billBody.purchaseBill.id}/pay`, {
       method: 'POST',
-      body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), amount: 99999 }),
+      body: JSON.stringify({ docDate: new Date().toISOString().slice(0, 10), amount: 99999 }),
     });
     expect(status).toBe(400);
   });
@@ -242,7 +242,7 @@ describe('POST /api/inventory/purchase-bills/:id/pay + PATCH .../cancel', () => 
     const grnId = await createGrn(vendorId, 1, 10, 0);
     const { body: billBody } = await api(adminSessionId, '/api/inventory/purchase-bills', {
       method: 'POST',
-      body: JSON.stringify({ billData: { date: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
+      body: JSON.stringify({ billData: { docDate: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
     });
     const billId = billBody.purchaseBill.id;
 
@@ -255,7 +255,7 @@ describe('POST /api/inventory/purchase-bills/:id/pay + PATCH .../cancel', () => 
 
     const rebill = await api(adminSessionId, '/api/inventory/purchase-bills', {
       method: 'POST',
-      body: JSON.stringify({ billData: { date: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
+      body: JSON.stringify({ billData: { docDate: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
     });
     expect(rebill.status).toBe(200);
   });
@@ -264,10 +264,10 @@ describe('POST /api/inventory/purchase-bills/:id/pay + PATCH .../cancel', () => 
     const grnId = await createGrn(vendorId, 1, 100, 0);
     const { body: billBody } = await api(adminSessionId, '/api/inventory/purchase-bills', {
       method: 'POST',
-      body: JSON.stringify({ billData: { date: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
+      body: JSON.stringify({ billData: { docDate: new Date().toISOString().slice(0, 10), grnIds: [grnId], bankId } }),
     });
     const billId = billBody.purchaseBill.id;
-    await api(adminSessionId, `/api/inventory/purchase-bills/${billId}/pay`, { method: 'POST', body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), amount: 10 }) });
+    await api(adminSessionId, `/api/inventory/purchase-bills/${billId}/pay`, { method: 'POST', body: JSON.stringify({ docDate: new Date().toISOString().slice(0, 10), amount: 10 }) });
 
     const { status } = await api(adminSessionId, `/api/inventory/purchase-bills/${billId}/cancel`, { method: 'PATCH' });
     expect(status).toBe(400);

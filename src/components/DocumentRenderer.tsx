@@ -533,7 +533,7 @@ export default function DocumentRenderer({
   // number for an actual seller. Only used in the unsigned-invoice fallback QR text
   // below (a real, signed invoice always carries its own genuine qrCodeContent).
   const currentVat = companySetup.vatNumber || "Not Configured";
-  const timestamp = doc.date;
+  const timestamp = doc.docDate;
   const zatcaQr = (doc as Invoice).qrCodeContent;
   const docZatcaStatus = (doc as Invoice).zatcaStatus;
   // A real ZATCA clearance/reporting confirmation is the ONLY thing that may claim
@@ -1139,13 +1139,13 @@ export default function DocumentRenderer({
            )}
            {compact && (
             <span className="ms-2">
-             <span className="font-semibold text-slate-700">{t('Date')}:</span> {doc.date}
+             <span className="font-semibold text-slate-700">{t('Date')}:</span> {doc.docDate}
             </span>
            )}
           </p>
           {!compact && (
            <p>
-            <span className="font-semibold text-slate-700">{t('Date')}:</span> {doc.date}
+            <span className="font-semibold text-slate-700">{t('Date')}:</span> {doc.docDate}
             {isBilingual && <span className="block text-[9px] text-slate-400">التاريخ</span>}
            </p>
           )}
@@ -1843,7 +1843,7 @@ export default function DocumentRenderer({
         let valueStr = block.props?.staticText || '';
         const binding = block.props?.fieldBinding;
         if (binding === 'docNumber') valueStr = docNum;
-        else if (binding === 'docDate') valueStr = doc.date;
+        else if (binding === 'docDate') valueStr = doc.docDate;
         else if (binding === 'dueDate') valueStr = (doc as any).dueDate || (doc as Invoice).paymentDate || '-';
         else if (binding === 'paymentStatus') valueStr = (doc as Invoice).paymentStatus || doc.status;
         else if (binding === 'paymentMethod') valueStr = data.bankData?.bankName || 'Default Bank';
@@ -1920,7 +1920,7 @@ export default function DocumentRenderer({
  <div className="text-end">
  <h2 className="text-2xl font-bold uppercase text-rose-600 mb-1">{t('Expense')}</h2>
  <p className="text-xs text-slate-500"><span className="font-semibold">{t('Expense Number')}:</span> {exp.expenseNumber}</p>
- <p className="text-xs text-slate-500"><span className="font-semibold">{t('Date')}:</span> {exp.date}</p>
+ <p className="text-xs text-slate-500"><span className="font-semibold">{t('Date')}:</span> {exp.docDate}</p>
  </div>
  </div>
 
@@ -2065,7 +2065,7 @@ export default function DocumentRenderer({
  {t(vch.type + ' Voucher')}
  </h2>
  <p className="text-slate-500"><span className="font-semibold">{t('Voucher Number')}:</span> {vch.voucherNumber}</p>
- <p className="text-slate-500"><span className="font-semibold">{t('Date')}:</span> {vch.date}</p>
+ <p className="text-slate-500"><span className="font-semibold">{t('Date')}:</span> {vch.docDate}</p>
  </div>
  </div>
 
@@ -2248,7 +2248,7 @@ export default function DocumentRenderer({
       <div className="text-end">
        <h2 className="text-xl font-bold uppercase text-emerald-700 tracking-wider mb-1">{t(title)}</h2>
        <p className="text-slate-500"><span className="font-semibold">{t('Receipt Number')}:</span> {vch.voucherNumber}</p>
-       <p className="text-slate-500"><span className="font-semibold">{t('Date')}:</span> {vch.date}</p>
+       <p className="text-slate-500"><span className="font-semibold">{t('Date')}:</span> {vch.docDate}</p>
       </div>
      </div>
 

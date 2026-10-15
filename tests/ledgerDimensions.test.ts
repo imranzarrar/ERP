@@ -195,7 +195,7 @@ describe('assigning dimensions to the chart of accounts', () => {
 describe('tagging postings: manual journals', () => {
   const deptId = async () => typeOf(await options(A.admin), 'DEPARTMENT').id as string;
   const journal = async (tags1: any, tags2: any = {}, extra: any = {}) => post(prep, '/api/ledger/manual-journals', {
-    date: TODAY, description: 'Dimension probe', lines: [{ accountId: ids.expense, debit: 100, dimensions: tags1 }, { accountId: ids.income, credit: 100, dimensions: tags2 }], ...extra,
+    docDate: TODAY, description: 'Dimension probe', lines: [{ accountId: ids.expense, debit: 100, dimensions: tags1 }, { accountId: ids.income, credit: 100, dimensions: tags2 }], ...extra,
   });
 
   it('lets a draft be saved without a Required tag, refuses to submit it, then submits and posts once the tag is there', async () => {
@@ -224,7 +224,7 @@ describe('tagging postings: manual journals', () => {
 
   it('posts an approved journal with its tags on the ledger lines, shares one combination between lines with equal tags, and filters by them', async () => {
     const dept = await deptId();
-    const mk = await post(prep, '/api/ledger/manual-journals', { date: TODAY, description: 'Marketing spend', lines: [
+    const mk = await post(prep, '/api/ledger/manual-journals', { docDate: TODAY, description: 'Marketing spend', lines: [
       { accountId: ids.expense, debit: 60, dimensions: { [dept]: deptOpts.digital, [profit.id]: profit.kid } },
       { accountId: ids.expense, debit: 40, dimensions: { [dept]: deptOpts.digital, [profit.id]: profit.kid } },
       { accountId: ids.income, credit: 100 }] });
@@ -262,7 +262,7 @@ describe('tagging postings: manual journals', () => {
   it('a reversal carries the original tags, and the account default fills a missing tag', async () => {
     const dept = await deptId();
     await put(A.admin, '/api/ledger/dimension-rules', { accountId: ids.expense2, typeId: dept, rule: 'optional', defaultEntityId: deptOpts.mkt });
-    const d = await post(prep, '/api/ledger/manual-journals', { date: TODAY, description: 'Default tag', lines: [{ accountId: ids.expense2, debit: 25 }, { accountId: ids.income, credit: 25 }] });
+    const d = await post(prep, '/api/ledger/manual-journals', { docDate: TODAY, description: 'Default tag', lines: [{ accountId: ids.expense2, debit: 25 }, { accountId: ids.income, credit: 25 }] });
     const detail = (await get(prep, `/api/ledger/manual-journals/${d.body.id}`)).body;
     expect(detail.lines.find((l: any) => l.accountId === ids.expense2).dimensionLabels.map((x: any) => x.name)).toEqual(['Marketing']);
     await post(prep, `/api/ledger/manual-journals/${d.body.id}/submit`);
@@ -278,14 +278,14 @@ describe('document postings, branch dimension and isolation', () => {
   it('a document posting applies defaults but never blocks on a Required rule, and Branch filters through the entry branch', async () => {
     const dept = typeOf(await options(A.admin), 'DEPARTMENT').id as string;
     const branchType = typeOf(await options(A.admin), 'BRANCH').id as string;
-    const e = await postJournalEntry(db, { companyId: A.id, branchId: branchA, date: TODAY, referenceType: 'Test', referenceId: generateId(), description: 'document', createdById: A.adminId, lines: [{ accountKey: 'DIRECT_OPEX', debit: 7 }, { accountKey: 'AR', credit: 7 }] });
+    const e = await postJournalEntry(db, { companyId: A.id, branchId: branchA, postingDate: TODAY, referenceType: 'Test', referenceId: generateId(), description: 'document', createdById: A.adminId, lines: [{ accountKey: 'DIRECT_OPEX', debit: 7 }, { accountKey: 'AR', credit: 7 }] });
     expect(e).toBeTruthy(); // 6010 has a Required Department rule via the heading, yet the document is not blocked
     const gl = (dims: any) => get(A.admin, `/api/ledger/reports/general-ledger?accountId=${ids.opex}&from=${TODAY.slice(0, 8)}01&to=${TODAY}&dims=${encodeURIComponent(JSON.stringify(dims))}`);
     const jed = await gl({ [branchType]: [branchA] });
     expect(jed.body.totals.debit).toBe(7);
     expect((await gl({ [dept]: [deptOpts.mkt] })).body.totals.debit).toBeLessThan(7 + 1000);
     // an unknown dimension in a posting is refused by the engine
-    await expect(postJournalEntry(db, { companyId: A.id, date: TODAY, referenceType: 'Test', referenceId: generateId(), description: 'x', createdById: A.adminId, dimensions: { [generateId()]: generateId() }, lines: [{ accountKey: 'DIRECT_OPEX', debit: 1 }, { accountKey: 'AR', credit: 1 }] })).rejects.toBeTruthy();
+    await expect(postJournalEntry(db, { companyId: A.id, postingDate: TODAY, referenceType: 'Test', referenceId: generateId(), description: 'x', createdById: A.adminId, dimensions: { [generateId()]: generateId() }, lines: [{ accountKey: 'DIRECT_OPEX', debit: 1 }, { accountKey: 'AR', credit: 1 }] })).rejects.toBeTruthy();
   });
 
   it('the database refuses a dimension entry pointing at another company\'s value, and the tenant role sees only its own rows', async () => {

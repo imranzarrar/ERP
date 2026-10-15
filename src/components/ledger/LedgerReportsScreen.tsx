@@ -82,7 +82,7 @@ function GeneralLedger({ db, focus }: { db: DatabaseState; focus: AccountFocus |
                   {data.rows.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-slate-400">{t('No movements in this period.')}</td></tr>}
                   {data.rows.map((r: any, i: number) => (
                     <tr key={`${r.entryId}-${i}`} onClick={() => setOpen(r.entryId)} className="hover:bg-indigo-50/40 cursor-pointer">
-                      <td className="p-3 ps-5 text-slate-600">{r.date}</td>
+                      <td className="p-3 ps-5 text-slate-600">{r.postingDate}</td>
                       <td className="p-3"><span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-bold uppercase">{t(SOURCE_LABEL[r.referenceType] || r.referenceType)}</span>{r.documentNumber && <span className="ms-1.5 font-mono text-slate-500">{r.documentNumber}</span>}</td>
                       {data.account.isGroup && <td className="p-3 text-slate-600">{r.accountCode} {r.accountName}</td>}
                       <td className="p-3 text-slate-700 max-w-sm truncate">{r.description}</td>

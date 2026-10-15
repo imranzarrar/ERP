@@ -166,7 +166,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  if (invCompanyId !== db.selectedCompanyId) return false;
  if (!branchMatches((inv as any).branchId)) return false;
 
- if (!matchesPeriod(inv.date)) return false;
+ if (!matchesPeriod(inv.postingDate)) return false;
 
  if (isAdmin || currentUser?.permissions?.invoice) return true;
  return currentUser?.id ? inv.createdById === currentUser.id : false;
@@ -177,7 +177,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  if (expCompanyId !== db.selectedCompanyId) return false;
  if (!branchMatches((exp as any).branchId)) return false;
 
- if (!matchesPeriod(exp.date)) return false;
+ if (!matchesPeriod(exp.postingDate)) return false;
 
  if (isAdmin || currentUser?.permissions?.expense) return true;
  return currentUser?.id ? exp.createdById === currentUser.id : false;
@@ -188,7 +188,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  if (qCompanyId !== db.selectedCompanyId) return false;
  if (!branchMatches((q as any).branchId)) return false;
 
- if (!matchesPeriod(q.date)) return false;
+ if (!matchesPeriod(q.docDate)) return false;
 
  if (isAdmin || currentUser?.permissions?.quotation) return true;
  return currentUser?.id ? q.createdById === currentUser.id : false;
@@ -199,7 +199,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
     const vCompId = v.companyId;
     if (vCompId !== db.selectedCompanyId) return false;
     if (!branchMatches((v as any).branchId)) return false;
-    return matchesPeriod(v.date);
+    return matchesPeriod(v.postingDate);
   });
 
   // Core money KPIs below are now server-computed (GET /api/reports/dashboard-summary,
@@ -248,7 +248,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  if (periodMode === 'month') getDaysArray();
 
  monthInvoices.filter(inv => inv.status === 'Active').forEach(inv => {
- const key = inv.date;
+ const key = inv.postingDate;
  const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId);
  const signedTotal = totals.grandTotal * getInvoiceSign(inv);
  if (dailyDataMap[key]) {
@@ -259,7 +259,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  });
 
  monthExpenses.filter(exp => exp.status === 'Active').forEach(exp => {
- const key = exp.date;
+ const key = exp.postingDate;
  if (dailyDataMap[key]) {
  dailyDataMap[key].Expenses += exp.amount;
  } else {
@@ -296,7 +296,7 @@ const [fiscalMonths, setFiscalMonths] = React.useState<any[]>([]);
  ? trailingMonthlySales.reduce((sum, v) => sum + v, 0) / trailingMonthlySales.length
  : 2500;
  const trailingMonthlyQuotations = closedMonthIds.map(monthId =>
- db.quotations.filter(q => q.companyId === db.selectedCompanyId && branchMatches((q as any).branchId) && q.date.startsWith(monthId)).length
+ db.quotations.filter(q => q.companyId === db.selectedCompanyId && branchMatches((q as any).branchId) && q.docDate.startsWith(monthId)).length
  );
  const hasHistoricalQuotaTarget = trailingMonthlyQuotations.length > 0;
  const quotaTarget = hasHistoricalQuotaTarget

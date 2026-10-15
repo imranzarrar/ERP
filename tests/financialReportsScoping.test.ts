@@ -96,7 +96,7 @@ beforeAll(async () => {
   // itemsSubtotal=200, headerDiscount=20, discountedSubtotal=180, tax=27, grandTotal=207.
   invoiceAId = generateId();
   await db.insert(schema.invoices).values({
-    id: invoiceAId, invoiceNumber: 'INV-FINREPORTS-A', date: '2026-08-05', customerId: customerAId,
+    id: invoiceAId, invoiceNumber: 'INV-FINREPORTS-A', docDate: '2026-08-05', postingDate: '2026-08-05', customerId: customerAId,
     taxSlabId: taxSlabAId, bankId: bankAId, paymentStatus: 'Unpaid', notes: 'x', status: 'Active',
     createdById: adminAId, createdAt: new Date('2026-08-05T10:00:00Z'), companyId: companyAId,
     discountPercentage: '10',
@@ -110,7 +110,7 @@ beforeAll(async () => {
   // itemsSubtotal=5000, tax=750, grandTotal=5750.
   invoiceBId = generateId();
   await db.insert(schema.invoices).values({
-    id: invoiceBId, invoiceNumber: 'INV-FINREPORTS-B', date: '2026-08-06', customerId: customerBId,
+    id: invoiceBId, invoiceNumber: 'INV-FINREPORTS-B', docDate: '2026-08-06', postingDate: '2026-08-06', customerId: customerBId,
     taxSlabId: taxSlabBId, bankId: bankBId, paymentStatus: 'Unpaid', notes: 'x', status: 'Active',
     createdById: adminBId, createdAt: new Date('2026-08-06T10:00:00Z'), companyId: companyBId,
   } as any);
@@ -121,21 +121,21 @@ beforeAll(async () => {
 
   expenseAId = generateId();
   await db.insert(schema.expenses).values({
-    id: expenseAId, expenseNumber: 'EXP-FINREPORTS-A', date: '2026-08-10', vendorId: vendorAId,
+    id: expenseAId, expenseNumber: 'EXP-FINREPORTS-A', docDate: '2026-08-10', postingDate: '2026-08-10', vendorId: vendorAId,
     taxSlabId: taxSlabAId, bankId: bankAId, paymentStatus: 'Unpaid', description: 'x', amount: '50',
     status: 'Active', type: 'Actual', createdById: adminAId, createdAt: new Date('2026-08-10T10:00:00Z'), companyId: companyAId,
   } as any);
 
   expenseBId = generateId();
   await db.insert(schema.expenses).values({
-    id: expenseBId, expenseNumber: 'EXP-FINREPORTS-B', date: '2026-08-11', vendorId: vendorBId,
+    id: expenseBId, expenseNumber: 'EXP-FINREPORTS-B', docDate: '2026-08-11', postingDate: '2026-08-11', vendorId: vendorBId,
     taxSlabId: taxSlabBId, bankId: bankBId, paymentStatus: 'Unpaid', description: 'x', amount: '300',
     status: 'Active', type: 'Actual', createdById: adminBId, createdAt: new Date('2026-08-11T10:00:00Z'), companyId: companyBId,
   } as any);
 
   // Company A: an Equity capital-in voucher of 500 within the test range.
   await db.insert(schema.vouchers).values({
-    id: generateId(), voucherNumber: 'VCH-FINREPORTS-A', type: 'Receipt', date: '2026-08-02',
+    id: generateId(), voucherNumber: 'VCH-FINREPORTS-A', type: 'Receipt', docDate: '2026-08-02', postingDate: '2026-08-02',
     bankId: bankAId, amount: '500', description: 'x', referenceType: 'Equity', referenceId: generateId(),
     createdById: adminAId, createdAt: new Date('2026-08-02T10:00:00Z'), companyId: companyAId,
   } as any);

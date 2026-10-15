@@ -4,6 +4,7 @@ import { eq, and } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { generateId } from '../src/id.js';
+import { entryStamp } from '../server/lib/documentDates.js';
 
 // Real integration tests against the already-running dev server (npm run dev on
 // localhost:3000) + real Postgres state, matching this project's established no-mocks
@@ -49,7 +50,7 @@ async function createPr(status: 'Pending' | 'Draft' = 'Pending') {
     id: prId,
     prNumber: `PR-TEST-${prId}`,
     requestedBy: 'Automated Test',
-    date: new Date(),
+    ...entryStamp(null),
     status,
     companyId,
   });
@@ -68,7 +69,7 @@ async function createPo(status: 'Sent' | 'Cancelled' | 'Received' = 'Sent') {
     id: poId,
     poNumber: `PO-TEST-${poId}`,
     vendorId,
-    date: new Date(),
+    ...entryStamp(null),
     status,
     totalAmount: '100.00',
     companyId,

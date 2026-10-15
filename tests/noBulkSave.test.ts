@@ -48,18 +48,18 @@ afterAll(async () => { await purgeCompany(companyId); }, 60000);
 describe('no bulk save', () => {
   it('POST /api/migrate is not served, and a posted invoice sent through it stays exactly as it was', async () => {
     const created = await post('/api/transactions/invoices', { invoiceData: {
-      date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+      docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
       items: [{ id: generateId(), description: 'Service', unitCost: 100, quantity: 1, discountAmount: 0 }],
     } });
     expect(created.status).toBe(200);
     const id = created.body.invoiceId as string;
     const before = (await db.select().from(schema.invoices).where(eq(schema.invoices.id, id)))[0] as any;
 
-    const res = await post('/api/migrate', { invoices: [{ ...before, amountPaid: '115', paymentStatus: 'Paid', date: '2020-01-15', status: 'Active', createdAt: new Date().toISOString(), items: [] }] });
+    const res = await post('/api/migrate', { invoices: [{ ...before, amountPaid: '115', paymentStatus: 'Paid', docDate: '2020-01-15', status: 'Active', createdAt: new Date().toISOString(), items: [] }] });
     expect(res.status).not.toBe(200);
 
     const after = (await db.select().from(schema.invoices).where(eq(schema.invoices.id, id)))[0] as any;
-    expect(after.date).toBe(before.date);
+    expect(after.docDate).toBe(before.docDate);
     expect(after.paymentStatus).toBe(before.paymentStatus);
     expect(after.amountPaid).toBe(before.amountPaid);
   });
@@ -67,7 +67,7 @@ describe('no bulk save', () => {
 
 describe('create routes only create', () => {
   const invoiceBody = (extra: any = {}, itemId = generateId()) => ({ invoiceData: {
-    date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0, ...extra,
+    docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0, ...extra,
     items: [{ id: itemId, description: 'Service', unitCost: 100, quantity: 1, discountAmount: 0 }],
   } });
   const invoiceCount = async () => (await db.select().from(schema.invoices).where(eq(schema.invoices.companyId, companyId))).length;
@@ -80,14 +80,14 @@ describe('create routes only create', () => {
     const before = (await db.select().from(schema.invoices).where(eq(schema.invoices.id, id)))[0] as any;
     const n = await invoiceCount();
 
-    const overwrite = await post('/api/transactions/invoices', invoiceBody({ id, date: '2020-01-15', notes: 'edited', amountPaid: 115 }));
+    const overwrite = await post('/api/transactions/invoices', invoiceBody({ id, docDate: '2020-01-15', notes: 'edited', amountPaid: 115 }));
     expect(overwrite.status).toBe(400);
     expect(overwrite.body.error).toMatch(/id cannot be supplied/i);
     const chosen = await post('/api/transactions/invoices', invoiceBody({ id: generateId() }));
     expect(chosen.status).toBe(400);
 
     const after = (await db.select().from(schema.invoices).where(eq(schema.invoices.id, id)))[0] as any;
-    expect(after.date).toBe(before.date);
+    expect(after.docDate).toBe(before.docDate);
     expect(after.notes).toBe(before.notes);
     expect(after.amountPaid).toBe(before.amountPaid);
     expect(await invoiceCount()).toBe(n);
@@ -109,12 +109,12 @@ describe('create routes only create', () => {
 
   it('an expense request naming any id is refused, and nothing is changed or created', async () => {
     const vendorId = (await db.select().from(schema.vendors).where(eq(schema.vendors.companyId, companyId)))[0].id;
-    const body = (extra: any = {}) => ({ date: today, vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'NB-1', description: 'Original', paymentStatus: 'Unpaid', amount: 115, ...extra });
+    const body = (extra: any = {}) => ({ docDate: today, vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'NB-1', description: 'Original', paymentStatus: 'Unpaid', amount: 115, ...extra });
     expect((await post('/api/expenses', body())).status).toBe(200);
     const row = (await db.select().from(schema.expenses).where(eq(schema.expenses.companyId, companyId))).find((e: any) => e.description === 'Original') as any;
     const n = await expenseCount();
 
-    const overwrite = await post('/api/expenses', body({ id: row.id, description: 'Edited', amount: 999, date: '2020-01-15' }));
+    const overwrite = await post('/api/expenses', body({ id: row.id, description: 'Edited', amount: 999, docDate: '2020-01-15' }));
     expect(overwrite.status).toBe(400);
     expect(overwrite.body.error).toMatch(/id cannot be supplied/i);
     expect((await post('/api/expenses', body({ id: generateId() }))).status).toBe(400);
@@ -122,7 +122,7 @@ describe('create routes only create', () => {
     const after = (await db.select().from(schema.expenses).where(eq(schema.expenses.id, row.id)))[0] as any;
     expect(after.description).toBe('Original');
     expect(Number(after.amount)).toBe(115);
-    expect(after.date).toBe(row.date);
+    expect(after.docDate).toBe(row.docDate);
     expect(await expenseCount()).toBe(n);
   });
 });

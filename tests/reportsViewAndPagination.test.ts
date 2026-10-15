@@ -100,7 +100,7 @@ beforeAll(async () => {
     const id = generateId();
     invoiceIds.push(id);
     await db.insert(schema.invoices).values({
-      id, invoiceNumber: `INV-RPTVIEW-${String(i).padStart(3, '0')}`, date: '2026-03-12', customerId, taxSlabId, bankId,
+      id, invoiceNumber: `INV-RPTVIEW-${String(i).padStart(3, '0')}`, docDate: '2026-03-12', postingDate: '2026-03-12', customerId, taxSlabId, bankId,
       paymentStatus: 'Unpaid', notes: 'x', status: 'Active', createdById: adminUserId, createdAt: new Date('2026-03-12T10:00:00Z'), companyId,
     } as any);
     await db.insert(schema.invoiceItems).values({ id: generateId(), invoiceId: id, description: 'x', unitCost: '100', quantity: '1', discountAmount: '0', taxSlabId, unit: 'PCE' } as any);
@@ -111,13 +111,13 @@ beforeAll(async () => {
   const ledger: any[] = [];
   for (let i = 0; i < 12; i++) {
     ledger.push({ id: generateId(), productId, warehouseId: warehouseAId, transactionType: i === 0 ? 'Sale' : 'Adjustment', referenceId: i === 0 ? saleInvoiceId : generateId(),
-      date: new Date(Date.UTC(2026, 2, 10, 10, i, 0)), quantityChange: '1.000', endingQuantity: String(i + 1), batchNumber: null, companyId });
+      postingDate: new Date(Date.UTC(2026, 2, 10, 10, i, 0)).toISOString().slice(0, 10), createdAt: new Date(Date.UTC(2026, 2, 10, 10, i, 0)), quantityChange: '1.000', endingQuantity: String(i + 1), batchNumber: null, companyId });
   }
-  ledger.push({ id: generateId(), productId, warehouseId: warehouseAId, transactionType: 'Adjustment', referenceId: generateId(), date: new Date('2026-03-15T23:59:59.999Z'), quantityChange: '1.000', endingQuantity: '13', batchNumber: null, companyId }); // last instant of the end date — included
-  ledger.push({ id: generateId(), productId, warehouseId: warehouseAId, transactionType: 'Adjustment', referenceId: generateId(), date: new Date('2026-03-16T00:00:00.000Z'), quantityChange: '1.000', endingQuantity: '14', batchNumber: null, companyId }); // next day — excluded
-  ledger.push({ id: generateId(), productId, warehouseId: warehouseAId, transactionType: 'Adjustment', referenceId: generateId(), date: new Date('2026-03-09T23:59:59.999Z'), quantityChange: '1.000', endingQuantity: '0', batchNumber: null, companyId }); // day before — excluded
+  ledger.push({ id: generateId(), productId, warehouseId: warehouseAId, transactionType: 'Adjustment', referenceId: generateId(), postingDate: new Date('2026-03-15T23:59:59.999Z').toISOString().slice(0, 10), createdAt: new Date('2026-03-15T23:59:59.999Z'), quantityChange: '1.000', endingQuantity: '13', batchNumber: null, companyId }); // last instant of the end date — included
+  ledger.push({ id: generateId(), productId, warehouseId: warehouseAId, transactionType: 'Adjustment', referenceId: generateId(), postingDate: new Date('2026-03-16T00:00:00.000Z').toISOString().slice(0, 10), createdAt: new Date('2026-03-16T00:00:00.000Z'), quantityChange: '1.000', endingQuantity: '14', batchNumber: null, companyId }); // next day — excluded
+  ledger.push({ id: generateId(), productId, warehouseId: warehouseAId, transactionType: 'Adjustment', referenceId: generateId(), postingDate: new Date('2026-03-09T23:59:59.999Z').toISOString().slice(0, 10), createdAt: new Date('2026-03-09T23:59:59.999Z'), quantityChange: '1.000', endingQuantity: '0', batchNumber: null, companyId }); // day before — excluded
   for (let i = 0; i < 3; i++) {
-    ledger.push({ id: generateId(), productId, warehouseId: warehouseBId, transactionType: 'Adjustment', referenceId: generateId(), date: new Date(Date.UTC(2026, 2, 10, 11, i, 0)), quantityChange: '2.000', endingQuantity: String((i + 1) * 2), batchNumber: null, companyId });
+    ledger.push({ id: generateId(), productId, warehouseId: warehouseBId, transactionType: 'Adjustment', referenceId: generateId(), postingDate: new Date(Date.UTC(2026, 2, 10, 11, i, 0)).toISOString().slice(0, 10), createdAt: new Date(Date.UTC(2026, 2, 10, 11, i, 0)), quantityChange: '2.000', endingQuantity: String((i + 1) * 2), batchNumber: null, companyId });
   }
   await db.insert(schema.stockLedgerTransactions).values(ledger);
 });
@@ -278,7 +278,7 @@ describe('Financial reports computed server-side (formerly in the browser)', () 
 
   it('Bank ledger opening balance includes movements posted before the start date', async () => {
     const mk = (n: string, type: string, date: string, amount: string) => ({
-      id: generateId(), voucherNumber: n, type, date, bankId, amount, description: 'rpt test', referenceType: 'Invoice', referenceId: saleInvoiceId,
+      id: generateId(), voucherNumber: n, type, docDate: date, postingDate: date, bankId, amount, description: 'rpt test', referenceType: 'Invoice', referenceId: saleInvoiceId,
       createdById: adminUserId, createdAt: new Date(`${date}T09:00:00Z`), companyId,
     });
     await db.insert(schema.vouchers).values([mk('RV-RPT-1', 'Receipt', '2026-02-01', '500.00'), mk('PV-RPT-1', 'Payment', '2026-03-12', '100.00')] as any);

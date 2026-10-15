@@ -1,5 +1,8 @@
 import { relations, sql } from 'drizzle-orm';
-import { integer, bigint, pgTable, serial, text, timestamp, boolean, decimal, jsonb, uuid, primaryKey, uniqueIndex, unique, foreignKey, index, pgPolicy, check, customType } from 'drizzle-orm/pg-core';
+import { integer, bigint, pgTable, serial, text, timestamp, date as pgDate, boolean, decimal, jsonb, uuid, primaryKey, uniqueIndex, unique, foreignKey, index, pgPolicy, check, customType } from 'drizzle-orm/pg-core';
+
+// A business date: a calendar day without a time, read and written as a 'YYYY-MM-DD' string (docs/date-fields-standard.md). Named <meaning>_date.
+const businessDate = (name: string) => pgDate(name, { mode: 'string' });
 
 // Postgres bytea <-> Node Buffer (drizzle-orm/pg-core ships no bytea builder).
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => 'bytea' });
@@ -840,13 +843,16 @@ export const taxReturns = pgTable('tax_returns', {
 export const quotations = pgTable('quotations', {
   id: uuid('id').primaryKey(),
   quotationNumber: text('quotation_number').notNull(),
-  date: text('date').notNull(),
+  docDate: businessDate('doc_date').notNull(), // the date of the quotation (docs/date-fields-standard.md)
   customerId: uuid('customer_id').references(() => customers.id).notNull(),
   taxSlabId: uuid('tax_slab_id').references(() => taxSlabs.id).notNull(),
   notes: text('notes').notNull(),
   status: text('status').notNull(),
   createdById: uuid('created_by_id').references(() => users.id).notNull(),
   createdAt: timestamp('created_at').notNull(),
+  validUntilDate: businessDate('valid_until_date'), // the offer is open until
+  updatedAt: timestamp('updated_at'),
+  updatedById: uuid('updated_by_id').references(() => users.id),
   discountPercentage: decimal('discount_percentage', { precision: 5, scale: 2 }),
   companyId: uuid('company_id').notNull().references(() => companies.id),
   // Dedicated cancel flag, deliberately separate from `status` (which tracks the
@@ -861,6 +867,7 @@ export const quotations = pgTable('quotations', {
   // afterward.
   branchId: uuid('branch_id').references(() => branches.id),
 }, (table) => ({
+  docDateIdx: index('quotations_company_doc_date_idx').on(table.companyId, table.docDate),
   companyIdIdx: index('quotations_company_id_idx').on(table.companyId),
   tenantIsolationPolicy: pgPolicy('quotations_tenant_isolation', {
     for: 'all',
@@ -937,7 +944,10 @@ export const posShifts = pgTable('pos_shifts', {
 export const invoices = pgTable('invoices', {
   id: uuid('id').primaryKey(),
   invoiceNumber: text('invoice_number').notNull(),
-  date: text('date').notNull(),
+  docDate: businessDate('doc_date').notNull(), // invoice date; the ZATCA issue date
+  postingDate: businessDate('posting_date').notNull(), // the ledger / period date; always equals docDate for an invoice
+  supplyDate: businessDate('supply_date'), // date of supply (tax point); empty = docDate
+  dueDate: businessDate('due_date'), // payment due (set from the payment terms)
   customerId: uuid('customer_id').references(() => customers.id).notNull(),
   taxSlabId: uuid('tax_slab_id').references(() => taxSlabs.id).notNull(),
   bankId: uuid('bank_id').references(() => bankAccounts.id).notNull(),
@@ -947,6 +957,8 @@ export const invoices = pgTable('invoices', {
   status: text('status').notNull(),
   createdById: uuid('created_by_id').references(() => users.id).notNull(),
   createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at'),
+  updatedById: uuid('updated_by_id').references(() => users.id),
   originQuotationId: uuid('origin_quotation_id').references(() => quotations.id),
   discountPercentage: decimal('discount_percentage', { precision: 5, scale: 2 }),
   // Header-level discount, display-only — distinct from invoiceItems.discountAmount
@@ -1017,6 +1029,7 @@ export const invoices = pgTable('invoices', {
   // isSalesRole — see jobTitles.isSalesRole's comment.
   salesAssociateId: uuid('sales_associate_id').references(() => employees.id),
 }, (table) => ({
+  docDateIdx: index('invoices_company_doc_date_idx').on(table.companyId, table.docDate),
   companyIdIdx: index('invoices_company_id_idx').on(table.companyId),
   tenantIsolationPolicy: pgPolicy('invoices_tenant_isolation', {
     for: 'all',
@@ -1113,7 +1126,9 @@ export const invoiceItems = pgTable('invoice_items', {
 export const expenses = pgTable('expenses', {
   id: uuid('id').primaryKey(),
   expenseNumber: text('expense_number').notNull(),
-  date: text('date').notNull(),
+  docDate: businessDate('doc_date').notNull(), // the vendor bill's date
+  postingDate: businessDate('posting_date').notNull(), // the ledger / period date
+  dueDate: businessDate('due_date'), // payment due
   vendorId: uuid('vendor_id').references(() => vendors.id).notNull(),
   taxSlabId: uuid('tax_slab_id').references(() => taxSlabs.id).notNull(),
   bankId: uuid('bank_id').references(() => bankAccounts.id).notNull(),
@@ -1128,6 +1143,8 @@ export const expenses = pgTable('expenses', {
   settledExpenseId: uuid('settled_expense_id'),
   createdById: uuid('created_by_id').references(() => users.id).notNull(),
   createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at'),
+  updatedById: uuid('updated_by_id').references(() => users.id),
   classification: text('classification'),
   assetType: text('asset_type'),
   companyId: uuid('company_id').notNull().references(() => companies.id),
@@ -1151,6 +1168,7 @@ export const expenses = pgTable('expenses', {
   // negative expense dated today in the current period, linked back to the original through this id. Nullable/additive.
   reversalOfExpenseId: uuid('reversal_of_expense_id'),
 }, (table) => ({
+  docDateIdx: index('expenses_company_doc_date_idx').on(table.companyId, table.docDate),
   companyIdIdx: index('expenses_company_id_idx').on(table.companyId),
   originAccrualFk: index('expenses_origin_accrual_idx').on(table.originAccrualId),
   tenantIsolationPolicy: pgPolicy('expenses_tenant_isolation', {
@@ -1220,7 +1238,9 @@ export const vouchers = pgTable('vouchers', {
   id: uuid('id').primaryKey(),
   voucherNumber: text('voucher_number').notNull(),
   type: text('type').notNull(),
-  date: text('date').notNull(),
+  docDate: businessDate('doc_date').notNull(), // the receipt / payment date
+  postingDate: businessDate('posting_date').notNull(), // the ledger / period date
+  valueDate: businessDate('value_date'), // the bank's value date
   bankId: uuid('bank_id').notNull().references(() => bankAccounts.id),
   amount: decimal('amount', { precision: 14, scale: 2 }).notNull(),
   description: text('description').notNull(),
@@ -1248,6 +1268,7 @@ export const vouchers = pgTable('vouchers', {
   // syncVoucherForInvoice's own comment for the live incident this was found from.
   reversalOfVoucherId: uuid('reversal_of_voucher_id').references((): any => vouchers.id),
 }, (table) => ({
+  docDateIdx: index('vouchers_company_doc_date_idx').on(table.companyId, table.docDate),
   companyIdIdx: index('vouchers_company_id_idx').on(table.companyId),
   referenceIdIdx: index('vouchers_reference_id_idx').on(table.referenceId),
   reversalOfVoucherUniqueIdx: uniqueIndex('vouchers_reversal_of_voucher_unique_idx').on(table.reversalOfVoucherId).where(sql`${table.reversalOfVoucherId} IS NOT NULL`),
@@ -1332,7 +1353,8 @@ export const journalEntries = pgTable('journal_entries', {
   companyId: uuid('company_id').notNull().references(() => companies.id),
   // Nullable, inherited from the source document — same convention as vouchers.branchId.
   branchId: uuid('branch_id').references(() => branches.id),
-  date: text('date').notNull(),
+  postingDate: businessDate('posting_date').notNull(), // the date the ledger and every period lock use
+  docDate: businessDate('doc_date').notNull(), // the date of the source document (equals postingDate unless the document was posted into a later period)
   referenceType: text('reference_type').notNull(), // 'Invoice' | 'CreditNote' | 'Expense' | 'PurchaseBill' | 'PurchaseReturn' | 'GRN' | 'Voucher' | 'Transfer' | 'FiscalMonthClose' | 'VatReturn'
   referenceId: uuid('reference_id').notNull(), // polymorphic, same convention as vouchers.referenceId
   // Second, optional reference pair — used only by the rare cross-document transaction
@@ -1348,6 +1370,7 @@ export const journalEntries = pgTable('journal_entries', {
   createdById: uuid('created_by_id').notNull().references(() => users.id),
   createdAt: timestamp('created_at').notNull(),
 }, (table) => ({
+  postingDateIdx: index('journal_entries_company_posting_date_idx').on(table.companyId, table.postingDate),
   companyIdIdx: index('journal_entries_company_id_idx').on(table.companyId),
   referenceIdIdx: index('journal_entries_reference_id_idx').on(table.referenceId),
   // An entry can only ever be reversed once — a retried request or a race condition
@@ -1863,7 +1886,9 @@ export const purchaseRequisitions = pgTable('purchase_requisitions', {
   id: uuid('id').primaryKey(),
   prNumber: text('pr_number').notNull(),
   requestedBy: text('requested_by').notNull(), // User ID or Name (loosely typed by design) — stays text
-  date: timestamp('date').notNull(),
+  docDate: businessDate('doc_date').notNull(), // the date of the document
+  createdAt: timestamp('created_at').notNull(), // when it was entered (the system clock); keeps the order of documents within a day
+  createdById: uuid('created_by_id').references(() => users.id), // who entered it (empty on documents that predate this field)
   status: text('status').default('Draft').notNull(), // 'Draft', 'Pending', 'Approved', 'Rejected', 'Closed'
   notes: text('notes'),
   companyId: uuid('company_id').notNull().references(() => companies.id),
@@ -1871,6 +1896,7 @@ export const purchaseRequisitions = pgTable('purchase_requisitions', {
   // branch from) — nullable, additive, see quotations.branchId's comment.
   branchId: uuid('branch_id').references(() => branches.id),
 }, (table) => ({
+  docDateIdx: index('purchase_requisitions_company_doc_date_idx').on(table.companyId, table.docDate),
   companyIdIdx: index('purchase_requisitions_company_id_idx').on(table.companyId),
   tenantIsolationPolicy: pgPolicy('purchase_requisitions_tenant_isolation', {
     for: 'all',
@@ -1901,14 +1927,17 @@ export const purchaseOrders = pgTable('purchase_orders', {
   id: uuid('id').primaryKey(),
   poNumber: text('po_number').notNull(),
   vendorId: uuid('vendor_id').notNull().references(() => vendors.id),
-  date: timestamp('date').notNull(),
+  docDate: businessDate('doc_date').notNull(), // the date of the document
+  createdAt: timestamp('created_at').notNull(), // when it was entered (the system clock); keeps the order of documents within a day
+  createdById: uuid('created_by_id').references(() => users.id), // who entered it (empty on documents that predate this field)
   status: text('status').default('Draft').notNull(), // 'Draft', 'Sent', 'Partially Received', 'Received', 'Cancelled'
   requisitionId: uuid('requisition_id').references(() => purchaseRequisitions.id), // Optional link to PR
-  deliveryDate: timestamp('delivery_date'),
+  deliveryDate: businessDate('delivery_date'),
   totalAmount: decimal('total_amount', { precision: 12, scale: 2 }).notNull(),
   companyId: uuid('company_id').notNull().references(() => companies.id),
   branchId: uuid('branch_id').references(() => branches.id),
 }, (table) => ({
+  docDateIdx: index('purchase_orders_company_doc_date_idx').on(table.companyId, table.docDate),
   companyIdIdx: index('purchase_orders_company_id_idx').on(table.companyId),
   tenantIsolationPolicy: pgPolicy('purchase_orders_tenant_isolation', {
     for: 'all',
@@ -1947,7 +1976,10 @@ export const goodsReceiptNotes = pgTable('goods_receipt_notes', {
   purchaseOrderId: uuid('purchase_order_id').references(() => purchaseOrders.id), // Nullable for DSD (Direct Shop Delivery)
   vendorId: uuid('vendor_id').notNull().references(() => vendors.id),
   warehouseId: uuid('warehouse_id').notNull().references(() => warehouses.id),
-  date: timestamp('date').notNull(),
+  docDate: businessDate('doc_date').notNull(), // the date of the document
+  postingDate: businessDate('posting_date').notNull(), // the ledger / stock-ledger / period date
+  createdAt: timestamp('created_at').notNull(), // when it was entered (the system clock); keeps the order of documents within a day
+  createdById: uuid('created_by_id').references(() => users.id), // who entered it (empty on documents that predate this field)
   isDsd: boolean('is_dsd').default(false).notNull(), // Flag for Direct Shop Delivery
   receivedBy: text('received_by').notNull(), // User ID or Name (loosely typed by design) — stays text
   notes: text('notes'),
@@ -1959,6 +1991,7 @@ export const goodsReceiptNotes = pgTable('goods_receipt_notes', {
   isBilled: boolean('is_billed').default(false).notNull(),
   companyId: uuid('company_id').notNull().references(() => companies.id),
 }, (table) => ({
+  docDateIdx: index('goods_receipt_notes_company_doc_date_idx').on(table.companyId, table.docDate),
   companyIdIdx: index('goods_receipt_notes_company_id_idx').on(table.companyId),
   tenantIsolationPolicy: pgPolicy('goods_receipt_notes_tenant_isolation', {
     for: 'all',
@@ -2004,8 +2037,11 @@ export const purchaseBills = pgTable('purchase_bills', {
   // to the vendor's actual physical invoice.
   vendorBillNumber: text('vendor_bill_number'),
   vendorId: uuid('vendor_id').notNull().references(() => vendors.id),
-  date: timestamp('date').notNull(),
-  dueDate: timestamp('due_date'),
+  docDate: businessDate('doc_date').notNull(), // the date of the document
+  postingDate: businessDate('posting_date').notNull(), // the ledger / stock-ledger / period date
+  createdAt: timestamp('created_at').notNull(), // when it was entered (the system clock); keeps the order of documents within a day
+  createdById: uuid('created_by_id').references(() => users.id), // who entered it (empty on documents that predate this field)
+  dueDate: businessDate('due_date'),
   grnIds: text('grn_ids').notNull(), // Comma-separated or JSON list of referenced GRNs — multi-value, stays text
   subTotal: decimal('sub_total', { precision: 12, scale: 2 }).notNull(),
   taxTotal: decimal('tax_total', { precision: 12, scale: 2 }).notNull(),
@@ -2016,6 +2052,7 @@ export const purchaseBills = pgTable('purchase_bills', {
   companyId: uuid('company_id').notNull().references(() => companies.id),
   branchId: uuid('branch_id').references(() => branches.id),
 }, (table) => ({
+  docDateIdx: index('purchase_bills_company_doc_date_idx').on(table.companyId, table.docDate),
   companyIdIdx: index('purchase_bills_company_id_idx').on(table.companyId),
   tenantIsolationPolicy: pgPolicy('purchase_bills_tenant_isolation', {
     for: 'all',
@@ -2035,7 +2072,10 @@ export const purchaseReturns = pgTable('purchase_returns', {
   grnId: uuid('grn_id').notNull().references(() => goodsReceiptNotes.id), // Links back to receipt
   vendorId: uuid('vendor_id').notNull().references(() => vendors.id),
   warehouseId: uuid('warehouse_id').notNull().references(() => warehouses.id),
-  date: timestamp('date').notNull(),
+  docDate: businessDate('doc_date').notNull(), // the date of the document
+  postingDate: businessDate('posting_date').notNull(), // the ledger / stock-ledger / period date
+  createdAt: timestamp('created_at').notNull(), // when it was entered (the system clock); keeps the order of documents within a day
+  createdById: uuid('created_by_id').references(() => users.id), // who entered it (empty on documents that predate this field)
   notes: text('notes'),
   status: text('status').default('Active').notNull(), // 'Active', 'Cancelled'
   // Input-VAT bookkeeping, set only when the GRN was already BILLED at return time (see
@@ -2048,6 +2088,7 @@ export const purchaseReturns = pgTable('purchase_returns', {
   billTotalsReduced: boolean('bill_totals_reduced').default(false).notNull(),
   companyId: uuid('company_id').notNull().references(() => companies.id),
 }, (table) => ({
+  docDateIdx: index('purchase_returns_company_doc_date_idx').on(table.companyId, table.docDate),
   companyIdIdx: index('purchase_returns_company_id_idx').on(table.companyId),
   tenantIsolationPolicy: pgPolicy('purchase_returns_tenant_isolation', {
     for: 'all',
@@ -2083,12 +2124,16 @@ export const physicalStockTakes = pgTable('physical_stock_takes', {
   id: uuid('id').primaryKey(),
   referenceNumber: text('reference_number').notNull(),
   warehouseId: uuid('warehouse_id').notNull().references(() => warehouses.id),
-  date: timestamp('date').notNull(),
+  docDate: businessDate('doc_date').notNull(), // the date of the document
+  postingDate: businessDate('posting_date').notNull(), // the ledger / stock-ledger / period date
+  createdAt: timestamp('created_at').notNull(), // when it was entered (the system clock); keeps the order of documents within a day
+  createdById: uuid('created_by_id').references(() => users.id), // who entered it (empty on documents that predate this field)
   status: text('status').default('Draft').notNull(), // 'Draft', 'Completed' (Adjustments Posted), 'Cancelled'
   performedBy: text('performed_by').notNull(), // User ID or Name (loosely typed by design) — stays text
   notes: text('notes'),
   companyId: uuid('company_id').notNull().references(() => companies.id),
 }, (table) => ({
+  docDateIdx: index('physical_stock_takes_company_doc_date_idx').on(table.companyId, table.docDate),
   companyIdIdx: index('physical_stock_takes_company_id_idx').on(table.companyId),
   tenantIsolationPolicy: pgPolicy('physical_stock_takes_tenant_isolation', {
     for: 'all',
@@ -2130,12 +2175,14 @@ export const stockLedgerTransactions = pgTable('stock_ledger_transactions', {
   transactionType: text('transaction_type').notNull(), // 'GRN', 'Return', 'Sale', 'Adjustment', 'StockTake', 'TransferOut', 'TransferIn'
   // Polymorphic (GRN/Sale/Adjustment/etc depending on transactionType) — no single-table FK.
   referenceId: uuid('reference_id').notNull(),
-  date: timestamp('date').notNull(),
+  postingDate: businessDate('posting_date').notNull(), // the date the movement counts in (docs/date-fields-standard.md)
+  createdAt: timestamp('created_at').notNull(), // the moment of the movement; orders movements within a day (average cost depends on it)
   quantityChange: decimal('quantity_change', { precision: 12, scale: 3 }).notNull(), // positive or negative
   endingQuantity: decimal('ending_quantity', { precision: 12, scale: 3 }).notNull(),
   batchNumber: text('batch_number'),
   companyId: uuid('company_id').notNull().references(() => companies.id),
 }, (table) => ({
+  postingDateIdx: index('stock_ledger_transactions_company_posting_date_idx').on(table.companyId, table.postingDate),
   // High-volume append-only ledger table with no other index at all before this — adding
   // one alongside the RLS policy is necessary, not optional, or the policy's predicate
   // forces a sequential scan on every query.
@@ -2168,14 +2215,17 @@ export const warehouseDispatches = pgTable('warehouse_dispatches', {
   dispatchNumber: text('dispatch_number').notNull(),
   fromWarehouseId: uuid('from_warehouse_id').notNull().references(() => warehouses.id),
   toWarehouseId: uuid('to_warehouse_id').notNull().references(() => warehouses.id),
-  date: timestamp('date').notNull(),
+  docDate: businessDate('doc_date').notNull(), // the date of the document
+  postingDate: businessDate('posting_date').notNull(), // the ledger / stock-ledger / period date
+  createdAt: timestamp('created_at').notNull(), // when it was entered (the system clock); keeps the order of documents within a day
+  createdById: uuid('created_by_id').references(() => users.id), // who entered it (empty on documents that predate this field)
   // Standard warehouse-dispatch-note fields. Unlike goodsReceiptNotes' vehicleNumber/
   // driverName (a pre-existing shortcut kept client-state-only, never persisted), these
   // are real columns here since dispatch/receiving are genuinely built around them.
   vehicleNumber: text('vehicle_number'),
   driverName: text('driver_name'),
   driverContact: text('driver_contact'),
-  expectedArrivalDate: timestamp('expected_arrival_date'),
+  expectedArrivalDate: businessDate('expected_arrival_date'),
   dispatchedBy: text('dispatched_by').notNull(), // loosely-typed text, same convention as goodsReceiptNotes.receivedBy / physicalStockTakes.performedBy
   notes: text('notes'),
   // 'Dispatched' (in transit, awaiting receipt) | 'Received' (fulfilled — see
@@ -2186,6 +2236,7 @@ export const warehouseDispatches = pgTable('warehouse_dispatches', {
   status: text('status').default('Dispatched').notNull(),
   companyId: uuid('company_id').notNull().references(() => companies.id),
 }, (table) => ({
+  docDateIdx: index('warehouse_dispatches_company_doc_date_idx').on(table.companyId, table.docDate),
   companyIdIdx: index('warehouse_dispatches_company_id_idx').on(table.companyId),
   tenantIsolationPolicy: pgPolicy('warehouse_dispatches_tenant_isolation', {
     for: 'all',
@@ -2226,7 +2277,10 @@ export const warehouseReceivings = pgTable('warehouse_receivings', {
   // matching this schema's convention of keeping such uniqueness at the route layer (see
   // inventoryStocks' own lack of a unique constraint for the same reasoning).
   dispatchId: uuid('dispatch_id').notNull().references(() => warehouseDispatches.id),
-  date: timestamp('date').notNull(),
+  docDate: businessDate('doc_date').notNull(), // the date of the document
+  postingDate: businessDate('posting_date').notNull(), // the ledger / stock-ledger / period date
+  createdAt: timestamp('created_at').notNull(), // when it was entered (the system clock); keeps the order of documents within a day
+  createdById: uuid('created_by_id').references(() => users.id), // who entered it (empty on documents that predate this field)
   receivedBy: text('received_by').notNull(),
   condition: text('condition'), // free text (e.g. 'Good', 'Damaged', 'Partial') — not an enforced enum
   discrepancyNotes: text('discrepancy_notes'), // free-text explanation when received != dispatched on one or more lines
@@ -2234,6 +2288,7 @@ export const warehouseReceivings = pgTable('warehouse_receivings', {
   status: text('status').default('Active').notNull(), // 'Active' | 'Cancelled'
   companyId: uuid('company_id').notNull().references(() => companies.id),
 }, (table) => ({
+  docDateIdx: index('warehouse_receivings_company_doc_date_idx').on(table.companyId, table.docDate),
   companyIdIdx: index('warehouse_receivings_company_id_idx').on(table.companyId),
   dispatchIdIdx: index('warehouse_receivings_dispatch_id_idx').on(table.dispatchId),
   tenantIsolationPolicy: pgPolicy('warehouse_receivings_tenant_isolation', {
@@ -2274,7 +2329,8 @@ export const manualJournals = pgTable('manual_journals', {
   id: uuid('id').primaryKey(),
   companyId: uuid('company_id').notNull().references(() => companies.id),
   number: text('number').notNull(),
-  date: text('date').notNull(), // YYYY-MM-DD, same text-date convention as documents
+  docDate: businessDate('doc_date').notNull(), // the date of the journal voucher
+  postingDate: businessDate('posting_date').notNull(), // the ledger / period date; defaults to docDate
   description: text('description').notNull(),
   reference: text('reference'),
   preparerNote: text('preparer_note'),
@@ -2291,6 +2347,7 @@ export const manualJournals = pgTable('manual_journals', {
   reversalOfId: uuid('reversal_of_id'), // this journal reverses that posted manual journal
   reversedById: uuid('reversed_by_id'), // that posted journal has been reversed by this one
 }, (table) => ({
+  docDateIdx: index('manual_journals_company_doc_date_idx').on(table.companyId, table.docDate),
   companyIdIdx: index('manual_journals_company_id_idx').on(table.companyId),
   numberUnique: uniqueIndex('manual_journals_company_number_unique').on(table.companyId, table.number),
   idCompanyUnique: unique('manual_journals_id_company_unique').on(table.companyId, table.id),

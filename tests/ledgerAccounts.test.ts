@@ -134,7 +134,7 @@ describe('create and edit', () => {
     // an unused account may be retyped; once it has a line it may not
     const mk = await post(A.admin, '/api/ledger/accounts', { code: '4900', name: 'Scratch', type: 'Revenue' });
     expect((await put(A.admin, `/api/ledger/accounts/${mk.body.id}`, { type: 'Expense' })).status).toBe(200);
-    await postJournalEntry(db, { companyId: A.id, date: '2026-10-01', referenceType: 'Test', referenceId: generateId(), description: 't', createdById: A.adminId, lines: [{ accountId: mk.body.id, debit: 10 }, { accountKey: 'SALES_REVENUE', credit: 10 }] });
+    await postJournalEntry(db, { companyId: A.id, postingDate: '2026-10-01', referenceType: 'Test', referenceId: generateId(), description: 't', createdById: A.adminId, lines: [{ accountId: mk.body.id, debit: 10 }, { accountKey: 'SALES_REVENUE', credit: 10 }] });
     expect((await put(A.admin, `/api/ledger/accounts/${mk.body.id}`, { type: 'Revenue' })).status).toBe(400);
     // duplicate code on edit
     expect((await put(A.admin, `/api/ledger/accounts/${mk.body.id}`, { code: '1100' })).status).toBe(400);
@@ -147,9 +147,9 @@ describe('deactivate', () => {
     expect((await api(A.admin, `/api/ledger/accounts/${byCode(list, '4010').id}/toggle-active`, { method: 'PATCH' })).status).toBe(400); // posting role
     expect((await api(A.admin, `/api/ledger/accounts/${byCode(list, '6000').id}/toggle-active`, { method: 'PATCH' })).status).toBe(400); // active children
     const mk = await post(A.admin, '/api/ledger/accounts', { code: '6900', name: 'Temp', type: 'Expense' });
-    await postJournalEntry(db, { companyId: A.id, date: '2026-10-01', referenceType: 'Test', referenceId: generateId(), description: 't', createdById: A.adminId, lines: [{ accountId: mk.body.id, debit: 25 }, { accountKey: 'SALES_REVENUE', credit: 25 }] });
+    await postJournalEntry(db, { companyId: A.id, postingDate: '2026-10-01', referenceType: 'Test', referenceId: generateId(), description: 't', createdById: A.adminId, lines: [{ accountId: mk.body.id, debit: 25 }, { accountKey: 'SALES_REVENUE', credit: 25 }] });
     expect((await api(A.admin, `/api/ledger/accounts/${mk.body.id}/toggle-active`, { method: 'PATCH' })).status).toBe(400); // balance 25
-    await postJournalEntry(db, { companyId: A.id, date: '2026-10-02', referenceType: 'Test', referenceId: generateId(), description: 't', createdById: A.adminId, lines: [{ accountId: mk.body.id, credit: 25 }, { accountKey: 'SALES_REVENUE', debit: 25 }] });
+    await postJournalEntry(db, { companyId: A.id, postingDate: '2026-10-02', referenceType: 'Test', referenceId: generateId(), description: 't', createdById: A.adminId, lines: [{ accountId: mk.body.id, credit: 25 }, { accountKey: 'SALES_REVENUE', debit: 25 }] });
     const off = await api(A.admin, `/api/ledger/accounts/${mk.body.id}/toggle-active`, { method: 'PATCH' });
     expect(off.status).toBe(200); expect(off.body.isActive).toBe(false);
     expect((await api(A.admin, `/api/ledger/accounts/${mk.body.id}/toggle-active`, { method: 'PATCH' })).body.isActive).toBe(true);
@@ -160,7 +160,7 @@ describe('every line is stamped with its account, and a mapping change is not re
   it('keeps old lines on the old account after a role is pointed elsewhere', async () => {
     const before = await accountsOf(A.admin);
     const oldRev = byCode(before, '4010');
-    const e1 = await postJournalEntry(db, { companyId: A.id, date: '2026-10-03', referenceType: 'Test', referenceId: generateId(), description: 'before', createdById: A.adminId, lines: [{ accountKey: 'AR', debit: 100 }, { accountKey: 'SALES_REVENUE', credit: 100 }] });
+    const e1 = await postJournalEntry(db, { companyId: A.id, postingDate: '2026-10-03', referenceType: 'Test', referenceId: generateId(), description: 'before', createdById: A.adminId, lines: [{ accountKey: 'AR', debit: 100 }, { accountKey: 'SALES_REVENUE', credit: 100 }] });
     const stamped1 = await db.select().from(schema.journalLines).where(eq(schema.journalLines.journalEntryId, e1));
     expect(stamped1.every(l => !!l.accountId)).toBe(true);
     expect(stamped1.find(l => l.accountKey === 'SALES_REVENUE')!.accountId).toBe(oldRev.id);
@@ -168,7 +168,7 @@ describe('every line is stamped with its account, and a mapping change is not re
     const newRev = await post(A.admin, '/api/ledger/accounts', { code: '4020', name: 'Service Revenue', type: 'Revenue', parentId: byCode(before, '4000').id });
     expect((await put(A.admin, '/api/ledger/mapping/role', { key: 'SALES_REVENUE', accountId: byCode(before, '1100').id })).status).toBe(400); // wrong type
     expect((await put(A.admin, '/api/ledger/mapping/role', { key: 'SALES_REVENUE', accountId: newRev.body.id })).status).toBe(200);
-    const e2 = await postJournalEntry(db, { companyId: A.id, date: '2026-10-04', referenceType: 'Test', referenceId: generateId(), description: 'after', createdById: A.adminId, lines: [{ accountKey: 'AR', debit: 50 }, { accountKey: 'SALES_REVENUE', credit: 50 }] });
+    const e2 = await postJournalEntry(db, { companyId: A.id, postingDate: '2026-10-04', referenceType: 'Test', referenceId: generateId(), description: 'after', createdById: A.adminId, lines: [{ accountKey: 'AR', debit: 50 }, { accountKey: 'SALES_REVENUE', credit: 50 }] });
     const stamped2 = await db.select().from(schema.journalLines).where(eq(schema.journalLines.journalEntryId, e2));
     expect(stamped2.find(l => l.accountKey === 'SALES_REVENUE')!.accountId).toBe(newRev.body.id);
     const again = await db.select().from(schema.journalLines).where(eq(schema.journalLines.journalEntryId, e1));
@@ -182,14 +182,14 @@ describe('every line is stamped with its account, and a mapping change is not re
     const list = await accountsOf(A.admin);
     const bankAcct = list.find(a => a.bankId);
     const [bank] = await db.select().from(schema.bankAccounts).where(eq(schema.bankAccounts.id, bankAcct.bankId));
-    const e = await postJournalEntry(db, { companyId: A.id, date: '2026-10-05', referenceType: 'Test', referenceId: generateId(), description: 'bank', createdById: A.adminId, lines: [{ accountKey: 'BANK', bankId: bank.id, debit: 70 }, { accountKey: 'AR', credit: 70 }] });
+    const e = await postJournalEntry(db, { companyId: A.id, postingDate: '2026-10-05', referenceType: 'Test', referenceId: generateId(), description: 'bank', createdById: A.adminId, lines: [{ accountKey: 'BANK', bankId: bank.id, debit: 70 }, { accountKey: 'AR', credit: 70 }] });
     const lines = await db.select().from(schema.journalLines).where(eq(schema.journalLines.journalEntryId, e));
     expect(lines.find(l => l.accountKey === 'BANK')!.accountId).toBe(bankAcct.id);
   });
 
   it('the database refuses a line that points at another company\'s account (composite foreign key)', async () => {
     const bAcct = byCode(await accountsOf(B.admin), '4010');
-    await expect(postJournalEntry(db, { companyId: A.id, date: '2026-10-06', referenceType: 'Test', referenceId: generateId(), description: 'x', createdById: A.adminId, lines: [{ accountId: bAcct.id, debit: 5 }, { accountKey: 'AR', credit: 5 }] })).rejects.toBeTruthy();
+    await expect(postJournalEntry(db, { companyId: A.id, postingDate: '2026-10-06', referenceType: 'Test', referenceId: generateId(), description: 'x', createdById: A.adminId, lines: [{ accountId: bAcct.id, debit: 5 }, { accountKey: 'AR', credit: 5 }] })).rejects.toBeTruthy();
   });
 });
 

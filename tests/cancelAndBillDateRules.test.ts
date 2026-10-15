@@ -57,7 +57,7 @@ beforeAll(async () => {
 afterAll(async () => { await purgeCompany(companyId); }, 60000);
 
 const expense = async (desc: string, date: string) => {
-  ok(await post('/api/expenses', { date, vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'CB-' + generateId().slice(-4), description: desc, paymentStatus: 'Paid', amountPaid: 115, paymentDate: date, amount: 115 }), 'expense');
+  ok(await post('/api/expenses', { docDate: date, vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'CB-' + generateId().slice(-4), description: desc, paymentStatus: 'Paid', amountPaid: 115, paymentDate: date, amount: 115 }), 'expense');
   return ((await db.select().from(schema.expenses).where(eq(schema.expenses.companyId, companyId))) as any[]).find(e => e.description === desc).id as string;
 };
 
@@ -68,9 +68,9 @@ describe('expense cancellation', () => {
     const ents = await entries();
     const reversals = ents.filter(e => e.referenceType === 'Expense' && e.reversalOfId);
     expect(reversals.length).toBeGreaterThan(0);
-    for (const r of reversals) expect(r.date).toBe(today);                       // never back in the expense's own, earlier month
+    for (const r of reversals) expect(r.docDate).toBe(today);                       // never back in the expense's own, earlier month
     const originals = ents.filter(e => e.referenceType === 'Expense' && !e.reversalOfId);
-    for (const o of originals) expect(o.date).toBe(pDay(10));
+    for (const o of originals) expect(o.docDate).toBe(pDay(10));
     const bs = await rep('balance-sheet', `asOfDate=${today}`);
     expect(Math.abs(bs.balanceCheck)).toBeLessThan(0.011);
   });
@@ -103,21 +103,21 @@ describe('purchase bill date', () => {
   });
 
   it('is validated: not in a closed month, not in the future', async () => {
-    const closed = await post('/api/inventory/purchase-bills', { billData: { grnIds: [grn], bankId, date: pDay(15), vendorBillNumber: 'X2' } });
+    const closed = await post('/api/inventory/purchase-bills', { billData: { grnIds: [grn], bankId, docDate: pDay(15), vendorBillNumber: 'X2' } });
     expect(closed.status).toBe(400);
     expect(closed.body.error).toMatch(/closed fiscal month/i);
-    const future = await post('/api/inventory/purchase-bills', { billData: { grnIds: [grn], bankId, date: `${now.getUTCFullYear() + 1}-01-15`, vendorBillNumber: 'X3' } });
+    const future = await post('/api/inventory/purchase-bills', { billData: { grnIds: [grn], bankId, docDate: `${now.getUTCFullYear() + 1}-01-15`, vendorBillNumber: 'X3' } });
     expect(future.status).toBe(400);
   });
 
   it('is kept on the bill, and a payment cannot be dated before it', async () => {
-    const bill = ok(await post('/api/inventory/purchase-bills', { billData: { grnIds: [grn], bankId, date: today, vendorBillNumber: 'X4' } }), 'bill').purchaseBill;
-    expect(new Date(bill.date).toISOString().slice(0, 10)).toBe(today);
-    const early = await post(`/api/inventory/purchase-bills/${bill.id}/pay`, { date: `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`, bankId, amount: 10 });
+    const bill = ok(await post('/api/inventory/purchase-bills', { billData: { grnIds: [grn], bankId, docDate: today, vendorBillNumber: 'X4' } }), 'bill').purchaseBill;
+    expect(new Date(bill.docDate).toISOString().slice(0, 10)).toBe(today);
+    const early = await post(`/api/inventory/purchase-bills/${bill.id}/pay`, { docDate: `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`, bankId, amount: 10 });
     if (today.slice(8, 10) !== '01') {
       expect(early.status).toBe(400);
       expect(early.body.error).toMatch(/cannot be dated before the bill/i);
     }
-    expect((await post(`/api/inventory/purchase-bills/${bill.id}/pay`, { date: today, bankId, amount: 10 })).status).toBe(200);
+    expect((await post(`/api/inventory/purchase-bills/${bill.id}/pay`, { docDate: today, bankId, amount: 10 })).status).toBe(200);
   });
 });

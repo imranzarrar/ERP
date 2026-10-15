@@ -2966,7 +2966,7 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  body: JSON.stringify({
  bankId: investmentForm.bankId,
  amount: amountNum,
- date: investmentForm.date,
+ docDate: investmentForm.date,
  description: investmentForm.description || 'Equity capital injection'
  })
  });
@@ -7651,14 +7651,14 @@ export default function AdminSettings({ db, onUpdateDbLocal, onRefreshDb, defaul
  <tbody className="divide-y divide-slate-50">
  {db.vouchers
  .filter(v => v.referenceType === 'Equity')
- .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+ .sort((a, b) => b.postingDate.localeCompare(a.postingDate) || b.createdAt.localeCompare(a.createdAt))
  .map(v => {
  const investor = !db.investors ? null : db.investors.find(i => i.id === v.referenceId);
  const bank = db.banks.find(b => b.id === v.bankId);
  return (
  <tr key={v.id} className="hover:bg-slate-50/50">
  <td className="py-3 font-mono font-bold text-[11px] text-indigo-600">{v.voucherNumber}</td>
- <td className="py-3 text-slate-500 whitespace-nowrap">{v.date}</td>
+ <td className="py-3 text-slate-500 whitespace-nowrap">{v.postingDate}</td>
  <td className="py-3 font-semibold text-slate-900">{investor?.name || t('Unknown')}</td>
  <td className="py-3 text-slate-600 font-medium">{bank?.bankName || t('Unknown Bank')}</td>
  <td className="py-3 text-slate-500 max-w-[180px] truncate" title={v.description}>{v.description}</td>

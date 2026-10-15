@@ -301,7 +301,7 @@ describe('Invoice salesAssociateId attribution field', () => {
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: new Date().toISOString().slice(0, 10), customerId, taxSlabId, bankId, notes: '', status: 'Active',
+          docDate: new Date().toISOString().slice(0, 10), customerId, taxSlabId, bankId, notes: '', status: 'Active',
           items: [{ id: generateId(), description: 'Widget', unitCost: 10, quantity: 1, unit: 'PCE', productId }],
           salesAssociateId: employeeAId,
         },
@@ -320,7 +320,7 @@ describe('Invoice salesAssociateId attribution field', () => {
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: new Date().toISOString().slice(0, 10), customerId, taxSlabId, bankId, notes: '', status: 'Active',
+          docDate: new Date().toISOString().slice(0, 10), customerId, taxSlabId, bankId, notes: '', status: 'Active',
           items: [{ id: generateId(), description: 'Widget', unitCost: 10, quantity: 1, unit: 'PCE', productId }],
           salesAssociateId: otherEmpRes.body.id,
         },
@@ -338,7 +338,7 @@ describe('Invoice salesAssociateId attribution field', () => {
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: new Date().toISOString().slice(0, 10), customerId, taxSlabId, bankId, notes: '', status: 'Active',
+          docDate: new Date().toISOString().slice(0, 10), customerId, taxSlabId, bankId, notes: '', status: 'Active',
           items: [{ id: generateId(), description: 'Widget', unitCost: 10, quantity: 1, unit: 'PCE', productId }],
           salesAssociateId: employeeBId,
         },
@@ -355,7 +355,7 @@ describe('Invoice salesAssociateId attribution field', () => {
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: new Date().toISOString().slice(0, 10), customerId, taxSlabId, bankId, notes: '', status: 'Active',
+          docDate: new Date().toISOString().slice(0, 10), customerId, taxSlabId, bankId, notes: '', status: 'Active',
           items: [{ id: generateId(), description: 'Widget', unitCost: 10, quantity: 1, unit: 'PCE', productId }],
         },
       }),

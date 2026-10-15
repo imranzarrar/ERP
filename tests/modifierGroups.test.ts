@@ -217,7 +217,7 @@ describe('A modified POS sale does not disturb existing invoice/reporting math',
       customerId,
       taxSlabId,
       bankId,
-      date: today,
+      docDate: today,
       paymentStatus: 'Paid',
       amountPaid: (17 + 19) * 1.15, // (15+2) + (15+4), +15% VAT
       paymentDate: today,

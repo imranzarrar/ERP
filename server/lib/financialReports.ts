@@ -32,7 +32,7 @@ async function creditedOriginalIds(executor: any, companyId: string, asOfDate?: 
     eq(schema.invoices.companyId, companyId),
     eq(schema.invoices.documentType, 'CreditNote'),
     eq(schema.invoices.status, 'Active'),
-    ...(asOfDate ? [lte(schema.invoices.date, asOfDate)] : []),
+    ...(asOfDate ? [lte(schema.invoices.postingDate, asOfDate)] : []),
   ));
   return new Set(rows.map((r: any) => r.originalId).filter(Boolean));
 }
@@ -89,11 +89,11 @@ async function computeVendorRefunds(executor: any, companyId: string, asOfDate: 
   const rows: any[] = await executor.select().from(schema.vouchers).where(and(
     eq(schema.vouchers.companyId, companyId),
     eq(schema.vouchers.referenceType, 'VendorRefund'),
-    lte(schema.vouchers.date, asOfDate),
+    lte(schema.vouchers.postingDate, asOfDate),
     ...(vendorId === 'ALL' ? [] : [eq(schema.vouchers.referenceId, vendorId)]),
   ));
   const lines: VendorRefundLine[] = rows.filter(v => v.type === 'Receipt' || v.type === 'Reversal').map(v => ({
-    documentNumber: v.voucherNumber, date: v.date, vendorId: v.referenceId, type: v.type, amount: round2(Number(v.amount)),
+    documentNumber: v.voucherNumber, date: v.postingDate, vendorId: v.referenceId, type: v.type, amount: round2(Number(v.amount)),
   }));
   return { total: round2(lines.reduce((s, l) => s + (l.type === 'Receipt' ? l.amount : -l.amount), 0)), lines };
 }
@@ -102,7 +102,7 @@ async function computeVendorRefunds(executor: any, companyId: string, asOfDate: 
 async function computeExpenseReversalCredits(executor: any, companyId: string, asOfDate: string, vendorId: string | 'ALL' = 'ALL'): Promise<number> {
   const rows: any[] = await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId), eq(schema.expenses.status, 'Active'), isNotNull(schema.expenses.reversalOfExpenseId),
-    lte(schema.expenses.date, asOfDate),
+    lte(schema.expenses.postingDate, asOfDate),
   ));
   return round2(rows.filter(r => vendorId === 'ALL' || r.vendorId === vendorId).reduce((s, r) => s + (-Number(r.amountPaid || 0)), 0));
 }
@@ -120,10 +120,10 @@ async function computeVendorCredits(executor: any, companyId: string, asOfDate: 
     eq(schema.purchaseReturns.status, 'Active'),
     isNotNull(schema.purchaseReturns.billId),
     isNotNull(schema.purchaseReturns.inputVatAdjustment),
-    lte(schema.purchaseReturns.date, new Date(asOfDate + 'T23:59:59.999Z')),
+    lte(schema.purchaseReturns.postingDate, asOfDate),
   ));
   const lines = rows.filter(r => vendorId === 'ALL' || r.vendorId === vendorId).map(r => ({
-    documentNumber: r.returnNumber, date: new Date(r.date).toISOString().slice(0, 10), vendorId: r.vendorId,
+    documentNumber: r.returnNumber, date: r.postingDate, vendorId: r.vendorId,
     // the part of the return that had already been paid: the whole return minus what reduced the bill (older rows: all or nothing)
     amount: round2(Number(r.netAdjustment || 0) + Number(r.inputVatAdjustment || 0)
       - (r.billReduction != null ? Number(r.billReduction) : (r.billTotalsReduced ? Number(r.netAdjustment || 0) + Number(r.inputVatAdjustment || 0) : 0))),
@@ -185,7 +185,7 @@ export async function computeAllBankBalances(executor: any, companyId: string, a
   if (banks.length === 0) return [];
   const bankIds = banks.map(b => b.id);
   const vouchers = await executor.select().from(schema.vouchers).where(
-    and(eq(schema.vouchers.companyId, companyId), inArray(schema.vouchers.bankId, bankIds), ...(asOfDate ? [lte(schema.vouchers.date, asOfDate)] : []))
+    and(eq(schema.vouchers.companyId, companyId), inArray(schema.vouchers.bankId, bankIds), ...(asOfDate ? [lte(schema.vouchers.postingDate, asOfDate)] : []))
   );
   const vouchersByBankId = new Map<string, typeof vouchers>();
   for (const v of vouchers) {
@@ -195,7 +195,7 @@ export async function computeAllBankBalances(executor: any, companyId: string, a
   return banks.map(bank => {
     const bankVouchers = (vouchersByBankId.get(bank.id) || [])
       .slice()
-      .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.toISOString().localeCompare(b.createdAt.toISOString()));
+      .sort((a, b) => a.postingDate.localeCompare(b.postingDate) || a.createdAt.toISOString().localeCompare(b.createdAt.toISOString()));
     let balance = Number(bank.openingBalance);
     for (const v of bankVouchers) {
       const amount = Number(v.amount);
@@ -256,7 +256,7 @@ export async function computeTrialBalance(executor: any, companyId: string, star
   const capitalVouchers = await executor.select().from(schema.vouchers).where(and(
     eq(schema.vouchers.companyId, companyId),
     eq(schema.vouchers.referenceType, 'Equity'),
-    lte(schema.vouchers.date, endDate),
+    lte(schema.vouchers.postingDate, endDate),
   ));
   const totalCapital = round2(capitalVouchers.reduce((sum: number, v: any) =>
     sum + (v.type === 'Receipt' ? Number(v.amount) : v.type === 'Reversal' ? -Number(v.amount) : 0), 0));
@@ -308,8 +308,8 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
   const branchOk = makeBranchOk(opts.branchIds);
   const periodVouchers = (await executor.select().from(schema.vouchers).where(and(
     eq(schema.vouchers.companyId, companyId),
-    gte(schema.vouchers.date, startDate),
-    lte(schema.vouchers.date, endDate),
+    gte(schema.vouchers.postingDate, startDate),
+    lte(schema.vouchers.postingDate, endDate),
   ))).filter((v: any) => branchOk(v.branchId));
 
   let totalRevenue = 0;
@@ -317,8 +317,8 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
     const revenueInvoices = (await executor.select().from(schema.invoices).where(and(
       eq(schema.invoices.companyId, companyId),
       eq(schema.invoices.status, 'Active'),
-      gte(schema.invoices.date, startDate),
-      lte(schema.invoices.date, endDate),
+      gte(schema.invoices.postingDate, startDate),
+      lte(schema.invoices.postingDate, endDate),
     ))).filter((inv: any) => branchOk(inv.branchId));
     const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, revenueInvoices);
     for (const inv of revenueInvoices) {
@@ -366,15 +366,15 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
   // branch below for why.
   const cogsLines = await executor.select({
     debit: schema.journalLines.debit, credit: schema.journalLines.credit,
-    date: schema.journalEntries.date, branchId: schema.journalEntries.branchId,
+    date: schema.journalEntries.postingDate, branchId: schema.journalEntries.branchId,
   })
     .from(schema.journalLines)
     .innerJoin(schema.journalEntries, eq(schema.journalLines.journalEntryId, schema.journalEntries.id))
     .where(and(
       eq(schema.journalLines.companyId, companyId),
       eq(schema.journalLines.accountKey, 'COGS'),
-      gte(schema.journalEntries.date, startDate),
-      lte(schema.journalEntries.date, endDate),
+      gte(schema.journalEntries.postingDate, startDate),
+      lte(schema.journalEntries.postingDate, endDate),
     ));
   const costOfGoodsSold = round2(cogsLines
     .filter((l: any) => branchOk(l.branchId))
@@ -384,7 +384,7 @@ export async function computeProfitLoss(executor: any, companyId: string, startD
   if (basis === 'Accrual') {
     const opExInRange = periodExpenses.filter(exp =>
       exp.classification !== 'Asset' &&
-      exp.date >= startDate && exp.date <= endDate
+      exp.postingDate >= startDate && exp.postingDate <= endDate
     );
     const plVariances = await settlementVariances(executor, companyId, opExInRange, plPctBySlab);
     totalExpenses = round2(opExInRange.reduce((sum, exp) => sum + recognisedCost(exp, plPctBySlab, plVariances), 0));
@@ -509,7 +509,7 @@ function monthClosedBy(m: { closedAt?: Date | string | null }, asOfDate: string)
 async function laterVoucherTotals(executor: any, companyId: string, referenceType: string, type: string, asOfDate: string): Promise<Map<string, number>> {
   const rows: any[] = await executor.select({ referenceId: schema.vouchers.referenceId, amount: schema.vouchers.amount }).from(schema.vouchers).where(and(
     eq(schema.vouchers.companyId, companyId), eq(schema.vouchers.referenceType, referenceType), eq(schema.vouchers.type, type),
-    sql`${schema.vouchers.date} > ${asOfDate}`,
+    sql`${schema.vouchers.postingDate} > ${asOfDate}`,
   ));
   const out = new Map<string, number>();
   for (const r of rows) out.set(r.referenceId, round2((out.get(r.referenceId) || 0) + Number(r.amount)));
@@ -534,7 +534,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
     eq(schema.invoices.companyId, companyId),
     eq(schema.invoices.status, 'Active'),
     ne(schema.invoices.documentType, 'CreditNote'),
-    lte(schema.invoices.date, asOfDate),
+    lte(schema.invoices.postingDate, asOfDate),
     laterReceiptIds.length
       ? or(inArray(schema.invoices.paymentStatus, ['Unpaid', 'Partially Paid']), inArray(schema.invoices.id, laterReceiptIds))
       : inArray(schema.invoices.paymentStatus, ['Unpaid', 'Partially Paid']),
@@ -552,7 +552,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   const expenseCandidates: any[] = await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId),
     eq(schema.expenses.status, 'Active'),
-    lte(schema.expenses.date, asOfDate),
+    lte(schema.expenses.postingDate, asOfDate),
     laterExpensePaymentIds.length
       ? or(inArray(schema.expenses.paymentStatus, ['Unpaid', 'Partially Paid']), inArray(schema.expenses.id, laterExpensePaymentIds))
       : inArray(schema.expenses.paymentStatus, ['Unpaid', 'Partially Paid']),
@@ -560,10 +560,10 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   // A settled accrual stops being owed only from the day its settling invoice is dated: as at an earlier date it was still owed.
   const settledAccruals: any[] = await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId), eq(schema.expenses.status, 'Active'), eq(schema.expenses.type, 'Accrual'),
-    eq(schema.expenses.accrualSettled, true), lte(schema.expenses.date, asOfDate),
+    eq(schema.expenses.accrualSettled, true), lte(schema.expenses.postingDate, asOfDate),
   ));
   const settlingIds = settledAccruals.map(a => a.settledExpenseId).filter(Boolean) as string[];
-  const settlingRows: any[] = settlingIds.length ? await executor.select({ id: schema.expenses.id, date: schema.expenses.date }).from(schema.expenses).where(inArray(schema.expenses.id, settlingIds)) : [];
+  const settlingRows: any[] = settlingIds.length ? await executor.select({ id: schema.expenses.id, date: schema.expenses.postingDate }).from(schema.expenses).where(inArray(schema.expenses.id, settlingIds)) : [];
   const settlingDate = new Map<string, string>(settlingRows.map(r => [r.id, String(r.date).slice(0, 10)] as [string, string]));
   const stillOwedAccruals = settledAccruals.filter(a => (settlingDate.get(a.settledExpenseId) || '0000') > asOfDate);
   const unpaidExpenses = [
@@ -582,14 +582,14 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   const unpaidBills = await executor.select().from(schema.purchaseBills).where(and(
     eq(schema.purchaseBills.companyId, companyId),
     ne(schema.purchaseBills.status, 'Cancelled'),
-    lte(schema.purchaseBills.date, new Date(asOfDate + 'T23:59:59.999Z')),
+    lte(schema.purchaseBills.postingDate, asOfDate),
   ));
   // As at an earlier date: payments made later come back off what was paid, and a return made later had not yet reduced the bill.
   const laterBillPayments = await laterVoucherTotals(executor, companyId, 'PurchaseBill', 'Payment', asOfDate);
   const laterReducingReturns: any[] = await executor.select().from(schema.purchaseReturns).where(and(
     eq(schema.purchaseReturns.companyId, companyId), eq(schema.purchaseReturns.status, 'Active'),
     eq(schema.purchaseReturns.billTotalsReduced, true), isNotNull(schema.purchaseReturns.billId),
-    gt(schema.purchaseReturns.date, new Date(asOfDate + 'T23:59:59.999Z')),
+    gt(schema.purchaseReturns.postingDate, asOfDate),
   ));
   const returnedLater = new Map<string, number>();
   for (const r of laterReducingReturns) returnedLater.set(r.billId, round2((returnedLater.get(r.billId) || 0) + (r.billReduction != null ? Number(r.billReduction) : Number(r.netAdjustment || 0) + Number(r.inputVatAdjustment || 0))));
@@ -618,7 +618,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
     .from(schema.journalLines).innerJoin(schema.journalEntries, eq(schema.journalLines.journalEntryId, schema.journalEntries.id))
     .where(and(
       eq(schema.journalLines.companyId, companyId), eq(schema.journalLines.accountKey, 'INVENTORY'),
-      sql`${schema.journalEntries.date} > ${asOfDate}`,
+      sql`${schema.journalEntries.postingDate} > ${asOfDate}`,
     ));
   const inventoryValue = round2(currentInventory - laterInventoryLines.reduce((sum: number, l: any) => sum + Number(l.dr) - Number(l.cr), 0));
 
@@ -635,7 +635,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   const allExpenses: any[] = await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId),
     eq(schema.expenses.status, 'Active'),
-    lte(schema.expenses.date, asOfDate),
+    lte(schema.expenses.postingDate, asOfDate),
   ));
   const bsPctBySlab = await taxPercentageBySlabId(executor, companyId);
   const fixedAssets = round2(allExpenses
@@ -652,7 +652,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   const allInvoicesToDate: any[] = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId),
     eq(schema.invoices.status, 'Active'),
-    lte(schema.invoices.date, asOfDate),
+    lte(schema.invoices.postingDate, asOfDate),
   ));
   const allInvoiceTotals = await computeInvoiceTotalsMap(executor, allInvoicesToDate);
   const vatOutputPayable = round2(allInvoicesToDate.reduce((sum: number, inv: any) =>
@@ -662,20 +662,20 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
   // (tax-exclusive revenue, ledger COGS, non-capital expenses, settled accruals excluded) so that when a
   // month IS closed its profit simply moves from here into retainedEarnings with no jump in the totals.
   const openRevenue = allInvoicesToDate
-    .filter(inv => monthIsOpen(inv.date))
+    .filter(inv => monthIsOpen(inv.postingDate))
     .reduce((sum: number, inv: any) => sum + allInvoiceTotals.get(inv.id)!.discountedSubtotal * invoiceSign(inv), 0);
-  const openExpenseRows = allExpenses.filter(e => e.classification !== 'Asset' && monthIsOpen(e.date));
+  const openExpenseRows = allExpenses.filter(e => e.classification !== 'Asset' && monthIsOpen(e.postingDate));
   const bsVariances = await settlementVariances(executor, companyId, openExpenseRows, bsPctBySlab);
   const openExpenses = openExpenseRows.reduce((sum: number, e: any) => sum + recognisedCost(e, bsPctBySlab, bsVariances), 0);
   const cogsRows = await executor.select({
-    debit: schema.journalLines.debit, credit: schema.journalLines.credit, date: schema.journalEntries.date,
+    debit: schema.journalLines.debit, credit: schema.journalLines.credit, date: schema.journalEntries.postingDate,
   })
     .from(schema.journalLines)
     .innerJoin(schema.journalEntries, eq(schema.journalLines.journalEntryId, schema.journalEntries.id))
     .where(and(
       eq(schema.journalLines.companyId, companyId),
       eq(schema.journalLines.accountKey, 'COGS'),
-      lte(schema.journalEntries.date, asOfDate),
+      lte(schema.journalEntries.postingDate, asOfDate),
     ));
   const openCogs = cogsRows
     .filter((r: any) => monthIsOpen(r.date))
@@ -690,7 +690,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
     eq(schema.goodsReceiptNotes.companyId, companyId),
     eq(schema.goodsReceiptNotes.isBilled, false),
     eq(schema.goodsReceiptNotes.isReversed, false),
-    lte(schema.goodsReceiptNotes.date, asOfEnd),
+    lte(schema.goodsReceiptNotes.postingDate, asOfDate),
   ));
   let goodsReceivedNotBilled = 0;
   if (unbilledGrns.length > 0) {
@@ -704,7 +704,7 @@ export async function computeBalanceSheet(executor: any, companyId: string, asOf
       eq(schema.purchaseReturns.companyId, companyId),
       eq(schema.purchaseReturns.status, 'Active'),
       inArray(schema.purchaseReturns.grnId, grnIds),
-      lte(schema.purchaseReturns.date, asOfEnd),
+      lte(schema.purchaseReturns.postingDate, asOfDate),
     ));
     if (returns.length > 0) {
       const returnItems: any[] = await executor.select().from(schema.purchaseReturnItems).where(inArray(schema.purchaseReturnItems.returnId, returns.map(r => r.id)));
@@ -762,7 +762,7 @@ export async function computeMonthPnL(executor: any, companyId: string, monthId:
     eq(schema.invoices.companyId, companyId),
     eq(schema.invoices.status, 'Active'),
   ));
-  const invoicesInMonth = monthInvoices.filter(inv => inv.date.startsWith(monthId));
+  const invoicesInMonth = monthInvoices.filter(inv => inv.postingDate.startsWith(monthId));
   const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, invoicesInMonth);
 
   let paidRevenue = 0;
@@ -799,7 +799,7 @@ export async function computeMonthPnL(executor: any, companyId: string, monthId:
   // that later settles it (originAccrualId set) is only the payment of that same cost, so it is not counted a second time
   // in the month it is paid. (Dropping the settled accrual and counting its payment instead moved the cost into the wrong
   // month, so a closed month stored a different profit than the P&L shows for it.)
-  const expensesInMonth = monthExpenses.filter(exp => exp.date.startsWith(monthId) && exp.classification !== 'Asset');
+  const expensesInMonth = monthExpenses.filter(exp => exp.postingDate.startsWith(monthId) && exp.classification !== 'Asset');
   let paidExpenses = 0;
   let totalExpenses = 0;
   const monthPctBySlab = await taxPercentageBySlabId(executor, companyId);
@@ -824,8 +824,8 @@ export async function computeMonthPnL(executor: any, companyId: string, monthId:
     .where(and(
       eq(schema.journalLines.companyId, companyId),
       eq(schema.journalLines.accountKey, 'COGS'),
-      gte(schema.journalEntries.date, monthStart),
-      lte(schema.journalEntries.date, monthEnd),
+      gte(schema.journalEntries.postingDate, monthStart),
+      lte(schema.journalEntries.postingDate, monthEnd),
     ));
   const costOfGoodsSold = round2(cogsLines.reduce((sum: number, l: any) => sum + (Number(l.debit) - Number(l.credit)), 0));
 
@@ -895,8 +895,8 @@ export async function computeDashboardSummary(
 
   const allInvoicesInRange = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId),
-    gte(schema.invoices.date, startDate),
-    lte(schema.invoices.date, endDate),
+    gte(schema.invoices.postingDate, startDate),
+    lte(schema.invoices.postingDate, endDate),
   ));
   const monthInvoices = allInvoicesInRange.filter(inv =>
     branchOk(inv.branchId) && (!opts.restrictToUserId || inv.createdById === opts.restrictToUserId)
@@ -936,11 +936,11 @@ export async function computeDashboardSummary(
     const balance = (totals.grandTotal - Number(inv.amountPaid || 0)) * invoiceSign(inv);
     pendingCollection = round2(pendingCollection + balance);
     if (balance > 0) {
-      const daysOutstanding = Math.floor((today.getTime() - new Date(inv.date).getTime()) / 86400000);
+      const daysOutstanding = Math.floor((today.getTime() - new Date(inv.docDate).getTime()) / 86400000);
       pendingInvoiceRows.push({
         id: inv.id, invoiceNumber: inv.invoiceNumber,
         customerName: customerNameById.get(inv.customerId) || 'Walk-in Customer',
-        amount: round2(balance), date: inv.date, daysOutstanding,
+        amount: round2(balance), date: inv.docDate, daysOutstanding,
       });
     }
   }
@@ -951,8 +951,8 @@ export async function computeDashboardSummary(
 
   const periodVouchers = await executor.select().from(schema.vouchers).where(and(
     eq(schema.vouchers.companyId, companyId),
-    gte(schema.vouchers.date, startDate),
-    lte(schema.vouchers.date, endDate),
+    gte(schema.vouchers.postingDate, startDate),
+    lte(schema.vouchers.postingDate, endDate),
   ));
   const monthVouchers = periodVouchers.filter(v => branchOk(v.branchId));
   const receivedSales = round2(
@@ -962,8 +962,8 @@ export async function computeDashboardSummary(
 
   const allExpensesInRange = await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId),
-    gte(schema.expenses.date, startDate),
-    lte(schema.expenses.date, endDate),
+    gte(schema.expenses.postingDate, startDate),
+    lte(schema.expenses.postingDate, endDate),
   ));
   const monthExpenses = allExpensesInRange.filter(exp =>
     branchOk(exp.branchId) && (!opts.restrictToUserId || exp.createdById === opts.restrictToUserId)
@@ -989,8 +989,8 @@ export async function computeDashboardSummary(
     .where(and(
       eq(schema.journalLines.companyId, companyId),
       eq(schema.journalLines.accountKey, 'COGS'),
-      gte(schema.journalEntries.date, startDate),
-      lte(schema.journalEntries.date, endDate),
+      gte(schema.journalEntries.postingDate, startDate),
+      lte(schema.journalEntries.postingDate, endDate),
     ));
   const costOfGoodsSold = round2(cogsLines
     .filter((l: any) => branchOk(l.branchId))
@@ -1031,11 +1031,11 @@ export async function computeDashboardSummary(
   const pendingExpenseRows: PendingExpenseRow[] = unpaidExpensesFiltered
     .map(exp => ({ exp, due: round2(Math.max(0, Number(exp.amount) - Number(exp.amountPaid || 0))) }))
     .filter(x => x.due > 0.01)
-    .sort((a, b) => a.exp.date.localeCompare(b.exp.date))
+    .sort((a, b) => a.exp.docDate.localeCompare(b.exp.docDate))
     .map(x => ({
       id: x.exp.id, expenseNumber: x.exp.expenseNumber,
       vendorName: pendingVendorNameById.get(x.exp.vendorId) || 'Vendor',
-      amount: x.due, date: x.exp.date,
+      amount: x.due, date: x.exp.docDate,
     }));
   const pendingExpensesTotal = round2(pendingExpenseRows.reduce((sum, r) => sum + r.amount, 0));
 
@@ -1102,8 +1102,8 @@ export async function computeDashboardSummary(
     const monthInvoicesAll = await executor.select().from(schema.invoices).where(and(
       eq(schema.invoices.companyId, companyId),
       eq(schema.invoices.status, 'Active'),
-      gte(schema.invoices.date, `${monthId}-01`),
-      lte(schema.invoices.date, `${monthId}-31`),
+      gte(schema.invoices.postingDate, `${monthId}-01`),
+      lte(schema.invoices.postingDate, `${monthId}-31`),
     ));
     const monthInvoicesFiltered = monthInvoicesAll.filter(inv => branchOk(inv.branchId));
     const monthTotalsByInvoiceId = await computeInvoiceTotalsMap(executor, monthInvoicesFiltered);
@@ -1138,7 +1138,7 @@ export interface SalesRegisterRow { invoiceNumber: string; date: string; custome
 export async function computeSalesRegister(executor: any, companyId: string, startDate: string, endDate: string, customerId: string | 'ALL', opts: ReportScopeOpts): Promise<{ rows: SalesRegisterRow[]; totalSales: number }> {
   const branchOk = makeBranchOk(opts.branchIds);
   const invoicesInRange = await executor.select().from(schema.invoices).where(and(
-    eq(schema.invoices.companyId, companyId), gte(schema.invoices.date, startDate), lte(schema.invoices.date, endDate),
+    eq(schema.invoices.companyId, companyId), gte(schema.invoices.docDate, startDate), lte(schema.invoices.docDate, endDate),
   ));
   const filtered = invoicesInRange.filter(inv => branchOk(inv.branchId) && (customerId === 'ALL' || inv.customerId === customerId));
   const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, filtered);
@@ -1146,7 +1146,7 @@ export async function computeSalesRegister(executor: any, companyId: string, sta
   const customers = customerIds.length ? await executor.select().from(schema.customers).where(inArray(schema.customers.id, customerIds)) : [];
   const customerNameById = new Map(customers.map(c => [c.id, c.name]));
   const rows: SalesRegisterRow[] = filtered.map(inv => ({
-    invoiceNumber: inv.invoiceNumber, date: inv.date, customerName: customerNameById.get(inv.customerId) || 'Walk-In',
+    invoiceNumber: inv.invoiceNumber, date: inv.docDate, customerName: customerNameById.get(inv.customerId) || 'Walk-In',
     status: inv.status, paymentStatus: inv.documentType === 'CreditNote' ? 'Not Applicable' : inv.paymentStatus,
     zatcaStatus: inv.zatcaStatus || 'NOT_SUBMITTED',
     grandTotal: totalsByInvoiceId.get(inv.id)!.grandTotal * invoiceSign(inv),
@@ -1161,7 +1161,7 @@ export async function computeItemWiseSales(executor: any, companyId: string, sta
   const branchOk = makeBranchOk(opts.branchIds);
   const invoicesInRange = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId), eq(schema.invoices.status, 'Active'),
-    gte(schema.invoices.date, startDate), lte(schema.invoices.date, endDate),
+    gte(schema.invoices.docDate, startDate), lte(schema.invoices.docDate, endDate),
   ));
   const filtered = invoicesInRange.filter(inv => branchOk(inv.branchId));
   if (filtered.length === 0) return { rows: [], totalQuantity: 0, totalRevenue: 0 };
@@ -1210,12 +1210,12 @@ export async function computeCustomerStatement(executor: any, companyId: string,
   const entries: Omit<StatementEntry, 'runningBalance'>[] = [];
   for (const inv of custInvoices) {
     const total = totalsByInvoiceId.get(inv.id)!.grandTotal;
-    if (inv.documentType === 'CreditNote') entries.push({ date: inv.date, type: 'Credit Note', docNumber: inv.invoiceNumber, debit: 0, credit: total });
-    else entries.push({ date: inv.date, type: 'Invoice', docNumber: inv.invoiceNumber, debit: total, credit: 0 });
+    if (inv.documentType === 'CreditNote') entries.push({ date: inv.docDate, type: 'Credit Note', docNumber: inv.invoiceNumber, debit: 0, credit: total });
+    else entries.push({ date: inv.docDate, type: 'Invoice', docNumber: inv.invoiceNumber, debit: total, credit: 0 });
   }
   for (const v of receipts) {
-    if (v.type === 'Reversal') entries.push({ date: v.date, type: 'Refund', docNumber: v.voucherNumber, debit: Number(v.amount), credit: 0 });
-    else entries.push({ date: v.date, type: 'Receipt', docNumber: v.voucherNumber, debit: 0, credit: Number(v.amount) });
+    if (v.type === 'Reversal') entries.push({ date: v.docDate, type: 'Refund', docNumber: v.voucherNumber, debit: Number(v.amount), credit: 0 });
+    else entries.push({ date: v.docDate, type: 'Receipt', docNumber: v.voucherNumber, debit: 0, credit: Number(v.amount) });
   }
   entries.sort((a, b) => a.date.localeCompare(b.date));
 
@@ -1232,7 +1232,7 @@ export interface QuotationConversionRow { quotationNumber: string; date: string;
 export async function computeQuotationConversion(executor: any, companyId: string, startDate: string, endDate: string, customerId: string | 'ALL', opts: ReportScopeOpts) {
   const branchOk = makeBranchOk(opts.branchIds);
   const quotationsInRange = await executor.select().from(schema.quotations).where(and(
-    eq(schema.quotations.companyId, companyId), gte(schema.quotations.date, startDate), lte(schema.quotations.date, endDate),
+    eq(schema.quotations.companyId, companyId), gte(schema.quotations.docDate, startDate), lte(schema.quotations.docDate, endDate),
   ));
   const filtered = quotationsInRange.filter(q => branchOk(q.branchId) && (customerId === 'ALL' || q.customerId === customerId));
   const converted = filtered.filter(q => q.status === 'Converted' && !q.isCancelled).length;
@@ -1243,7 +1243,7 @@ export async function computeQuotationConversion(executor: any, companyId: strin
   const customers = customerIds.length ? await executor.select().from(schema.customers).where(inArray(schema.customers.id, customerIds)) : [];
   const customerNameById = new Map(customers.map(c => [c.id, c.name]));
   const rows: QuotationConversionRow[] = filtered
-    .map(q => ({ quotationNumber: q.quotationNumber, date: q.date, customerName: customerNameById.get(q.customerId) || '', status: q.isCancelled ? 'Cancelled' : q.status }))
+    .map(q => ({ quotationNumber: q.quotationNumber, date: q.docDate, customerName: customerNameById.get(q.customerId) || '', status: q.isCancelled ? 'Cancelled' : q.status }))
     .sort((a, b) => a.date.localeCompare(b.date));
   return { rows, total: filtered.length, converted, cancelled, pending, conversionRate };
 }
@@ -1254,7 +1254,7 @@ export async function computeSalesByStaff(executor: any, companyId: string, star
   const branchOk = makeBranchOk(opts.branchIds);
   const invoicesInRange = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId), eq(schema.invoices.status, 'Active'),
-    gte(schema.invoices.date, startDate), lte(schema.invoices.date, endDate),
+    gte(schema.invoices.docDate, startDate), lte(schema.invoices.docDate, endDate),
   ));
   const filtered = invoicesInRange.filter(inv => branchOk(inv.branchId));
   const totalsByInvoiceId = await computeInvoiceTotalsMap(executor, filtered);
@@ -1317,7 +1317,7 @@ export interface PurchaseRegisterRow { expenseNumber: string; date: string; vend
 export async function computePurchaseRegister(executor: any, companyId: string, startDate: string, endDate: string, vendorId: string | 'ALL', opts: ReportScopeOpts): Promise<{ rows: PurchaseRegisterRow[]; totalAmount: number }> {
   const branchOk = makeBranchOk(opts.branchIds);
   const expensesInRange = await executor.select().from(schema.expenses).where(and(
-    eq(schema.expenses.companyId, companyId), gte(schema.expenses.date, startDate), lte(schema.expenses.date, endDate),
+    eq(schema.expenses.companyId, companyId), gte(schema.expenses.docDate, startDate), lte(schema.expenses.docDate, endDate),
   ));
   // A settled Accrual is not listed: the Actual expense that settled it is the purchase (and carries the payment), so listing
   // both counted the same purchase twice and disagreed with the VAT register.
@@ -1326,20 +1326,20 @@ export async function computePurchaseRegister(executor: any, companyId: string, 
   // register listed expenses only, so goods bought through GRN -> Bill never showed up in it.
   const billsInRange: any[] = (await executor.select().from(schema.purchaseBills).where(and(
     eq(schema.purchaseBills.companyId, companyId),
-    gte(schema.purchaseBills.date, new Date(startDate + 'T00:00:00.000Z')),
-    lte(schema.purchaseBills.date, new Date(endDate + 'T23:59:59.999Z')),
+    gte(schema.purchaseBills.docDate, startDate),
+    lte(schema.purchaseBills.docDate, endDate),
   ))).filter((b: any) => branchOk(b.branchId) && (vendorId === 'ALL' || b.vendorId === vendorId));
   const vendorIds = Array.from(new Set([...filtered.map(e => e.vendorId), ...billsInRange.map(b => b.vendorId)].filter(Boolean))) as string[];
   const vendors = vendorIds.length ? await executor.select().from(schema.vendors).where(inArray(schema.vendors.id, vendorIds)) : [];
   const vendorNameById = new Map<string, string>(vendors.map((v: any) => [v.id, v.name] as [string, string]));
   const billRows: PurchaseRegisterRow[] = billsInRange.map((b: any) => ({
-    expenseNumber: b.billNumber, date: b.date.toISOString().slice(0, 10), vendorName: vendorNameById.get(b.vendorId) || 'Vendor',
+    expenseNumber: b.billNumber, date: b.docDate, vendorName: vendorNameById.get(b.vendorId) || 'Vendor',
     status: b.status === 'Cancelled' ? 'Cancelled' : 'Active', paymentStatus: b.status === 'Cancelled' ? 'Cancelled' : b.status,
     totalAmount: Number(b.grandTotal),
   }));
   const regPct = await taxPercentageBySlabId(executor, companyId);
   const rows: PurchaseRegisterRow[] = [...billRows, ...filtered
-    .map(exp => ({ expenseNumber: exp.expenseNumber, date: exp.date, vendorName: vendorNameById.get(exp.vendorId) || 'Vendor', status: exp.status, paymentStatus: exp.paymentStatus, totalAmount: liabilityAmount(exp, regPct) }))]
+    .map(exp => ({ expenseNumber: exp.expenseNumber, date: exp.docDate, vendorName: vendorNameById.get(exp.vendorId) || 'Vendor', status: exp.status, paymentStatus: exp.paymentStatus, totalAmount: liabilityAmount(exp, regPct) }))]
     .sort((a, b) => a.date.localeCompare(b.date));
   const totalAmount = round2(rows.filter(r => r.status === 'Active').reduce((s, r) => s + r.totalAmount, 0));
   return { rows, totalAmount };
@@ -1375,15 +1375,15 @@ export async function computeVendorStatement(executor: any, companyId: string, v
   // (reduces it) — the reverse of computeCustomerStatement's convention, matching the
   // original client code's own debit/credit assignment exactly (getVendorStatementData).
   const stmtPct = await taxPercentageBySlabId(executor, companyId);
-  const entries: Omit<StatementEntry, 'runningBalance'>[] = vendExpenses.map(exp => ({ date: exp.date, type: 'Expense', docNumber: exp.expenseNumber, debit: liabilityAmount(exp, stmtPct), credit: 0 }));
+  const entries: Omit<StatementEntry, 'runningBalance'>[] = vendExpenses.map(exp => ({ date: exp.docDate, type: 'Expense', docNumber: exp.expenseNumber, debit: liabilityAmount(exp, stmtPct), credit: 0 }));
   // Goods returned after the bill was paid in full: the supplier owes this back, which lowers the balance on this statement.
   for (const c of (await computeVendorCredits(executor, companyId, '9999-12-31', vendorId)).lines) entries.push({ date: c.date, type: 'Purchase Return', docNumber: c.documentNumber, debit: 0, credit: c.amount });
   // The supplier paying that money back clears the credit (a cancelled refund puts it back).
   for (const r of (await computeVendorRefunds(executor, companyId, '9999-12-31', vendorId)).lines) {
     entries.push({ date: r.date, type: r.type === 'Receipt' ? 'Vendor Refund' : 'Vendor Refund Cancelled', docNumber: r.documentNumber, debit: r.type === 'Receipt' ? r.amount : 0, credit: r.type === 'Receipt' ? 0 : r.amount });
   }
-  for (const b of vendBills) entries.push({ date: b.date.toISOString().slice(0, 10), type: 'Purchase Bill', docNumber: b.billNumber, debit: Number(b.grandTotal), credit: 0 });
-  for (const v of payments) entries.push({ date: v.date, type: 'Payment', docNumber: v.voucherNumber, debit: 0, credit: Number(v.amount) });
+  for (const b of vendBills) entries.push({ date: b.docDate, type: 'Purchase Bill', docNumber: b.billNumber, debit: Number(b.grandTotal), credit: 0 });
+  for (const v of payments) entries.push({ date: v.docDate, type: 'Payment', docNumber: v.voucherNumber, debit: 0, credit: Number(v.amount) });
   entries.sort((a, b) => a.date.localeCompare(b.date));
 
   let running = 0;
@@ -1419,8 +1419,8 @@ export interface InvoiceKpiFilters {
 export async function computeInvoiceKpis(executor: any, companyId: string, filters: InvoiceKpiFilters, opts: ReportScopeOpts): Promise<{ totalInvoiced: number; totalCollected: number; paidCount: number; pendingCount: number; pendingBalance: number }> {
   const branchOk = makeBranchOk(opts.branchIds);
   const conditions = [eq(schema.invoices.companyId, companyId)];
-  if (filters.startDate) conditions.push(gte(schema.invoices.date, filters.startDate));
-  if (filters.endDate) conditions.push(lte(schema.invoices.date, filters.endDate));
+  if (filters.startDate) conditions.push(gte(schema.invoices.docDate, filters.startDate));
+  if (filters.endDate) conditions.push(lte(schema.invoices.docDate, filters.endDate));
   const candidates = (await executor.select().from(schema.invoices).where(and(...conditions))).filter(inv => {
     if (!branchOk(inv.branchId)) return false;
     if (filters.restrictToUserId && inv.createdById !== filters.restrictToUserId) return false;
@@ -1640,7 +1640,7 @@ export async function computeStockTakeVarianceHistory(executor: any, companyId: 
   const rangeEndExclusive = new Date(new Date(endDate + 'T00:00:00.000Z').getTime() + 86400000);
   const takes = (await executor.select().from(schema.physicalStockTakes).where(and(
     eq(schema.physicalStockTakes.companyId, companyId), eq(schema.physicalStockTakes.status, 'Completed'),
-    gte(schema.physicalStockTakes.date, rangeStart), lt(schema.physicalStockTakes.date, rangeEndExclusive),
+    gte(schema.physicalStockTakes.postingDate, startDate), lte(schema.physicalStockTakes.postingDate, endDate),
   ))).filter((st: any) => warehouseById.has(st.warehouseId) && branchOk(warehouseById.get(st.warehouseId).branchId)
     && (warehouseId === 'ALL' || st.warehouseId === warehouseId));
   if (takes.length === 0) return { rows: [] };
@@ -1658,14 +1658,14 @@ export async function computeStockTakeVarianceHistory(executor: any, companyId: 
     const warehouse = warehouseById.get(take.warehouseId);
     const product = productById.get(item.productId);
     rows.push({
-      referenceNumber: take.referenceNumber, date: take.date.toISOString().slice(0, 10), warehouseName: warehouse?.name || '',
+      referenceNumber: take.referenceNumber, date: take.postingDate, warehouseName: warehouse?.name || '',
       productName: product?.name || '', systemQuantity: Number(item.systemQuantity), physicalQuantity: Number(item.physicalQuantity), variance: Number(item.variance),
     });
   }
   return { rows: rows.sort((a, b) => a.date.localeCompare(b.date)) };
 }
 
-export interface StockMovementLedgerRow { date: string; productName: string; warehouseName: string; transactionType: string; quantityChange: number; endingQuantity: number; batchNumber: string; referenceNumber: string; }
+export interface StockMovementLedgerRow { date: string; postingDate: string; productName: string; warehouseName: string; transactionType: string; quantityChange: number; endingQuantity: number; batchNumber: string; referenceNumber: string; }
 // referenceId is polymorphic (see stockLedgerTransactions' own schema comment) — which
 // table it points into depends entirely on transactionType. 'Sale' covers both a real
 // invoice/POS deduction AND a Credit-Note/cancellation reversal (see
@@ -1739,8 +1739,8 @@ export async function computeStockMovementLedger(
   const conditions = [
     eq(schema.stockLedgerTransactions.companyId, companyId),
     inArray(schema.stockLedgerTransactions.warehouseId, scopedWarehouseIds),
-    gte(schema.stockLedgerTransactions.date, start),
-    lt(schema.stockLedgerTransactions.date, endExclusive),
+    gte(schema.stockLedgerTransactions.postingDate, startDate),
+    lte(schema.stockLedgerTransactions.postingDate, endDate),
     ...(productId !== 'ALL' ? [eq(schema.stockLedgerTransactions.productId, productId)] : []),
   ];
   const [{ count }] = await executor.select({ count: sql<number>`count(*)::int` }).from(schema.stockLedgerTransactions).where(and(...conditions));
@@ -1753,7 +1753,7 @@ export async function computeStockMovementLedger(
   const totalPages = page ? Math.max(1, Math.ceil(totalRows / page.pageSize)) : 1;
   const safePage = page ? Math.min(page.page, totalPages) : 1;
   let query = executor.select().from(schema.stockLedgerTransactions).where(and(...conditions))
-    .orderBy(asc(schema.stockLedgerTransactions.date), asc(schema.stockLedgerTransactions.id));
+    .orderBy(asc(schema.stockLedgerTransactions.postingDate), asc(schema.stockLedgerTransactions.createdAt), asc(schema.stockLedgerTransactions.id));
   if (page) query = query.limit(page.pageSize).offset((safePage - 1) * page.pageSize);
   const rows0: any[] = await query;
   const pagination = page ? { page: safePage, pageSize: page.pageSize, totalRows, totalPages } : undefined;
@@ -1767,7 +1767,7 @@ export async function computeStockMovementLedger(
     const product = productById.get(slt.productId);
     const warehouse = warehouseById.get(slt.warehouseId);
     return {
-      date: slt.date.toISOString(), productName: product?.name || '', warehouseName: warehouse?.name || '',
+      date: slt.createdAt.toISOString(), postingDate: slt.postingDate, productName: product?.name || '', warehouseName: warehouse?.name || '',
       transactionType: slt.transactionType, quantityChange: Number(slt.quantityChange), endingQuantity: Number(slt.endingQuantity), batchNumber: slt.batchNumber || '',
       referenceNumber: referenceNumberById.get(slt.referenceId) || '',
     };
@@ -1789,7 +1789,7 @@ export async function computeWarehouseTransferReconciliation(executor: any, comp
   const dispatchRangeEndExclusive = new Date(new Date(endDate + 'T00:00:00.000Z').getTime() + 86400000);
   const dispatches = (await executor.select().from(schema.warehouseDispatches).where(and(
     eq(schema.warehouseDispatches.companyId, companyId),
-    gte(schema.warehouseDispatches.date, dispatchRangeStart), lt(schema.warehouseDispatches.date, dispatchRangeEndExclusive),
+    gte(schema.warehouseDispatches.docDate, startDate), lte(schema.warehouseDispatches.docDate, endDate),
   ))).filter((d: any) => (warehouseId === 'ALL' || d.fromWarehouseId === warehouseId || d.toWarehouseId === warehouseId)
     && (branchOkWarehouseIds.has(d.fromWarehouseId) || branchOkWarehouseIds.has(d.toWarehouseId)));
   if (dispatches.length === 0) return { rows: [] };
@@ -1821,9 +1821,9 @@ export async function computeWarehouseTransferReconciliation(executor: any, comp
       else if ((variance as number) < 0) status = 'Short';
       else status = 'Over';
       if (pendingOnly && status !== 'Pending') continue;
-      const daysInTransit = status === 'Pending' ? Math.floor((Date.now() - new Date(d.date).getTime()) / (1000 * 60 * 60 * 24)) : null;
+      const daysInTransit = status === 'Pending' ? Math.floor((Date.now() - new Date(d.docDate).getTime()) / (1000 * 60 * 60 * 24)) : null;
       rows.push({
-        dispatchNumber: d.dispatchNumber, date: d.date.toISOString().slice(0, 10), fromWarehouseName: fromWh?.name || '', toWarehouseName: toWh?.name || '',
+        dispatchNumber: d.dispatchNumber, date: d.docDate, fromWarehouseName: fromWh?.name || '', toWarehouseName: toWh?.name || '',
         productName: product?.name || '', batchNumber: item.batchNumber || '', quantityDispatched: qtyDispatched,
         receivingNumber: receiving?.receivingNumber || null, quantityReceived: qtyReceived, variance, status, daysInTransit,
       });
@@ -1853,7 +1853,7 @@ export async function computeSalesVatRegister(executor: any, companyId: string, 
   const branchOk = makeBranchOk(opts.branchIds);
   const invs: any[] = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId), eq(schema.invoices.status, 'Active'),
-    gte(schema.invoices.date, startDate), lte(schema.invoices.date, endDate),
+    gte(schema.invoices.docDate, startDate), lte(schema.invoices.docDate, endDate),
   ));
   const filtered = invs.filter(inv => branchOk(inv.branchId) && (customerId === 'ALL' || inv.customerId === customerId));
   const totals = await computeInvoiceTotalsMap(executor, filtered);
@@ -1862,7 +1862,7 @@ export async function computeSalesVatRegister(executor: any, companyId: string, 
   const custById = new Map<string, any>(custs.map(c => [c.id, c]));
   const rows: VatRegisterRow[] = filtered.map(inv => {
     const c = custById.get(inv.customerId); const t = totals.get(inv.id)!; const sign = invoiceSign(inv);
-    return { documentNumber: inv.invoiceNumber, date: inv.date, partyName: c?.name || 'Walk-In', vatNumber: c?.vatNumber || 'N/A',
+    return { documentNumber: inv.invoiceNumber, date: inv.docDate, partyName: c?.name || 'Walk-In', vatNumber: c?.vatNumber || 'N/A',
       subtotal: round2(t.discountedSubtotal * sign), taxAmount: round2(t.taxAmount * sign), grandTotal: round2(t.grandTotal * sign) };
   }).sort((a, b) => a.date.localeCompare(b.date) || a.documentNumber.localeCompare(b.documentNumber));
   return { rows, totals: sumVat(rows), count: rows.length };
@@ -1879,7 +1879,7 @@ export async function computePurchaseVatRegister(executor: any, companyId: strin
   const branchOk = makeBranchOk(opts.branchIds);
   const exps: any[] = await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId), eq(schema.expenses.status, 'Active'),
-    gte(schema.expenses.date, startDate), lte(schema.expenses.date, endDate),
+    gte(schema.expenses.docDate, startDate), lte(schema.expenses.docDate, endDate),
   ));
   // An Accrual has no tax invoice, so it is never on the VAT register; its settling invoice is (in its own period).
   const filtered = exps.filter(e => e.type !== 'Accrual' && branchOk(e.branchId) && (vendorId === 'ALL' || e.vendorId === vendorId));
@@ -1893,7 +1893,7 @@ export async function computePurchaseVatRegister(executor: any, companyId: strin
   const expenseRows: VatRegisterRow[] = filtered.map(e => {
     const rate = rateBySlab.get(e.taxSlabId) || 0; const amount = Number(e.amount);
     const subtotal = round2(amount / (1 + rate / 100)); const v = vendById.get(e.vendorId);
-    return { documentNumber: e.expenseNumber, date: e.date, partyName: v?.name || 'Cash Vendor', vatNumber: v?.vatNumber || 'N/A',
+    return { documentNumber: e.expenseNumber, date: e.docDate, partyName: v?.name || 'Cash Vendor', vatNumber: v?.vatNumber || 'N/A',
       subtotal, taxAmount: round2(amount - subtotal), grandTotal: round2(amount) };
   });
   // Bills at their original amounts, and Purchase Returns as NEGATIVE lines in the period they happened.
@@ -1935,14 +1935,14 @@ export async function computeBankLedger(executor: any, companyId: string, bankId
     if (!b) return { rows: [], bankName: '', openingBalance: 0, endingBalance: 0, totalDebit: 0, totalCredit: 0 };
     bankName = b.bankName; opening = Number(b.openingBalance);
   }
-  const conds = [eq(schema.vouchers.companyId, companyId), lte(schema.vouchers.date, endDate)];
+  const conds = [eq(schema.vouchers.companyId, companyId), lte(schema.vouchers.postingDate, endDate)];
   if (bankId !== 'ALL') conds.push(eq(schema.vouchers.bankId, bankId));
   const vs: any[] = (await executor.select().from(schema.vouchers).where(and(...conds))).filter((v: any) => branchOk(v.branchId));
-  vs.sort((a, b) => a.date.localeCompare(b.date) || new Date(a.createdAt).toISOString().localeCompare(new Date(b.createdAt).toISOString()));
+  vs.sort((a, b) => a.postingDate.localeCompare(b.postingDate) || new Date(a.createdAt).toISOString().localeCompare(new Date(b.createdAt).toISOString()));
   let running = opening;
   const inPeriod: any[] = [];
   for (const v of vs) {
-    if (v.date < startDate) { const e = voucherEffect(v); running = round2(running + e.debit - e.credit); } else inPeriod.push(v);
+    if (v.postingDate < startDate) { const e = voucherEffect(v); running = round2(running + e.debit - e.credit); } else inPeriod.push(v);
   }
   const openingBalance = round2(running);
   const invIds = Array.from(new Set(inPeriod.filter(v => v.referenceType === 'Invoice').map(v => v.referenceId))) as string[];
@@ -1957,7 +1957,7 @@ export async function computeBankLedger(executor: any, companyId: string, bankId
     let sourceDoc = '-'; let refType: 'Invoice' | 'Expense' | null = null;
     if (v.referenceType === 'Invoice' && invNo.has(v.referenceId)) { sourceDoc = invNo.get(v.referenceId)!; refType = 'Invoice'; }
     else if (v.referenceType === 'Expense' && expNo.has(v.referenceId)) { sourceDoc = expNo.get(v.referenceId)!; refType = 'Expense'; }
-    return { id: v.id, date: v.date, type: v.type, voucherNumber: v.voucherNumber, description: v.description, debit: e.debit, credit: e.credit,
+    return { id: v.id, date: v.postingDate, type: v.type, voucherNumber: v.voucherNumber, description: v.description, debit: e.debit, credit: e.credit,
       runningBalance: running, bankId: v.bankId, bankName: bankById.get(v.bankId)?.bankName || 'Unknown', sourceDoc, refType, referenceId: v.referenceId };
   });
   return { rows, bankName, openingBalance, endingBalance: rows.length ? rows[rows.length - 1].runningBalance : openingBalance, totalDebit, totalCredit };
@@ -1971,7 +1971,7 @@ export async function computeOutstanding(executor: any, companyId: string, start
   const outstandingCreditedIds = await creditedOriginalIds(executor, companyId);
   const invs: any[] = (await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId), eq(schema.invoices.status, 'Active'), inArray(schema.invoices.paymentStatus, ['Unpaid', 'Partially Paid']),
-  ))).filter((i: any) => i.documentType !== 'CreditNote' && !outstandingCreditedIds.has(i.id) && branchOk(i.branchId) && inRange(i.date) && (customerId === 'ALL' || i.customerId === customerId));
+  ))).filter((i: any) => i.documentType !== 'CreditNote' && !outstandingCreditedIds.has(i.id) && branchOk(i.branchId) && inRange(i.docDate) && (customerId === 'ALL' || i.customerId === customerId));
   const totals = await computeInvoiceTotalsMap(executor, invs);
   // A settled Accrual keeps its own paymentStatus at 'Unpaid' forever (only
   // accrualSettled/settledExpenseId change on settlement — see settle-accrual's own
@@ -1983,14 +1983,14 @@ export async function computeOutstanding(executor: any, companyId: string, start
   // reports this session.
   const exps: any[] = (await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId), eq(schema.expenses.status, 'Active'), inArray(schema.expenses.paymentStatus, ['Unpaid', 'Partially Paid']),
-  ))).filter((e: any) => !(e.type === 'Accrual' && e.accrualSettled) && branchOk(e.branchId) && inRange(e.date) && (vendorId === 'ALL' || e.vendorId === vendorId));
+  ))).filter((e: any) => !(e.type === 'Accrual' && e.accrualSettled) && branchOk(e.branchId) && inRange(e.docDate) && (vendorId === 'ALL' || e.vendorId === vendorId));
   // Purchase Bills (Phase 3) are also a payable, alongside Expenses — found missing here
   // during this session's report reconciliation (the ledger's own AP account already
   // combines both; this list never did). purchaseBills.date is a timestamp column, so
   // it's normalized to 'YYYY-MM-DD' before the same string-based inRange/sort helpers run.
   const bills: any[] = (await executor.select().from(schema.purchaseBills).where(and(
     eq(schema.purchaseBills.companyId, companyId), ne(schema.purchaseBills.status, 'Cancelled'),
-  ))).filter((b: any) => Number(b.grandTotal) - Number(b.amountPaid || 0) > 0 && branchOk(b.branchId) && inRange(new Date(b.date).toISOString().slice(0, 10)) && (vendorId === 'ALL' || b.vendorId === vendorId));
+  ))).filter((b: any) => Number(b.grandTotal) - Number(b.amountPaid || 0) > 0 && branchOk(b.branchId) && inRange(b.docDate) && (vendorId === 'ALL' || b.vendorId === vendorId));
   const cIds = Array.from(new Set(invs.map(i => i.customerId).filter(Boolean))) as string[];
   const vIds = Array.from(new Set([...exps.map(e => e.vendorId), ...bills.map(b => b.vendorId)].filter(Boolean))) as string[];
   const custs: any[] = cIds.length ? await executor.select().from(schema.customers).where(inArray(schema.customers.id, cIds)) : [];
@@ -1999,16 +1999,16 @@ export async function computeOutstanding(executor: any, companyId: string, start
   const byDate = (a: OutstandingRow, b: OutstandingRow) => a.date.localeCompare(b.date) || a.docNumber.localeCompare(b.docNumber);
   const invRows: OutstandingRow[] = invs.map(i => {
     const total = totals.get(i.id)!.grandTotal; const paid = Number(i.amountPaid || 0);
-    return { id: i.id, type: 'Invoice' as const, docNumber: i.invoiceNumber, date: i.date, contactName: cName.get(i.customerId) || 'Walk-In', total, paid, outstanding: round2(total - paid), paymentStatus: i.paymentStatus, referenceId: i.id };
+    return { id: i.id, type: 'Invoice' as const, docNumber: i.invoiceNumber, date: i.docDate, contactName: cName.get(i.customerId) || 'Walk-In', total, paid, outstanding: round2(total - paid), paymentStatus: i.paymentStatus, referenceId: i.id };
   }).sort(byDate);
   const outPct = await taxPercentageBySlabId(executor, companyId);
   const expRows: OutstandingRow[] = exps.map(e => {
     const total = liabilityAmount(e, outPct); const paid = Number(e.amountPaid || 0);
-    return { id: e.id, type: 'Expense' as const, docNumber: e.expenseNumber, date: e.date, contactName: vName.get(e.vendorId) || 'Cash Vendor', total, paid, outstanding: round2(total - paid), paymentStatus: e.paymentStatus, referenceId: e.id };
+    return { id: e.id, type: 'Expense' as const, docNumber: e.expenseNumber, date: e.docDate, contactName: vName.get(e.vendorId) || 'Cash Vendor', total, paid, outstanding: round2(total - paid), paymentStatus: e.paymentStatus, referenceId: e.id };
   }).sort(byDate);
   const billRows: OutstandingRow[] = bills.map(b => {
     const total = Number(b.grandTotal); const paid = Number(b.amountPaid || 0);
-    return { id: b.id, type: 'PurchaseBill' as const, docNumber: b.vendorBillNumber || b.billNumber, date: new Date(b.date).toISOString().slice(0, 10), contactName: vName.get(b.vendorId) || 'Cash Vendor', total, paid, outstanding: round2(total - paid), paymentStatus: b.status, referenceId: b.id };
+    return { id: b.id, type: 'PurchaseBill' as const, docNumber: b.vendorBillNumber || b.billNumber, date: b.docDate, contactName: vName.get(b.vendorId) || 'Cash Vendor', total, paid, outstanding: round2(total - paid), paymentStatus: b.status, referenceId: b.id };
   }).sort(byDate);
   const totalReceivable = round2(invRows.reduce((s, r) => s + r.outstanding, 0));
   const totalPayable = round2([...expRows, ...billRows].reduce((s, r) => s + r.outstanding, 0));

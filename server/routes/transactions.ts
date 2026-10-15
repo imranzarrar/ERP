@@ -21,6 +21,7 @@ import { normalizeZatcaUnitCode } from '../../src/zatcaUnitCodes.js';
 import { recordAuditLog } from '../lib/audit.js';
 import { withTenantDb, tenantDb, runAfterTenantCommit } from '../lib/tenantDb.js';
 import { nowDate } from '../lib/clock.js';
+import { documentDates } from '../lib/documentDates.js';
 
 const router = express.Router();
 
@@ -67,7 +68,7 @@ async function assertDocumentRefsOwnedByCompany(dbOrTx: any, companyId: string, 
 
 const QUOTATIONS_SORTABLE = {
   quotationNumber: schema.quotations.quotationNumber,
-  date: schema.quotations.date,
+  date: schema.quotations.docDate,
   createdAt: schema.quotations.createdAt,
   status: schema.quotations.status,
 } as const;
@@ -193,12 +194,12 @@ router.post('/quotations', withTenantDb, async (req: any, res) => {
     let savedQuotationId = '';
     let savedQuotationNumber = '';
     const companyId = req.targetCompanyId;
-    await validateTransactionDate(qData.date, companyId);
+    await validateTransactionDate(qData.docDate, companyId);
     await assertProductsOwnedByCompany(tdb, companyId, (items || []).map((it: any) => it.productId));
 
     let qNumber = qData.quotationNumber;
     if (!qData.quotationNumber) {
-      qNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'quotation', qData.date, resolvedBranchId);
+      qNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'quotation', qData.docDate, resolvedBranchId);
     }
 
     const [newQuotation] = await tdb.insert(schema.quotations).values({
@@ -265,8 +266,8 @@ router.put('/quotations/:id', withTenantDb, async (req: any, res) => {
     // letting an edit silently move a quotation to a different branch.
     qData.branchId = existing.branchId;
 
-    if (qData.date) {
-      await validateTransactionDate(qData.date, companyId);
+    if (qData.docDate) {
+      await validateTransactionDate(qData.docDate, companyId);
     }
 
     await assertProductsOwnedByCompany(tdb, companyId, (items || []).map((it: any) => it.productId));
@@ -419,7 +420,7 @@ router.post('/quotations/:id/convert', withTenantDb, async (req: any, res) => {
     const [newInvoice] = await tdb.insert(schema.invoices).values({
       id: invoiceId,
       invoiceNumber: invNumber,
-      date: invoiceDate,
+      ...documentDates(invoiceDate),
       companyId: companyId,
       customerId: customCustomerId || quotation.customerId,
       taxSlabId: targetTaxSlabId,
@@ -504,7 +505,7 @@ router.post('/quotations/:id/convert', withTenantDb, async (req: any, res) => {
         paymentStatus: 'Paid',
         status: 'Active',
         paymentDate: invoiceDate,
-        date: invoiceDate,
+        docDate: invoiceDate,
         bankId: bankId,
         amountPaid: amountPaidStr,
         amount: String(grandTotal),
@@ -518,7 +519,7 @@ router.post('/quotations/:id/convert', withTenantDb, async (req: any, res) => {
     // stock item — the cost of goods sold, while the stock itself did leave), and it stayed 'NOT_SUBMITTED' forever, which
     // blocks generating the quarter's VAT return.
     await postJournalEntry(tdb, {
-      companyId, branchId: quotation.branchId, date: invoiceDate,
+      companyId, branchId: quotation.branchId, postingDate: invoiceDate,
       referenceType: 'Invoice', referenceId: invoiceId,
       description: `Invoice ${invNumber} raised`,
       createdById: req.user.id,
@@ -530,7 +531,7 @@ router.post('/quotations/:id/convert', withTenantDb, async (req: any, res) => {
     });
     if (convertCogsTotal > 0) {
       await postJournalEntry(tdb, {
-        companyId, branchId: quotation.branchId, date: invoiceDate,
+        companyId, branchId: quotation.branchId, postingDate: invoiceDate,
         referenceType: 'Invoice', referenceId: invoiceId,
         description: `Cost of goods sold for invoice ${invNumber}`,
         createdById: req.user.id,
@@ -539,7 +540,7 @@ router.post('/quotations/:id/convert', withTenantDb, async (req: any, res) => {
     }
     if (amountPaidNum > 0) {
       await postJournalEntry(tdb, {
-        companyId, branchId: quotation.branchId, date: invoiceDate,
+        companyId, branchId: quotation.branchId, postingDate: invoiceDate,
         referenceType: 'Invoice', referenceId: invoiceId,
         description: `Payment received at creation for invoice ${invNumber}`,
         createdById: req.user.id,
@@ -566,7 +567,7 @@ router.post('/quotations/:id/convert', withTenantDb, async (req: any, res) => {
 // --- Invoices ---
 const INVOICES_SORTABLE = {
   invoiceNumber: schema.invoices.invoiceNumber,
-  date: schema.invoices.date,
+  date: schema.invoices.docDate,
   createdAt: schema.invoices.createdAt,
   status: schema.invoices.status,
   paymentStatus: schema.invoices.paymentStatus,
@@ -591,9 +592,9 @@ router.get('/invoices', withTenantDb, async (req: any, res) => {
     // (kept byte-for-byte equivalent in meaning) — all still scoped by the whereClause's own
     // companyId condition above, never by anything client-supplied.
     const startDate = String(req.query?.startDate || '').trim();
-    if (startDate) conditions.push(gte(schema.invoices.date, startDate));
+    if (startDate) conditions.push(gte(schema.invoices.docDate, startDate));
     const endDate = String(req.query?.endDate || '').trim();
-    if (endDate) conditions.push(lte(schema.invoices.date, endDate));
+    if (endDate) conditions.push(lte(schema.invoices.docDate, endDate));
     if (req.query?.status === 'Unpaid') {
       conditions.push(ne(schema.invoices.paymentStatus, 'Paid'));
       conditions.push(eq(schema.invoices.status, 'Active'));
@@ -901,12 +902,12 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     // request in one transaction; the row lock below still applies within it.
     // 1. Business logic
     const companyId = req.targetCompanyId;
-    await validateTransactionDate(invData.date, companyId);
-    await assertQuarterNotFrozen(invData.date, companyId);
+    await validateTransactionDate(invData.docDate, companyId);
+    await assertQuarterNotFrozen(invData.docDate, companyId);
     await assertProductsOwnedByCompany(tdb, companyId, (items || []).map((it: any) => it.productId));
 
     // 2. Increment Counter
-    invData.invoiceNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'invoice', invData.date, invData.branchId);
+    invData.invoiceNumber = await getAndIncrementDocumentNumber(tdb, companyId, 'invoice', invData.docDate, invData.branchId);
 
     // 2b. Compute grand total server-side from items + tax slab so paymentStatus can be
     // derived from amountPaid vs. an actual total, instead of trusting whatever string
@@ -938,6 +939,7 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     // createdAt/paymentDate are `timestamp` (Date-mode) columns, so the string dates from the request body are converted here.
     const invoiceValues = {
       ...invData,
+      ...documentDates(invData.docDate), // an invoice posts on its own date (the ZATCA issue date)
       createdAt: nowDate(),
       paymentDate: invData.paymentDate ? new Date(invData.paymentDate) : null,
     };
@@ -1017,7 +1019,7 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     // Phase 1 ledger postings (rows 1, 1a, 1b of the Procurement Ledger Review's
     // posting-rules table).
     await postJournalEntry(tdb, {
-      companyId, branchId: invData.branchId, date: invData.date,
+      companyId, branchId: invData.branchId, postingDate: invData.docDate,
       referenceType: 'Invoice', referenceId: newInvoice.id,
       description: `Invoice ${newInvoice.invoiceNumber} raised`,
       createdById: user.id,
@@ -1029,7 +1031,7 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     });
     if (cogsTotal > 0) {
       await postJournalEntry(tdb, {
-        companyId, branchId: invData.branchId, date: invData.date,
+        companyId, branchId: invData.branchId, postingDate: invData.docDate,
         referenceType: 'Invoice', referenceId: newInvoice.id,
         description: `Cost of goods sold for invoice ${newInvoice.invoiceNumber}`,
         createdById: user.id,
@@ -1042,7 +1044,7 @@ router.post('/invoices', withTenantDb, async (req: any, res) => {
     const amountPaidNow = round2(Number(invData.amountPaid || 0));
     if (amountPaidNow > 0) {
       await postJournalEntry(tdb, {
-        companyId, branchId: invData.branchId, date: invData.date,
+        companyId, branchId: invData.branchId, postingDate: invData.docDate,
         referenceType: 'Invoice', referenceId: newInvoice.id,
         description: `Payment received at creation for invoice ${newInvoice.invoiceNumber}`,
         createdById: user.id,
@@ -1159,7 +1161,7 @@ router.post('/invoices/:id/note', withTenantDb, async (req: any, res) => {
     const [newNote] = await tdb.insert(schema.invoices).values({
       id: noteId,
       invoiceNumber: noteNumber,
-      date: issueDate,
+      ...documentDates(issueDate),
       customerId: original.customerId,
       taxSlabId: original.taxSlabId,
       bankId: original.bankId,
@@ -1392,7 +1394,7 @@ router.post('/invoices/:id/paid', withTenantDb, async (req: any, res) => {
       id: generateId(),
       voucherNumber,
       type: 'Receipt',
-      date: paymentDate,
+      ...documentDates(paymentDate),
       bankId: targetBankId,
       amount: String(amountToPost),
       description: `Receipt voucher generated for invoice ${invoice.invoiceNumber} payment of ${amountToPost}`,
@@ -1410,7 +1412,7 @@ router.post('/invoices/:id/paid', withTenantDb, async (req: any, res) => {
 
     // Phase 1 ledger posting (row 2) — mirrors the Receipt voucher just created.
     await postJournalEntry(tdb, {
-      companyId: invoice.companyId, branchId: invoice.branchId, date: paymentDate,
+      companyId: invoice.companyId, branchId: invoice.branchId, postingDate: paymentDate,
       referenceType: 'Invoice', referenceId: id,
       description: `Payment received for invoice ${invoice.invoiceNumber}`,
       createdById: req.user.id,
@@ -1474,11 +1476,11 @@ router.post('/invoices/:id/cancel', withTenantDb, async (req: any, res) => {
     // return's reported sales/VAT figures could silently go stale (cancelling drops it
     // out of every report's totals — see SalesReportsModule.tsx). POST /invoices and
     // /invoices/:id/note already enforce this; this route never did.
-    await assertQuarterNotFrozen(invoice.date, req.targetCompanyId);
+    await assertQuarterNotFrozen(invoice.postingDate, req.targetCompanyId);
     // Same rule a Credit Note already enforces: the invoice's own fiscal month must still be open. Cancelling drops the
     // invoice out of that month's reports, so doing it after the month's profit has been closed and stored would leave
     // Retained Earnings holding revenue that no longer exists.
-    await validateTransactionDate(invoice.date, req.targetCompanyId);
+    await validateTransactionDate(invoice.postingDate, req.targetCompanyId);
 
     if (['SUBMITTING', 'CLEARED', 'REPORTED'].includes(invoice.zatcaStatus as string)) {
       const err: any = new Error('This invoice has already been submitted to ZATCA and cannot be cancelled. Issue a Credit Note instead.');
@@ -1565,9 +1567,9 @@ router.post('/invoices/:id/cancel', withTenantDb, async (req: any, res) => {
     // Dated at the INVOICE's own date, not today's: every report removes a cancelled invoice from the month it was dated
     // in, so its cost of goods sold must come out of that same month. Reversing on the cancel date left the cost in the
     // original month and a stray credit in whichever month the cancel happened to be done.
-    const cancelEntries = await reverseAllEntriesFor(tdb, invoice.companyId, 'Invoice', id, invoice.date, `Invoice ${invoice.invoiceNumber} cancelled`, req.user.id);
+    const cancelEntries = await reverseAllEntriesFor(tdb, invoice.companyId, 'Invoice', id, invoice.postingDate, `Invoice ${invoice.invoiceNumber} cancelled`, req.user.id);
     if (cancelValuationBefore) {
-      await settleInventoryValuation(tdb, { companyId: invoice.companyId, branchId: invoice.branchId, date: invoice.date, before: cancelValuationBefore, entryIds: cancelEntries, referenceType: 'Invoice', referenceId: id, description: `Inventory revaluation on cancelling invoice ${invoice.invoiceNumber}`, createdById: req.user.id });
+      await settleInventoryValuation(tdb, { companyId: invoice.companyId, branchId: invoice.branchId, date: invoice.postingDate, before: cancelValuationBefore, entryIds: cancelEntries, referenceType: 'Invoice', referenceId: id, description: `Inventory revaluation on cancelling invoice ${invoice.invoiceNumber}`, createdById: req.user.id });
     }
 
     const cancelledInvoiceNumber = invoice.invoiceNumber;
@@ -1642,7 +1644,7 @@ router.post('/investors/:id/investment', withTenantDb, async (req: any, res) => 
     }
 
     const { id: investorId } = req.params;
-    const { bankId, amount, date, description } = req.body;
+    const { bankId, amount, docDate: date, description } = req.body;
     const companyId = req.targetCompanyId;
     const amountNum = Number(amount);
 
@@ -1670,7 +1672,7 @@ router.post('/investors/:id/investment', withTenantDb, async (req: any, res) => 
       id: generateId(),
       voucherNumber,
       type: 'Receipt',
-      date,
+      ...documentDates(date),
       bankId,
       amount: String(amountNum),
       description: `Equity Capital contribution from investor ${investor.name}: ${description}`,
@@ -1688,7 +1690,7 @@ router.post('/investors/:id/investment', withTenantDb, async (req: any, res) => 
     // Ledger: the cash came in, and the owners' capital went up by the same amount. This route recorded the receipt voucher
     // and the investor's running total but never reached the ledger, so the ledger's Bank was short by every contribution.
     await postJournalEntry(tdb, {
-      companyId, branchId: null, date,
+      companyId, branchId: null, postingDate: date,
       referenceType: 'Capital', referenceId: investorId,
       description: `Capital contribution from ${investor.name}`,
       createdById: req.user.id,
@@ -1904,7 +1906,7 @@ router.post('/recurring-postings', withTenantDb, async (req: any, res) => {
     await tdb.insert(schema.expenses).values({
       id: expenseId,
       expenseNumber: expNumber,
-      date: dateStr,
+      ...documentDates(dateStr),
       vendorId: template.vendorId,
       taxSlabId: template.taxSlabId,
       bankId,
@@ -1943,7 +1945,7 @@ router.post('/recurring-postings', withTenantDb, async (req: any, res) => {
       status: 'Active',
       amountPaid,
       amount,
-      date: dateStr,
+      docDate: dateStr,
       bankId,
       branchId,
       description: `Posted for ${monthId}`,
@@ -1959,7 +1961,7 @@ router.post('/recurring-postings', withTenantDb, async (req: any, res) => {
     await postJournalEntry(tdb, {
       companyId,
       branchId,
-      date: dateStr,
+      postingDate: dateStr,
       referenceType: 'Expense',
       referenceId: expenseId,
       description: `Expense ${expNumber} raised`,
@@ -1977,7 +1979,7 @@ router.post('/recurring-postings', withTenantDb, async (req: any, res) => {
       await postJournalEntry(tdb, {
         companyId,
         branchId,
-        date: dateStr,
+        postingDate: dateStr,
         referenceType: 'Expense',
         referenceId: expenseId,
         description: `Payment at creation for expense ${expNumber}`,
@@ -2036,7 +2038,7 @@ router.post('/settle-accrual', withTenantDb, async (req: any, res) => {
     await tdb.insert(schema.expenses).values({
       id: actualExpenseId,
       expenseNumber: expNumber,
-      date: actualDate,
+      ...documentDates(actualDate),
       vendorId: accrualExpense.vendorId,
       taxSlabId: accrualExpense.taxSlabId,
       bankId,
@@ -2075,7 +2077,7 @@ router.post('/settle-accrual', withTenantDb, async (req: any, res) => {
       status: 'Active',
       amountPaid: amountPaidNow,
       amount: Number(actualAmount),
-      date: actualDate,
+      docDate: actualDate,
       bankId,
       branchId,
       description: `Accrual Settlement: Actual payment for "${accrualExpense.description}"`,
@@ -2099,7 +2101,7 @@ router.post('/settle-accrual', withTenantDb, async (req: any, res) => {
     await postJournalEntry(tdb, {
       companyId,
       branchId,
-      date: actualDate,
+      postingDate: actualDate,
       referenceType: 'Expense',
       referenceId: actualExpenseId,
       description: `Expense ${expNumber} raised`,
@@ -2114,7 +2116,7 @@ router.post('/settle-accrual', withTenantDb, async (req: any, res) => {
       await postJournalEntry(tdb, {
         companyId,
         branchId,
-        date: actualDate,
+        postingDate: actualDate,
         referenceType: 'Expense',
         referenceId: actualExpenseId,
         description: `Payment at creation for expense ${expNumber}`,
@@ -2268,7 +2270,7 @@ router.put('/accruals/:id', withTenantDb, async (req: any, res) => {
     if (!permissions.expense.update.enabled) return res.status(403).json({ error: 'Forbidden' });
 
     const { id } = req.params;
-    const { description, amount, vendorId, bankId, date, taxSlabId } = req.body;
+    const { description, amount, vendorId, bankId, docDate: date, taxSlabId } = req.body;
     const amountNum = Number(amount);
     if (isNaN(amountNum) || amountNum <= 0) return res.status(400).json({ error: 'Please enter a valid amount.' });
 
@@ -2285,7 +2287,7 @@ router.put('/accruals/:id', withTenantDb, async (req: any, res) => {
       amount: String(round2(amountNum)),
       vendorId,
       bankId,
-      date,
+      ...documentDates(date),
       taxSlabId,
     }).where(eq(schema.expenses.id, id));
 
@@ -2358,7 +2360,7 @@ router.post('/interbank-transfer', withTenantDb, async (req: any, res) => {
       id: generateId(),
       voucherNumber: voucherNumOut,
       type: 'TransferOut',
-      date: dateStr,
+      ...documentDates(dateStr),
       bankId: sourceBankId,
       amount: String(amount),
       description: `Inter-bank Transfer Out to ${destBank.bankName}: ${description || 'Inter-bank fund transfer'}`,
@@ -2375,7 +2377,7 @@ router.post('/interbank-transfer', withTenantDb, async (req: any, res) => {
       id: generateId(),
       voucherNumber: voucherNumIn,
       type: 'TransferIn',
-      date: dateStr,
+      ...documentDates(dateStr),
       bankId: destBankId,
       amount: String(amount),
       description: `Inter-bank Transfer In from ${sourceBank.bankName}: ${description || 'Inter-bank fund transfer'}`,
@@ -2389,7 +2391,7 @@ router.post('/interbank-transfer', withTenantDb, async (req: any, res) => {
     // Ledger: money moves from one bank account to the other — the company's total cash is unchanged, but each bank's own
     // balance in the ledger must follow it.
     await postJournalEntry(tdb, {
-      companyId, branchId: null, date: dateStr,
+      companyId, branchId: null, postingDate: dateStr,
       referenceType: 'Transfer', referenceId: transferId,
       description: `Inter-bank transfer ${sourceBank.bankName} -> ${destBank.bankName}`,
       createdById: req.user.id,

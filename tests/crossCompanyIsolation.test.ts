@@ -170,14 +170,14 @@ describe('Cross-company hijack — invoices (transactions.ts)', () => {
 
     const bInvoiceId = generateId();
     await db.insert(schema.invoices).values({
-      id: bInvoiceId, invoiceNumber: 'INV-B-1', date: new Date().toISOString().split('T')[0],
+      id: bInvoiceId, invoiceNumber: 'INV-B-1', docDate: new Date().toISOString().split('T')[0], postingDate: new Date().toISOString().split('T')[0],
       customerId: bCustomerId, taxSlabId: bTaxSlabId, bankId: bBankId, paymentStatus: 'Unpaid',
       notes: '', status: 'Active', createdById: bUserId, createdAt: new Date(), amountPaid: '0', companyId: companyBId,
     });
 
     const { status, body } = await api('/api/transactions/invoices', {
       method: 'POST',
-      body: JSON.stringify({ invoiceData: { id: bInvoiceId, date: new Date().toISOString().split('T')[0], customerId: bCustomerId, taxSlabId: bTaxSlabId, bankId: bBankId, notes: 'hijacked', status: 'Active', amountPaid: 0, items: [] } }),
+      body: JSON.stringify({ invoiceData: { id: bInvoiceId, docDate: new Date().toISOString().split('T')[0], customerId: bCustomerId, taxSlabId: bTaxSlabId, bankId: bBankId, notes: 'hijacked', status: 'Active', amountPaid: 0, items: [] } }),
     });
     // The create route refuses any supplied id outright (so another company's row is never even looked at), and nothing changes.
     expect(status).toBe(400);
@@ -202,14 +202,14 @@ describe('Cross-company hijack — quotations (transactions.ts)', () => {
 
     const bQuotationId = generateId();
     await db.insert(schema.quotations).values({
-      id: bQuotationId, quotationNumber: 'QT-B-1', date: new Date().toISOString().split('T')[0],
+      id: bQuotationId, quotationNumber: 'QT-B-1', docDate: new Date().toISOString().split('T')[0],
       customerId: bCustomerId, taxSlabId: bTaxSlabId, notes: 'original', status: 'Active',
       createdById: bUserId, createdAt: new Date(), companyId: companyBId,
     });
 
     const { status, body } = await api('/api/transactions/quotations', {
       method: 'POST',
-      body: JSON.stringify({ quotationData: { id: bQuotationId, date: new Date().toISOString().split('T')[0], customerId: bCustomerId, taxSlabId: bTaxSlabId, notes: 'hijacked', status: 'Active', items: [] } }),
+      body: JSON.stringify({ quotationData: { id: bQuotationId, docDate: new Date().toISOString().split('T')[0], customerId: bCustomerId, taxSlabId: bTaxSlabId, notes: 'hijacked', status: 'Active', items: [] } }),
     });
     expect(status).toBe(403);
     expect(body.error).toMatch(/another company/i);
@@ -235,7 +235,7 @@ describe('Cross-company hijack — expenses (expenses.ts)', () => {
 
     const bExpenseId = generateId();
     await db.insert(schema.expenses).values({
-      id: bExpenseId, expenseNumber: 'EXP-B-1', date: new Date().toISOString().split('T')[0],
+      id: bExpenseId, expenseNumber: 'EXP-B-1', docDate: new Date().toISOString().split('T')[0], postingDate: new Date().toISOString().split('T')[0],
       vendorId: bVendorId, taxSlabId: bTaxSlabId, bankId: bBankId, paymentStatus: 'Unpaid',
       description: 'original', amount: '100', status: 'Active', type: 'Actual',
       createdById: bUserId, createdAt: new Date(), companyId: companyBId,
@@ -243,7 +243,7 @@ describe('Cross-company hijack — expenses (expenses.ts)', () => {
 
     const { status, body } = await api('/api/expenses', {
       method: 'POST',
-      body: JSON.stringify({ id: bExpenseId, date: new Date().toISOString().split('T')[0], vendorId: bVendorId, taxSlabId: bTaxSlabId, bankId: bBankId, description: 'hijacked', amount: 999, status: 'Active', type: 'Actual' }),
+      body: JSON.stringify({ id: bExpenseId, docDate: new Date().toISOString().split('T')[0], vendorId: bVendorId, taxSlabId: bTaxSlabId, bankId: bBankId, description: 'hijacked', amount: 999, status: 'Active', type: 'Actual' }),
     });
     expect(status).toBe(400);
     expect(body.error).toMatch(/id cannot be supplied/i);

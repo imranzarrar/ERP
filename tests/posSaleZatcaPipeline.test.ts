@@ -151,7 +151,7 @@ describe('POS sale creation via the real ZATCA-connected invoice route (PosModul
       customerId,
       taxSlabId,
       bankId,
-      date: today,
+      docDate: today,
       paymentStatus: 'Paid',
       amountPaid: 230, // 2 x 100 = 200 subtotal, +15% VAT = 230
       paymentDate: today,

@@ -121,7 +121,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  const q = db.quotations.find(q => q.id === editId);
  if (!q) return;
  setEditingQuotationId(q.id);
- setFormDate(q.date);
+ setFormDate(q.docDate);
  setFormCustomerId(q.customerId);
  setFormTaxSlabId(q.taxSlabId);
  setFormBranchId(q.branchId || '');
@@ -136,7 +136,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  }));
  setFormItems(mappedItems);
  markFormClean({
-   formDate: q.date, formCustomerId: q.customerId, formTaxSlabId: q.taxSlabId,
+   formDate: q.docDate, formCustomerId: q.customerId, formTaxSlabId: q.taxSlabId,
    formBranchId: q.branchId || '', formNotes: q.notes, formDiscountPercentage: q.discountPercentage || 0,
    formItems: mappedItems,
  });
@@ -350,7 +350,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
     const qData = {
       id: editingQuotationId,
       createdById: currentUser.id,
-      date: formDate,
+      docDate: formDate,
       customerId: formCustomerId || db.customers.find(c => c.isSystem)!.id,
       taxSlabId: formTaxSlabId,
       notes: formNotes,
@@ -837,7 +837,7 @@ export default function QuotationModule({ db, onUpdateDbLocal, onRefreshDb, onPr
  <tr key={q.id} className="border-b border-slate-100 hover:bg-slate-50/20">
  <RowNumberTd page={quotationsList.page} pageSize={quotationsList.pageSize} index={qIdx} />
  <td className="p-3 font-bold text-slate-900">{q.quotationNumber}</td>
- <td className="p-3 text-slate-600">{q.date}</td>
+ <td className="p-3 text-slate-600">{q.docDate}</td>
  <td className="p-3 font-semibold text-slate-700">{cust?.name || t('Walk-in')}</td>
  <td className="p-3 text-end font-bold text-slate-900">{getQuotationTotal(q).toFixed(2)} {currencySymbol}</td>
  <td className="p-3 text-center">

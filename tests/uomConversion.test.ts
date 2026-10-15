@@ -308,7 +308,7 @@ describe('Invoice sale in a packaging unit', () => {
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           warehouseId,
           items: [{ id: generateId(), description: 'Cell 4 AMP (Carton-12)', unitCost: 130, quantity: 1, unit: 'SET', productId, unitOfMeasureId: cartonUnitId }],
         },

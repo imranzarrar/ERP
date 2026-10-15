@@ -28,7 +28,7 @@ const post = (p: string, b: any) => api(p, { method: 'POST', body: JSON.stringif
 const ok = (r: { status: number; body: any }, what: string) => { if (r.status !== 200) throw new Error(`${what} failed: ${r.status} ${JSON.stringify(r.body)}`); return r.body; };
 const pnl = async () => ok(await api(`/api/reports/month-pnl?monthId=${M}`), 'month-pnl');
 const invoice = async (price: number, paid: boolean) => ok(await post('/api/transactions/invoices', { invoiceData: {
-  date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: paid ? price * 1.15 : 0,
+  docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: paid ? price * 1.15 : 0,
   items: [{ id: generateId(), description: 'Service', unitCost: price, quantity: 1, discountAmount: 0 }],
 } }), 'invoice').invoiceId as string;
 const creditNote = async (id: string) => ok(await post(`/api/transactions/invoices/${id}/note`, { type: 'CreditNote', reason: 'Test' }), 'credit note');
@@ -78,7 +78,7 @@ describe('month P&L shown when closing a month', () => {
 
   it('revenue excludes VAT, and expenses are net of VAT', async () => {
     await invoice(100, true);
-    ok(await post('/api/expenses', { date: today, vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'MP-1', description: 'Supplies', paymentStatus: 'Paid', amountPaid: 115, paymentDate: today, amount: 115 }), 'expense');
+    ok(await post('/api/expenses', { docDate: today, vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'MP-1', description: 'Supplies', paymentStatus: 'Paid', amountPaid: 115, paymentDate: today, amount: 115 }), 'expense');
     const p = await pnl();
     expect(p.paid.revenue).toBe(100);                     // not 115
     expect(p.includingPending.revenue).toBe(100);

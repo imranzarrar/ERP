@@ -64,14 +64,14 @@ async function generalLedger(req: any, opts: { paged: boolean }) {
   const lim = opts.paged ? sql`LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}` : sql`LIMIT 100000`;
   const rowsRes: any = await tdb.execute(sql`
     SELECT x.*, e.description, a.code AS "accountCode", a.name AS "accountName" FROM (
-      SELECT rl.line_id, rl.journal_entry_id AS "entryId", rl.date, rl.reference_type AS "referenceType", rl.reference_id AS "referenceId", rl.account_id AS "accountId",
+      SELECT rl.line_id, rl.journal_entry_id AS "entryId", rl.posting_date, rl.reference_type AS "referenceType", rl.reference_id AS "referenceId", rl.account_id AS "accountId",
              rl.debit::float8 AS debit, rl.credit::float8 AS credit, rl.created_at,
-             SUM(rl.debit - rl.credit) OVER (ORDER BY rl.date, rl.created_at, rl.line_id ROWS UNBOUNDED PRECEDING)::float8 AS cum
+             SUM(rl.debit - rl.credit) OVER (ORDER BY rl.posting_date, rl.created_at, rl.line_id ROWS UNBOUNDED PRECEDING)::float8 AS cum
       FROM ${period} WHERE rl.account_id = ANY(${uuidArray(ids)})
     ) x
     JOIN journal_entries e ON e.id = x."entryId" AND e.company_id = ${companyId}::uuid
     LEFT JOIN company_accounts a ON a.id = x."accountId" AND a.company_id = ${companyId}::uuid
-    ORDER BY x.date, x.created_at, x.line_id ${lim}`);
+    ORDER BY x.posting_date, x.created_at, x.line_id ${lim}`);
   // Names of the documents the entries came from.
   const byType = new Map<string, string[]>();
   for (const r of rowsRes.rows) { const l = byType.get(r.referenceType) || []; l.push(r.referenceId); byType.set(r.referenceType, l); }
@@ -87,7 +87,7 @@ async function generalLedger(req: any, opts: { paged: boolean }) {
   await grab(['PurchaseBill'], schema.purchaseBills, schema.purchaseBills.id, schema.purchaseBills.billNumber);
   await grab(['Manual'], schema.manualJournals, schema.manualJournals.id, schema.manualJournals.number);
   const rows = rowsRes.rows.map((r: any) => ({
-    entryId: r.entryId, date: r.date, referenceType: r.referenceType, documentNumber: docNo.get(r.referenceId) || null, description: r.description,
+    entryId: r.entryId, postingDate: r.posting_date, referenceType: r.referenceType, documentNumber: docNo.get(r.referenceId) || null, description: r.description,
     accountCode: r.accountCode || '', accountName: r.accountName || '', debit: round2(r.debit), credit: round2(r.credit),
     balance: round2(sign * (opening + Number(r.cum))),
   }));
@@ -112,7 +112,7 @@ router.get('/reports/general-ledger/export', withTenantDb, async (req: any, res)
       [`General Ledger: ${g.account.code} ${g.account.name}`], [`From ${g.from} to ${g.to}`], [],
       ['Date', 'Source', 'Document', 'Account', 'Description', 'Debit', 'Credit', 'Balance'],
       ['', '', '', '', 'Opening balance', '', '', g.opening],
-      ...g.rows.map((r: any) => [r.date, r.referenceType, r.documentNumber || '', `${r.accountCode} ${r.accountName}`.trim(), r.description, r.debit || '', r.credit || '', r.balance]),
+      ...g.rows.map((r: any) => [r.postingDate, r.referenceType, r.documentNumber || '', `${r.accountCode} ${r.accountName}`.trim(), r.description, r.debit || '', r.credit || '', r.balance]),
       ['', '', '', '', 'Closing balance', g.totals.debit, g.totals.credit, g.closing],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
@@ -136,7 +136,7 @@ router.get('/reports/ledger-vs-documents', withTenantDb, async (req: any, res) =
     // Document-made entries carry their posting role (account_key); manual journals and opening entries name an account and carry no role.
     const roleRes: any = await tdb.execute(sql`SELECT l.account_key AS k, COALESCE(SUM(l.debit - l.credit),0)::float8 AS net
       FROM journal_lines l JOIN journal_entries e ON e.id = l.journal_entry_id AND e.company_id = l.company_id
-      WHERE l.company_id = ${companyId}::uuid AND e.date <= ${asOf} AND l.account_key IS NOT NULL GROUP BY l.account_key`);
+      WHERE l.company_id = ${companyId}::uuid AND e.posting_date <= ${asOf} AND l.account_key IS NOT NULL GROUP BY l.account_key`);
     const net = (k: string) => round2(Number(roleRes.rows.find((r: any) => r.k === k)?.net || 0));
     const bs = await computeBalanceSheet(tdb, companyId, asOf);
     const pl = await computeProfitLoss(tdb, companyId, '1900-01-01', asOf, 'Accrual', { branchIds: null } as any);
@@ -150,7 +150,7 @@ router.get('/reports/ledger-vs-documents', withTenantDb, async (req: any, res) =
     const rows = pairs.map(([key, label, ledger, documents]) => ({ key, label, ledger, documents: round2(documents), difference: round2(ledger - documents) }));
     const man: any = await tdb.execute(sql`SELECT e.reference_type AS t, COUNT(DISTINCT e.id)::int AS entries, COALESCE(SUM(l.debit),0)::float8 AS debit
       FROM journal_entries e JOIN journal_lines l ON l.journal_entry_id = e.id AND l.company_id = e.company_id
-      WHERE e.company_id = ${companyId}::uuid AND e.date <= ${asOf} AND e.reference_type IN ('Manual','Opening') GROUP BY e.reference_type`);
+      WHERE e.company_id = ${companyId}::uuid AND e.posting_date <= ${asOf} AND e.reference_type IN ('Manual','Opening') GROUP BY e.reference_type`);
     const pending: any = await tdb.execute(sql`SELECT COUNT(*)::int AS n FROM manual_journals WHERE company_id = ${companyId}::uuid AND status = 'Pending'`);
     const unmapped: any = await tdb.execute(sql`SELECT COUNT(*)::int AS n FROM journal_lines WHERE company_id = ${companyId}::uuid AND account_id IS NULL`);
     res.json({

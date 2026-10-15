@@ -219,8 +219,8 @@ function windowOf(c: EngineColumn, p: RunParams): Window {
 async function fetchBuckets(tx: any, companyId: string, w: Window, dims: DimFilter[], branchIds: string[] | null | undefined): Promise<{ byAccount: Map<string, Buckets>; unmappedLines: number }> {
   const res: any = await tx.execute(sql`
     SELECT rl.account_id AS "accountId",
-      COALESCE(SUM(CASE WHEN rl.date < ${w.from} THEN rl.debit END),0)::float8 AS "openDr", COALESCE(SUM(CASE WHEN rl.date < ${w.from} THEN rl.credit END),0)::float8 AS "openCr",
-      COALESCE(SUM(CASE WHEN rl.date >= ${w.from} THEN rl.debit END),0)::float8 AS "movDr", COALESCE(SUM(CASE WHEN rl.date >= ${w.from} THEN rl.credit END),0)::float8 AS "movCr",
+      COALESCE(SUM(CASE WHEN rl.posting_date < ${w.from} THEN rl.debit END),0)::float8 AS "openDr", COALESCE(SUM(CASE WHEN rl.posting_date < ${w.from} THEN rl.credit END),0)::float8 AS "openCr",
+      COALESCE(SUM(CASE WHEN rl.posting_date >= ${w.from} THEN rl.debit END),0)::float8 AS "movDr", COALESCE(SUM(CASE WHEN rl.posting_date >= ${w.from} THEN rl.credit END),0)::float8 AS "movCr",
       COUNT(*)::int AS lines
     FROM ${resolvedLines(companyId, { to: w.to, branchIds, dims })} GROUP BY rl.account_id`);
   const byAccount = new Map<string, Buckets>(); let unmapped = 0;

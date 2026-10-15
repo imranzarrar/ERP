@@ -4,6 +4,7 @@ import { eq, inArray, and } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { generateId } from '../src/id.js';
+import { entryStamp } from '../server/lib/documentDates.js';
 
 // Real integration tests against the already-running dev server + real Postgres state,
 // matching this project's established no-mocks testing practice. Dedicated throwaway
@@ -110,7 +111,7 @@ beforeAll(async () => {
 
   prId = generateId();
   await db.insert(schema.purchaseRequisitions).values({
-    id: prId, prNumber: 'PR-PERMCRUD-1', requestedBy: scopedUsername, date: new Date(),
+    id: prId, prNumber: 'PR-PERMCRUD-1', requestedBy: scopedUsername, ...entryStamp(null),
     status: 'Pending', companyId,
   });
 });
@@ -225,7 +226,7 @@ describe('Quotation cancel: dedicated isCancelled flag, separate from phase stat
       method: 'POST',
       body: JSON.stringify({
         quotationData: {
-          date: '2026-08-01', customerId, taxSlabId, notes: 'test', status: 'Draft',
+          docDate: '2026-08-01', customerId, taxSlabId, notes: 'test', status: 'Draft',
           createdById: scopedUserId, createdAt: new Date().toISOString(),
           items: [{ id: crypto.randomUUID(), description: 'Item', unitCost: 100, quantity: 1, unit: 'PCE' }],
         },
@@ -257,7 +258,7 @@ describe('Quotation cancel: dedicated isCancelled flag, separate from phase stat
       method: 'POST',
       body: JSON.stringify({
         quotationData: {
-          date: '2026-08-01', customerId, taxSlabId, notes: 'test2', status: 'Draft',
+          docDate: '2026-08-01', customerId, taxSlabId, notes: 'test2', status: 'Draft',
           createdById: scopedUserId, createdAt: new Date().toISOString(),
           items: [{ id: crypto.randomUUID(), description: 'Item', unitCost: 50, quantity: 1, unit: 'PCE' }],
         },
@@ -276,7 +277,7 @@ describe('ZATCA-cleared invoice immutability: a record-state rule, not a permiss
   it('rejects editing a CLEARED invoice even for an admin, and leaves it untouched', async () => {
     const invoiceId = generateId();
     await db.insert(schema.invoices).values({
-      id: invoiceId, invoiceNumber: 'INV-PERMCRUD-1', date: '2026-08-01',
+      id: invoiceId, invoiceNumber: 'INV-PERMCRUD-1', docDate: '2026-08-01', postingDate: '2026-08-01',
       customerId, taxSlabId, bankId, paymentStatus: 'Unpaid', notes: 'x',
       status: 'Active', createdById: adminUserId, createdAt: new Date(),
       companyId, zatcaStatus: 'CLEARED',
@@ -286,7 +287,7 @@ describe('ZATCA-cleared invoice immutability: a record-state rule, not a permiss
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          id: invoiceId, date: '2026-08-01', customerId, taxSlabId, notes: 'edited',
+          id: invoiceId, docDate: '2026-08-01', customerId, taxSlabId, notes: 'edited',
           status: 'Active', createdById: adminUserId,
           items: [{ description: 'Edited Item', unitCost: 999, quantity: 1, unit: 'PCE' }],
         },
@@ -565,7 +566,7 @@ describe('Invoices: POST /transactions/invoices is create-only (regression)', ()
   beforeAll(async () => {
     editableInvoiceId = generateId();
     await db.insert(schema.invoices).values({
-      id: editableInvoiceId, invoiceNumber: 'INV-PERMCRUD-EDIT', date: '2026-08-01',
+      id: editableInvoiceId, invoiceNumber: 'INV-PERMCRUD-EDIT', docDate: '2026-08-01', postingDate: '2026-08-01',
       customerId, taxSlabId, bankId, notes: '', status: 'Active', paymentStatus: 'Unpaid',
       createdById: adminUserId, createdAt: new Date(), amountPaid: '0', companyId,
       documentType: 'Invoice', zatcaStatus: 'NOT_SUBMITTED',
@@ -585,7 +586,7 @@ describe('Invoices: POST /transactions/invoices is create-only (regression)', ()
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: '2026-08-01', customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: '2026-08-01', customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'PermCrud new invoice', unitCost: 10, quantity: 1, unit: 'PCE' }],
         },
       }),
@@ -601,7 +602,7 @@ describe('Invoices: POST /transactions/invoices is create-only (regression)', ()
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          id: editableInvoiceId, invoiceNumber: 'INV-PERMCRUD-EDIT', date: '2026-08-01', customerId, taxSlabId, bankId, notes: 'edited by create-only role', status: 'Active', amountPaid: 0,
+          id: editableInvoiceId, invoiceNumber: 'INV-PERMCRUD-EDIT', docDate: '2026-08-01', customerId, taxSlabId, bankId, notes: 'edited by create-only role', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'PermCrud edited line', unitCost: 20, quantity: 1, unit: 'PCE' }],
         },
       }),
@@ -618,7 +619,7 @@ describe('Invoices: POST /transactions/invoices is create-only (regression)', ()
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          id: editableInvoiceId, invoiceNumber: 'INV-PERMCRUD-EDIT', date: '2026-08-01', customerId, taxSlabId, bankId, notes: 'edited by update-only role', status: 'Active', amountPaid: 0,
+          id: editableInvoiceId, invoiceNumber: 'INV-PERMCRUD-EDIT', docDate: '2026-08-01', customerId, taxSlabId, bankId, notes: 'edited by update-only role', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'PermCrud edited line', unitCost: 20, quantity: 1, unit: 'PCE' }],
         },
       }),
@@ -636,7 +637,7 @@ describe('Invoices: POST /transactions/invoices is create-only (regression)', ()
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: '2026-08-01', customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: '2026-08-01', customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'PermCrud blocked new invoice', unitCost: 10, quantity: 1, unit: 'PCE' }],
         },
       }),
@@ -655,7 +656,7 @@ describe('Invoice cancel requires invoice.delete, independent of create/read/upd
   beforeAll(async () => {
     cancelTargetId = generateId();
     await db.insert(schema.invoices).values({
-      id: cancelTargetId, invoiceNumber: 'INV-PERMCRUD-CANCEL', date: '2026-08-01',
+      id: cancelTargetId, invoiceNumber: 'INV-PERMCRUD-CANCEL', docDate: '2026-08-01', postingDate: '2026-08-01',
       customerId, taxSlabId, bankId, notes: '', status: 'Active', paymentStatus: 'Unpaid',
       createdById: adminUserId, createdAt: new Date(), amountPaid: '0', companyId,
       documentType: 'Invoice', zatcaStatus: 'NOT_SUBMITTED',

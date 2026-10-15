@@ -92,7 +92,7 @@ async function simulate(seed: number) {
     // capital and the second bank float on day 1
     await call('POST', '/api/transactions/investors', { name: 'Fuzz Investor', email: 'i@example.com', phone: '1', equityPercentage: 100, profitPercentage: 100, capitalContributed: 0, isActive: true, createdAt: new Date().toISOString() });
     const investorId = ((await db.select().from(schema.investors).where(eq(schema.investors.companyId, companyId))) as any[])[0].id;
-    await step('capital', () => call('POST', `/api/transactions/investors/${investorId}/investment`, { bankId, amount: 50000, date: clock, description: 'Capital' }));
+    await step('capital', () => call('POST', `/api/transactions/investors/${investorId}/investment`, { bankId, amount: 50000, docDate: clock, description: 'Capital' }));
 
     const openMonths = new Set([M[0], M[1], M[2]]);
     const closed = new Set<string>();
@@ -118,10 +118,10 @@ async function simulate(seed: number) {
             const qty = between(3, 15);
             const pid = rand() < 0.65 ? P : P2;
             const cost = pid === P ? pick([90, 100, 110, 120])! : pick([45, 50, 55])!;
-            const r = await step(`GRN ${qty} @${cost}${pid === P2 ? ' (item two)' : ''}`, () => call('POST', '/api/inventory/goods-receipt-notes', { grnData: { isDsd: true, vendorId, warehouseId, receivedBy: 'Fuzz', items: [{ productId: pid, quantityReceived: qty, unitCost: cost, taxRate: 15 }] } }), b => grns.push({ id: b.goodsReceiptNote.id, qty, returned: 0, billed: false, reversed: false, date: today, pid }));
+            const r = await step(`GRN ${qty} @${cost}${pid === P2 ? ' (item two)' : ''}`, () => call('POST', '/api/inventory/goods-receipt-notes', { grnData: { isDsd: true, vendorId, warehouseId, receivedBy: 'Fuzz', items: [{ productId: pid, quantityReceived: qty, unitCost: cost, taxRate: 15 }] } }), b => grns.push({ id: b.goodsReceiptNote.id, qty, returned: 0, billed: false, reversed: false, docDate: today, pid }));
             const g = grns[grns.length - 1];
             if (r.status === 200 && rand() < 0.75) {
-              await step('bill', () => call('POST', '/api/inventory/purchase-bills', { billData: { grnIds: [g.id], bankId, date: docDate(), vendorBillNumber: 'F' + ops } }), b => { g.billed = true; bills.push({ id: b.purchaseBill.id, grnId: g.id, gross: Number(b.purchaseBill.grandTotal), paid: 0, date: today, cancelled: false }); });
+              await step('bill', () => call('POST', '/api/inventory/purchase-bills', { billData: { grnIds: [g.id], bankId, docDate: docDate(), vendorBillNumber: 'F' + ops } }), b => { g.billed = true; bills.push({ id: b.purchaseBill.id, grnId: g.id, gross: Number(b.purchaseBill.grandTotal), paid: 0, docDate: today, cancelled: false }); });
             }
           }
           // selling
@@ -153,7 +153,7 @@ async function simulate(seed: number) {
           }
           else if (roll < 0.35) {   // quotation, converted
             const price = between(1, 5) * 100;
-            await call('POST', '/api/transactions/quotations', { quotationData: { date: today, customerId, taxSlabId, notes: `Fuzz quote ${ops}`, status: 'Accepted', createdById: userId, items: [{ id: generateId(), description: 'Quoted', unitCost: price, quantity: 1, unit: 'PCE', productId: S }] } });
+            await call('POST', '/api/transactions/quotations', { quotationData: { docDate: today, customerId, taxSlabId, notes: `Fuzz quote ${ops}`, status: 'Accepted', createdById: userId, items: [{ id: generateId(), description: 'Quoted', unitCost: price, quantity: 1, unit: 'PCE', productId: S }] } });
             const q = ((await db.select().from(schema.quotations).where(eq(schema.quotations.companyId, companyId))) as any[]).find(x => x.notes === `Fuzz quote ${ops}`);
             if (q) await step('convert quotation', () => call('POST', `/api/transactions/quotations/${q.id}/convert`, { invoiceDate: today, bankId, paymentStatus: 'Unpaid', customCustomerId: customerId, customTaxSlabId: taxSlabId }));
           }
@@ -172,13 +172,13 @@ async function simulate(seed: number) {
           // expenses
           else if (roll < 0.62) {
             const gross = between(1, 8) * 115; const capex = rand() < 0.2; const paid = rand() < 0.5 ? gross : 0;
-            await step(`expense ${gross}${capex ? ' capex' : ''}`, () => call('POST', '/api/expenses', { date: docDate(), vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'X' + ops, description: `Fuzz expense ${ops}`, paymentStatus: paid ? 'Paid' : 'Unpaid', amountPaid: paid, paymentDate: paid ? today : null, amount: gross, ...(capex ? { classification: 'Asset' } : {}) }), () => exps.push({ gross, paid, desc: `Fuzz expense ${ops}`, cancelled: false, reversed: false, id: '' }));
+            await step(`expense ${gross}${capex ? ' capex' : ''}`, () => call('POST', '/api/expenses', { docDate: docDate(), vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'X' + ops, description: `Fuzz expense ${ops}`, paymentStatus: paid ? 'Paid' : 'Unpaid', amountPaid: paid, paymentDate: paid ? today : null, amount: gross, ...(capex ? { classification: 'Asset' } : {}) }), () => exps.push({ gross, paid, desc: `Fuzz expense ${ops}`, cancelled: false, reversed: false, id: '' }));
             const e = exps[exps.length - 1];
             if (e && !e.id) { const row = ((await db.select().from(schema.expenses).where(eq(schema.expenses.companyId, companyId))) as any[]).find(x => x.description === e.desc); e.id = row?.id; }
           }
           else if (roll < 0.67) {   // pay an expense
             const e = pick(exps.filter(x => x.id && !x.cancelled && !x.reversed && x.paid < x.gross - 0.01));
-            if (e) { const amt = Math.round((e.gross - e.paid) * 100) / 100; await step(`pay expense ${amt}`, () => call('POST', `/api/expenses/${e.id}/pay`, { date: today, bankId, amount: amt }), () => { e.paid = e.gross; }); }
+            if (e) { const amt = Math.round((e.gross - e.paid) * 100) / 100; await step(`pay expense ${amt}`, () => call('POST', `/api/expenses/${e.id}/pay`, { docDate: today, bankId, amount: amt }), () => { e.paid = e.gross; }); }
           }
           else if (roll < 0.72) {   // an expense is wrong: cancel (unlocked) or reverse (locked)
             const e = pick(exps.filter(x => x.id && !x.cancelled && !x.reversed));
@@ -194,7 +194,7 @@ async function simulate(seed: number) {
           }
           else if (roll < 0.82) {
             const b = pick(bills.filter(x => !x.cancelled && x.paid < x.gross - 0.01));
-            if (b) { const amt = Math.round(Math.min(b.gross - b.paid, (b.gross - b.paid) * (0.4 + rand() * 0.6)) * 100) / 100; await step(`pay bill ${amt}`, () => call('POST', `/api/inventory/purchase-bills/${b.id}/pay`, { date: today, bankId, amount: amt }), () => { b.paid = Math.round((b.paid + amt) * 100) / 100; }); }
+            if (b) { const amt = Math.round(Math.min(b.gross - b.paid, (b.gross - b.paid) * (0.4 + rand() * 0.6)) * 100) / 100; await step(`pay bill ${amt}`, () => call('POST', `/api/inventory/purchase-bills/${b.id}/pay`, { docDate: today, bankId, amount: amt }), () => { b.paid = Math.round((b.paid + amt) * 100) / 100; }); }
           }
           else if (roll < 0.84) {
             const r = pick(rets.filter(x => !x.cancelled));
@@ -210,7 +210,7 @@ async function simulate(seed: number) {
           }
           else if (roll < 0.91) {   // a vendor refund when something is owed back
             const bs = await rep('balance-sheet', `asOfDate=${today}`);
-            if (bs.vendorCreditReceivable > 0.01) { const amt = Math.round(bs.vendorCreditReceivable * 100) / 100; await step(`vendor refund ${amt}`, () => call('POST', '/api/inventory/vendor-refunds', { vendorId, bankId, amount: amt, date: today })); }
+            if (bs.vendorCreditReceivable > 0.01) { const amt = Math.round(bs.vendorCreditReceivable * 100) / 100; await step(`vendor refund ${amt}`, () => call('POST', '/api/inventory/vendor-refunds', { vendorId, bankId, amount: amt, docDate: today })); }
           }
           // money and stock
           else if (roll < 0.94) {
@@ -244,7 +244,7 @@ async function simulate(seed: number) {
             const acc = await call('POST', '/api/transactions/recurring-postings', { templateId: accrualTemplate, monthId: today.slice(0, 7), postType: 'Accrual', amount: 230, dateStr: today, paymentStatus: 'Unpaid', bankId });
             ops++; log.push(`${clock} accrual -> ${acc.status}`);
             if (acc.status === 200) {
-              const row = ((await db.select().from(schema.expenses).where(eq(schema.expenses.companyId, companyId))) as any[]).filter(x => x.type === 'Accrual' && !x.accrualSettled && x.date === today)[0];
+              const row = ((await db.select().from(schema.expenses).where(eq(schema.expenses.companyId, companyId))) as any[]).filter(x => x.type === 'Accrual' && !x.accrualSettled && x.docDate === today)[0];
               if (row && rand() < 0.7) { clock = D(Math.min(28, d + 1), m); const actual = between(150, 400); await step(`settle accrual at ${actual}`, () => call('POST', '/api/transactions/settle-accrual', { accrualExpenseId: row.id, actualAmount: actual, actualDate: clock, paymentStatus: 'Paid', bankId })); }
             }
           }

@@ -11,12 +11,12 @@ export function pickFields(source: any, allowed: readonly string[]): Record<stri
 
 // What the Invoice and POS screens send to POST /invoices (the rest of the row is set by the server).
 export const INVOICE_CREATE_FIELDS = [
-  'date', 'customerId', 'taxSlabId', 'bankId', 'paymentStatus', 'paymentDate', 'notes', 'attachmentUrl', 'originQuotationId',
+  'docDate', 'customerId', 'taxSlabId', 'bankId', 'paymentStatus', 'paymentDate', 'notes', 'attachmentUrl', 'originQuotationId',
   'discountPercentage', 'discountAmount', 'amountPaid', 'branchId', 'warehouseId', 'salesAssociateId', 'isPosSale', 'shiftId',
 ] as const;
 
 // What the Expense screen sends to POST /expenses.
 export const EXPENSE_CREATE_FIELDS = [
-  'date', 'vendorId', 'taxSlabId', 'bankId', 'paymentStatus', 'paymentDate', 'amountPaid', 'description', 'amount',
+  'docDate', 'vendorId', 'taxSlabId', 'bankId', 'paymentStatus', 'paymentDate', 'amountPaid', 'description', 'amount',
   'attachmentUrl', 'classification', 'assetType', 'branchId', 'billNumber', 'expenseType',
 ] as const;

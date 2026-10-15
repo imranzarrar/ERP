@@ -65,7 +65,7 @@ async function mkCustomer(co: Co, name: string) {
   return id;
 }
 async function invoice(co: Co, customerId: string, amountPaid = 0) {
-  const r = await post(co.admin, '/api/transactions/invoices', { invoiceData: { date: TODAY, customerId, taxSlabId: co.taxSlabId, bankId: co.bankId, notes: '', status: 'Active', amountPaid, items: [{ id: generateId(), description: 'Item', unitCost: 100, quantity: 1, discountAmount: 0 }] } });
+  const r = await post(co.admin, '/api/transactions/invoices', { invoiceData: { docDate: TODAY, customerId, taxSlabId: co.taxSlabId, bankId: co.bankId, notes: '', status: 'Active', amountPaid, items: [{ id: generateId(), description: 'Item', unitCost: 100, quantity: 1, discountAmount: 0 }] } });
   if (r.status !== 200) throw new Error(`invoice failed ${r.status} ${JSON.stringify(r.body)}`);
   return r.body.invoiceId as string;
 }
@@ -130,7 +130,7 @@ describe('control accounts in the chart', () => {
     const list = (await get(A.admin, '/api/ledger/accounts')).body.accounts as any[];
     expect(codeOf(list, '1105')).toMatchObject({ subledgerType: 'customer', isControl: true });
     // a control account is refused by manual journals (nobody can bypass the subledger)
-    const j = await post(A.admin, '/api/ledger/manual-journals', { date: TODAY, description: 'x', lines: [{ accountId: ctlId, debit: 5 }, { accountId: codeOf(list, '6200').id, credit: 5 }] });
+    const j = await post(A.admin, '/api/ledger/manual-journals', { docDate: TODAY, description: 'x', lines: [{ accountId: ctlId, debit: 5 }, { accountId: codeOf(list, '6200').id, credit: 5 }] });
     expect(j.status).toBe(400);
     // wrong type for the subledger, a system role, a heading, an unknown subledger
     const other = (await post(A.admin, '/api/ledger/accounts', { code: '1106', name: 'Another', type: 'Liability', parentId: codeOf(list, '2000').id })).body.id;
@@ -246,7 +246,7 @@ describe('documents post through the profile', () => {
     expect((await post(A.admin, '/api/vendors', { ...row, controlAccountId: ctlId })).status).toBe(400); // a customer control account
     const okV = await post(A.admin, '/api/vendors', { ...row, controlAccountId: vctlId });
     expect(okV.status, JSON.stringify(okV.body)).toBe(200);
-    const r = await post(A.admin, '/api/expenses', { date: TODAY, vendorId, taxSlabId: A.taxSlabId, bankId: A.bankId, description: 'Supplies', billNumber: 'V-1', amount: 100, status: 'Active', type: 'Actual', paymentStatus: 'Unpaid' });
+    const r = await post(A.admin, '/api/expenses', { docDate: TODAY, vendorId, taxSlabId: A.taxSlabId, bankId: A.bankId, description: 'Supplies', billNumber: 'V-1', amount: 100, status: 'Active', type: 'Actual', paymentStatus: 'Unpaid' });
     expect(r.status, JSON.stringify(r.body)).toBe(200);
     const [exp] = await db.select().from(schema.expenses).where(and(eq(schema.expenses.companyId, A.id), eq(schema.expenses.vendorId, vendorId)));
     const lines = await linesOf(A.id, exp.id);
@@ -254,7 +254,7 @@ describe('documents post through the profile', () => {
     expect(await balanceOf(A.id, '2020')).toBe(-100);
     expect(await balanceOf(A.id, '2010')).toBe(0);
     // paying it relieves the same control account
-    const pay = await post(A.admin, `/api/expenses/${exp.id}/pay`, { date: TODAY, bankId: A.bankId, amount: 100 });
+    const pay = await post(A.admin, `/api/expenses/${exp.id}/pay`, { docDate: TODAY, bankId: A.bankId, amount: 100 });
     expect(pay.status, JSON.stringify(pay.body)).toBe(200);
     expect(await balanceOf(A.id, '2020')).toBe(0);
   });

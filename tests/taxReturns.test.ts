@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { generateId } from '../src/id.js';
+import { documentDates } from '../server/lib/documentDates.js';
 
 // Real integration tests against the already-running dev server + real Postgres state,
 // no mocks, matching this project's established convention. Covers the VAT Return
@@ -232,7 +233,7 @@ describe('Figure correctness (Credit Note netting + Purchase Bill inclusion)', (
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'Invoice A item', unitCost: 1000, quantity: 1, unit: 'PCE' }],
         },
       }),
@@ -244,7 +245,7 @@ describe('Figure correctness (Credit Note netting + Purchase Bill inclusion)', (
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'Invoice B item', unitCost: 500, quantity: 1, unit: 'PCE' }],
         },
       }),
@@ -261,7 +262,7 @@ describe('Figure correctness (Credit Note netting + Purchase Bill inclusion)', (
     const exp = await api(adminSessionId, '/api/expenses', {
       method: 'POST',
       body: JSON.stringify({
-        date: today, vendorId, taxSlabId, bankId, description: 'Test expense', billNumber: 'BILL-TEST-1',
+        docDate: today, vendorId, taxSlabId, bankId, description: 'Test expense', billNumber: 'BILL-TEST-1',
         amount: 115, status: 'Active', type: 'Actual', paymentStatus: 'Unpaid',
       }),
     });
@@ -276,7 +277,7 @@ describe('Figure correctness (Credit Note netting + Purchase Bill inclusion)', (
     expect(grn.status).toBe(200);
     const bill = await api(adminSessionId, '/api/inventory/purchase-bills', {
       method: 'POST',
-      body: JSON.stringify({ billData: { date: new Date().toISOString().slice(0, 10), grnIds: [grn.body.goodsReceiptNote.id], bankId } }),
+      body: JSON.stringify({ billData: { docDate: new Date().toISOString().slice(0, 10), grnIds: [grn.body.goodsReceiptNote.id], bankId } }),
     });
     expect(bill.status).toBe(200);
     expect(Number(bill.body.purchaseBill.subTotal)).toBe(1000);
@@ -389,7 +390,7 @@ describe('Unreported ZATCA invoices block both Generate and File', () => {
     pendingInvoiceId = generateId();
     await db.insert(schema.invoices).values({
       id: pendingInvoiceId, invoiceNumber: `PENDING-${pendingInvoiceId}`,
-      date: `${pendingYear}-02-15`, customerId: zatcaPendingCustomerId, taxSlabId: zatcaPendingTaxSlabId, bankId: zatcaPendingBankId, notes: '', status: 'Active',
+      docDate: `${pendingYear}-02-15`, postingDate: `${pendingYear}-02-15`, customerId: zatcaPendingCustomerId, taxSlabId: zatcaPendingTaxSlabId, bankId: zatcaPendingBankId, notes: '', status: 'Active',
       paymentStatus: 'Unpaid', createdById: zatcaPendingAdminUserId, createdAt: new Date(), amountPaid: '0',
       companyId: zatcaPendingCompanyId, documentType: 'Invoice', zatcaStatus: 'NOT_SUBMITTED',
     });
@@ -430,7 +431,7 @@ describe('Filing, permanent lock, and the filed-quarter document lock', () => {
     const today = now.toISOString().split('T')[0];
     const added = await api(adminSessionId, '/api/transactions/invoices', {
       method: 'POST',
-      body: JSON.stringify({ invoiceData: { date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+      body: JSON.stringify({ invoiceData: { docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
         items: [{ id: generateId(), description: 'Added after generate', unitCost: 200, quantity: 1, unit: 'PCE' }] } }),
     });
     expect(added.status).toBe(400);
@@ -461,7 +462,7 @@ describe('Filing, permanent lock, and the filed-quarter document lock', () => {
     const newInvoice = await api(adminSessionId, '/api/transactions/invoices', {
       method: 'POST',
       body: JSON.stringify({
-        invoiceData: { date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0, items: [{ id: generateId(), description: 'blocked', unitCost: 10, quantity: 1, unit: 'PCE' }] },
+        invoiceData: { docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0, items: [{ id: generateId(), description: 'blocked', unitCost: 10, quantity: 1, unit: 'PCE' }] },
       }),
     });
     expect(newInvoice.status).toBe(400);
@@ -476,7 +477,7 @@ describe('Filing, permanent lock, and the filed-quarter document lock', () => {
 
     const newExpense = await api(adminSessionId, '/api/expenses', {
       method: 'POST',
-      body: JSON.stringify({ date: today, vendorId, taxSlabId, bankId, description: 'blocked', billNumber: 'BILL-TEST-2', amount: 50, status: 'Active', type: 'Actual', paymentStatus: 'Unpaid' }),
+      body: JSON.stringify({ docDate: today, vendorId, taxSlabId, bankId, description: 'blocked', billNumber: 'BILL-TEST-2', amount: 50, status: 'Active', type: 'Actual', paymentStatus: 'Unpaid' }),
     });
     expect(newExpense.status).toBe(400);
     expect(newExpense.body.error).toMatch(/filed with ZATCA/i);
@@ -488,7 +489,7 @@ describe('Filing, permanent lock, and the filed-quarter document lock', () => {
     expect(grn2.status).toBe(200); // GRN itself is not VAT-relevant, not blocked
     const newBill = await api(adminSessionId, '/api/inventory/purchase-bills', {
       method: 'POST',
-      body: JSON.stringify({ billData: { date: new Date().toISOString().slice(0, 10), grnIds: [grn2.body.goodsReceiptNote.id], bankId } }),
+      body: JSON.stringify({ billData: { docDate: new Date().toISOString().slice(0, 10), grnIds: [grn2.body.goodsReceiptNote.id], bankId } }),
     });
     expect(newBill.status).toBe(400);
     expect(newBill.body.error).toMatch(/filed with ZATCA/i);
@@ -498,7 +499,7 @@ describe('Filing, permanent lock, and the filed-quarter document lock', () => {
     const quote = await api(adminSessionId, '/api/transactions/quotations', {
       method: 'POST',
       body: JSON.stringify({
-        quotationData: { date: now.toISOString().split('T')[0], customerId, taxSlabId, notes: '', status: 'Draft', createdById: adminUserId, items: [{ id: generateId(), description: 'not blocked', unitCost: 10, quantity: 1, unit: 'PCE' }] },
+        quotationData: { docDate: now.toISOString().split('T')[0], customerId, taxSlabId, notes: '', status: 'Draft', createdById: adminUserId, items: [{ id: generateId(), description: 'not blocked', unitCost: 10, quantity: 1, unit: 'PCE' }] },
       }),
     });
     expect(quote.status).toBe(200);
@@ -532,7 +533,7 @@ describe('Filing, permanent lock, and the filed-quarter document lock', () => {
     const invId = generateId();
     await db.insert(schema.invoices).values({
       id: invId, invoiceNumber: `FILEDLOCK-CANCEL-${invId}`,
-      date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active',
+      docDate: today, postingDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active',
       paymentStatus: 'Unpaid', createdById: adminUserId, createdAt: new Date(), amountPaid: '0',
       companyId, documentType: 'Invoice', zatcaStatus: 'NOT_SUBMITTED',
     });
@@ -549,7 +550,7 @@ describe('Filing, permanent lock, and the filed-quarter document lock', () => {
     const quoteId = generateId();
     await db.insert(schema.quotations).values({
       id: quoteId, quotationNumber: `FILEDLOCK-CONV-${quoteId}`,
-      date: today, customerId, taxSlabId, notes: '', status: 'Accepted', createdById: adminUserId, createdAt: new Date(),
+      docDate: today, customerId, taxSlabId, notes: '', status: 'Accepted', createdById: adminUserId, createdAt: new Date(),
       companyId,
     });
 
@@ -568,7 +569,7 @@ describe('Filing, permanent lock, and the filed-quarter document lock', () => {
     const expId = generateId();
     await db.insert(schema.expenses).values({
       id: expId, expenseNumber: `FILEDLOCK-EXP-${expId}`,
-      date: today, vendorId, taxSlabId, bankId, description: 'filed-lock cancel test', billNumber: `FL-${expId}`,
+      docDate: today, postingDate: today, vendorId, taxSlabId, bankId, description: 'filed-lock cancel test', billNumber: `FL-${expId}`,
       amount: '10', status: 'Active', type: 'Actual', paymentStatus: 'Unpaid', createdById: adminUserId, createdAt: new Date(),
       companyId,
     });
@@ -591,7 +592,7 @@ describe('Filing, permanent lock, and the filed-quarter document lock', () => {
     const today = now.toISOString().split('T')[0];
     await db.insert(schema.purchaseBills).values({
       id: billId, billNumber: `FILEDLOCK-BILL-${billId}`, grnIds: grn.body.goodsReceiptNote.id,
-      vendorId, bankId, date: new Date(today), subTotal: '10', taxTotal: '1.5', grandTotal: '11.5',
+      vendorId, bankId, ...documentDates(today), createdAt: new Date(), subTotal: '10', taxTotal: '1.5', grandTotal: '11.5',
       status: 'Unpaid', companyId,
     });
 

@@ -29,7 +29,7 @@ const near = (a: number, b: number) => Math.abs(a - b) < 0.011;
 
 async function billedGrn(qty: number): Promise<{ grn: string; bill: string }> {
   const g = ok(await post('/api/inventory/goods-receipt-notes', { grnData: { isDsd: true, vendorId, warehouseId, receivedBy: 'T', items: [{ productId, quantityReceived: qty, unitCost: 100, taxRate: 15 }] } }), 'grn').goodsReceiptNote.id;
-  const b = ok(await post('/api/inventory/purchase-bills', { billData: { date: new Date().toISOString().slice(0, 10), grnIds: [g], bankId, vendorBillNumber: 'VC-' + generateId().slice(-4) } }), 'bill').purchaseBill;
+  const b = ok(await post('/api/inventory/purchase-bills', { billData: { docDate: new Date().toISOString().slice(0, 10), grnIds: [g], bankId, vendorBillNumber: 'VC-' + generateId().slice(-4) } }), 'bill').purchaseBill;
   return { grn: g, bill: b.id };
 }
 
@@ -61,7 +61,7 @@ afterAll(async () => { await purgeCompany(companyId); }, 60000);
 describe('a purchase return after the bill was paid in full', () => {
   it('shows the refund due as a vendor credit receivable and the sheet balances', async () => {
     const a = await billedGrn(10);                       // 1000 + 150 VAT = 1150
-    ok(await post(`/api/inventory/purchase-bills/${a.bill}/pay`, { date: today, bankId, amount: 1150 }), 'pay');
+    ok(await post(`/api/inventory/purchase-bills/${a.bill}/pay`, { docDate: today, bankId, amount: 1150 }), 'pay');
     ok(await post('/api/inventory/purchase-returns', { returnData: { grnId: a.grn, items: [{ productId, quantityReturned: 3 }] } }), 'return');   // 300 + 45 VAT
 
     const bs = await rep('balance-sheet', `asOfDate=${today}`);
@@ -97,7 +97,7 @@ describe('a purchase return after the bill was paid in full', () => {
 
 describe('receiving the refund from the supplier', () => {
   let r1 = '', r2 = '';
-  const refund = (amount: number, extra: any = {}) => post('/api/inventory/vendor-refunds', { vendorId, bankId, amount, date: today, ...extra });
+  const refund = (amount: number, extra: any = {}) => post('/api/inventory/vendor-refunds', { vendorId, bankId, amount, docDate: today, ...extra });
 
   it('cannot exceed the credit the supplier owes', async () => {
     const bs = await rep('balance-sheet', `asOfDate=${today}`);
@@ -184,7 +184,7 @@ describe('receiving the refund from the supplier', () => {
   it('paying a purchase bill is held to the same rule: nothing may be dated in the closed month or the filed quarter', async () => {
     const bills = (await api('/api/state')).body.purchaseBills.filter((b: any) => b.status !== 'Paid' && b.status !== 'Cancelled');
     expect(bills.length).toBeGreaterThan(0);
-    const pay = await post(`/api/inventory/purchase-bills/${bills[0].id}/pay`, { date: today, bankId, amount: 10 });
+    const pay = await post(`/api/inventory/purchase-bills/${bills[0].id}/pay`, { docDate: today, bankId, amount: 10 });
     expect(pay.status, JSON.stringify(pay.body)).toBe(400);
   });
 });

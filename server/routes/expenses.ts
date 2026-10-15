@@ -14,12 +14,13 @@ import { assertOwnsRow, resolveDocumentBranchId, branchAccessOk } from '../lib/a
 import { recordAuditLog } from '../lib/audit.js';
 import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
 import { nowDate } from '../lib/clock.js';
+import { documentDates } from '../lib/documentDates.js';
 
 const router = express.Router();
 
 const EXPENSES_SORTABLE = {
   expenseNumber: schema.expenses.expenseNumber,
-  date: schema.expenses.date,
+  date: schema.expenses.docDate,
   createdAt: schema.expenses.createdAt,
   amount: schema.expenses.amount,
   status: schema.expenses.status,
@@ -51,9 +52,9 @@ router.get('/', withTenantDb, async (req: any, res) => {
     // Server-side equivalents of ExpenseModule.tsx's own client-side filteredExpenses logic,
     // scoped by the whereClause's own companyId condition above — never client-supplied.
     const startDate = String(req.query?.startDate || '').trim();
-    if (startDate) conditions.push(gte(schema.expenses.date, startDate));
+    if (startDate) conditions.push(gte(schema.expenses.docDate, startDate));
     const endDate = String(req.query?.endDate || '').trim();
-    if (endDate) conditions.push(lte(schema.expenses.date, endDate));
+    if (endDate) conditions.push(lte(schema.expenses.docDate, endDate));
     if (req.query?.status === 'Unpaid') {
       conditions.push(ne(schema.expenses.paymentStatus, 'Paid'));
       conditions.push(eq(schema.expenses.status, 'Active'));
@@ -135,18 +136,18 @@ router.post('/', withTenantDb, async (req: any, res) => {
 
     // No separate db.transaction() wrapper — withTenantDb already wraps the whole
     // request in one transaction.
-    await validateTransactionDate(data.date, data.companyId);
-    await assertQuarterNotFrozen(data.date, data.companyId);
+    await validateTransactionDate(data.docDate, data.companyId);
+    await assertQuarterNotFrozen(data.docDate, data.companyId);
     const expenseId = generateId();
 
-    data.expenseNumber = await getAndIncrementDocumentNumber(tdb, data.companyId, 'expense', data.date, data.branchId);
+    data.expenseNumber = await getAndIncrementDocumentNumber(tdb, data.companyId, 'expense', data.docDate, data.branchId);
     data.createdById = req.user.id;
     data.createdAt = nowDate();
 
     await tdb.insert(schema.expenses).values({
       ...data,
       id: expenseId,
-      date: data.date,
+      ...documentDates(data.docDate),
       paymentDate: data.paymentDate ? new Date(data.paymentDate) : null,
     });
 
@@ -162,7 +163,7 @@ router.post('/', withTenantDb, async (req: any, res) => {
     await postJournalEntry(tdb, {
       companyId: data.companyId,
       branchId: data.branchId,
-      date: data.date,
+      postingDate: data.docDate,
       referenceType: 'Expense',
       referenceId: expenseId,
       description: `Expense ${data.expenseNumber} raised`,
@@ -177,7 +178,7 @@ router.post('/', withTenantDb, async (req: any, res) => {
       await postJournalEntry(tdb, {
         companyId: data.companyId,
         branchId: data.branchId,
-        date: data.date,
+        postingDate: data.docDate,
         referenceType: 'Expense',
         referenceId: expenseId,
         description: `Payment at creation for expense ${data.expenseNumber}`,
@@ -213,7 +214,7 @@ router.post('/:id/pay', withTenantDb, async (req: any, res) => {
       return res.status(403).json({ error: 'Forbidden' });
     }
     const { id } = req.params;
-    const { date, bankId, amount } = req.body;
+    const { docDate: date, bankId, amount } = req.body;
     const companyId = req.targetCompanyId;
 
     let createdVoucher: any;
@@ -295,7 +296,7 @@ router.post('/:id/pay', withTenantDb, async (req: any, res) => {
         id: generateId(),
         voucherNumber,
         type: 'Payment',
-        date,
+        ...documentDates(date),
         bankId: targetBankId,
         amount: String(amountToPost),
         description: `Payment voucher generated for expense ${expense.expenseNumber} paid subsequently (${amountToPost.toFixed(2)})`,
@@ -314,7 +315,7 @@ router.post('/:id/pay', withTenantDb, async (req: any, res) => {
       await postJournalEntry(tdb, {
         companyId,
         branchId: expense.branchId,
-        date,
+        postingDate: date,
         referenceType: 'Expense',
         referenceId: id,
         description: `Payment for expense ${expense.expenseNumber} (installment)`,
@@ -392,7 +393,7 @@ router.post('/:id/reverse', withTenantDb, async (req: any, res) => {
     // amountPaid carries the part that is NOT payable any more: what had already been paid out becomes a credit owed back by the vendor,
     // what was still unpaid simply stops being owed. (Negative amounts: this document is the mirror image of the original.)
     await tdb.insert(schema.expenses).values({
-      id: reversalId, expenseNumber, date: today, vendorId: orig.vendorId, taxSlabId: orig.taxSlabId, bankId: orig.bankId,
+      id: reversalId, expenseNumber, ...documentDates(today), vendorId: orig.vendorId, taxSlabId: orig.taxSlabId, bankId: orig.bankId,
       paymentStatus: unpaid > 0.005 ? 'Unpaid' : 'Paid', amountPaid: String(-paid), paymentDate: null,
       description: `Reversal of ${orig.expenseNumber}${reason ? ': ' + reason : ''}`, amount: String(-gross), status: 'Active', type: 'Actual',
       classification: orig.classification, assetType: orig.assetType, expenseType: orig.expenseType,
@@ -400,7 +401,7 @@ router.post('/:id/reverse', withTenantDb, async (req: any, res) => {
     });
 
     await postJournalEntry(tdb, {
-      companyId, branchId: orig.branchId, date: today, referenceType: 'Expense', referenceId: reversalId,
+      companyId, branchId: orig.branchId, postingDate: today, referenceType: 'Expense', referenceId: reversalId,
       description: `Reversal ${expenseNumber} of expense ${orig.expenseNumber}`, createdById: req.user.id,
       lines: [
         ...(unpaid > 0 ? [{ accountKey: 'AP', debit: unpaid }] : []),

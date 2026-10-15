@@ -11,6 +11,7 @@ import { branchAccessOk } from './authz.js';
 // (never at module-eval time), which Node's ESM loader resolves correctly.
 import { reverseAllEntriesFor } from './ledger.js';
 import { nowDate } from './clock.js';
+import { documentDates } from './documentDates.js';
 
 // Round-half-up to 2 decimals. Applied after every intermediate step in a money
 // calculation chain (not just once at the end via .toFixed(2)) so the value written to
@@ -65,7 +66,9 @@ export async function writeStockLedgerEntry(tx: any, params: {
     warehouseId: params.warehouseId,
     transactionType: params.transactionType,
     referenceId: params.referenceId,
-    date: params.date,
+    // the movement's own moment (orders movements within a day) and the day it counts in
+    createdAt: params.date,
+    postingDate: params.date.toISOString().slice(0, 10),
     quantityChange: String(round2(params.quantityChange)),
     endingQuantity: String(round2(params.endingQuantity)),
     batchNumber: params.batchNumber || null,
@@ -509,7 +512,7 @@ export async function syncVoucherForExpense(tx: any, expenseId: string, companyI
   if ((data.paymentStatus === 'Paid' || data.paymentStatus === 'Partially Paid') && data.status !== 'Cancelled') {
     if (existingVoucher) {
       // Check if voucher's month is closed
-      const voucherMonthId = existingVoucher.date.substring(0, 7);
+      const voucherMonthId = existingVoucher.postingDate.substring(0, 7);
       const [voucherMonth] = await tx.select()
         .from(schema.fiscalMonths)
         .where(
@@ -523,7 +526,7 @@ export async function syncVoucherForExpense(tx: any, expenseId: string, companyI
       if (!isVoucherMonthClosed) {
         await tx.update(schema.vouchers)
           .set({
-            date: data.date,
+            ...documentDates(data.docDate),
             bankId: data.bankId,
             // amountPaid, not amount — a Partially Paid expense's real cash outflow is
             // whatever was actually paid, not the expense's full total (the same mistake
@@ -536,12 +539,12 @@ export async function syncVoucherForExpense(tx: any, expenseId: string, companyI
           .where(eq(schema.vouchers.id, existingVoucher.id));
       }
     } else {
-      const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', data.date, data.branchId || null);
+      const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', data.docDate, data.branchId || null);
       await tx.insert(schema.vouchers).values({
         id: generateId(),
         voucherNumber,
         type: 'Payment',
-        date: data.date,
+        ...documentDates(data.docDate),
         bankId: data.bankId,
         amount: data.amountPaid || data.amount,
         description: `Payment voucher for ${data.description || 'Expense'}`,
@@ -601,13 +604,13 @@ export async function syncVoucherForExpense(tx: any, expenseId: string, companyI
 
     const todayStr = nowDate().toISOString().split('T')[0];
     const todayMonthId = todayStr.slice(0, 7);
-    const dataMonthId = data.date ? data.date.slice(0, 7) : '';
+    const dataMonthId = data.docDate ? data.docDate.slice(0, 7) : '';
     const openMonthIds = new Set(openMonths.map((m: any) => m.id));
 
     let finalReversalDate = todayStr;
     if (!openMonthIds.has(todayMonthId)) {
-      if (data.date && openMonthIds.has(dataMonthId)) {
-        finalReversalDate = data.date;
+      if (data.docDate && openMonthIds.has(dataMonthId)) {
+        finalReversalDate = data.docDate;
       } else if (openMonths.length) {
         const oldestOpenMonth = openMonths.slice().sort((a: any, b: any) => a.id.localeCompare(b.id))[0];
         finalReversalDate = oldestOpenMonth.id + '-01';
@@ -620,7 +623,7 @@ export async function syncVoucherForExpense(tx: any, expenseId: string, companyI
         id: generateId(),
         voucherNumber,
         type: 'Reversal',
-        date: finalReversalDate,
+        ...documentDates(finalReversalDate),
         bankId: original.bankId,
         amount: original.amount,
         description: `Reversal voucher for cancelled expense ${data.expenseNumber || ''} (Original: ${original.voucherNumber})`,
@@ -665,8 +668,8 @@ export async function cancelExpense(tx: any, req: any, id: string, companyId: st
   // An expense whose month is closed (or whose VAT quarter is generated/filed) is locked and cannot be cancelled: cancelling drops it from
   // its own period's figures. The correction is a Reversal document dated today in the current period instead.
   try {
-    await assertQuarterNotFrozen(expense.date, companyId);
-    await validateTransactionDate(expense.date, companyId);
+    await assertQuarterNotFrozen(expense.postingDate, companyId);
+    await validateTransactionDate(expense.postingDate, companyId);
   } catch (lockErr: any) {
     lockErr.message = `${lockErr.message} This expense cannot be cancelled; use "Reverse" to post a correction dated today.`;
     throw lockErr;
@@ -696,7 +699,7 @@ export async function cancelExpense(tx: any, req: any, id: string, companyId: st
   await syncVoucherForExpense(tx, id, companyId, {
     paymentStatus: expense.paymentStatus,
     status: 'Cancelled',
-    date: finalReversalDate,
+    docDate: finalReversalDate,
     expenseNumber: expense.expenseNumber,
   }, req.user.id);
 
@@ -733,7 +736,7 @@ export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyI
   if ((data.paymentStatus === 'Paid' || data.paymentStatus === 'Partially Paid') && data.status !== 'Cancelled') {
     if (existingVoucher) {
       // Check if voucher's month is closed
-      const voucherMonthId = existingVoucher.date.substring(0, 7);
+      const voucherMonthId = existingVoucher.postingDate.substring(0, 7);
       const [voucherMonth] = await tx.select()
         .from(schema.fiscalMonths)
         .where(
@@ -747,7 +750,7 @@ export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyI
       if (!isVoucherMonthClosed) {
         await tx.update(schema.vouchers)
           .set({
-            date: String(data.paymentDate || data.date),
+            ...documentDates(String(data.paymentDate || data.docDate)),
             bankId: data.bankId,
             amount: data.amountPaid || data.amount,
             description: `Receipt voucher generated automatically for invoice ${data.invoiceNumber}`,
@@ -756,13 +759,13 @@ export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyI
           .where(eq(schema.vouchers.id, existingVoucher.id));
       }
     } else {
-      const voucherDate = String(data.paymentDate || data.date);
+      const voucherDate = String(data.paymentDate || data.docDate);
       const voucherNumber = await getAndIncrementDocumentNumber(tx, companyId, 'voucher', voucherDate, data.branchId || null);
       await tx.insert(schema.vouchers).values({
         id: generateId(),
         voucherNumber,
         type: 'Receipt',
-        date: voucherDate,
+        ...documentDates(voucherDate),
         bankId: data.bankId,
         amount: data.amountPaid || data.amount,
         description: `Receipt voucher generated automatically for invoice ${data.invoiceNumber}`,
@@ -829,13 +832,13 @@ export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyI
 
     const todayStr = nowDate().toISOString().split('T')[0];
     const todayMonthId = todayStr.slice(0, 7);
-    const dataMonthId = data.date ? data.date.slice(0, 7) : '';
+    const dataMonthId = data.docDate ? data.docDate.slice(0, 7) : '';
     const openMonthIds = new Set(openMonths.map((m: any) => m.id));
 
     let finalReversalDate = todayStr;
     if (!openMonthIds.has(todayMonthId)) {
-      if (data.date && openMonthIds.has(dataMonthId)) {
-        finalReversalDate = data.date;
+      if (data.docDate && openMonthIds.has(dataMonthId)) {
+        finalReversalDate = data.docDate;
       } else if (openMonths.length) {
         const oldestOpenMonth = openMonths.slice().sort((a: any, b: any) => a.id.localeCompare(b.id))[0];
         finalReversalDate = oldestOpenMonth.id + '-01';
@@ -848,7 +851,7 @@ export async function syncVoucherForInvoice(tx: any, invoiceId: string, companyI
         id: generateId(),
         voucherNumber,
         type: 'Reversal',
-        date: finalReversalDate,
+        ...documentDates(finalReversalDate),
         bankId: original.bankId,
         amount: original.amount,
         description: `Reversal voucher for cancelled invoice ${data.invoiceNumber || ''} (Original: ${original.voucherNumber})`,
@@ -946,7 +949,7 @@ export async function postCreditNoteReversalVoucher(
       id: generateId(),
       voucherNumber,
       type: 'Reversal',
-      date: finalReversalDate,
+      ...documentDates(finalReversalDate),
       bankId: existingVoucher.bankId,
       amount: opts.amount.toFixed(2),
       description: `Reversal voucher for POS return (Credit Note: ${opts.creditNoteNumber}, Original: ${existingVoucher.voucherNumber})`,
@@ -982,7 +985,7 @@ export async function postCreditNoteReversalVoucher(
       id: generateId(),
       voucherNumber,
       type: 'Reversal',
-      date: finalReversalDate,
+      ...documentDates(finalReversalDate),
       bankId: original.bankId,
       amount: original.amount,
       description: `Reversal voucher for credited invoice (Original: ${original.voucherNumber})`,

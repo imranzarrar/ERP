@@ -308,7 +308,7 @@ export default function InvoiceViewScreen({ db, invoiceId, onBack, onPrintDoc, o
             </div>
             <div className="text-right">
               <p className="text-xs text-slate-400 font-semibold">{t('Issue date')}</p>
-              <p className="font-semibold text-slate-700">{inv.date}</p>
+              <p className="font-semibold text-slate-700">{inv.docDate}</p>
             </div>
           </div>
           <table className="w-full text-sm border-collapse">
@@ -449,7 +449,7 @@ export default function InvoiceViewScreen({ db, invoiceId, onBack, onPrintDoc, o
                     return (
                       <div key={v.id} className="flex items-center justify-between text-[11px] py-1">
                         <div className="min-w-0">
-                          <p className="font-semibold text-slate-700 truncate">{v.date} — {vBank?.bankName || t('Bank Account')}</p>
+                          <p className="font-semibold text-slate-700 truncate">{v.docDate} — {vBank?.bankName || t('Bank Account')}</p>
                           <p className="text-slate-400 font-mono">{v.voucherNumber}</p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">

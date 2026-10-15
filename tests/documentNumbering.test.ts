@@ -232,7 +232,7 @@ describe('End-to-end wiring: real routes actually call the new function', () => 
       method: 'POST',
       body: JSON.stringify({
         quotationData: {
-          date: new Date().toISOString().slice(0, 10), customerId, taxSlabId, notes: '', status: 'Draft', createdById: adminUserId,
+          docDate: new Date().toISOString().slice(0, 10), customerId, taxSlabId, notes: '', status: 'Draft', createdById: adminUserId,
           items: [{ id: generateId(), description: 'Widget', unitCost: 10, quantity: 1, unit: 'PCE', productId }],
         },
       }),

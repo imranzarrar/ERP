@@ -60,7 +60,7 @@ const accounts = async (s: string) => (await get(s, '/api/ledger/accounts')).bod
 const acct = (list: any[], code: string) => list.find(a => a.code === code);
 let ids: Record<string, string> = {};
 const journal = (over: any = {}) => ({
-  date: D('05'), description: 'Accrue office supplies', reference: 'INV-77',
+  docDate: D('05'), description: 'Accrue office supplies', reference: 'INV-77',
   lines: [{ accountId: ids.expense, debit: 100 }, { accountId: ids.income, credit: 100 }], ...over,
 });
 const newDraft = async (over: any = {}) => (await post(prep, '/api/ledger/manual-journals', journal(over))).body;
@@ -99,7 +99,7 @@ describe('drafting a manual journal', () => {
     expect((await post(prep, '/api/ledger/manual-journals', journal({ lines: [{ accountId: ids.expense, debit: 5, credit: 5 }] }))).status).toBe(400); // both sides
     expect((await post(prep, '/api/ledger/manual-journals', journal({ lines: [{ accountId: ids.expense }] }))).status).toBe(400); // neither side
     expect((await post(prep, '/api/ledger/manual-journals', journal({ description: '  ' }))).status).toBe(400);
-    expect((await post(prep, '/api/ledger/manual-journals', journal({ date: 'soon' }))).status).toBe(400);
+    expect((await post(prep, '/api/ledger/manual-journals', journal({ docDate: 'soon' }))).status).toBe(400);
     expect((await post(prep, '/api/ledger/manual-journals', journal({ branchId: generateId() }))).status).toBe(400);
     // an inactive account is refused too
     const tmp = await post(A.admin, '/api/ledger/accounts', { code: '6890', name: 'Temp', type: 'Expense' });
@@ -127,7 +127,7 @@ describe('approval (maker-checker)', () => {
     const un = await newDraft({ lines: [{ accountId: ids.expense, debit: 100 }, { accountId: ids.income, credit: 60 }] });
     const r = await post(prep, `/api/ledger/manual-journals/${un.id}/submit`);
     expect(r.status).toBe(400); expect(r.body.error).toMatch(/balance/i);
-    const closed = await newDraft({ date: '2025-01-15' });
+    const closed = await newDraft({ docDate: '2025-01-15' });
     const r2 = await post(prep, `/api/ledger/manual-journals/${closed.id}/submit`);
     expect(r2.status).toBe(400); expect(r2.body.error).toMatch(/closed/i);
     const single = await newDraft({ lines: [{ accountId: ids.expense, debit: 0.01 }] });
@@ -183,7 +183,7 @@ describe('approval (maker-checker)', () => {
   });
 
   it('re-checks the period at approval: a month closed after submission blocks posting', async () => {
-    const d = await newDraft({ date: D('06') });
+    const d = await newDraft({ docDate: D('06') });
     await post(prep, `/api/ledger/manual-journals/${d.id}/submit`);
     await db.update(schema.fiscalMonths).set({ status: 'Closed' }).where(and(eq(schema.fiscalMonths.id, MONTH), eq(schema.fiscalMonths.companyId, A.id)));
     try {
@@ -207,7 +207,7 @@ describe('discard', () => {
 describe('reversal', () => {
   it('starts a reversing draft that itself needs approval, posts the mirror, and cannot be repeated', async () => {
     const orig = await posted({ description: 'To be reversed', lines: [{ accountId: ids.expense, debit: 33 }, { accountId: ids.income, credit: 33 }] });
-    const rv = await post(appr, `/api/ledger/manual-journals/${orig.id}/reverse`, { reason: 'Posted by mistake', date: D('07') });
+    const rv = await post(appr, `/api/ledger/manual-journals/${orig.id}/reverse`, { reason: 'Posted by mistake', docDate: D('07') });
     expect(rv.status).toBe(200);
     expect((await post(appr, `/api/ledger/manual-journals/${orig.id}/reverse`, { reason: 'again' })).status).toBe(400); // already in progress
     expect((await post(prep, `/api/ledger/manual-journals/${orig.id}/reverse`, { reason: 'x' })).status).toBe(403); // no reverse key
@@ -274,7 +274,7 @@ describe('journal listing and entry detail', () => {
 
 describe('ledger reports', () => {
   it('General Ledger: opening, movements, running balance and closing add up', async () => {
-    await posted({ date: D('08'), lines: [{ accountId: ids.expense, debit: 10 }, { accountId: ids.income, credit: 10 }] });
+    await posted({ docDate: D('08'), lines: [{ accountId: ids.expense, debit: 10 }, { accountId: ids.income, credit: 10 }] });
     const gl = (await get(appr, `/api/ledger/reports/general-ledger?accountId=${ids.expense}&from=${D('01')}&to=${TODAY}`)).body;
     const dr = gl.rows.reduce((s: number, r: any) => s + r.debit, 0), cr = gl.rows.reduce((s: number, r: any) => s + r.credit, 0);
     expect(gl.totals.debit).toBeCloseTo(dr, 2);
@@ -412,7 +412,7 @@ describe('expenses post to the account their category is mapped to', () => {
     const [vendor] = await db.select().from(schema.vendors).where(eq(schema.vendors.companyId, A.id));
     const [slab] = await db.select().from(schema.taxSlabs).where(eq(schema.taxSlabs.companyId, A.id));
     const [bank] = await db.select().from(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, A.id));
-    const mk = async (n: string) => post(A.admin, '/api/expenses', { date: TODAY, vendorId: vendor.id, taxSlabId: slab.id, bankId: bank.id, description: n, billNumber: n, amount: 115, status: 'Active', type: 'Actual', paymentStatus: 'Unpaid', expenseType: 'Govt Expenses' });
+    const mk = async (n: string) => post(A.admin, '/api/expenses', { docDate: TODAY, vendorId: vendor.id, taxSlabId: slab.id, bankId: bank.id, description: n, billNumber: n, amount: 115, status: 'Active', type: 'Actual', paymentStatus: 'Unpaid', expenseType: 'Govt Expenses' });
     expect((await mk('B-1')).status).toBe(200);
     expect((await put(A.admin, '/api/ledger/mapping/category', { category: 'Govt Expenses', accountId: rent.id })).status).toBe(200);
     expect((await mk('B-2')).status).toBe(200);

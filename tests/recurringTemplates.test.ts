@@ -192,7 +192,7 @@ describe('Accrual entry edit/delete', () => {
     await db.insert(schema.expenses).values({
       id,
       expenseNumber: `EXP-ACC-${id}`,
-      date: today,
+      docDate: today, postingDate: today,
       vendorId,
       taxSlabId,
       bankId,
@@ -217,7 +217,7 @@ describe('Accrual entry edit/delete', () => {
 
     const { status, body } = await api(`/api/transactions/accruals/${accId}`, {
       method: 'PUT',
-      body: JSON.stringify({ description: 'Updated accrual description', amount: 950, vendorId, bankId, date: today, taxSlabId }),
+      body: JSON.stringify({ description: 'Updated accrual description', amount: 950, vendorId, bankId, docDate: today, taxSlabId }),
     });
     expect(status).toBe(200);
     expect(body.success).toBe(true);
@@ -233,7 +233,7 @@ describe('Accrual entry edit/delete', () => {
 
     const { status, body } = await api(`/api/transactions/accruals/${accId}`, {
       method: 'PUT',
-      body: JSON.stringify({ description: 'Bad amount', amount: -5, vendorId, bankId, date: today, taxSlabId }),
+      body: JSON.stringify({ description: 'Bad amount', amount: -5, vendorId, bankId, docDate: today, taxSlabId }),
     });
     expect(status).toBe(400);
     expect(body.error).toMatch(/valid amount/);

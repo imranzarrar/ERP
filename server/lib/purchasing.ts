@@ -12,6 +12,7 @@ import { getAndIncrementDocumentNumber } from './documentNumbering.js';
 import { generateId } from '../../src/id.js';
 import { postJournalEntry, reverseAllEntriesFor } from './ledger.js';
 import { nowDate } from './clock.js';
+import { documentDates } from './documentDates.js';
 
 // Drizzle/node-postgres return decimal columns as strings and timestamp columns as Date
 // objects — fine for server-side math (everything here already goes through Number(...)/
@@ -27,8 +28,7 @@ import { nowDate } from './clock.js';
 export function normalizePurchaseBillForClient(bill: typeof schema.purchaseBills.$inferSelect): any {
   return {
     ...bill,
-    date: bill.date instanceof Date ? bill.date.toISOString() : bill.date,
-    dueDate: bill.dueDate instanceof Date ? bill.dueDate.toISOString() : bill.dueDate,
+    createdAt: bill.createdAt instanceof Date ? bill.createdAt.toISOString() : bill.createdAt,
     subTotal: Number(bill.subTotal),
     taxTotal: Number(bill.taxTotal),
     grandTotal: Number(bill.grandTotal),
@@ -44,7 +44,7 @@ export interface CreatePurchaseBillInput {
   dueDate?: string | null;
   vendorBillNumber?: string | null;
   // The bill's own date (the supplier invoice date), YYYY-MM-DD — mandatory, validated by the caller like every other dated document.
-  date: string;
+  docDate: string;
   userId: string;
 }
 
@@ -52,7 +52,7 @@ export interface CreatePurchaseBillInput {
 // entry for each referenced GRN) / Dr VAT Input (tax amount, now claimable) / Cr AP
 // (full tax-inclusive total).
 export async function createPurchaseBillForGrns(tx: any, input: CreatePurchaseBillInput) {
-  const { companyId, grnIds, branchId, bankId, dueDate, vendorBillNumber, userId, date } = input;
+  const { companyId, grnIds, branchId, bankId, dueDate, vendorBillNumber, userId, docDate: date } = input;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) {
     const err: any = new Error('A bill date is required (YYYY-MM-DD).');
     err.status = 400;
@@ -117,9 +117,9 @@ export async function createPurchaseBillForGrns(tx: any, input: CreatePurchaseBi
     billNumber,
     vendorBillNumber: vendorBillNumber || null,
     vendorId: vendorId!,
-    // A bill entered today keeps its entry time; a back-dated one sits at noon UTC of its day.
-    date: date === nowDate().toISOString().slice(0, 10) ? nowDate() : new Date(date + 'T12:00:00.000Z'),
-    dueDate: dueDate ? new Date(dueDate) : null,
+    ...documentDates(date),
+    createdAt: nowDate(),
+    dueDate: dueDate ? String(dueDate).slice(0, 10) : null,
     grnIds: grns.map((g: any) => g.id).join(','),
     subTotal: String(subTotal),
     taxTotal: String(taxTotal),
@@ -139,7 +139,7 @@ export async function createPurchaseBillForGrns(tx: any, input: CreatePurchaseBi
     await postJournalEntry(tx, {
       companyId,
       branchId,
-      date: billDateStr,
+      postingDate: billDateStr,
       referenceType: 'PurchaseBill',
       referenceId: billId,
       description: `Purchase Bill ${billNumber} raised`,
@@ -158,7 +158,7 @@ export async function createPurchaseBillForGrns(tx: any, input: CreatePurchaseBi
 export interface PayPurchaseBillInput {
   companyId: string;
   billId: string;
-  date: string;
+  docDate: string;
   bankId?: string | null;
   // Undefined pays the full remaining balance — used by the GRN auto-post-bill flow,
   // which always pays in full.
@@ -168,7 +168,7 @@ export interface PayPurchaseBillInput {
 
 // Row 10: Dr AP / Cr Bank, for whatever installment is actually paid.
 export async function payPurchaseBillInFull(tx: any, input: PayPurchaseBillInput) {
-  const { companyId, billId, date, bankId, amount, userId } = input;
+  const { companyId, billId, docDate: date, bankId, amount, userId } = input;
   const [bill] = await tx.select().from(schema.purchaseBills)
     .where(and(eq(schema.purchaseBills.id, billId), eq(schema.purchaseBills.companyId, companyId)))
     .for('update');
@@ -232,7 +232,7 @@ export async function payPurchaseBillInFull(tx: any, input: PayPurchaseBillInput
     id: generateId(),
     voucherNumber,
     type: 'Payment',
-    date,
+    ...documentDates(date),
     bankId: targetBankId,
     amount: String(amountToPost),
     description: `Payment voucher for purchase bill ${bill.billNumber} (${amountToPost.toFixed(2)})`,
@@ -247,7 +247,7 @@ export async function payPurchaseBillInFull(tx: any, input: PayPurchaseBillInput
   await postJournalEntry(tx, {
     companyId,
     branchId: bill.branchId,
-    date,
+    postingDate: date,
     referenceType: 'PurchaseBill',
     referenceId: billId,
     description: `Payment for purchase bill ${bill.billNumber} (installment)`,

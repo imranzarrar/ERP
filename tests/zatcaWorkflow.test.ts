@@ -138,7 +138,7 @@ async function createInvoice(amountPaid = 0) {
     method: 'POST',
     body: JSON.stringify({
       invoiceData: {
-        date: new Date().toISOString().split('T')[0],
+        docDate: new Date().toISOString().split('T')[0],
         customerId,
         taxSlabId,
         bankId,
@@ -310,7 +310,7 @@ describe('QR code generated even when ZATCA is disabled (Phase 1 compliance prev
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: new Date().toISOString().split('T')[0],
+          docDate: new Date().toISOString().split('T')[0],
           customerId: completeCustomerId,
           taxSlabId,
           bankId,
@@ -430,7 +430,7 @@ describe('Resubmission identity: fresh mint vs safe reuse of ICV/UUID/PIH', () =
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: new Date().toISOString().split('T')[0],
+          docDate: new Date().toISOString().split('T')[0],
           customerId: completeCustomerId,
           taxSlabId,
           bankId,

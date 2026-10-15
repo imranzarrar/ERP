@@ -250,7 +250,7 @@ describe('POST /api/transactions/investors/:id/investment', () => {
       body: JSON.stringify({
         bankId,
         amount: 5000,
-        date: new Date().toISOString().split('T')[0],
+        docDate: new Date().toISOString().split('T')[0],
         description: 'Initial capital injection',
       }),
     });
@@ -273,7 +273,7 @@ describe('POST /api/transactions/investors/:id/investment', () => {
       body: JSON.stringify({
         bankId,
         amount: 1500,
-        date: new Date().toISOString().split('T')[0],
+        docDate: new Date().toISOString().split('T')[0],
         description: 'Second injection',
       }),
     });
@@ -289,7 +289,7 @@ describe('POST /api/transactions/investors/:id/investment', () => {
       body: JSON.stringify({
         bankId,
         amount: 0,
-        date: new Date().toISOString().split('T')[0],
+        docDate: new Date().toISOString().split('T')[0],
         description: 'Invalid',
       }),
     });
@@ -302,7 +302,7 @@ describe('POST /api/transactions/investors/:id/investment', () => {
       body: JSON.stringify({
         bankId: generateId(),
         amount: 100,
-        date: new Date().toISOString().split('T')[0],
+        docDate: new Date().toISOString().split('T')[0],
         description: 'Bad bank',
       }),
     });
@@ -315,7 +315,7 @@ describe('POST /api/transactions/investors/:id/investment', () => {
       body: JSON.stringify({
         bankId,
         amount: 100,
-        date: new Date().toISOString().split('T')[0],
+        docDate: new Date().toISOString().split('T')[0],
         description: 'Cross-tenant attempt',
       }),
     });

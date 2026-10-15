@@ -123,12 +123,12 @@ beforeAll(async () => {
   invoiceBId = generateId();
   await db.insert(schema.invoices).values([
     {
-      id: invoiceAId, invoiceNumber: 'INV-SCOPE-A', date: '2026-08-01', customerId: customerAId,
+      id: invoiceAId, invoiceNumber: 'INV-SCOPE-A', docDate: '2026-08-01', postingDate: '2026-08-01', customerId: customerAId,
       taxSlabId: taxSlabAId, bankId: bankAId, paymentStatus: 'Unpaid', notes: 'x', status: 'Active',
       createdById: scopedAdminId, createdAt: new Date(), companyId: companyAId,
     },
     {
-      id: invoiceBId, invoiceNumber: 'INV-SCOPE-B', date: '2026-08-01', customerId: customerBId,
+      id: invoiceBId, invoiceNumber: 'INV-SCOPE-B', docDate: '2026-08-01', postingDate: '2026-08-01', customerId: customerBId,
       taxSlabId: taxSlabBId, bankId: bankBId, paymentStatus: 'Unpaid', notes: 'x', status: 'Active',
       createdById: superAdminId, createdAt: new Date(), companyId: companyBId,
     },

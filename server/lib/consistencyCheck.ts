@@ -110,8 +110,8 @@ export async function computeConsistencyCheck(executor: any, companyId: string, 
   add('R4.2', 'Filed VAT returns keep the figures they were filed with', moved4b.length === 0, moved4b.join('; '));
 
   // ---------------- R5: the books balance at every month end ----------------
-  const firstDoc: any[] = await executor.select({ d: schema.invoices.date }).from(schema.invoices).where(eq(schema.invoices.companyId, companyId));
-  const firstExp: any[] = await executor.select({ d: schema.expenses.date }).from(schema.expenses).where(eq(schema.expenses.companyId, companyId));
+  const firstDoc: any[] = await executor.select({ d: schema.invoices.docDate }).from(schema.invoices).where(eq(schema.invoices.companyId, companyId));
+  const firstExp: any[] = await executor.select({ d: schema.expenses.docDate }).from(schema.expenses).where(eq(schema.expenses.companyId, companyId));
   const firstMonth = [...firstDoc, ...firstExp].map(r => String(r.d).slice(0, 7)).sort()[0];
   const badMonthEnds: string[] = [];
   if (firstMonth) {
@@ -129,7 +129,7 @@ export async function computeConsistencyCheck(executor: any, companyId: string, 
   // ---------------- R6: ledger vs documents (informational) ----------------
   const lines: any[] = await executor.select({ k: schema.journalLines.accountKey, dr: schema.journalLines.debit, cr: schema.journalLines.credit })
     .from(schema.journalLines).innerJoin(schema.journalEntries, eq(schema.journalLines.journalEntryId, schema.journalEntries.id))
-    .where(and(eq(schema.journalLines.companyId, companyId), lte(schema.journalEntries.date, asOf)));
+    .where(and(eq(schema.journalLines.companyId, companyId), lte(schema.journalEntries.postingDate, asOf)));
   const net = (k: string) => round2(lines.filter(l => l.k === k).reduce((n, l) => n + Number(l.dr) - Number(l.cr), 0));
   if (lines.length > 0) {
     const pairs: [string, number, number][] = [

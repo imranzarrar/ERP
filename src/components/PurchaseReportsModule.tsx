@@ -116,11 +116,11 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
   // 3. PO Status — every PO by fulfillment status, with aging for what's still open.
   const getPoStatusData = () => {
     const rows = companyPOs
-      .filter((po: any) => appliedBranchMatches(po.branchId) && po.date >= appliedFilters.startDate && po.date <= appliedFilters.endDate && (appliedFilters.vendorId === 'ALL' || po.vendorId === appliedFilters.vendorId))
+      .filter((po: any) => appliedBranchMatches(po.branchId) && po.docDate >= appliedFilters.startDate && po.docDate <= appliedFilters.endDate && (appliedFilters.vendorId === 'ALL' || po.vendorId === appliedFilters.vendorId))
       .map((po: any) => {
         const vend = db.vendors.find(v => v.id === po.vendorId);
         const isOpen = po.status === 'Sent' || po.status === 'Partially Received';
-        return { poNumber: po.poNumber, date: po.date, vendorName: vend?.name || '', status: po.status, totalAmount: Number(po.totalAmount), ageDays: isOpen ? daysBetween(TODAY, po.date) : null };
+        return { poNumber: po.poNumber, date: po.docDate, vendorName: vend?.name || '', status: po.status, totalAmount: Number(po.totalAmount), ageDays: isOpen ? daysBetween(TODAY, po.docDate) : null };
       })
       .sort((a: any, b: any) => a.date.localeCompare(b.date));
     // Cancelled POs stay visible (status column already shows them) but never count
@@ -131,7 +131,7 @@ export default function PurchaseReportsModule({ db, defaultReportType, onPrintDo
   // 4. GRN vs. PO Variance — ordered vs. actually received quantity per PO line, summed
   // across every (non-reversed) GRN raised against that PO.
   const getGrnPoVarianceData = () => {
-    const pos = companyPOs.filter((po: any) => appliedBranchMatches(po.branchId) && po.date >= appliedFilters.startDate && po.date <= appliedFilters.endDate && (appliedFilters.vendorId === 'ALL' || po.vendorId === appliedFilters.vendorId));
+    const pos = companyPOs.filter((po: any) => appliedBranchMatches(po.branchId) && po.docDate >= appliedFilters.startDate && po.docDate <= appliedFilters.endDate && (appliedFilters.vendorId === 'ALL' || po.vendorId === appliedFilters.vendorId));
     const rows: any[] = [];
     pos.forEach((po: any) => {
       const vend = db.vendors.find(v => v.id === po.vendorId);

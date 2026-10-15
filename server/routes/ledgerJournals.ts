@@ -18,6 +18,7 @@ import { getAndIncrementDocumentNumber } from '../lib/documentNumbering.js';
 import { validateTransactionDate, assertQuarterNotFiled, assertQuarterNotFrozen } from '../lib/businessLogic.js';
 import { branchIdsFor, dimFilterSql, round2, uuidArray } from '../lib/ledgerQueries.js';
 import { applyRules, entitiesOfType, loadRules, loadTypes, parseDimFilters, resolveCombination, tagsOfCombinations, type Tags } from '../lib/dimensions.js';
+import { documentDates } from '../lib/documentDates.js';
 
 const router = express.Router();
 const fail = (res: any, status: number, error: string) => res.status(status).json({ error });
@@ -197,8 +198,8 @@ router.get('/journals', withTenantDb, async (req: any, res) => {
     if (source === 'manual') where.push(sql`i.kind = 'manual'`);
     else if (source === 'opening') where.push(sql`i.source = 'Opening'`);
     else if (source === 'documents') where.push(sql`i.kind = 'entry' AND i.source <> 'Opening'`);
-    if (from) where.push(sql`i.date >= ${from}`);
-    if (to) where.push(sql`i.date <= ${to}`);
+    if (from) where.push(sql`i.posting_date >= ${from}`);
+    if (to) where.push(sql`i.posting_date <= ${to}`);
     if (mineOnly) where.push(sql`i.user_id = ${req.user.id}::uuid`);
     if (accountId) where.push(sql`(CASE WHEN i.kind = 'entry' THEN EXISTS (SELECT 1 FROM journal_lines l WHERE l.journal_entry_id = i.id::uuid AND l.company_id = ${companyId}::uuid AND l.account_id = ${accountId}::uuid)
       ELSE EXISTS (SELECT 1 FROM manual_journal_lines ml WHERE ml.journal_id = i.id::uuid AND ml.company_id = ${companyId}::uuid AND ml.account_id = ${accountId}::uuid) END)`);
@@ -209,17 +210,17 @@ router.get('/journals', withTenantDb, async (req: any, res) => {
     if (branchIds) where.push(sql`i.branch_id = ANY(${uuidArray(branchIds)})`);
     const items = sql`(
       WITH ranked AS (
-        SELECT e.id, e.date, e.reference_type, e.description, e.branch_id, e.created_at, e.created_by_id,
+        SELECT e.id, e.posting_date, e.doc_date, e.reference_type, e.description, e.branch_id, e.created_at, e.created_by_id,
                ROW_NUMBER() OVER (ORDER BY e.created_at, e.id) AS rn
         FROM journal_entries e WHERE e.company_id = ${companyId}::uuid AND e.reference_type <> 'Manual'
       )
-      SELECT 'entry'::text AS kind, r.id::text AS id, 'JE-' || LPAD(r.rn::text, 5, '0') AS number, r.date, r.description, r.reference_type AS source,
+      SELECT 'entry'::text AS kind, r.id::text AS id, 'JE-' || LPAD(r.rn::text, 5, '0') AS number, r.posting_date, r.doc_date, r.description, r.reference_type AS source,
              'Posted'::text AS status, r.branch_id, NULL::text AS reference,
              (SELECT COALESCE(SUM(l.debit),0) FROM journal_lines l WHERE l.journal_entry_id = r.id AND l.company_id = ${companyId}::uuid)::float8 AS amount,
              r.created_by_id AS user_id, r.created_at AS at
       FROM ranked r
       UNION ALL
-      SELECT 'manual'::text, mj.id::text, mj.number, mj.date, mj.description, 'Manual'::text, mj.status, mj.branch_id, mj.reference,
+      SELECT 'manual'::text, mj.id::text, mj.number, mj.posting_date, mj.doc_date, mj.description, 'Manual'::text, mj.status, mj.branch_id, mj.reference,
              (SELECT COALESCE(SUM(ml.debit),0) FROM manual_journal_lines ml WHERE ml.journal_id = mj.id AND ml.company_id = ${companyId}::uuid)::float8,
              mj.prepared_by_id, mj.prepared_at
       FROM manual_journals mj WHERE mj.company_id = ${companyId}::uuid
@@ -227,10 +228,10 @@ router.get('/journals', withTenantDb, async (req: any, res) => {
     const whereSql = sql.join(where, sql` AND `);
     const total: any = await tdb.execute(sql`SELECT COUNT(*)::int AS n FROM ${items} WHERE ${whereSql}`);
     const rows: any = await tdb.execute(sql`
-      SELECT i.kind, i.id, i.number, i.date, i.description, i.source, i.status, i.branch_id AS "branchId", i.reference, i.amount, i.user_id AS "userId", u.username AS "userName", i.at
+      SELECT i.kind, i.id, i.number, i.posting_date AS "postingDate", i.doc_date AS "docDate", i.description, i.source, i.status, i.branch_id AS "branchId", i.reference, i.amount, i.user_id AS "userId", u.username AS "userName", i.at
       FROM ${items} LEFT JOIN users u ON u.id = i.user_id
       WHERE ${whereSql}
-      ORDER BY i.date DESC, i.at DESC, i.id DESC
+      ORDER BY i.posting_date DESC, i.at DESC, i.id DESC
       LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`);
     const counts: any = await tdb.execute(sql`SELECT status, COUNT(*)::int AS n FROM manual_journals WHERE company_id = ${companyId}::uuid${branchIds ? sql` AND branch_id = ANY(${uuidArray(branchIds)})` : sql``} GROUP BY status`);
     const byStatus: Record<string, number> = {};
@@ -278,7 +279,7 @@ router.get('/journals/entries/:id', withTenantDb, async (req: any, res) => {
     } catch { /* a document we cannot name is shown by its type only */ }
     const [reversedBy] = await tdb.select({ id: schema.journalEntries.id }).from(schema.journalEntries).where(and(eq(schema.journalEntries.companyId, companyId), eq(schema.journalEntries.reversalOfId, id)));
     res.json({
-      id: e.id, date: e.date, description: e.description, referenceType: e.referenceType, referenceId: e.referenceId, documentNumber,
+      id: e.id, docDate: e.docDate, postingDate: e.postingDate, description: e.description, referenceType: e.referenceType, referenceId: e.referenceId, documentNumber,
       branchId: e.branchId, createdByName: creator?.username || '', createdAt: e.createdAt, reversalOfId: e.reversalOfId, reversedById: reversedBy?.id || null,
       lines: outLines, totalDebit: round2(outLines.reduce((s: number, l: any) => s + l.debit, 0)), totalCredit: round2(outLines.reduce((s: number, l: any) => s + l.credit, 0)),
     });
@@ -303,9 +304,11 @@ router.post('/manual-journals', withTenantDb, async (req: any, res) => {
     const tdb = tenantDb();
     const companyId = req.targetCompanyId;
     const b = req.body || {};
-    const date = String(b.date || '');
+    const docDate = String(b.docDate || '');
+    const postingDate = String(b.postingDate || docDate);
     const description = String(b.description ?? '').trim();
-    if (!DATE_RE.test(date) || isNaN(Date.parse(date))) return fail(res, 400, 'Enter a valid date.');
+    if (!DATE_RE.test(docDate) || isNaN(Date.parse(docDate))) return fail(res, 400, 'Enter a valid document date.');
+    if (!DATE_RE.test(postingDate) || isNaN(Date.parse(postingDate))) return fail(res, 400, 'Enter a valid posting date.');
     if (!description) return fail(res, 400, 'A description (narration) is required.');
     if (description.length > 300) return fail(res, 400, 'The description can be up to 300 characters.');
     const br = await resolveBranch(tdb, req, b.branchId);
@@ -314,17 +317,17 @@ router.post('/manual-journals', withTenantDb, async (req: any, res) => {
     if (checked.error) return fail(res, 400, checked.error);
     if (checked.lines.length === 0) return fail(res, 400, 'Add at least one line.');
     const id = generateId();
-    const number = await getAndIncrementDocumentNumber(tdb, companyId, 'manualJournal', date, br.branchId);
+    const number = await getAndIncrementDocumentNumber(tdb, companyId, 'manualJournal', docDate, br.branchId);
     // isolation-ok: branchId was resolved by resolveBranch (this company's own branch the user may access) just above
     await tdb.insert(schema.manualJournals).values({
-      id, companyId, number, date, description, reference: String(b.reference ?? '').trim().slice(0, 100) || null, preparerNote: String(b.preparerNote ?? '').trim().slice(0, 500) || null,
+      id, companyId, number, ...documentDates(docDate, postingDate), description, reference: String(b.reference ?? '').trim().slice(0, 100) || null, preparerNote: String(b.preparerNote ?? '').trim().slice(0, 500) || null,
       branchId: br.branchId, status: 'Draft', preparedById: req.user.id, preparedAt: nowDate(),
     });
     // isolation-ok: every accountId was verified to be an active posting account of this company by checkLines above
     const combos = await lineCombinations(tdb, req, companyId, checked.lines, 'draft');
     await tdb.insert(schema.manualJournalLines).values(checked.lines.map((l, i) => ({ id: generateId(), journalId: id, companyId, accountId: l.accountId, debit: String(l.debit), credit: String(l.credit), note: l.note, sortOrder: i, dimensionCombinationId: combos[i] })));
     await addEvent(tdb, req, id, 'Prepared');
-    recordAuditLog(req, 'CREATE_MANUAL_JOURNAL', 'manual_journal', id, { number, date });
+    recordAuditLog(req, 'CREATE_MANUAL_JOURNAL', 'manual_journal', id, { number, docDate, postingDate });
     res.json({ success: true, id, number });
   } catch (e: any) { fail(res, e.status || 500, e.message); }
 });
@@ -340,9 +343,12 @@ router.put('/manual-journals/:id', withTenantDb, async (req: any, res) => {
     if (j.status !== 'Draft' && j.status !== 'Rejected') return fail(res, 400, `A ${j.status.toLowerCase()} journal cannot be edited.${j.status === 'Posted' ? ' Reverse it instead.' : ''}`);
     if (j.reversalOfId) return fail(res, 400, 'A reversal journal is generated from the original and cannot be edited; discard it and start a new one if it is wrong.');
     const b = req.body || {};
-    const date = b.date === undefined ? j.date : String(b.date);
+    const docDate = b.docDate === undefined ? j.docDate : String(b.docDate);
+    // the posting date follows the document date unless it was set apart on purpose
+    const postingDate = b.postingDate !== undefined ? String(b.postingDate || docDate) : (j.postingDate === j.docDate ? docDate : j.postingDate);
     const description = b.description === undefined ? j.description : String(b.description).trim();
-    if (!DATE_RE.test(date) || isNaN(Date.parse(date))) return fail(res, 400, 'Enter a valid date.');
+    if (!DATE_RE.test(docDate) || isNaN(Date.parse(docDate))) return fail(res, 400, 'Enter a valid document date.');
+    if (!DATE_RE.test(postingDate) || isNaN(Date.parse(postingDate))) return fail(res, 400, 'Enter a valid posting date.');
     if (!description) return fail(res, 400, 'A description (narration) is required.');
     if (description.length > 300) return fail(res, 400, 'The description can be up to 300 characters.');
     let branchId = j.branchId;
@@ -354,7 +360,7 @@ router.put('/manual-journals/:id', withTenantDb, async (req: any, res) => {
       if (checked.lines.length === 0) return fail(res, 400, 'Add at least one line.');
     }
     await tdb.update(schema.manualJournals).set({
-      date, description, branchId,
+      docDate, postingDate, description, branchId,
       reference: b.reference === undefined ? j.reference : (String(b.reference ?? '').trim().slice(0, 100) || null),
       preparerNote: b.preparerNote === undefined ? j.preparerNote : (String(b.preparerNote ?? '').trim().slice(0, 500) || null),
       status: 'Draft',
@@ -384,7 +390,7 @@ router.post('/manual-journals/:id/submit', withTenantDb, async (req: any, res) =
     if (checked.error) return fail(res, 400, checked.error);
     await lineCombinations(tdb, req, companyId, checked.lines, 'strict'); // Required dimensions must be present before it goes for approval
     const touchesVat = checked.lines.some(l => VAT_ROLES.includes(checked.accounts.get(l.accountId)?.systemKey));
-    await checkPeriod(companyId, j.date, touchesVat);
+    await checkPeriod(companyId, j.postingDate, touchesVat);
     await tdb.update(schema.manualJournals).set({ status: 'Pending', submittedAt: nowDate(), decisionNote: null }).where(and(eq(schema.manualJournals.id, j.id), eq(schema.manualJournals.companyId, companyId)));
     await addEvent(tdb, req, j.id, 'Submitted', String(req.body?.note ?? '').trim().slice(0, 300) || null);
     recordAuditLog(req, 'SUBMIT_MANUAL_JOURNAL', 'manual_journal', j.id, { number: j.number });
@@ -410,7 +416,7 @@ router.post('/manual-journals/:id/approve', withTenantDb, async (req: any, res) 
     if (checked.error) return fail(res, 400, checked.error);
     const combos = await lineCombinations(tdb, req, companyId, checked.lines, j.reversalOfId ? 'draft' : 'strict'); // a reversal mirrors the original's tags as they were
     const touchesVat = checked.lines.some(l => VAT_ROLES.includes(checked.accounts.get(l.accountId)?.systemKey));
-    await checkPeriod(companyId, j.date, touchesVat);
+    await checkPeriod(companyId, j.postingDate, touchesVat);
     // A reversal is posted as the mirror of the entry it reverses, linked to it.
     let reversalOfEntryId: string | null = null;
     if (j.reversalOfId) {
@@ -419,7 +425,7 @@ router.post('/manual-journals/:id/approve', withTenantDb, async (req: any, res) 
       reversalOfEntryId = orig.journalEntryId;
     }
     const entryId = await postJournalEntry(tdb, {
-      companyId, branchId: j.branchId, date: j.date, referenceType: 'Manual', referenceId: j.id,
+      companyId, branchId: j.branchId, postingDate: j.postingDate, docDate: j.docDate, referenceType: 'Manual', referenceId: j.id,
       reversalOfId: reversalOfEntryId, description: `${j.number}: ${j.description}`, createdById: j.preparedById,
       lines: checked.lines.map((l, i) => ({ accountId: l.accountId, debit: l.debit || undefined, credit: l.credit || undefined, dimensionCombinationId: combos[i] })),
     });
@@ -482,16 +488,16 @@ router.post('/manual-journals/:id/reverse', withTenantDb, async (req: any, res) 
     const [pending] = await tdb.select({ id: schema.manualJournals.id, number: schema.manualJournals.number }).from(schema.manualJournals)
       .where(and(eq(schema.manualJournals.companyId, companyId), eq(schema.manualJournals.reversalOfId, orig.id)));
     if (pending) return fail(res, 400, `A reversal (${pending.number}) is already in progress for this journal.`);
-    const date = req.body?.date ? String(req.body.date) : todayStr();
+    const date = req.body?.docDate ? String(req.body.docDate) : todayStr();
     if (!DATE_RE.test(date) || isNaN(Date.parse(date))) return fail(res, 400, 'Enter a valid date for the reversal.');
-    if (date < orig.date) return fail(res, 400, 'A reversal cannot be dated before the journal it reverses.');
+    if (date < orig.postingDate) return fail(res, 400, 'A reversal cannot be dated before the journal it reverses.');
     const reason = String(req.body?.reason ?? '').trim().slice(0, 300);
     if (!reason) return fail(res, 400, 'Write the reason for the reversal.');
     const lines = await tdb.select().from(schema.manualJournalLines).where(and(eq(schema.manualJournalLines.journalId, orig.id), eq(schema.manualJournalLines.companyId, companyId))).orderBy(asc(schema.manualJournalLines.sortOrder));
     const id = generateId();
     const number = await getAndIncrementDocumentNumber(tdb, companyId, 'manualJournal', date, orig.branchId);
     await tdb.insert(schema.manualJournals).values({
-      id, companyId, number, date, description: `Reversal of ${orig.number}: ${reason}`.slice(0, 300), reference: orig.number, preparerNote: reason,
+      id, companyId, number, ...documentDates(date), description: `Reversal of ${orig.number}: ${reason}`.slice(0, 300), reference: orig.number, preparerNote: reason,
       branchId: orig.branchId, status: 'Draft', preparedById: req.user.id, preparedAt: nowDate(), reversalOfId: orig.id,
     });
     await tdb.insert(schema.manualJournalLines).values(lines.map((l: any, i: number) => ({

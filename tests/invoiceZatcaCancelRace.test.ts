@@ -87,7 +87,7 @@ describe('processInvoiceZatca — cancel/submit race guard', () => {
     const invoiceId = generateId();
     await db.insert(schema.invoices).values({
       id: invoiceId, invoiceNumber: `INV-RACE-${invoiceId.slice(0, 6)}`,
-      date: new Date().toISOString().split('T')[0],
+      docDate: new Date().toISOString().split('T')[0], postingDate: new Date().toISOString().split('T')[0],
       customerId, taxSlabId, bankId, paymentStatus: 'Unpaid', notes: '',
       // Simulates the exact DB state a concurrent cancel-wins-the-race interleaving
       // would produce: status flipped to Cancelled before the SUBMITTING write runs.
@@ -114,7 +114,7 @@ describe('processInvoiceZatca — cancel/submit race guard', () => {
     const invoiceId = generateId();
     await db.insert(schema.invoices).values({
       id: invoiceId, invoiceNumber: `INV-RACE-${invoiceId.slice(0, 6)}`,
-      date: new Date().toISOString().split('T')[0],
+      docDate: new Date().toISOString().split('T')[0], postingDate: new Date().toISOString().split('T')[0],
       customerId, taxSlabId, bankId, paymentStatus: 'Unpaid', notes: '',
       status: 'Active',
       createdById: userId, createdAt: new Date(), amountPaid: '0', companyId,

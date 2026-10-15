@@ -27,8 +27,8 @@ export async function assertNoUnreportedZatcaInvoices(executor: any, companyId: 
     .where(and(
       eq(schema.invoices.companyId, companyId),
       eq(schema.invoices.status, 'Active'),
-      gte(schema.invoices.date, startDate),
-      lte(schema.invoices.date, endDate),
+      gte(schema.invoices.docDate, startDate),
+      lte(schema.invoices.docDate, endDate),
       inArray(schema.invoices.zatcaStatus, ['NOT_SUBMITTED', 'SUBMITTING', 'ERROR'])
     ));
   if (pendingInvoices.length > 0) {
@@ -60,8 +60,8 @@ export async function computeVatReturnFigures(executor: any, companyId: string, 
   const invoicesInRange = await executor.select().from(schema.invoices).where(and(
     eq(schema.invoices.companyId, companyId),
     eq(schema.invoices.status, 'Active'),
-    gte(schema.invoices.date, startDate),
-    lte(schema.invoices.date, endDate)
+    gte(schema.invoices.docDate, startDate),
+    lte(schema.invoices.docDate, endDate)
   ));
 
   let salesSubtotal = 0;
@@ -106,8 +106,8 @@ export async function computeVatReturnFigures(executor: any, companyId: string, 
   const expensesInRange = (await executor.select().from(schema.expenses).where(and(
     eq(schema.expenses.companyId, companyId),
     eq(schema.expenses.status, 'Active'),
-    gte(schema.expenses.date, startDate),
-    lte(schema.expenses.date, endDate)
+    gte(schema.expenses.docDate, startDate),
+    lte(schema.expenses.docDate, endDate)
   ))).filter((e: any) => e.type !== 'Accrual');   // an accrual has no tax invoice; its settling invoice claims the VAT in its own period
   const expenseTaxSlabIds = Array.from(new Set(expensesInRange.map(e => e.taxSlabId).filter(Boolean))) as string[];
   const expenseTaxSlabRows: any[] = expenseTaxSlabIds.length > 0 ? await executor.select().from(schema.taxSlabs).where(inArray(schema.taxSlabs.id, expenseTaxSlabIds)) : [];

@@ -511,7 +511,8 @@ export interface QuotationItem {
 export interface Quotation {
   id: string; // UUID or key
   quotationNumber: string; // e.g. "QT-0001"
-  date: string; // YYYY-MM-DD
+  docDate: string; // YYYY-MM-DD, the date of the quotation
+  validUntilDate?: string | null;
   customerId: string;
   taxSlabId: string;
   notes: string;
@@ -552,7 +553,10 @@ export interface InvoiceItem {
 export interface Invoice {
   id: string;
   invoiceNumber: string; // e.g. "INV-0001"
-  date: string; // YYYY-MM-DD
+  docDate: string; // YYYY-MM-DD, the invoice date (the ZATCA issue date)
+  postingDate: string; // the ledger / period date; equals docDate for an invoice
+  supplyDate?: string | null;
+  dueDate?: string | null;
   customerId: string;
   taxSlabId: string;
   bankId: string;
@@ -606,7 +610,9 @@ export interface Expense {
   id: string;
   reversalOfExpenseId?: string | null; // set on a reversal document (a correction dated today for an expense of a closed month)
   expenseNumber: string; // e.g. "EXP-0001"
-  date: string; // YYYY-MM-DD
+  docDate: string; // YYYY-MM-DD, the vendor bill's date
+  postingDate: string; // the ledger / period date
+  dueDate?: string | null;
   vendorId: string;
   taxSlabId: string;
   bankId: string;
@@ -666,7 +672,9 @@ export interface Voucher {
   id: string;
   voucherNumber: string; // e.g. "VCH-0001"
   type: 'Receipt' | 'Payment' | 'Reversal' | 'TransferOut' | 'TransferIn';
-  date: string; // YYYY-MM-DD
+  docDate: string; // YYYY-MM-DD
+  postingDate: string;
+  valueDate?: string | null;
   bankId: string;
   amount: number;
   description: string;
@@ -815,7 +823,8 @@ export interface PurchaseRequisition {
   id: string;
   prNumber: string;
   requestedBy: string;
-  date: string;
+  docDate: string; // YYYY-MM-DD
+  createdAt?: string; // when it was entered
   status: 'Draft' | 'Pending' | 'Approved' | 'Rejected' | 'Closed' | 'Cancelled';
   notes?: string;
   companyId: string;
@@ -837,7 +846,8 @@ export interface PurchaseOrder {
   id: string;
   poNumber: string;
   vendorId: string;
-  date: string;
+  docDate: string; // YYYY-MM-DD
+  createdAt?: string; // when it was entered
   status: 'Draft' | 'Sent' | 'Partially Received' | 'Received' | 'Cancelled';
   requisitionId?: string;
   deliveryDate?: string;
@@ -865,7 +875,9 @@ export interface GoodsReceiptNote {
   purchaseOrderId?: string;
   vendorId: string;
   warehouseId: string;
-  date: string;
+  docDate: string; // YYYY-MM-DD
+  postingDate: string; // the ledger / period date
+  createdAt?: string; // when it was entered
   isDsd: boolean;
   receivedBy: string;
   notes?: string;
@@ -885,7 +897,9 @@ export interface PurchaseBill {
   // later while the bill is still Unpaid.
   vendorBillNumber?: string;
   vendorId: string;
-  date: string;
+  docDate: string; // YYYY-MM-DD
+  postingDate: string; // the ledger / period date
+  createdAt?: string; // when it was entered
   dueDate?: string;
   grnIds: string; // comma-separated
   subTotal: number;
@@ -912,7 +926,9 @@ export interface WarehouseDispatch {
   dispatchNumber: string;
   fromWarehouseId: string;
   toWarehouseId: string;
-  date: string;
+  docDate: string; // YYYY-MM-DD
+  postingDate: string; // the ledger / period date
+  createdAt?: string; // when it was entered
   vehicleNumber?: string | null;
   driverName?: string | null;
   driverContact?: string | null;
@@ -939,7 +955,9 @@ export interface WarehouseReceiving {
   id: string;
   receivingNumber: string;
   dispatchId: string;
-  date: string;
+  docDate: string; // YYYY-MM-DD
+  postingDate: string; // the ledger / period date
+  createdAt?: string; // when it was entered
   receivedBy: string;
   condition?: string | null;
   discrepancyNotes?: string | null;
@@ -964,7 +982,9 @@ export interface PurchaseReturn {
   grnId: string;
   vendorId: string;
   warehouseId: string;
-  date: string;
+  docDate: string; // YYYY-MM-DD
+  postingDate: string; // the ledger / period date
+  createdAt?: string; // when it was entered
   notes?: string;
   status: 'Active' | 'Cancelled';
   companyId: string;
@@ -986,7 +1006,9 @@ export interface PhysicalStockTake {
   id: string;
   referenceNumber: string;
   warehouseId: string;
-  date: string;
+  docDate: string; // YYYY-MM-DD
+  postingDate: string; // the ledger / period date
+  createdAt?: string; // when it was entered
   status: 'Draft' | 'Completed' | 'Cancelled';
   performedBy: string;
   notes?: string;
@@ -1010,7 +1032,8 @@ export interface StockLedgerTransaction {
   warehouseId: string;
   transactionType: 'GRN' | 'Return' | 'Sale' | 'Adjustment' | 'StockTake' | 'TransferOut' | 'TransferIn';
   referenceId: string;
-  date: string;
+  postingDate: string; // the date the movement counts in
+  createdAt?: string; // the moment of the movement
   quantityChange: number;
   endingQuantity: number;
   batchNumber?: string;

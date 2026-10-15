@@ -55,7 +55,7 @@ async function insertExpense(overrides: Partial<typeof schema.expenses.$inferIns
   await db.insert(schema.expenses).values({
     id,
     expenseNumber: `EXP-TEST-${id}`,
-    date: today,
+    docDate: today, postingDate: today,
     vendorId,
     taxSlabId,
     bankId,
@@ -147,7 +147,7 @@ describe('POST /api/expenses/:id/pay', () => {
 
     const { status, body } = await api(adminSessionId, `/api/expenses/${expId}/pay`, {
       method: 'POST',
-      body: JSON.stringify({ date: today, bankId, amount: 400 }),
+      body: JSON.stringify({ docDate: today, bankId, amount: 400 }),
     });
     expect(status).toBe(200);
     expect(body.success).toBe(true);
@@ -168,12 +168,12 @@ describe('POST /api/expenses/:id/pay', () => {
 
     await api(adminSessionId, `/api/expenses/${expId}/pay`, {
       method: 'POST',
-      body: JSON.stringify({ date: today, bankId, amount: 400 }),
+      body: JSON.stringify({ docDate: today, bankId, amount: 400 }),
     });
 
     const { status, body } = await api(adminSessionId, `/api/expenses/${expId}/pay`, {
       method: 'POST',
-      body: JSON.stringify({ date: today, bankId, amount: 700 }),
+      body: JSON.stringify({ docDate: today, bankId, amount: 700 }),
     });
     expect(status).toBe(400);
     expect(body.error).toMatch(/exceeds the remaining balance/);
@@ -185,11 +185,11 @@ describe('POST /api/expenses/:id/pay', () => {
 
     await api(adminSessionId, `/api/expenses/${expId}/pay`, {
       method: 'POST',
-      body: JSON.stringify({ date: today, bankId, amount: 400 }),
+      body: JSON.stringify({ docDate: today, bankId, amount: 400 }),
     });
     const { status, body } = await api(adminSessionId, `/api/expenses/${expId}/pay`, {
       method: 'POST',
-      body: JSON.stringify({ date: today, bankId, amount: 600 }),
+      body: JSON.stringify({ docDate: today, bankId, amount: 600 }),
     });
     expect(status).toBe(200);
     expect(body.success).toBe(true);
@@ -209,7 +209,7 @@ describe('POST /api/expenses/:id/pay', () => {
 
     const { status, body } = await api(adminSessionId, `/api/expenses/${expId}/pay`, {
       method: 'POST',
-      body: JSON.stringify({ date: today, bankId, amount: 100 }),
+      body: JSON.stringify({ docDate: today, bankId, amount: 100 }),
     });
     expect(status).toBe(500);
     expect(body.error).toMatch(/already paid/);
@@ -221,7 +221,7 @@ describe('POST /api/expenses/:id/pay', () => {
 
     const { status, body } = await api(adminSessionId, `/api/expenses/${expId}/pay`, {
       method: 'POST',
-      body: JSON.stringify({ date: today, bankId, amount: 100 }),
+      body: JSON.stringify({ docDate: today, bankId, amount: 100 }),
     });
     expect(status).toBe(500);
     expect(body.error).toMatch(/Cancelled expenses cannot be paid/);
@@ -233,7 +233,7 @@ describe('POST /api/expenses/:id/pay', () => {
 
     const { status, body } = await api(otherCompanySessionId, `/api/expenses/${expId}/pay`, {
       method: 'POST',
-      body: JSON.stringify({ date: today, bankId, amount: 100 }),
+      body: JSON.stringify({ docDate: today, bankId, amount: 100 }),
     });
     expect(status).toBe(500);
     expect(body.error).toMatch(/not found/);
@@ -247,7 +247,7 @@ describe('POST /api/expenses/:id/cancel', () => {
 
     await api(adminSessionId, `/api/expenses/${expId}/pay`, {
       method: 'POST',
-      body: JSON.stringify({ date: today, bankId, amount: 1000 }),
+      body: JSON.stringify({ docDate: today, bankId, amount: 1000 }),
     });
 
     const { status, body } = await api(adminSessionId, `/api/expenses/${expId}/cancel`, { method: 'POST' });

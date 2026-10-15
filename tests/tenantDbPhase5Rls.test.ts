@@ -5,6 +5,7 @@ import pg from 'pg';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { generateId } from '../src/id.js';
+import { entryStamp, systemDated } from '../server/lib/documentDates.js';
 
 // Phase 5 of the RLS full-rollout (BACKLOG.md) migrated all 21 routes in
 // server/routes/inventory.ts onto tenantDb() — Purchase Requisitions, Purchase Orders,
@@ -230,16 +231,16 @@ describe('Postgres RLS itself blocks cross-company access to inventory tables (r
 
     prBId = generateId();
     await db.insert(schema.purchaseRequisitions).values({
-      id: prBId, prNumber: 'PR-B-P5-1', requestedBy: 'B Tester', date: new Date(), status: 'Pending', companyId: companyBId,
+      id: prBId, prNumber: 'PR-B-P5-1', requestedBy: 'B Tester', ...entryStamp(null), status: 'Pending', companyId: companyBId,
     });
     poBId = generateId();
     await db.insert(schema.purchaseOrders).values({
-      id: poBId, poNumber: 'PO-B-P5-1', vendorId: vendorBId, date: new Date(), status: 'Sent', totalAmount: '100', companyId: companyBId,
+      id: poBId, poNumber: 'PO-B-P5-1', vendorId: vendorBId, ...entryStamp(null), status: 'Sent', totalAmount: '100', companyId: companyBId,
     });
     grnBId = generateId();
     await db.insert(schema.goodsReceiptNotes).values({
       id: grnBId, grnNumber: 'GRN-B-P5-1', purchaseOrderId: poBId, vendorId: vendorBId, warehouseId: warehouseBId,
-      date: new Date(), receivedBy: 'B Tester', companyId: companyBId,
+      ...systemDated(null), receivedBy: 'B Tester', companyId: companyBId,
     });
     grnItemBId = generateId();
     await db.insert(schema.goodsReceiptNoteItems).values({
@@ -252,7 +253,7 @@ describe('Postgres RLS itself blocks cross-company access to inventory tables (r
     ledgerBId = generateId();
     await db.insert(schema.stockLedgerTransactions).values({
       id: ledgerBId, productId: productBId, warehouseId: warehouseBId, transactionType: 'GRN', referenceId: grnBId,
-      date: new Date(), quantityChange: '5', endingQuantity: '5', companyId: companyBId,
+      postingDate: new Date(new Date()).toISOString().slice(0, 10), createdAt: new Date(), quantityChange: '5', endingQuantity: '5', companyId: companyBId,
     });
   });
 

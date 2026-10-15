@@ -408,7 +408,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  }
 
  const invoiceData = {
- date: formDate,
+ docDate: formDate,
  customerId: resolvedCustomerId,
  taxSlabId: formTaxSlabId,
  bankId: formBankId,
@@ -847,7 +847,7 @@ export default function InvoiceModule({ db, onUpdateDbLocal, onRefreshDb, onPrin
  ) : null;
  })()}
  </td>
- <td className="p-3 text-slate-600">{inv.date}</td>
+ <td className="p-3 text-slate-600">{inv.docDate}</td>
  <td className="p-3 font-semibold text-slate-700">{cust?.name || t('Walk-in')}</td>
  <td className="p-3 text-slate-500 font-medium">{bank?.bankName || t('Default')}</td>
  <td className="p-3 text-end font-bold text-slate-900">

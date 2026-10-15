@@ -123,7 +123,7 @@ describe('Audit log coverage — invoices, quotations, fiscal months', () => {
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: new Date().toISOString().split('T')[0], customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: new Date().toISOString().split('T')[0], customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'Audit coverage item', unitCost: 100, quantity: 1, discountAmount: 0 }],
         },
       }),
@@ -143,7 +143,7 @@ describe('Audit log coverage — invoices, quotations, fiscal months', () => {
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: new Date().toISOString().split('T')[0], customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: new Date().toISOString().split('T')[0], customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'To be cancelled', unitCost: 50, quantity: 1, discountAmount: 0 }],
         },
       }),
@@ -165,7 +165,7 @@ describe('Audit log coverage — invoices, quotations, fiscal months', () => {
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: new Date().toISOString().split('T')[0], customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: new Date().toISOString().split('T')[0], customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'To be paid', unitCost: 100, quantity: 1, discountAmount: 0 }],
         },
       }),
@@ -191,7 +191,7 @@ describe('Audit log coverage — invoices, quotations, fiscal months', () => {
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: new Date().toISOString().split('T')[0], customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: new Date().toISOString().split('T')[0], customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'To be credited', unitCost: 100, quantity: 1, discountAmount: 0 }],
         },
       }),
@@ -218,7 +218,7 @@ describe('Audit log coverage — invoices, quotations, fiscal months', () => {
       method: 'POST',
       body: JSON.stringify({
         quotationData: {
-          date: new Date().toISOString().split('T')[0], customerId, taxSlabId, bankId, notes: '', status: 'Draft', createdById: adminUserId,
+          docDate: new Date().toISOString().split('T')[0], customerId, taxSlabId, bankId, notes: '', status: 'Draft', createdById: adminUserId,
           items: [{ id: generateId(), description: 'Audit coverage quotation item', unitCost: 75, quantity: 1, discountAmount: 0 }],
         },
       }),
@@ -247,7 +247,7 @@ describe('Audit log coverage — invoices, quotations, fiscal months', () => {
       method: 'POST',
       body: JSON.stringify({
         quotationData: {
-          date: new Date().toISOString().split('T')[0], customerId, taxSlabId, bankId, notes: '', status: 'Accepted', createdById: adminUserId,
+          docDate: new Date().toISOString().split('T')[0], customerId, taxSlabId, bankId, notes: '', status: 'Accepted', createdById: adminUserId,
           items: [{ id: generateId(), description: 'Audit coverage convert item', unitCost: 60, quantity: 1, discountAmount: 0 }],
         },
       }),

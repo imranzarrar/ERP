@@ -23,6 +23,10 @@ database `erp_v2`, VPS folder `~/apps/erp-demo` on port 4000 (127.0.0.1 only), a
 (`git merge master` in `E:\ERP-2.0`). Nothing from `v2` is merged into `master` or deployed to Live until the user decides to promote it. Always ask
 which track a request belongs to if it is not clear, and never run a Live release script from the 2.0 checkout or the other way round.
 
+## Naming rule for columns
+
+One concept, one name, on every table: snake_case in the database, the same word in camelCase in code and JSON; dates are `<meaning>_date` / `<meaning>_at`, every document has `doc_date`, a ledger-posting one also `posting_date`. Read `.claude/skills/consistent-column-names/SKILL.md` and `docs/date-fields-standard.md` before adding or changing any column.
+
 ## Architecture
 
 - **Multi-tenant.** Every business table carries a `companyId`. The active company for a request (`req.targetCompanyId`) is resolved per-request in `server.ts`'s auth middleware (`isAuthenticated`) from the session user's own `companyId`, or an explicit override for super-admins only.

@@ -488,6 +488,8 @@ export const GL_TRANSLATIONS: [key: string, ar: string, ur: string][] = [
   ['A control account takes the postings of its customers or vendors only, never manual journals. Choose it on the customer or vendor to post their documents here instead of the company default. It can be set or removed only while the account has no postings.', 'حساب الرقابة يستقبل قيود عملائه أو مورديه فقط، ولا يقبل القيود اليدوية أبدًا. اخترْه في العميل أو المورد لترحيل مستنداتهم إليه بدل الحساب الافتراضي للشركة. لا يمكن تعيينه أو إزالته إلا ما دام الحساب بلا قيود.', 'کنٹرول اکاؤنٹ صرف اپنے کسٹمرز یا وینڈرز کی پوسٹنگ لیتا ہے، مینول جرنل کبھی نہیں۔ کمپنی ڈیفالٹ کی بجائے ان کے دستاویزات یہاں پوسٹ کرنے کے لیے اسے کسٹمر یا وینڈر پر منتخب کریں۔ اسے صرف تب لگایا یا ہٹایا جا سکتا ہے جب اکاؤنٹ میں کوئی پوسٹنگ نہ ہو۔'],
   ['Customers', 'العملاء', 'کسٹمرز'],
   ['Vendors', 'الموردون', 'وینڈرز'],
+  ['Document date', 'تاريخ المستند', 'دستاویز کی تاریخ'],
+  ['Posting date', 'تاريخ الترحيل', 'پوسٹنگ کی تاریخ'],
 ];
 
 // A stable id per key (the same on every machine), so the bundled fallback and the database row for a key never disagree about identity.

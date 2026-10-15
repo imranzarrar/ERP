@@ -75,7 +75,7 @@ async function createInvoice(dateStr: string) {
     method: 'POST',
     body: JSON.stringify({
       invoiceData: {
-        date: dateStr,
+        docDate: dateStr,
         customerId,
         taxSlabId,
         bankId,

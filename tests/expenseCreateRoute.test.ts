@@ -97,7 +97,7 @@ describe('POST /api/expenses (creation counter + injection guard)', () => {
     const { status, body } = await api(adminSessionId, '/api/expenses', {
       method: 'POST',
       body: JSON.stringify({
-        date: today, vendorId, taxSlabId, bankId, description: 'Regression check expense', billNumber: 'BILL-1',
+        docDate: today, vendorId, taxSlabId, bankId, description: 'Regression check expense', billNumber: 'BILL-1',
         amount: 100, status: 'Active', type: 'Actual', paymentStatus: 'Unpaid',
       }),
     });
@@ -117,7 +117,7 @@ describe('POST /api/expenses (creation counter + injection guard)', () => {
     const createRes = await api(adminSessionId, '/api/expenses', {
       method: 'POST',
       body: JSON.stringify({
-        date: today, vendorId, taxSlabId, bankId, description: 'Original description', billNumber: 'BILL-2',
+        docDate: today, vendorId, taxSlabId, bankId, description: 'Original description', billNumber: 'BILL-2',
         amount: 200, status: 'Active', type: 'Actual', paymentStatus: 'Unpaid',
       }),
     });
@@ -134,7 +134,7 @@ describe('POST /api/expenses (creation counter + injection guard)', () => {
         expenseNumber: 'HACKED-999',
         createdById: '00000000-0000-0000-0000-000000000000',
         createdAt: '2000-01-01T00:00:00.000Z',
-        date: today, vendorId, taxSlabId, bankId, description: 'Updated description',
+        docDate: today, vendorId, taxSlabId, bankId, description: 'Updated description',
         amount: 250, status: 'Active', type: 'Actual', paymentStatus: 'Unpaid',
       }),
     });

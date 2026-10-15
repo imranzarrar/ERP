@@ -66,17 +66,17 @@ describe('Purchase return input VAT belongs to the return period', () => {
     const mk = async () => {
       const g = await post('/api/inventory/goods-receipt-notes', { grnData: { isDsd: true, vendorId, warehouseId, receivedBy: 'Test', items: [{ productId, quantityReceived: 10, unitCost: 20, taxRate: 15 }] } });
       expect(g.status).toBe(200);
-      const b = await post('/api/inventory/purchase-bills', { billData: { date: new Date().toISOString().slice(0, 10), grnIds: [g.body.goodsReceiptNote.id], bankId, vendorBillNumber: 'RV-' + generateId().slice(-4) } });
+      const b = await post('/api/inventory/purchase-bills', { billData: { docDate: new Date().toISOString().slice(0, 10), grnIds: [g.body.goodsReceiptNote.id], bankId, vendorBillNumber: 'RV-' + generateId().slice(-4) } });
       expect(b.status).toBe(200);
       return { grn: g.body.goodsReceiptNote.id as string, bill: b.body.purchaseBill.id as string };
     };
     ({ grn: grn1, bill: bill1 } = await mk());
     ({ grn: grn2, bill: bill2 } = await mk());
-    expect((await post(`/api/inventory/purchase-bills/${bill2}/pay`, { date: now.toISOString().slice(0, 10), bankId, amount: 230 })).status).toBe(200);
+    expect((await post(`/api/inventory/purchase-bills/${bill2}/pay`, { docDate: now.toISOString().slice(0, 10), bankId, amount: 230 })).status).toBe(200);
     // Both supplier invoices belong to the PREVIOUS quarter.
     const prevDate = new Date(prev.startDate + 'T10:00:00.000Z');
-    await db.update(schema.purchaseBills).set({ date: prevDate }).where(eq(schema.purchaseBills.id, bill1));
-    await db.update(schema.purchaseBills).set({ date: prevDate }).where(eq(schema.purchaseBills.id, bill2));
+    await db.update(schema.purchaseBills).set({ docDate: prev.startDate, postingDate: prev.startDate }).where(eq(schema.purchaseBills.id, bill1));
+    await db.update(schema.purchaseBills).set({ docDate: prev.startDate, postingDate: prev.startDate }).where(eq(schema.purchaseBills.id, bill2));
     const before = await summary(prev);
     expect(before.inputVat).toBe(60);                // 30 + 30, untouched so far
   });

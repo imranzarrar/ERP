@@ -223,7 +223,7 @@ export default function RecurringExpenses({ db, onRefreshDb }: RecurringExpenses
  amount: acc.amount.toString(),
  vendorId: acc.vendorId,
  bankId: acc.bankId,
- date: acc.date,
+ date: acc.docDate,
  taxSlabId: acc.taxSlabId
  });
  };
@@ -245,7 +245,7 @@ export default function RecurringExpenses({ db, onRefreshDb }: RecurringExpenses
  amount: amountNum,
  vendorId: accrualForm.vendorId,
  bankId: accrualForm.bankId,
- date: accrualForm.date,
+ docDate: accrualForm.date,
  taxSlabId: accrualForm.taxSlabId
  })
  });
@@ -556,7 +556,7 @@ export default function RecurringExpenses({ db, onRefreshDb }: RecurringExpenses
  <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-slate-400">
  <span>{t('Accrued Amount:')} <strong>{currencySymbol} {acc.amount.toFixed(2)}</strong></span>
  <span>•</span>
- <span>{t('Period:')} <strong>{acc.date}</strong></span>
+ <span>{t('Period:')} <strong>{acc.docDate}</strong></span>
  <span>•</span>
  <span>{t('Vendor:')} <strong>{vendor?.name || t('Cash Vendor')}</strong></span>
  </div>
@@ -702,7 +702,7 @@ export default function RecurringExpenses({ db, onRefreshDb }: RecurringExpenses
  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-400">
  <span>{t('Amount:')} <strong className="text-slate-700 ">{currencySymbol} {acc.amount.toFixed(2)}</strong></span>
  <span>•</span>
- <span>{t('Date:')} <strong className="text-slate-700 ">{acc.date}</strong></span>
+ <span>{t('Date:')} <strong className="text-slate-700 ">{acc.docDate}</strong></span>
  <span>•</span>
  <span>{t('Vendor:')} <strong className="text-slate-700 ">{vendor?.name || t('Cash Vendor')}</strong></span>
  <span>•</span>

@@ -241,7 +241,7 @@ export async function processInvoiceZatca(invoiceId: string) {
     // already printed/shown to the customer at creation time. `invoice.createdAt` is set
     // once at row insert and never written to again anywhere in this codebase, so deriving
     // IssueTime from it (the same way IssueDate already correctly derives from
-    // `invoice.date`) keeps it stable across every processing attempt for free, with no new
+    // `invoice.docDate`) keeps it stable across every processing attempt for free, with no new
     // state to track. ZATCA's own guidance (Detailed Technical Guidelines FAQ) explicitly
     // permits — but does not require — updating the time on a genuine resubmission; this
     // app deliberately chooses not to, for document-integrity reasons (see prior
@@ -267,7 +267,7 @@ export async function processInvoiceZatca(invoiceId: string) {
       const previewDoc = generateZatcaUblXml({
         invoiceNumber: inv.invoiceNumber || inv.id,
         uuid: invoiceUuid,
-        issueDate: inv.invoiceDate || inv.date || new Date().toISOString().split('T')[0],
+        issueDate: inv.invoiceDate || inv.docDate || new Date().toISOString().split('T')[0],
         issueTime,
         invoiceTypeCode,
         documentSubtypeCode: documentType === 'CreditNote' ? '381' : documentType === 'DebitNote' ? '383' : '388',
@@ -394,7 +394,7 @@ export async function processInvoiceZatca(invoiceId: string) {
       zatcaDoc = generateZatcaUblXml({
         invoiceNumber: inv.invoiceNumber || inv.id,
         uuid: invoiceUuid,
-        issueDate: inv.invoiceDate || inv.date || new Date().toISOString().split('T')[0],
+        issueDate: inv.invoiceDate || inv.docDate || new Date().toISOString().split('T')[0],
         issueTime,
         invoiceTypeCode,
         documentSubtypeCode: documentType === 'CreditNote' ? '381' : documentType === 'DebitNote' ? '383' : '388',

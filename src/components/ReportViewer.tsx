@@ -209,7 +209,7 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
 
  // 2. Sales Revenue (Credit)
  const totalSalesRev = db.invoices
- .filter(inv => inv.companyId === db.selectedCompanyId && inv.status === 'Active' && inv.date >= startDate && inv.date <= endDate)
+ .filter(inv => inv.companyId === db.selectedCompanyId && inv.status === 'Active' && inv.postingDate >= startDate && inv.postingDate <= endDate)
  .reduce((sum, inv) => {
  const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId, inv.discountPercentage);
  return sum + totals.subtotal * getInvoiceSign(inv); // revenue before tax
@@ -217,12 +217,12 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
 
  // 3. Purchase / Direct Expenses (Debit)
  const totalPurchaseExp = db.expenses
- .filter(exp => exp.companyId === db.selectedCompanyId && exp.status === 'Active' && exp.classification !== 'Asset' && exp.date >= startDate && exp.date <= endDate)
+ .filter(exp => exp.companyId === db.selectedCompanyId && exp.status === 'Active' && exp.classification !== 'Asset' && exp.postingDate >= startDate && exp.postingDate <= endDate)
  .reduce((sum, exp) => sum + exp.amount, 0);
 
  // 3b. Capitalized Fixed Assets (Asset - Debit)
  const totalFixedAssets = db.expenses
- .filter(exp => exp.companyId === db.selectedCompanyId && exp.status === 'Active' && exp.classification === 'Asset' && exp.date >= startDate && exp.date <= endDate)
+ .filter(exp => exp.companyId === db.selectedCompanyId && exp.status === 'Active' && exp.classification === 'Asset' && exp.postingDate >= startDate && exp.postingDate <= endDate)
  .reduce((sum, exp) => sum + exp.amount, 0);
 
  // 4. Accounts Receivable (Asset - Debit) — a Credit Note's own paymentStatus is always
@@ -230,7 +230,7 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
  // passes this same filter and must subtract here rather than add, or it inflates AR by
  // exactly what it's supposed to be reducing.
  const accountsReceivable = db.invoices
- .filter(inv => inv.companyId === db.selectedCompanyId && inv.status === 'Active' && inv.paymentStatus === 'Unpaid' && inv.date >= startDate && inv.date <= endDate)
+ .filter(inv => inv.companyId === db.selectedCompanyId && inv.status === 'Active' && inv.paymentStatus === 'Unpaid' && inv.postingDate >= startDate && inv.postingDate <= endDate)
  .reduce((sum, inv) => {
  const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId, inv.discountPercentage);
  return sum + totals.grandTotal * getInvoiceSign(inv);
@@ -238,12 +238,12 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
 
  // 5. Accounts Payable (Liability - Credit)
  const accountsPayable = db.expenses
- .filter(exp => exp.companyId === db.selectedCompanyId && exp.status === 'Active' && exp.paymentStatus === 'Unpaid' && exp.date >= startDate && exp.date <= endDate)
+ .filter(exp => exp.companyId === db.selectedCompanyId && exp.status === 'Active' && exp.paymentStatus === 'Unpaid' && exp.postingDate >= startDate && exp.postingDate <= endDate)
  .reduce((sum, exp) => sum + exp.amount, 0);
 
  // 6. VAT Outputs Collected (Liability - Credit)
  const totalVATCollected = db.invoices
- .filter(inv => inv.companyId === db.selectedCompanyId && inv.status === 'Active' && inv.date >= startDate && inv.date <= endDate)
+ .filter(inv => inv.companyId === db.selectedCompanyId && inv.status === 'Active' && inv.postingDate >= startDate && inv.postingDate <= endDate)
  .reduce((sum, inv) => {
  const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId, inv.discountPercentage);
  return sum + totals.taxAmount * getInvoiceSign(inv);
@@ -251,7 +251,7 @@ export default function ReportViewer({ db, defaultReportType, onPrintDoc }: Repo
 
  // 7. Paid-in Capital (Equity - Credit)
  const totalCapital = db.vouchers
- .filter(v => v.companyId === db.selectedCompanyId && v.referenceType === 'Equity' && v.date >= startDate && v.date <= endDate)
+ .filter(v => v.companyId === db.selectedCompanyId && v.referenceType === 'Equity' && v.postingDate >= startDate && v.postingDate <= endDate)
  .reduce((sum, v) => sum + v.amount, 0);
 
  // Package trial balance ledger lines
@@ -331,13 +331,13 @@ const getProfitLossData = () => {
  // Cash Flow Analysis & Cash Basis PL pre-requisite
  const periodVouchers = db.vouchers.filter(v => 
  (v.companyId) === db.selectedCompanyId &&
- v.date >= startDate && v.date <= endDate
+ v.postingDate >= startDate && v.postingDate <= endDate
  );
 
  // Calculate Revenue
  let totalRevenue = 0;
  if (accountingBasis === 'Accrual') {
- const revenueInvoices = plInvoices.filter(inv => inv.date >= startDate && inv.date <= endDate);
+ const revenueInvoices = plInvoices.filter(inv => inv.postingDate >= startDate && inv.postingDate <= endDate);
  totalRevenue = revenueInvoices.reduce((sum, inv) => {
  const totals = calculateInvoiceTotals(db, inv.items, inv.taxSlabId, inv.discountPercentage);
  return sum + totals.grandTotal * getInvoiceSign(inv);
@@ -352,7 +352,7 @@ const getProfitLossData = () => {
  if (accountingBasis === 'Accrual') {
  const periodExpenses = plExpenses.filter(exp => 
  exp.classification !== 'Asset' && 
- exp.date >= startDate && exp.date <= endDate &&
+ exp.postingDate >= startDate && exp.postingDate <= endDate &&
  (exp.type === 'Accrual' || (exp.type === 'Actual' && !exp.originAccrualId))
  );
  totalExpenses = periodExpenses.reduce((sum, exp) => sum + exp.amount, 0);
@@ -434,7 +434,7 @@ const getBalanceSheetData = () => {
   const bankBalance = companyBanks.reduce((sum, b) => sum + getBankBalance(db, b.id), 0);
 
   const accountsReceivable = db.invoices
-    .filter(inv => inv.companyId === db.selectedCompanyId && inv.status === 'Active' && inv.date <= asOfDate
+    .filter(inv => inv.companyId === db.selectedCompanyId && inv.status === 'Active' && inv.postingDate <= asOfDate
       && (inv.paymentStatus === 'Unpaid' || inv.paymentStatus === 'Partially Paid'))
     .reduce((sum, inv) => {
       const total = calculateInvoiceTotals(db, inv.items, inv.taxSlabId, inv.discountPercentage).grandTotal;
@@ -442,7 +442,7 @@ const getBalanceSheetData = () => {
     }, 0);
 
   const accountsPayable = db.expenses
-    .filter(exp => exp.companyId === db.selectedCompanyId && exp.status === 'Active' && exp.date <= asOfDate
+    .filter(exp => exp.companyId === db.selectedCompanyId && exp.status === 'Active' && exp.postingDate <= asOfDate
       && (exp.paymentStatus === 'Unpaid' || exp.paymentStatus === 'Partially Paid'))
     .reduce((sum, exp) => sum + (exp.amount - (exp.amountPaid || 0)), 0);
 

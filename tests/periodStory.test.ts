@@ -40,15 +40,15 @@ const near = (a: number, b: number) => Math.abs(a - b) < 0.011;
 
 // ---- documents, each created on the simulated day `clock` ----
 const invoice = async (items: any[], paid = 0, extra: any = {}) =>
-  ok(await post('/api/transactions/invoices', { invoiceData: { date: clock, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: paid, items, ...extra } }), `invoice ${clock}`).invoiceId as string;
+  ok(await post('/api/transactions/invoices', { invoiceData: { docDate: clock, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: paid, items, ...extra } }), `invoice ${clock}`).invoiceId as string;
 const expense = async (desc: string, amount: number, extra: any = {}) => {
-  ok(await post('/api/expenses', { date: clock, vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'ST-' + generateId().slice(-4), description: desc, paymentStatus: 'Unpaid', amount, ...extra }), `expense ${desc}`);
+  ok(await post('/api/expenses', { docDate: clock, vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'ST-' + generateId().slice(-4), description: desc, paymentStatus: 'Unpaid', amount, ...extra }), `expense ${desc}`);
   return ((await db.select().from(schema.expenses).where(eq(schema.expenses.companyId, companyId))) as any[]).find(e => e.description === desc).id as string;
 };
 const grn = async (qty: number, extra: any = {}) =>
   ok(await post('/api/inventory/goods-receipt-notes', { grnData: { isDsd: true, vendorId, warehouseId, receivedBy: 'Story', items: [{ productId: P, quantityReceived: qty, unitCost: 100, taxRate: 15 }], ...extra } }), 'grn').goodsReceiptNote.id as string;
-const bill = async (grnId: string) => ok(await post('/api/inventory/purchase-bills', { billData: { grnIds: [grnId], bankId, date: clock, vendorBillNumber: 'VB-' + generateId().slice(-4) } }), 'bill').purchaseBill.id as string;
-const payBill = async (billId: string, amount: number) => ok(await post(`/api/inventory/purchase-bills/${billId}/pay`, { date: clock, bankId, amount }), 'pay bill');
+const bill = async (grnId: string) => ok(await post('/api/inventory/purchase-bills', { billData: { grnIds: [grnId], bankId, docDate: clock, vendorBillNumber: 'VB-' + generateId().slice(-4) } }), 'bill').purchaseBill.id as string;
+const payBill = async (billId: string, amount: number) => ok(await post(`/api/inventory/purchase-bills/${billId}/pay`, { docDate: clock, bankId, amount }), 'pay bill');
 const creditNote = async (invoiceId: string) => post(`/api/transactions/invoices/${invoiceId}/note`, { type: 'CreditNote', reason: 'Story credit' });
 const closeMonth = async (m: string) => {
   const r = (await api('/api/transactions/months')).body; const row = (Array.isArray(r) ? r : r.rows).find((x: any) => x.id === m);
@@ -97,7 +97,7 @@ beforeAll(async () => {
   const probe = await post('/api/transactions/months', { id: M1, name: `Month ${M1}`, status: 'Open' });
   void probe;
   const gr = await post('/api/inventory/goods-receipt-notes', { grnData: { isDsd: true, vendorId, warehouseId, receivedBy: 'probe', items: [{ productId: P, quantityReceived: 1, unitCost: 100, taxRate: 15 }] } });
-  const date = gr.body?.goodsReceiptNote?.date ? String(gr.body.goodsReceiptNote.date).slice(0, 10) : '';
+  const date = gr.body?.goodsReceiptNote?.docDate ? String(gr.body.goodsReceiptNote.docDate).slice(0, 10) : '';
   clockEnabled = date === clock;
   if (clockEnabled) {   // undo the probe receipt so the story starts from an empty stock room
     await post(`/api/inventory/goods-receipt-notes/${gr.body.goodsReceiptNote.id}/reverse`, {});
@@ -115,7 +115,7 @@ describe('a quarter, day by day', () => {
     clock = day(M1, 2);
     ok(await post('/api/transactions/investors', { name: 'Story Investor', email: 'i@example.com', phone: '1', equityPercentage: 100, profitPercentage: 100, capitalContributed: 0, isActive: true, createdAt: new Date().toISOString() }), 'investor');
     const investorId = ((await db.select().from(schema.investors).where(eq(schema.investors.companyId, companyId))) as any[])[0].id;
-    ok(await post(`/api/transactions/investors/${investorId}/investment`, { bankId, amount: 20000, date: clock, description: 'Capital' }), 'capital');
+    ok(await post(`/api/transactions/investors/${investorId}/investment`, { bankId, amount: 20000, docDate: clock, description: 'Capital' }), 'capital');
     clock = day(M1, 3);
     ok(await post('/api/transactions/interbank-transfer', { sourceBankId: bankId, destBankId: bank2Id, amount: 2000, description: 'Float', dateStr: clock }), 'transfer');
     await checkAll('after capital and transfer');
@@ -157,11 +157,11 @@ describe('a quarter, day by day', () => {
     clock = day(M1, 14);
     ok(await post('/api/inventory/purchase-returns', { returnData: { grnId: ids.grn1, items: [{ productId: P, quantityReturned: 2 }] } }), 'vendor return');
     clock = day(M1, 16);
-    ok(await post('/api/inventory/vendor-refunds', { vendorId, bankId, amount: 230, date: clock }), 'vendor refund');
+    ok(await post('/api/inventory/vendor-refunds', { vendorId, bankId, amount: 230, docDate: clock }), 'vendor refund');
     clock = day(M1, 18);
     ok(await post('/api/inventory/stock-adjustments', { productId: P, warehouseId, quantity: -1, reason: 'Damaged' }), 'adjustment');
     clock = day(M1, 20);
-    ok(await post(`/api/expenses/${ids.e2}/pay`, { date: clock, bankId, amount: 200 }), 'part-pay expense');
+    ok(await post(`/api/expenses/${ids.e2}/pay`, { docDate: clock, bankId, amount: 200 }), 'part-pay expense');
     clock = day(M1, 25);
     ids.invC = await invoice([line(P, 'Stock sale C', 4, 150)], 0);              // 600 + 90 VAT
     clock = day(M1, 27);
@@ -186,7 +186,7 @@ describe('a quarter, day by day', () => {
     const cn = await creditNote(ids.invC);
     expect(cn.status, JSON.stringify(cn.body)).toBe(200);
     const note = ((await db.select().from(schema.invoices).where(eq(schema.invoices.originalInvoiceId, ids.invC))) as any[])[0];
-    expect(note.date).toBe(day(M2, 2));
+    expect(note.docDate).toBe(day(M2, 2));
     await checkAll('credit note against a closed-month invoice');
 
     // an expense of the closed month cannot be cancelled; it is reversed by a document dated today
@@ -200,7 +200,7 @@ describe('a quarter, day by day', () => {
     expect(twice.status).toBe(400);
     await checkAll('reversal of a closed-month expense');
     clock = day(M2, 4);
-    ok(await post('/api/inventory/vendor-refunds', { vendorId, bankId, amount: 230, date: clock }), 'refund of the reversed paid expense');
+    ok(await post('/api/inventory/vendor-refunds', { vendorId, bankId, amount: 230, docDate: clock }), 'refund of the reversed paid expense');
 
     // settle the accrual with the real, larger invoice
     clock = day(M2, 5);
@@ -211,7 +211,7 @@ describe('a quarter, day by day', () => {
     clock = day(M2, 6);
     ok(await post('/api/inventory/purchase-returns', { returnData: { grnId: ids.grn1, items: [{ productId: P, quantityReturned: 1 }] } }), 'second vendor return');
     clock = day(M2, 7);
-    ok(await post('/api/inventory/vendor-refunds', { vendorId, bankId, amount: 115, date: clock }), 'second refund');
+    ok(await post('/api/inventory/vendor-refunds', { vendorId, bankId, amount: 115, docDate: clock }), 'second refund');
     clock = day(M2, 8);
     ids.grn2 = await grn(10);
     ids.bill2 = await bill(ids.grn2);
@@ -258,7 +258,7 @@ describe('a quarter, day by day', () => {
       expect(r.status, `${label}: ${JSON.stringify(r.body).slice(0, 160)}`).toBe(200);
       expect(await snap(), `${label} changed a closed month`).toBe(before);
     };
-    await allowed('pay what is still owed on an expense of a closed month', () => post(`/api/expenses/${ids.e2}/pay`, { date: clock, bankId, amount: 145 }));
+    await allowed('pay what is still owed on an expense of a closed month', () => post(`/api/expenses/${ids.e2}/pay`, { docDate: clock, bankId, amount: 145 }));
     await allowed('return a unit to the vendor from a bill of a closed month', () => post('/api/inventory/purchase-returns', { returnData: { grnId: ids.grn2, items: [{ productId: P, quantityReturned: 1 }] } }));
     await checkAll('after every attempt on the closed months');
 
@@ -268,7 +268,7 @@ describe('a quarter, day by day', () => {
     ids.e4 = await expense('Story opex M3', 460, { paymentStatus: 'Paid', amountPaid: 460, paymentDate: clock });
     // quotation -> invoice
     clock = day(M3, 6);
-    ok(await post('/api/transactions/quotations', { quotationData: { date: clock, customerId, taxSlabId, notes: 'Story quote', status: 'Accepted', createdById: userId, items: [{ id: generateId(), description: 'Quoted service', unitCost: 200, quantity: 1, unit: 'PCE', productId: S }] } }), 'quotation');
+    ok(await post('/api/transactions/quotations', { quotationData: { docDate: clock, customerId, taxSlabId, notes: 'Story quote', status: 'Accepted', createdById: userId, items: [{ id: generateId(), description: 'Quoted service', unitCost: 200, quantity: 1, unit: 'PCE', productId: S }] } }), 'quotation');
     const quotationId = ((await db.select().from(schema.quotations).where(eq(schema.quotations.companyId, companyId))) as any[])[0].id;
     clock = day(M3, 7);
     ok(await post(`/api/transactions/quotations/${quotationId}/convert`, { invoiceDate: clock, bankId, paymentStatus: 'Unpaid', customCustomerId: customerId, customTaxSlabId: taxSlabId }), 'convert quotation');
@@ -337,7 +337,7 @@ describe('a quarter, day by day', () => {
     ok(await post('/api/transactions/months', { id: N1, name: `Month ${N1}`, status: 'Open' }), 'open next quarter');
     const lateNote = await creditNote(ids.invF);
     expect(lateNote.status, JSON.stringify(lateNote.body)).toBe(200);
-    const stuck = await post('/api/expenses', { date: day(M3, 15), vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'LATE', description: 'late', paymentStatus: 'Unpaid', amount: 115 });
+    const stuck = await post('/api/expenses', { docDate: day(M3, 15), vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'LATE', description: 'late', paymentStatus: 'Unpaid', amount: 115 });
     expect(stuck.status).toBe(400);
     await checkAll('next quarter, after a credit note for a filed-quarter invoice');
     const filedNow = await rep('vat-return-summary', `startDate=${day(M1, 1)}&endDate=${day(M3, 31)}`);

@@ -73,7 +73,7 @@ beforeAll(async () => {
   const [bA] = (await db.insert(schema.branches).values({ id: generateId(), companyId: A.id, name: 'Jeddah', code: 'JED' } as any).returning()) as any[];
   const [bB] = (await db.insert(schema.branches).values({ id: generateId(), companyId: A.id, name: 'Riyadh', code: 'RUH' } as any).returning()) as any[];
   branchA = bA.id; branchB2 = bB.id;
-  const post1 = (date: string, branchId: string | null, lines: any[], description = 'engine test') => postJournalEntry(db, { companyId: A.id, branchId, date, referenceType: 'Test', referenceId: generateId(), description, createdById: A.adminId, lines });
+  const post1 = (date: string, branchId: string | null, lines: any[], description = 'engine test') => postJournalEntry(db, { companyId: A.id, branchId, postingDate: date, referenceType: 'Test', referenceId: generateId(), description, createdById: A.adminId, lines });
   await post1(PRIOR, branchA, [{ accountKey: 'AR', debit: 500 }, { accountKey: 'SALES_REVENUE', credit: 500 }]);
   await post1(TODAY, branchA, [{ accountKey: 'AR', debit: 1150 }, { accountKey: 'SALES_REVENUE', credit: 1000 }, { accountKey: 'VAT_OUTPUT', credit: 150 }]);
   await post1(TODAY, branchB2, [{ accountKey: 'COGS', debit: 400 }, { accountKey: 'INVENTORY', credit: 400 }]);

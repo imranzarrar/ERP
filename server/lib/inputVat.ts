@@ -16,14 +16,11 @@ export interface BillVatLine { kind: 'Bill' | 'Return'; documentNumber: string; 
 export interface BillInputVat { subtotal: number; vat: number; billCount: number; returnCount: number; lines: BillVatLine[]; }
 
 export async function computeBillInputVat(executor: any, companyId: string, startDate: string, endDate: string): Promise<BillInputVat> {
-  const from = new Date(startDate + 'T00:00:00.000Z');
-  const to = new Date(endDate + 'T23:59:59.999Z');
-
   const bills: any[] = await executor.select().from(schema.purchaseBills).where(and(
     eq(schema.purchaseBills.companyId, companyId),
     ne(schema.purchaseBills.status, 'Cancelled'),
-    gte(schema.purchaseBills.date, from),
-    lte(schema.purchaseBills.date, to),
+    gte(schema.purchaseBills.docDate, startDate),
+    lte(schema.purchaseBills.docDate, endDate),
   ));
   const billIds = bills.map(b => b.id);
   const reducedReturns: any[] = billIds.length
@@ -52,22 +49,22 @@ export async function computeBillInputVat(executor: any, companyId: string, star
     const tax = round2(Number(b.taxTotal) + add.vat);
     subtotal = round2(subtotal + sub);
     vat = round2(vat + tax);
-    lines.push({ kind: 'Bill', documentNumber: b.billNumber, date: b.date.toISOString().slice(0, 10), vendorId: b.vendorId, branchId: b.branchId ?? null, subtotal: sub, vat: tax, gross: round2(sub + tax) });
+    lines.push({ kind: 'Bill', documentNumber: b.billNumber, date: b.docDate, vendorId: b.vendorId, branchId: b.branchId ?? null, subtotal: sub, vat: tax, gross: round2(sub + tax) });
   }
 
   const returns: any[] = await executor.select().from(schema.purchaseReturns).where(and(
     eq(schema.purchaseReturns.companyId, companyId),
     eq(schema.purchaseReturns.status, 'Active'),
     isNotNull(schema.purchaseReturns.inputVatAdjustment),
-    gte(schema.purchaseReturns.date, from),
-    lte(schema.purchaseReturns.date, to),
+    gte(schema.purchaseReturns.docDate, startDate),
+    lte(schema.purchaseReturns.docDate, endDate),
   ));
   for (const r of returns) {
     const net = round2(Number(r.netAdjustment || 0));
     const tax = round2(Number(r.inputVatAdjustment || 0));
     subtotal = round2(subtotal - net);
     vat = round2(vat - tax);
-    lines.push({ kind: 'Return', documentNumber: r.returnNumber, date: r.date.toISOString().slice(0, 10), vendorId: r.vendorId, branchId: null, subtotal: -net, vat: -tax, gross: round2(-(net + tax)) });
+    lines.push({ kind: 'Return', documentNumber: r.returnNumber, date: r.docDate, vendorId: r.vendorId, branchId: null, subtotal: -net, vat: -tax, gross: round2(-(net + tax)) });
   }
 
   return { subtotal, vat, billCount: bills.length, returnCount: returns.length, lines };

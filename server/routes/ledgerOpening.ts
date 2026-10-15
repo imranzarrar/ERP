@@ -76,7 +76,7 @@ async function build(tdb: any, companyId: string, body: any): Promise<PreviewRes
       warnings.push(`The sheet does not balance: debits ${totalDebit.toFixed(2)} vs credits ${totalCredit.toFixed(2)} (out by ${Math.abs(difference).toFixed(2)}). Fix the figures or choose an Equity account to take the difference.`);
     }
   }
-  const earlier: any = await tdb.execute(sql`SELECT COUNT(*)::int AS n FROM journal_entries WHERE company_id = ${companyId}::uuid AND date < ${date} AND reference_type <> 'Opening'`);
+  const earlier: any = await tdb.execute(sql`SELECT COUNT(*)::int AS n FROM journal_entries WHERE company_id = ${companyId}::uuid AND posting_date < ${date} AND reference_type <> 'Opening'`);
   if (Number(earlier.rows[0].n) > 0) warnings.push(`${earlier.rows[0].n} ledger entr${Number(earlier.rows[0].n) === 1 ? 'y is' : 'ies are'} already posted before this opening date. Opening balances normally come first; these figures may be counted twice.`);
   const live: any = await tdb.execute(sql`SELECT cut_off_date AS d FROM opening_balance_runs WHERE company_id = ${companyId}::uuid AND (summary->>'reversedAt') IS NULL`);
   if (live.rows.length) warnings.push(`Opening balances were already posted (dated ${live.rows[0].d}). Reverse that entry first, then post the corrected one.`);
@@ -100,7 +100,7 @@ router.get('/opening-balances', withTenantDb, async (req: any, res) => {
       .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
     const banks: any[] = await tdb.select({ id: schema.bankAccounts.id, name: schema.bankAccounts.bankName, openingBalance: schema.bankAccounts.openingBalance }).from(schema.bankAccounts).where(eq(schema.bankAccounts.companyId, companyId));
     const bankSuggestions = banks.filter(b => Number(b.openingBalance) !== 0).map(b => ({ bankId: b.id, name: b.name, amount: Number(b.openingBalance), accountId: accts.find(a => a.bankId === b.id)?.id || null }));
-    const first: any = await tdb.execute(sql`SELECT MIN(date) AS d FROM journal_entries WHERE company_id = ${companyId}::uuid AND reference_type <> 'Opening'`);
+    const first: any = await tdb.execute(sql`SELECT MIN(posting_date) AS d FROM journal_entries WHERE company_id = ${companyId}::uuid AND reference_type <> 'Opening'`);
     res.json({
       runs: runs.map((r: any) => ({ id: r.id, cutOffDate: r.cutOffDate, postedByName: uMap.get(r.postedById) || '', postedAt: r.postedAt, summary: r.summary, reversed: !!r.summary?.reversedAt })),
       eligibleAccounts: eligible, bankSuggestions, firstActivityDate: first.rows[0]?.d || null,
@@ -140,7 +140,7 @@ router.post('/opening-balances/post', withTenantDb, async (req: any, res) => {
       ...r.lines.map(l => ({ accountId: l.accountId, debit: l.debit || undefined, credit: l.credit || undefined })),
       ...(r.plug ? [{ accountId: r.plug.accountId, debit: r.plug.debit || undefined, credit: r.plug.credit || undefined }] : []),
     ];
-    const entryId = await postJournalEntry(tdb, { companyId, date, referenceType: 'Opening', referenceId: runId, description: `Opening balances as at ${date}`, createdById: req.user.id, lines });
+    const entryId = await postJournalEntry(tdb, { companyId, postingDate: date, referenceType: 'Opening', referenceId: runId, description: `Opening balances as at ${date}`, createdById: req.user.id, lines });
     // isolation-ok: journalEntryId is the entry this very request just created through postJournalEntry
     await tdb.insert(schema.openingBalanceRuns).values({
       id: runId, companyId, cutOffDate: date, journalEntryId: entryId, postedById: req.user.id, postedAt: nowDate(),
@@ -165,7 +165,7 @@ router.post('/opening-balances/:id/reverse', withTenantDb, async (req: any, res)
     if (summary.reversedAt) return fail(res, 400, 'These opening balances were already reversed.');
     const reason = String(req.body?.reason ?? '').trim().slice(0, 300);
     if (!reason) return fail(res, 400, 'Write the reason for the reversal.');
-    const date = req.body?.date ? String(req.body.date) : run.cutOffDate;
+    const date = req.body?.docDate ? String(req.body.docDate) : run.cutOffDate;
     if (!DATE_RE.test(date) || isNaN(Date.parse(date))) return fail(res, 400, 'Enter a valid date.');
     if (date < run.cutOffDate) return fail(res, 400, 'The reversal cannot be dated before the opening date.');
     await validateTransactionDate(date, companyId);

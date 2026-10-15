@@ -202,7 +202,7 @@ describe('Sale warehouse resolution (branch default -> company default)', () => 
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'Widget sale', unitCost: 10, quantity: 2, unit: 'PCE', productId: stockProductId }],
         },
       }),
@@ -220,7 +220,7 @@ describe('Sale warehouse resolution (branch default -> company default)', () => 
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0, branchId: branchAId,
+          docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0, branchId: branchAId,
           items: [{ id: generateId(), description: 'Widget sale at Branch A', unitCost: 10, quantity: 3, unit: 'PCE', productId: stockProductId }],
         },
       }),
@@ -238,7 +238,7 @@ describe('Sale warehouse resolution (branch default -> company default)', () => 
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           branchId: branchAId, warehouseId: warehouseCompanyDefaultId,
           items: [{ id: generateId(), description: 'Explicit warehouse override', unitCost: 10, quantity: 1, unit: 'PCE', productId: stockProductId }],
         },
@@ -268,7 +268,7 @@ describe('Sale warehouse resolution (branch default -> company default)', () => 
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'Product-default-warehouse sale', unitCost: 10, quantity: 4, unit: 'PCE', productId: productWithDefaultWhId }],
         },
       }),
@@ -291,7 +291,7 @@ describe('Sale warehouse resolution (branch default -> company default)', () => 
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           warehouseId: warehouseBackendId,
           items: [{ id: generateId(), description: 'Should be blocked', unitCost: 10, quantity: 1, unit: 'PCE', productId: stockProductId }],
         },
@@ -307,7 +307,7 @@ describe('Sale warehouse resolution (branch default -> company default)', () => 
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'To be credited', unitCost: 10, quantity: 1, unit: 'PCE', productId: stockProductId }],
         },
       }),
@@ -330,7 +330,7 @@ describe('Sale warehouse resolution (branch default -> company default)', () => 
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'To be cancelled then credited', unitCost: 10, quantity: 2, unit: 'PCE', productId: stockProductId }],
         },
       }),
@@ -377,7 +377,7 @@ describe('Sale warehouse resolution (branch default -> company default)', () => 
       method: 'POST',
       body: JSON.stringify({
         quotationData: {
-          date: today, customerId, taxSlabId, bankId, notes: marker, status: 'Accepted', createdById: adminUserId,
+          docDate: today, customerId, taxSlabId, bankId, notes: marker, status: 'Accepted', createdById: adminUserId,
           items: [{ id: generateId(), description: 'QA Stock Widget', unitCost: 10, quantity: 2, unit: 'PCE', productId: stockProductId, discountAmount: 0 }],
         },
       }),
@@ -418,7 +418,7 @@ describe('Sale warehouse resolution (branch default -> company default)', () => 
         method: 'POST',
         body: JSON.stringify({
           quotationData: {
-            date: new Date().toISOString().split('T')[0], customerId, taxSlabId, bankId, notes: marker, status: 'Accepted', createdById: adminUserId,
+            docDate: new Date().toISOString().split('T')[0], customerId, taxSlabId, bankId, notes: marker, status: 'Accepted', createdById: adminUserId,
             items: [{ id: generateId(), description: 'QA Stock Widget', unitCost: 10, quantity: qty, unit: 'PCE', productId: stockProductId, discountAmount: 0 }],
           },
         }),
@@ -486,7 +486,7 @@ describe('No warehouses configured yet (services vs. stock items)', () => {
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId: noWhCustomerId, taxSlabId: noWhTaxSlabId, bankId: noWhBankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: today, customerId: noWhCustomerId, taxSlabId: noWhTaxSlabId, bankId: noWhBankId, notes: '', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'Consulting', unitCost: 50, quantity: 1, unit: 'HUR', productId: noWhServiceProductId }],
         },
       }),
@@ -502,7 +502,7 @@ describe('No warehouses configured yet (services vs. stock items)', () => {
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId: noWhCustomerId, taxSlabId: noWhTaxSlabId, bankId: noWhBankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: today, customerId: noWhCustomerId, taxSlabId: noWhTaxSlabId, bankId: noWhBankId, notes: '', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'Widget', unitCost: 10, quantity: 1, unit: 'PCE', productId: noWhStockProductId }],
         },
       }),
@@ -577,7 +577,7 @@ describe('Opt-in stock availability enforcement (inventorySettings.enforceStockA
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           warehouseId: warehouseCompanyDefaultId,
           items: [{ id: generateId(), description: 'Oversell allowed by default', unitCost: 10, quantity: 999999, unit: 'PCE', productId: stockProductId }],
         },
@@ -597,7 +597,7 @@ describe('Opt-in stock availability enforcement (inventorySettings.enforceStockA
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           warehouseId: warehouseBranchDefaultId,
           items: [{ id: generateId(), description: 'Oversell blocked', unitCost: 10, quantity: before + 5, unit: 'PCE', productId: stockProductId }],
         },
@@ -646,13 +646,13 @@ describe('POST /api/branches/backfill-unassigned', () => {
     await db.insert(schema.taxSlabs).values({ id: backfillTaxSlabId, name: 'Standard 15%', percentage: '15', companyId: backfillCompanyId });
     const alreadyAssignedQuotationId = generateId();
     await db.insert(schema.quotations).values({
-      id: alreadyAssignedQuotationId, quotationNumber: 'Q-BKF-1', date: '2026-01-01', customerId: customer2Id,
+      id: alreadyAssignedQuotationId, quotationNumber: 'Q-BKF-1', docDate: '2026-01-01', customerId: customer2Id,
       taxSlabId: backfillTaxSlabId, notes: '', status: 'Draft', createdById: backfillAdminUserId, createdAt: new Date(),
       companyId: backfillCompanyId, branchId: otherBranchId,
     });
     unassignedQuotationId = generateId();
     await db.insert(schema.quotations).values({
-      id: unassignedQuotationId, quotationNumber: 'Q-BKF-2', date: '2026-01-01', customerId: customer2Id,
+      id: unassignedQuotationId, quotationNumber: 'Q-BKF-2', docDate: '2026-01-01', customerId: customer2Id,
       taxSlabId: backfillTaxSlabId, notes: '', status: 'Draft', createdById: backfillAdminUserId, createdAt: new Date(),
       companyId: backfillCompanyId, branchId: null,
     });
@@ -718,7 +718,7 @@ describe('Invoice line-item and net-total validation', () => {
     const res = await api(adminSessionId, '/api/transactions/invoices', {
       method: 'POST',
       body: JSON.stringify({
-        invoiceData: { date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0, items: [] },
+        invoiceData: { docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0, items: [] },
       }),
     });
     expect(res.status).toBe(400);
@@ -731,7 +731,7 @@ describe('Invoice line-item and net-total validation', () => {
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'Free item', unitCost: 0, quantity: 1, unit: 'PCE' }],
         },
       }),
@@ -746,7 +746,7 @@ describe('Invoice line-item and net-total validation', () => {
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'Over-discounted item', unitCost: 10, discountAmount: 10, quantity: 1, unit: 'PCE' }],
         },
       }),
@@ -761,7 +761,7 @@ describe('Invoice line-item and net-total validation', () => {
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+          docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           items: [{ id: generateId(), description: 'Decimal discount item', unitCost: 10, discountAmount: 2.55, quantity: 1, unit: 'PCE' }],
         },
       }),
@@ -780,7 +780,7 @@ describe('Invoice line-item and net-total validation', () => {
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0, discountPercentage: 100,
+          docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0, discountPercentage: 100,
           items: [{ id: generateId(), description: 'Fully header-discounted item', unitCost: 10, quantity: 1, unit: 'PCE' }],
         },
       }),

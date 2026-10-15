@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../src/db/index.js';
 import * as schema from '../src/db/schema.js';
 import { generateId } from '../src/id.js';
+import { entryStamp, systemDated } from '../server/lib/documentDates.js';
 
 // Real integration test against the already-running dev server + real Postgres, no mocks,
 // matching this project's convention (tests/companyOnboarding.test.ts). Builds a full
@@ -149,7 +150,7 @@ describe('Company registration status + Delete Company & All Data', () => {
 
     const invoiceId = generateId();
     await db.insert(schema.invoices).values({
-      id: invoiceId, companyId, invoiceNumber: 'INV-TEST-1', date: '2026-01-01',
+      id: invoiceId, companyId, invoiceNumber: 'INV-TEST-1', docDate: '2026-01-01', postingDate: '2026-01-01',
       customerId: defaultCustomer.id, taxSlabId: defaultTaxSlab.id, bankId: defaultBank.id,
       paymentStatus: 'Paid', notes: '', status: 'Draft', createdById: targetUserId,
       createdAt: new Date(), branchId, warehouseId: defaultWarehouse.id, salesAssociateId: employeeId,
@@ -161,7 +162,7 @@ describe('Company registration status + Delete Company & All Data', () => {
     const poId = generateId();
     await db.insert(schema.purchaseOrders).values({
       id: poId, companyId, poNumber: 'PO-TEST-1', vendorId: defaultVendor.id,
-      date: new Date(), totalAmount: '10.00', branchId,
+      ...entryStamp(null), totalAmount: '10.00', branchId,
     });
     await db.insert(schema.purchaseOrderItems).values({
       id: generateId(), purchaseOrderId: poId, productId, quantityOrdered: '1.000', unitPrice: '10.00',
@@ -169,7 +170,7 @@ describe('Company registration status + Delete Company & All Data', () => {
     const grnId = generateId();
     await db.insert(schema.goodsReceiptNotes).values({
       id: grnId, companyId, grnNumber: 'GRN-TEST-1', purchaseOrderId: poId, vendorId: defaultVendor.id,
-      warehouseId: defaultWarehouse.id, date: new Date(), receivedBy: 'Test',
+      warehouseId: defaultWarehouse.id, ...systemDated(null), receivedBy: 'Test',
     });
     await db.insert(schema.goodsReceiptNoteItems).values({
       id: generateId(), grnId, productId, quantityReceived: '1.000', unitCost: '10.00',
@@ -182,15 +183,15 @@ describe('Company registration status + Delete Company & All Data', () => {
     const e1 = generateId(), e2 = generateId();
     const ts = new Date();
     await db.insert(schema.journalEntries).values([
-      { id: e1, companyId, date: '2026-01-02', referenceType: 'Manual', referenceId: mjOrig, description: 'orig', createdById: targetUserId, createdAt: ts },
-      { id: e2, companyId, date: '2026-01-03', referenceType: 'Manual', referenceId: mjRev, description: 'rev', createdById: targetUserId, createdAt: ts, reversalOfId: e1 },
+      { id: e1, companyId, postingDate: '2026-01-02', docDate: '2026-01-02', referenceType: 'Manual', referenceId: mjOrig, description: 'orig', createdById: targetUserId, createdAt: ts },
+      { id: e2, companyId, postingDate: '2026-01-03', docDate: '2026-01-03', referenceType: 'Manual', referenceId: mjRev, description: 'rev', createdById: targetUserId, createdAt: ts, reversalOfId: e1 },
     ]);
     await db.insert(schema.journalLines).values([
       { id: generateId(), journalEntryId: e1, companyId, accountId: exp.id, debit: '5', credit: '0' }, { id: generateId(), journalEntryId: e1, companyId, accountId: inc.id, debit: '0', credit: '5' },
       { id: generateId(), journalEntryId: e2, companyId, accountId: exp.id, debit: '0', credit: '5' }, { id: generateId(), journalEntryId: e2, companyId, accountId: inc.id, debit: '5', credit: '0' },
     ]);
-    await db.insert(schema.manualJournals).values({ id: mjOrig, companyId, number: 'MJ-T1', date: '2026-01-02', description: 'orig', status: 'Posted', preparedById: targetUserId, preparedAt: ts, journalEntryId: e1 });
-    await db.insert(schema.manualJournals).values({ id: mjRev, companyId, number: 'MJ-T2', date: '2026-01-03', description: 'rev', status: 'Posted', preparedById: targetUserId, preparedAt: ts, journalEntryId: e2, reversalOfId: mjOrig });
+    await db.insert(schema.manualJournals).values({ id: mjOrig, companyId, number: 'MJ-T1', docDate: '2026-01-02', postingDate: '2026-01-02', description: 'orig', status: 'Posted', preparedById: targetUserId, preparedAt: ts, journalEntryId: e1 });
+    await db.insert(schema.manualJournals).values({ id: mjRev, companyId, number: 'MJ-T2', docDate: '2026-01-03', postingDate: '2026-01-03', description: 'rev', status: 'Posted', preparedById: targetUserId, preparedAt: ts, journalEntryId: e2, reversalOfId: mjOrig });
     await db.update(schema.manualJournals).set({ reversedById: mjRev }).where(eq(schema.manualJournals.id, mjOrig));
     await db.insert(schema.manualJournalLines).values({ id: generateId(), journalId: mjOrig, companyId, accountId: exp.id, debit: '5', credit: '0' });
     await db.insert(schema.manualJournalEvents).values({ id: generateId(), journalId: mjOrig, companyId, action: 'Prepared', userId: targetUserId, createdAt: ts });

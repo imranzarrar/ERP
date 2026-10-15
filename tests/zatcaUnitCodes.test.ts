@@ -181,7 +181,7 @@ describe('Unit code flows from product through invoice into the real ZATCA XML',
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: new Date().toISOString().split('T')[0],
+          docDate: new Date().toISOString().split('T')[0],
           customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
           items,
         },

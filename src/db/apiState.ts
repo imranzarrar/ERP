@@ -112,7 +112,7 @@ export async function getFullState(companyId?: string | null) {
     // Grows with every stock-mutating transaction (GRN/Return/Sale/Adjustment/StockTake/
     // TransferOut/TransferIn) — bounded and company-scoped the same way invoices/vouchers are above.
     const stockLedgerTransactions = companyId
-      ? await db.select().from(schema.stockLedgerTransactions).where(eq(schema.stockLedgerTransactions.companyId, companyId)).orderBy(desc(schema.stockLedgerTransactions.date)).limit(DEFAULT_LIST_LIMIT)
+      ? await db.select().from(schema.stockLedgerTransactions).where(eq(schema.stockLedgerTransactions.companyId, companyId)).orderBy(desc(schema.stockLedgerTransactions.postingDate), desc(schema.stockLedgerTransactions.createdAt)).limit(DEFAULT_LIST_LIMIT)
       : [];
     const warehouseDispatches = await db.select().from(schema.warehouseDispatches);
     const warehouseDispatchItems = await db.select().from(schema.warehouseDispatchItems);
@@ -194,7 +194,6 @@ export async function getFullState(companyId?: string | null) {
     // Map PR items
     const prsWithItems = purchaseRequisitions.map(pr => ({
       ...pr,
-      date: pr.date.toISOString(),
       items: purchaseRequisitionItems.filter(item => item.requisitionId === pr.id).map(item => ({
         ...item,
         quantity: Number(item.quantity)
@@ -204,8 +203,6 @@ export async function getFullState(companyId?: string | null) {
     // Map PO items
     const posWithItems = purchaseOrders.map(po => ({
       ...po,
-      date: po.date.toISOString(),
-      deliveryDate: po.deliveryDate ? po.deliveryDate.toISOString() : null,
       totalAmount: Number(po.totalAmount),
       items: purchaseOrderItems.filter(item => item.purchaseOrderId === po.id).map(item => ({
         ...item,
@@ -218,7 +215,6 @@ export async function getFullState(companyId?: string | null) {
     // Map GRN items
     const grnsWithItems = goodsReceiptNotes.map(grn => ({
       ...grn,
-      date: grn.date.toISOString(),
       items: goodsReceiptNoteItems.filter(item => item.grnId === grn.id).map(item => ({
         ...item,
         quantityReceived: Number(item.quantityReceived),
@@ -237,8 +233,6 @@ export async function getFullState(companyId?: string | null) {
 
     const billsMapped = purchaseBills.map(b => ({
       ...b,
-      date: b.date.toISOString(),
-      dueDate: b.dueDate ? b.dueDate.toISOString() : null,
       subTotal: Number(b.subTotal),
       taxTotal: Number(b.taxTotal),
       grandTotal: Number(b.grandTotal),
@@ -247,7 +241,6 @@ export async function getFullState(companyId?: string | null) {
 
     const returnsWithItems = purchaseReturns.map(r => ({
       ...r,
-      date: r.date.toISOString(),
       items: purchaseReturnItems.filter(item => item.returnId === r.id).map(item => ({
         ...item,
         quantityReturned: Number(item.quantityReturned),
@@ -256,7 +249,6 @@ export async function getFullState(companyId?: string | null) {
 
     const stockTakesWithItems = physicalStockTakes.map(st => ({
       ...st,
-      date: st.date.toISOString(),
       items: physicalStockTakeItems.filter(item => item.stockTakeId === st.id).map(item => ({
         ...item,
         systemQuantity: Number(item.systemQuantity),
@@ -267,8 +259,6 @@ export async function getFullState(companyId?: string | null) {
 
     const warehouseDispatchesWithItems = warehouseDispatches.map(d => ({
       ...d,
-      date: d.date.toISOString(),
-      expectedArrivalDate: d.expectedArrivalDate ? d.expectedArrivalDate.toISOString() : null,
       items: warehouseDispatchItems.filter(item => item.dispatchId === d.id).map(item => ({
         ...item,
         quantityDispatched: Number(item.quantityDispatched),
@@ -278,7 +268,6 @@ export async function getFullState(companyId?: string | null) {
 
     const warehouseReceivingsWithItems = warehouseReceivings.map(r => ({
       ...r,
-      date: r.date.toISOString(),
       items: warehouseReceivingItems.filter(item => item.receivingId === r.id).map(item => ({
         ...item,
         quantityReceived: Number(item.quantityReceived),
@@ -288,7 +277,6 @@ export async function getFullState(companyId?: string | null) {
 
     const stockLedgerTransactionsMapped = stockLedgerTransactions.map(slt => ({
       ...slt,
-      date: slt.date.toISOString(),
       quantityChange: Number(slt.quantityChange),
       endingQuantity: Number(slt.endingQuantity),
     }));

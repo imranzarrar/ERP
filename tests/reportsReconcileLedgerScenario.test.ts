@@ -60,7 +60,7 @@ afterAll(async () => {
 }, 60000);
 
 const inv = (qty: number, paid: number) => ({ invoiceData: {
-  date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: paid,
+  docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: paid,
   items: [{ id: generateId(), description: 'Reconcile Item', unitCost: 50, quantity: qty, discountAmount: 0, productId }],
 } });
 
@@ -70,11 +70,11 @@ describe('reports reconcile with source documents (GRN, bill, credit note, refun
   it('builds the book through the real routes', async () => {
     const grn = await post('/api/inventory/goods-receipt-notes', { grnData: { isDsd: true, vendorId, warehouseId, receivedBy: 'Test', items: [{ productId, quantityReceived: 10, unitCost: 20, taxRate: 15 }] } });
     expect(grn.status).toBe(200);
-    const bill = await post('/api/inventory/purchase-bills', { billData: { date: new Date().toISOString().slice(0, 10), grnIds: [grn.body.goodsReceiptNote.id], bankId, vendorBillNumber: 'RR-1' } });
+    const bill = await post('/api/inventory/purchase-bills', { billData: { docDate: new Date().toISOString().slice(0, 10), grnIds: [grn.body.goodsReceiptNote.id], bankId, vendorBillNumber: 'RR-1' } });
     expect(bill.status).toBe(200);
     billId = bill.body.purchaseBill.id;
     expect(Number(bill.body.purchaseBill.grandTotal)).toBe(230);
-    expect((await post(`/api/inventory/purchase-bills/${billId}/pay`, { date: today, bankId, amount: 230 })).status).toBe(200);
+    expect((await post(`/api/inventory/purchase-bills/${billId}/pay`, { docDate: today, bankId, amount: 230 })).status).toBe(200);
 
     const a = await post('/api/transactions/invoices', inv(2, 115)); expect(a.status).toBe(200); invA = a.body.invoiceId;
     const b = await post('/api/transactions/invoices', inv(1, 20)); expect(b.status).toBe(200);
@@ -85,7 +85,7 @@ describe('reports reconcile with source documents (GRN, bill, credit note, refun
     // note reverses it, so nothing is owed), and everything else below must be unaffected by it.
     // Expenses are stored VAT-inclusive (15% slab): X = 115 gross (100 net + 15 VAT), paid in full;
     // Y = a 230 gross CAPITAL purchase (200 net + 30 VAT), left unpaid.
-    const expense = (amount: number, extra: any) => post('/api/expenses', { date: today, vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'RR-E', ...extra, amount });
+    const expense = (amount: number, extra: any) => post('/api/expenses', { docDate: today, vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'RR-E', ...extra, amount });
     expect((await expense(115, { description: 'Reconcile opex', paymentStatus: 'Paid', amountPaid: 115, paymentDate: today })).status).toBe(200);
     expect((await expense(230, { description: 'Reconcile capex', paymentStatus: 'Unpaid', classification: 'Asset' })).status).toBe(200);
     const d = await post('/api/transactions/invoices', inv(1, 0)); expect(d.status).toBe(200); invD = d.body.invoiceId;

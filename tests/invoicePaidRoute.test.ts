@@ -66,7 +66,7 @@ async function createInvoice(amountPaid = 0) {
     method: 'POST',
     body: JSON.stringify({
       invoiceData: {
-        date: new Date().toISOString().split('T')[0],
+        docDate: new Date().toISOString().split('T')[0],
         customerId,
         taxSlabId,
         bankId,
@@ -87,7 +87,7 @@ async function createOtherCompanyInvoice(amountPaid = 0) {
     method: 'POST',
     body: JSON.stringify({
       invoiceData: {
-        date: new Date().toISOString().split('T')[0],
+        docDate: new Date().toISOString().split('T')[0],
         customerId: otherCustomerId,
         taxSlabId: otherTaxSlabId,
         bankId: otherBankId,
@@ -257,7 +257,7 @@ describe('POST /api/transactions/invoices (creation-time payment)', () => {
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today,
+          docDate: today,
           customerId,
           taxSlabId,
           bankId,
@@ -458,7 +458,7 @@ describe('POST /api/transactions/invoices/:id/paid — partial payments', () => 
       eq(schema.vouchers.type, 'Receipt')
     ));
     expect(receiptBefore).toBeTruthy();
-    expect(receiptBefore.date.slice(0, 7)).toBe(monthId);
+    expect(receiptBefore.docDate.slice(0, 7)).toBe(monthId);
 
     const { status } = await api(adminSessionId, `/api/transactions/invoices/${invId}/cancel`, { method: 'POST' });
     expect(status).toBe(200);

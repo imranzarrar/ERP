@@ -15,6 +15,7 @@ import { processInvoiceZatca } from '../lib/zatca/processInvoice.js';
 import { recordAuditLog } from '../lib/audit.js';
 import { withTenantDb, tenantDb, runAfterTenantCommit } from '../lib/tenantDb.js';
 import { nowDate } from '../lib/clock.js';
+import { documentDates } from '../lib/documentDates.js';
 
 const router = express.Router();
 
@@ -221,7 +222,7 @@ router.get('/returnable-invoices', withTenantDb, async (req: any, res) => {
       eq(schema.invoices.isPosSale, true),
       eq(schema.invoices.documentType, 'Invoice'),
       ne(schema.invoices.status, 'Cancelled'),
-      gte(schema.invoices.date, cutoffDateStr),
+      gte(schema.invoices.docDate, cutoffDateStr),
     ];
     if (Array.isArray(req.allowedBranchIds)) {
       if (req.allowedBranchIds.length === 0) return res.json([]);
@@ -262,7 +263,7 @@ router.get('/returnable-invoices', withTenantDb, async (req: any, res) => {
     const result = candidates.map(inv => ({
       id: inv.id,
       invoiceNumber: inv.invoiceNumber,
-      date: inv.date,
+      docDate: inv.docDate,
       customerName: customerNameById.get(inv.customerId) || 'Walk-in Customer',
       amountPaid: inv.amountPaid,
       // Needed client-side so the return screen's refund preview can apply the same
@@ -358,7 +359,7 @@ router.post('/returns', withTenantDb, async (req: any, res) => {
     const windowDays = getReturnWindowDays(company?.posSettings);
     const cutoffDate = nowDate();
     cutoffDate.setDate(cutoffDate.getDate() - windowDays);
-    if (original.date < cutoffDate.toISOString().slice(0, 10)) {
+    if (original.docDate < cutoffDate.toISOString().slice(0, 10)) {
       return res.status(400).json({ error: `This sale is outside the ${windowDays}-day return window.` });
     }
 
@@ -454,7 +455,7 @@ router.post('/returns', withTenantDb, async (req: any, res) => {
     await tdb.insert(schema.invoices).values({
       id: noteId,
       invoiceNumber: noteNumber,
-      date: todayStr,
+      ...documentDates(todayStr),
       customerId: original.customerId,
       taxSlabId: original.taxSlabId,
       bankId: original.bankId,
@@ -516,7 +517,7 @@ router.post('/returns', withTenantDb, async (req: any, res) => {
     // exactly the returned part: (1) the sale reversed (revenue, VAT and receivable), (2) the cash handed back, and
     // (3) the cost of the returned units back out of cost of goods sold into inventory.
     await postJournalEntry(tdb, {
-      companyId, branchId: original.branchId, date: todayStr,
+      companyId, branchId: original.branchId, postingDate: todayStr,
       referenceType: 'CreditNote', referenceId: noteId,
       description: `POS return ${noteNumber} against invoice ${original.invoiceNumber}`,
       createdById: req.user.id,
@@ -528,7 +529,7 @@ router.post('/returns', withTenantDb, async (req: any, res) => {
     });
     if (refundBankId) {
       await postJournalEntry(tdb, {
-        companyId, branchId: original.branchId, date: todayStr,
+        companyId, branchId: original.branchId, postingDate: todayStr,
         referenceType: 'CreditNote', referenceId: noteId,
         description: `Refund for POS return ${noteNumber}`,
         createdById: req.user.id,
@@ -540,7 +541,7 @@ router.post('/returns', withTenantDb, async (req: any, res) => {
     const returnedCost = Math.round((Array.from(posReturnBefore).reduce((sum, [pid, b]) => sum + (posReturnAfter.get(pid)?.val ?? b.val) - b.val, 0) + Number.EPSILON) * 100) / 100;
     if (returnedCost > 0) {
       await postJournalEntry(tdb, {
-        companyId, branchId: original.branchId, date: todayStr,
+        companyId, branchId: original.branchId, postingDate: todayStr,
         referenceType: 'CreditNote', referenceId: noteId,
         description: `Cost of goods returned with POS return ${noteNumber}`,
         createdById: req.user.id,

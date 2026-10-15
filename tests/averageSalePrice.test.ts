@@ -51,7 +51,7 @@ async function createInvoice(unitCost: number, quantity: number, withProductId: 
     method: 'POST',
     body: JSON.stringify({
       invoiceData: {
-        date: new Date().toISOString().split('T')[0],
+        docDate: new Date().toISOString().split('T')[0],
         customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
         items: [{ id: generateId(), description: 'Test Widget', unitCost, quantity, discountAmount: 0, ...(withProductId ? { productId } : {}) }],
       },

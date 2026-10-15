@@ -48,7 +48,7 @@ afterAll(async () => { await purgeCompany(companyId); }, 60000);
 describe('POST /invoices ignores server-owned fields', () => {
   it('stores the real values, not the ones a crafted request names', async () => {
     const res = await post('/api/transactions/invoices', { invoiceData: {
-      date: today, customerId, taxSlabId, bankId, notes: 'n', amountPaid: 0,
+      docDate: today, customerId, taxSlabId, bankId, notes: 'n', amountPaid: 0,
       items: [{ id: generateId(), description: 'Service', unitCost: 100, quantity: 1, discountAmount: 0 }],
       status: 'Cancelled', zatcaStatus: 'CLEARED', icv: 99, uuid: 'forged-uuid', currentInvoiceHash: 'forged-hash', qrCodeContent: 'forged-qr',
       invoiceNumber: 'HACK-1', createdById: generateId(), createdAt: '2020-01-01T00:00:00.000Z', originalInvoiceId: generateId(), creditNoteReason: 'x',
@@ -74,7 +74,7 @@ describe('POST /invoices ignores server-owned fields', () => {
 
   it('still refuses a credit note sent through the create route', async () => {
     const res = await post('/api/transactions/invoices', { invoiceData: {
-      date: today, customerId, taxSlabId, bankId, notes: '', amountPaid: 0, documentType: 'CreditNote',
+      docDate: today, customerId, taxSlabId, bankId, notes: '', amountPaid: 0, documentType: 'CreditNote',
       items: [{ id: generateId(), description: 'Service', unitCost: 100, quantity: 1, discountAmount: 0 }],
     } });
     expect(res.status).toBe(400);
@@ -84,7 +84,7 @@ describe('POST /invoices ignores server-owned fields', () => {
 describe('POST /expenses ignores server-owned fields', () => {
   it('stores the real values, not the ones a crafted request names', async () => {
     const res = await post('/api/expenses', {
-      date: today, vendorId, taxSlabId, bankId, paymentStatus: 'Unpaid', amountPaid: 0, description: 'Rent', amount: 115,
+      docDate: today, vendorId, taxSlabId, bankId, paymentStatus: 'Unpaid', amountPaid: 0, description: 'Rent', amount: 115,
       billNumber: 'B-1', expenseType: 'Operating', classification: 'Expense',
       status: 'Cancelled', type: 'Accrual', reversalOfExpenseId: generateId(), originAccrualId: generateId(), accrualSettled: true,
       settledExpenseId: generateId(), expenseNumber: 'HACK-1', createdById: generateId(), createdAt: '2020-01-01T00:00:00.000Z', companyId: generateId(),

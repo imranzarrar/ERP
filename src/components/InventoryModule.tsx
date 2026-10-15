@@ -1201,7 +1201,7 @@ export default function InventoryModule({
       const res = await fetch('/api/inventory/purchase-bills', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ billData: { grnIds: billForm.grnIds, date: billForm.date, dueDate: billForm.dueDate || undefined, bankId: billForm.bankId || undefined, vendorBillNumber: billForm.vendorBillNumber || undefined } })
+        body: JSON.stringify({ billData: { grnIds: billForm.grnIds, docDate: billForm.date, dueDate: billForm.dueDate || undefined, bankId: billForm.bankId || undefined, vendorBillNumber: billForm.vendorBillNumber || undefined } })
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || t('Failed to create purchase bill.'));
@@ -1237,7 +1237,7 @@ export default function InventoryModule({
       const res = await fetch(`/api/inventory/purchase-bills/${isPayingBill.id}/pay`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: payBillForm.date, bankId: payBillForm.bankId, amount: payBillForm.amount ? Number(payBillForm.amount) : undefined })
+        body: JSON.stringify({ docDate: payBillForm.date, bankId: payBillForm.bankId, amount: payBillForm.amount ? Number(payBillForm.amount) : undefined })
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || t('Failed to record bill payment.'));
@@ -1724,7 +1724,7 @@ export default function InventoryModule({
                     <tr key={pr.id} className="hover:bg-gray-50/50 transition">
                       <td className="px-6 py-4 font-semibold text-indigo-700">{pr.prNumber}</td>
                       <td className="px-6 py-4 text-sm text-gray-800">{pr.requestedBy}</td>
-                      <td className="px-6 py-4 text-sm text-gray-500">{new Date(pr.date).toLocaleDateString()}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500">{new Date(pr.docDate).toLocaleDateString()}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">{(pr.items || []).length}</td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
@@ -1786,7 +1786,7 @@ export default function InventoryModule({
                       <tr key={po.id} className="hover:bg-gray-50/50 transition">
                         <td className="px-6 py-4 font-semibold text-indigo-700">{po.poNumber}</td>
                         <td className="px-6 py-4 text-sm text-gray-800">{vend?.name || t('Unknown Vendor')}</td>
-                        <td className="px-6 py-4 text-sm text-gray-500">{new Date(po.date).toLocaleDateString()}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{new Date(po.docDate).toLocaleDateString()}</td>
                         <td className="px-6 py-4 text-sm font-semibold text-gray-900">
                           {Number(po.totalAmount).toFixed(2)} {currency}
                         </td>
@@ -1864,7 +1864,7 @@ export default function InventoryModule({
                             <span className="text-gray-400">-</span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">{new Date(grn.date).toLocaleDateString()}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{new Date(grn.docDate).toLocaleDateString()}</td>
                         <td className="px-6 py-4 text-sm text-gray-700">{grn.receivedBy}</td>
                         <td className="px-6 py-4 text-right">
                           <button
@@ -2017,7 +2017,7 @@ export default function InventoryModule({
                         <td className="px-6 py-4 font-semibold text-indigo-700">{r.returnNumber}</td>
                         <td className="px-6 py-4 text-sm text-gray-800">{vend?.name || t('Unknown Vendor')}</td>
                         <td className="px-6 py-4 text-sm text-gray-600">{grn?.grnNumber || '-'}</td>
-                        <td className="px-6 py-4 text-sm text-gray-500">{new Date(r.date).toLocaleDateString()}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{new Date(r.docDate).toLocaleDateString()}</td>
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
                             r.status === 'Active' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
@@ -2074,7 +2074,7 @@ export default function InventoryModule({
                         <td className="px-6 py-4 font-semibold text-indigo-700">{s.referenceNumber}</td>
                         <td className="px-6 py-4 text-sm text-gray-800">{wh?.name || t('Unknown Warehouse')}</td>
                         <td className="px-6 py-4 text-sm text-gray-600">{s.performedBy}</td>
-                        <td className="px-6 py-4 text-sm text-gray-500">{new Date(s.date).toLocaleDateString()}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{new Date(s.docDate).toLocaleDateString()}</td>
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
                             s.status === 'Completed' ? 'bg-emerald-50 text-emerald-700' :
@@ -2137,7 +2137,7 @@ export default function InventoryModule({
                         <td className="px-6 py-4 text-sm text-gray-600">
                           {d.vehicleNumber || d.driverName ? `${d.vehicleNumber || '-'} / ${d.driverName || '-'}` : '-'}
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">{new Date(d.date).toLocaleDateString()}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{new Date(d.docDate).toLocaleDateString()}</td>
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
                             d.status === 'Received' ? 'bg-emerald-50 text-emerald-700' :
@@ -2207,7 +2207,7 @@ export default function InventoryModule({
                         <td className="px-6 py-4 text-sm text-gray-600 font-mono">{dispatch?.dispatchNumber || '-'}</td>
                         <td className="px-6 py-4 text-sm text-gray-800">{toWh?.name || t('Unknown Warehouse')}</td>
                         <td className="px-6 py-4 text-sm text-gray-600">{r.receivedBy}</td>
-                        <td className="px-6 py-4 text-sm text-gray-500">{new Date(r.date).toLocaleDateString()}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500">{new Date(r.docDate).toLocaleDateString()}</td>
                         <td className="px-6 py-4 text-right">
                           <button onClick={() => setViewingReceiving(r)} className="p-1 text-gray-400 hover:text-indigo-600 transition">
                             <Eye className="h-5 w-5" />
@@ -4450,7 +4450,7 @@ export default function InventoryModule({
                             <input type="checkbox" checked={checked} onChange={() => toggleBillGrn(g.id)} className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
                             <span className="font-semibold text-gray-900">{g.grnNumber}</span>
                           </span>
-                          <span className="text-gray-500">{vend?.name || t('Unknown Vendor')} • {new Date(g.date).toLocaleDateString()}</span>
+                          <span className="text-gray-500">{vend?.name || t('Unknown Vendor')} • {new Date(g.docDate).toLocaleDateString()}</span>
                         </label>
                       );
                     })

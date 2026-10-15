@@ -920,14 +920,14 @@ export function generateBankLedger(db: DatabaseState, bankId: string, startDate?
 
   // If date range is specified
   if (startDate) {
-    filteredVouchers = filteredVouchers.filter(v => v.date >= startDate);
+    filteredVouchers = filteredVouchers.filter(v => v.postingDate >= startDate);
   }
   if (endDate) {
-    filteredVouchers = filteredVouchers.filter(v => v.date <= endDate);
+    filteredVouchers = filteredVouchers.filter(v => v.postingDate <= endDate);
   }
 
   // Sort chronologically
-  filteredVouchers.sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
+  filteredVouchers.sort((a, b) => a.postingDate.localeCompare(b.postingDate) || a.createdAt.localeCompare(b.createdAt));
 
   let runningBalance = bank.openingBalance;
   
@@ -958,7 +958,7 @@ export function generateBankLedger(db: DatabaseState, bankId: string, startDate?
 
     return {
       id: v.id,
-      date: v.date,
+      date: v.postingDate,
       type: v.type,
       voucherNumber: v.voucherNumber,
       description: v.description,
@@ -1018,7 +1018,7 @@ export function checkRecurringPreconditions(db: DatabaseState, monthId: string, 
 export function calculateMonthPnL(db: DatabaseState, monthId: string, companyId?: string) {
   const compId = companyId || db.selectedCompanyId || '019fa55c-622a-7cd5-b949-e61689455b41';
   // Revenue from invoices in this month
-  const monthInvoices = db.invoices.filter(inv => inv.date.startsWith(monthId) && inv.status === 'Active' && inv.companyId === compId);
+  const monthInvoices = db.invoices.filter(inv => inv.postingDate.startsWith(monthId) && inv.status === 'Active' && inv.companyId === compId);
   
   // Paid revenue
   let paidRevenue = 0;
@@ -1033,7 +1033,7 @@ export function calculateMonthPnL(db: DatabaseState, monthId: string, companyId?
   }
 
   // Expenses in this month (including posted actual/accrual recurring expenses)
-  const monthExpenses = db.expenses.filter(exp => exp.date.startsWith(monthId) && exp.status === 'Active' && exp.companyId === compId);
+  const monthExpenses = db.expenses.filter(exp => exp.postingDate.startsWith(monthId) && exp.status === 'Active' && exp.companyId === compId);
   
   let paidExpenses = 0;
   let totalExpenses = 0;

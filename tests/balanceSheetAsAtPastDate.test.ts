@@ -61,10 +61,10 @@ afterAll(async () => { await purgeCompany(companyId); }, 60000);
 describe('Balance Sheet / Trial Balance as at a past date', () => {
   it('documents of the previous month, then their payments in this month', async () => {
     const invoiceId = ok(await post('/api/transactions/invoices', { invoiceData: {
-      date: pDay(10), customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+      docDate: pDay(10), customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
       items: [{ id: generateId(), description: 'Service', unitCost: 200, quantity: 1, discountAmount: 0, productId: serviceId }],
     } }), 'invoice').invoiceId;
-    ok(await post('/api/expenses', { date: pDay(12), vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'AS-1', description: 'Prev month opex', paymentStatus: 'Unpaid', amount: 115 }), 'expense');
+    ok(await post('/api/expenses', { docDate: pDay(12), vendorId, taxSlabId, bankId, status: 'Active', type: 'Actual', billNumber: 'AS-1', description: 'Prev month opex', paymentStatus: 'Unpaid', amount: 115 }), 'expense');
     const tpl = ok(await post('/api/transactions/recurring-templates', { description: 'Utilities', defaultAmount: 230, bankId, vendorId, taxSlabId, isActive: true }), 'template');
     ok(await post('/api/transactions/recurring-postings', { templateId: tpl.id, monthId: P, postType: 'Accrual', amount: 230, dateStr: pDay(20), paymentStatus: 'Unpaid', bankId }), 'accrual');
 
@@ -72,13 +72,13 @@ describe('Balance Sheet / Trial Balance as at a past date', () => {
     ok(await post(`/api/transactions/invoices/${invoiceId}/paid`, { paymentDate: today, bankId, amount: 230 }), 'collect');
     const rows = await db.select().from(schema.expenses).where(eq(schema.expenses.companyId, companyId)) as any[];
     const opex = rows.find(e => e.description === 'Prev month opex');
-    ok(await post(`/api/expenses/${opex.id}/pay`, { date: today, bankId, amount: 115 }), 'pay expense');
+    ok(await post(`/api/expenses/${opex.id}/pay`, { docDate: today, bankId, amount: 115 }), 'pay expense');
     const accrual = rows.find(e => e.type === 'Accrual');
     ok(await post('/api/transactions/settle-accrual', { accrualExpenseId: accrual.id, actualAmount: 230, actualDate: today, paymentStatus: 'Paid', bankId }), 'settle');
     // an investor pays capital in this month
     ok(await post('/api/transactions/investors', { name: 'AsAt Investor', email: 'i@example.com', phone: '1', equityPercentage: 100, profitPercentage: 100, capitalContributed: 0, isActive: true, createdAt: new Date().toISOString() }), 'investor');
     const investorId = (await db.select().from(schema.investors).where(eq(schema.investors.companyId, companyId)))[0].id;
-    ok(await post(`/api/transactions/investors/${investorId}/investment`, { bankId, amount: 500, date: today, description: 'Capital' }), 'investment');
+    ok(await post(`/api/transactions/investors/${investorId}/investment`, { bankId, amount: 500, docDate: today, description: 'Capital' }), 'investment');
   });
 
   it('as at the end of the previous month: still owed 230 by the customer, 315 to suppliers (115 + the accrual at its net 200)', async () => {

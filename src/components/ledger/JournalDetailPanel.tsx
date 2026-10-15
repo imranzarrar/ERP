@@ -61,7 +61,7 @@ export default function JournalDetailPanel({ db, kind, id, onClose, onChanged, o
         <>
           <div className="flex flex-wrap items-center gap-3">
             <JournalStatusPill status={status} label={t(status)} />
-            <span className="text-slate-500">{j.date}</span>
+            <span className="text-slate-500">{j.postingDate}{j.docDate && j.docDate !== j.postingDate ? ` · ${t('Document date')} ${j.docDate}` : ''}</span>
             {kind === 'entry' && <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-bold uppercase">{t(SOURCE_LABEL[j.referenceType] || j.referenceType)}{j.documentNumber ? ` · ${j.documentNumber}` : ''}</span>}
             {kind === 'manual' && j.selfApproved && <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold uppercase">{t('Approved by its preparer')}</span>}
           </div>
@@ -132,7 +132,7 @@ export default function JournalDetailPanel({ db, kind, id, onClose, onChanged, o
         </Modal>
       )}
       {modal === 'reverse' && (
-        <Modal title={t('Reverse journal')} onClose={() => setModal(null)} footer={<><button className={ghostBtn} onClick={() => setModal(null)}>{t('Cancel')}</button><button className={primaryBtn} disabled={busy || !text.trim()} onClick={() => run(async () => { const r = await ledgerApi<any>(`/manual-journals/${id}/reverse`, { method: 'POST', body: { reason: text, date: revDate } }); onOpen?.('manual', r.id); })}>{t('Create reversal draft')}</button></>}>
+        <Modal title={t('Reverse journal')} onClose={() => setModal(null)} footer={<><button className={ghostBtn} onClick={() => setModal(null)}>{t('Cancel')}</button><button className={primaryBtn} disabled={busy || !text.trim()} onClick={() => run(async () => { const r = await ledgerApi<any>(`/manual-journals/${id}/reverse`, { method: 'POST', body: { reason: text, docDate: revDate } }); onOpen?.('manual', r.id); })}>{t('Create reversal draft')}</button></>}>
           <p className="text-slate-600">{t('A reversal is a new journal with every debit and credit swapped. It is created as a draft and needs approval before it reaches the ledger.')}</p>
           <div><label className={labelCls}>{t('Reversal date')}</label><input type="date" className={inputCls} value={revDate} onChange={e => setRevDate(e.target.value)} /></div>
           <div><label className={labelCls}>{t('Reason')}</label><textarea className={`${inputCls} h-20`} value={text} onChange={e => setText(e.target.value)} maxLength={300} /></div>

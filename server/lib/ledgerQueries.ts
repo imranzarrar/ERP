@@ -22,13 +22,13 @@ export function dimFilterSql(f: DimFilter, line: string = 'l', branchExpr: strin
 }
 
 export function resolvedLines(companyId: string, opts: { from?: string; to?: string; branchIds?: string[] | null; excludeRef?: string[]; dims?: DimFilter[] } = {}) {
-  const from = opts.from ? sql` AND e.date >= ${opts.from}` : sql``;
-  const to = opts.to ? sql` AND e.date <= ${opts.to}` : sql``;
+  const from = opts.from ? sql` AND e.posting_date >= ${opts.from}` : sql``;
+  const to = opts.to ? sql` AND e.posting_date <= ${opts.to}` : sql``;
   const branch = Array.isArray(opts.branchIds) ? sql` AND e.branch_id = ANY(${uuidArray(opts.branchIds)})` : sql``;
   const excl = opts.excludeRef && opts.excludeRef.length ? sql` AND e.reference_type <> ALL(${textArray(opts.excludeRef)})` : sql``;
   const dims = (opts.dims || []).reduce((acc, f) => sql`${acc}${dimFilterSql(f)}`, sql``);
   return sql`(
-    SELECT l.id AS line_id, l.journal_entry_id, e.date, e.branch_id, e.reference_type, e.reference_id, e.created_at,
+    SELECT l.id AS line_id, l.journal_entry_id, e.posting_date, e.branch_id, e.reference_type, e.reference_id, e.created_at,
            COALESCE(ax.id, ab.id, ak.id) AS account_id, l.debit::numeric AS debit, l.credit::numeric AS credit, l.account_key, l.bank_id, l.dimension_combination_id
     FROM journal_lines l
     JOIN journal_entries e ON e.id = l.journal_entry_id AND e.company_id = l.company_id

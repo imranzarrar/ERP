@@ -42,7 +42,9 @@ export interface JournalLineInput {
 export interface PostJournalEntryInput {
   companyId: string;
   branchId?: string | null;
-  date: string;
+  // The date the ledger and every period lock use (posting_date). docDate is the date of the source document; it defaults to the posting date.
+  postingDate: string;
+  docDate?: string | null;
   referenceType: string;
   referenceId: string;
   relatedReferenceType?: string | null;
@@ -107,7 +109,7 @@ export async function postJournalEntry(tx: any, input: PostJournalEntryInput): P
     id: entryId,
     companyId: input.companyId,
     branchId: input.branchId || null,
-    date: input.date,
+    postingDate: input.postingDate, docDate: input.docDate || input.postingDate,
     referenceType: input.referenceType,
     referenceId: input.referenceId,
     relatedReferenceType: input.relatedReferenceType || null,
@@ -224,7 +226,7 @@ export async function reverseAllEntriesFor(
     const newId = await postJournalEntry(tx, {
       companyId,
       branchId: entry.branchId,
-      date,
+      postingDate: date,
       referenceType: entry.referenceType,
       referenceId: entry.referenceId,
       reversalOfId: entry.id,
@@ -252,7 +254,7 @@ export async function postInventoryAdjustment(tx: any, input: {
   const cost = round2(Math.abs(input.quantityChange) * Number(product?.averageCost || 0));
   if (cost <= 0) return;
   await postJournalEntry(tx, {
-    companyId: input.companyId, branchId: input.branchId ?? null, date: input.date,
+    companyId: input.companyId, branchId: input.branchId ?? null, postingDate: input.date,
     referenceType: input.referenceType, referenceId: input.referenceId,
     description: input.description, createdById: input.createdById,
     lines: input.quantityChange < 0
@@ -318,7 +320,7 @@ export async function settleInventoryValuation(tx: any, input: {
   const revalue = round2(docChange - await inventoryNetOfEntries(tx, input.entryIds));
   if (Math.abs(revalue) <= 0.004) return 0;
   await postJournalEntry(tx, {
-    companyId: input.companyId, branchId: input.branchId ?? null, date: input.date,
+    companyId: input.companyId, branchId: input.branchId ?? null, postingDate: input.date,
     referenceType: input.referenceType, referenceId: input.referenceId, description: input.description, createdById: input.createdById,
     lines: revalue < 0
       ? [{ accountKey: 'COGS', debit: -revalue }, { accountKey: 'INVENTORY', credit: -revalue }]
@@ -340,7 +342,7 @@ export async function postInventoryRevaluation(tx: any, input: {
   const revalue = round2(round2(input.after.qty * input.after.avg) - round2(input.before.qty * input.before.avg) - input.postedChange);
   if (Math.abs(revalue) <= 0.004) return 0;
   await postJournalEntry(tx, {
-    companyId: input.companyId, branchId: input.branchId ?? null, date: input.date,
+    companyId: input.companyId, branchId: input.branchId ?? null, postingDate: input.date,
     referenceType: input.referenceType, referenceId: input.referenceId, description: input.description, createdById: input.createdById,
     lines: revalue < 0
       ? [{ accountKey: 'COGS', debit: -revalue }, { accountKey: 'INVENTORY', credit: -revalue }]
@@ -374,8 +376,8 @@ export async function sumAccountBalance(
   }
 
   const joinConditions = [...baseConditions];
-  if (opts.startDate) joinConditions.push(gte(schema.journalEntries.date, opts.startDate));
-  if (opts.endDate) joinConditions.push(lte(schema.journalEntries.date, opts.endDate));
+  if (opts.startDate) joinConditions.push(gte(schema.journalEntries.postingDate, opts.startDate));
+  if (opts.endDate) joinConditions.push(lte(schema.journalEntries.postingDate, opts.endDate));
   const rows = await executor.select({
     debit: schema.journalLines.debit, credit: schema.journalLines.credit, branchId: schema.journalEntries.branchId,
   })

@@ -221,7 +221,7 @@ describe('Sales-side deduction + restock (Invoice cancel, Credit Note) — the o
       method: 'POST',
       body: JSON.stringify({
         invoiceData: {
-          date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0, warehouseId,
+          docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0, warehouseId,
           items: [{ id: generateId(), description: 'Physical Widget sale', unitCost: 10, quantity, unit: 'PCE', productId: itemProductId }],
         },
       }),

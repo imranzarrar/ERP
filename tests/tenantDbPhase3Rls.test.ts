@@ -133,7 +133,7 @@ describe('Quotations — end-to-end through tenantDb, plus cross-company hijack 
       method: 'POST',
       body: JSON.stringify({
         quotationData: {
-          date: new Date().toISOString().slice(0, 10), customerId: customerAId, taxSlabId: taxSlabAId,
+          docDate: new Date().toISOString().slice(0, 10), customerId: customerAId, taxSlabId: taxSlabAId,
           notes: '', status: 'Draft',
           // createdById is client-supplied on this route (see QuotationModule.tsx),
           // unlike POST /invoices which resolves it server-side — matching real traffic.
@@ -161,7 +161,7 @@ describe('Quotations — end-to-end through tenantDb, plus cross-company hijack 
     const bUserId = generateId();
     await db.insert(schema.users).values({ id: bUserId, username: `p3bowner_${bUserId}`, password: 'x', role: 'admin', companyId: companyBId, isSuperAdmin: false });
     await db.insert(schema.quotations).values({
-      id: quotationBId, quotationNumber: 'QT-B-P3-1', date: new Date().toISOString().slice(0, 10),
+      id: quotationBId, quotationNumber: 'QT-B-P3-1', docDate: new Date().toISOString().slice(0, 10),
       customerId: bCustomerId, taxSlabId: bTaxSlabId, notes: '', status: 'Draft',
       createdById: bUserId, createdAt: new Date(), companyId: companyBId,
     });
@@ -177,7 +177,7 @@ describe('Quotations — end-to-end through tenantDb, plus cross-company hijack 
     const { status, body } = await api('/api/transactions/quotations', {
       method: 'POST',
       body: JSON.stringify({
-        quotationData: { id: quotationBId, date: new Date().toISOString().slice(0, 10), customerId: customerAId, taxSlabId: taxSlabAId, notes: 'hijacked', status: 'Draft', items: [] },
+        quotationData: { id: quotationBId, docDate: new Date().toISOString().slice(0, 10), customerId: customerAId, taxSlabId: taxSlabAId, notes: 'hijacked', status: 'Draft', items: [] },
       }),
     });
     expect(status).toBe(403);
@@ -245,7 +245,7 @@ describe('Investors, fiscal months, recurring expenses, accruals, inter-bank tra
 
     const { status: s2 } = await api(`/api/transactions/investors/${investor.id}/investment`, {
       method: 'POST',
-      body: JSON.stringify({ bankId: bankAId, amount: 500, date: new Date().toISOString().slice(0, 10), description: 'Seed' }),
+      body: JSON.stringify({ bankId: bankAId, amount: 500, docDate: new Date().toISOString().slice(0, 10), description: 'Seed' }),
     });
     expect(s2).toBe(200);
     const [updated] = await db.select().from(schema.investors).where(eq(schema.investors.id, investor.id));
@@ -311,7 +311,7 @@ describe('Expenses — end-to-end through tenantDb (expenses.ts, fully migrated)
     const { status, body } = await api('/api/expenses', {
       method: 'POST',
       body: JSON.stringify({
-        date: new Date().toISOString().slice(0, 10), vendorId: vendorAId, taxSlabId: taxSlabAId, bankId: bankAId,
+        docDate: new Date().toISOString().slice(0, 10), vendorId: vendorAId, taxSlabId: taxSlabAId, bankId: bankAId,
         description: 'Phase3 expense', amount: 300, status: 'Active', type: 'Actual', billNumber: 'BILL-P3-1',
       }),
     });
@@ -322,7 +322,7 @@ describe('Expenses — end-to-end through tenantDb (expenses.ts, fully migrated)
 
     const { status: s2 } = await api(`/api/expenses/${expense.id}/pay`, {
       method: 'POST',
-      body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), bankId: bankAId }),
+      body: JSON.stringify({ docDate: new Date().toISOString().slice(0, 10), bankId: bankAId }),
     });
     expect(s2).toBe(200);
     const [paid] = await db.select().from(schema.expenses).where(eq(schema.expenses.id, expense.id));
@@ -342,7 +342,7 @@ describe('Expenses — end-to-end through tenantDb (expenses.ts, fully migrated)
     });
     const bExpenseId = generateId();
     await db.insert(schema.expenses).values({
-      id: bExpenseId, expenseNumber: 'EXP-B-P3-1', date: new Date().toISOString().slice(0, 10),
+      id: bExpenseId, expenseNumber: 'EXP-B-P3-1', docDate: new Date().toISOString().slice(0, 10), postingDate: new Date().toISOString().slice(0, 10),
       vendorId: bVendorId, taxSlabId: bTaxSlabId, bankId: bBankId, paymentStatus: 'Unpaid', description: 'B expense', amount: '1',
       status: 'Active', type: 'Actual', createdById: bUserId, createdAt: new Date(), companyId: companyBId,
     });

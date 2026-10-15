@@ -6,7 +6,7 @@ import { ledgerApi, money, inputCls, labelCls, primaryBtn, Card, Notice, Journal
 import JournalDetailPanel from './JournalDetailPanel';
 import { DimensionFilter, useDimensionOptions, type DimFilterValue } from './dimensions';
 
-interface Row { kind: 'entry' | 'manual'; id: string; number: string; date: string; description: string; source: string; status: string; reference: string | null; amount: number; userName: string | null }
+interface Row { kind: 'entry' | 'manual'; id: string; number: string; postingDate: string; docDate: string; description: string; source: string; status: string; reference: string | null; amount: number; userName: string | null }
 interface ListResp { rows: Row[]; total: number; page: number; pageSize: number; manualCounts: Record<string, number> }
 
 // Journal Listing (every posted entry and every manual journal) and, with mode="pending", the Pending Approval inbox for the people who can approve.
@@ -100,7 +100,7 @@ export default function JournalListScreen({ db, mode, focus, onFocusConsumed, on
               ) : data.rows.map(r => (
                 <tr key={`${r.kind}-${r.id}`} onClick={() => setOpen({ kind: r.kind === 'manual' ? 'manual' : 'entry', id: r.id })} className="hover:bg-indigo-50/40 cursor-pointer">
                   <td className="p-3 ps-5 font-mono font-bold text-slate-700">{r.number}</td>
-                  <td className="p-3 text-slate-600">{r.date}</td>
+                  <td className="p-3 text-slate-600">{r.postingDate}</td>
                   <td className="p-3 max-w-md"><span className="font-semibold text-slate-800 block truncate">{r.description}</span>{r.reference && <span className="text-[11px] text-slate-400">{t('Ref')}: {r.reference}</span>}</td>
                   <td className="p-3"><span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-bold uppercase">{t(SOURCE_LABEL[r.source] || r.source)}</span></td>
                   <td className="p-3 text-end font-mono tabular-nums">{money(r.amount)}</td>

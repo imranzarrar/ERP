@@ -55,7 +55,7 @@ async function createInvoice(t: Tenant): Promise<string> {
     method: 'POST',
     body: JSON.stringify({
       invoiceData: {
-        date: new Date().toISOString().split('T')[0], customerId: t.customerId, taxSlabId: t.taxSlabId, bankId: t.bankId,
+        docDate: new Date().toISOString().split('T')[0], customerId: t.customerId, taxSlabId: t.taxSlabId, bankId: t.bankId,
         notes: '', status: 'Active', amountPaid: 0,
         items: [{ id: generateId(), description: 'Test Item', unitCost: 100, quantity: 1, discountAmount: 0 }],
       },

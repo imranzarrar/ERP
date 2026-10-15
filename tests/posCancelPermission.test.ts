@@ -45,7 +45,7 @@ async function cancelInvoice(sessionId: string, invoiceId: string) {
 async function makeInvoice(invoiceNumber: string, isPosSale: boolean): Promise<string> {
   const id = generateId();
   await db.insert(schema.invoices).values({
-    id, invoiceNumber, date: new Date().toISOString().split('T')[0],
+    id, invoiceNumber, docDate: new Date().toISOString().split('T')[0], postingDate: new Date().toISOString().split('T')[0],
     customerId, taxSlabId, bankId, paymentStatus: 'Unpaid', notes: 'x', status: 'Active',
     createdById: invoiceDeleteOnlyUserId, createdAt: new Date(), companyId, isPosSale,
   } as any);

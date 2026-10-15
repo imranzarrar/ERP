@@ -28,7 +28,7 @@ const stats = async () => {
   return { qty: Number(p.totalQuantitySold), avg: Number(p.averageSalePrice) };
 };
 const sale = (qty: number, price: number) => post('/api/transactions/invoices', { invoiceData: {
-  date: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
+  docDate: today, customerId, taxSlabId, bankId, notes: '', status: 'Active', amountPaid: 0,
   items: [{ id: generateId(), description: 'Unwind item', unitCost: price, quantity: qty, discountAmount: 0, productId }],
 } });
 

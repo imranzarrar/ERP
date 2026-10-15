@@ -281,7 +281,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  })) : [];
 
  const expData = {
- date: formDate,
+ docDate: formDate,
  vendorId: formVendorId || db.vendors.find(v => v.isSystem)!.id,
  taxSlabId: formTaxSlabId,
  bankId: formBankId,
@@ -348,7 +348,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  const response = await fetch(`/api/expenses/${payingExpense.id}/pay`, {
  method: 'POST',
  headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify({ date: payForm.date, bankId: payForm.bankId, amount: amt })
+ body: JSON.stringify({ docDate: payForm.date, bankId: payForm.bankId, amount: amt })
  });
  const result = await response.json();
  if (!response.ok || result.error) {
@@ -540,7 +540,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  const isReversalDoc = !!(exp as any).reversalOfExpenseId;
  const canCancel = userPermissions.expense.delete.enabled && exp.status === 'Active' && !isReversalDoc;
  // An expense of a closed month is locked: it cannot be cancelled, it is corrected with a reversing document dated today.
- const monthOfExpense = (db.months || []).find((m: any) => m.id === String(exp.date).slice(0, 7));
+ const monthOfExpense = (db.months || []).find((m: any) => m.id === String(exp.docDate).slice(0, 7));
  const isLockedMonth = !!monthOfExpense && monthOfExpense.status === 'Closed';
  const canReverse = canCancel && isLockedMonth && exp.type === 'Actual' && !exp.originAccrualId;
 
@@ -561,7 +561,7 @@ const [formAssetType_ignored, setFormAssetType_ignored] = React.useState<'Equipm
  )}
  </div>
  </td>
- <td className="p-3 text-slate-600">{exp.date}</td>
+ <td className="p-3 text-slate-600">{exp.docDate}</td>
  <td className="p-3 font-semibold text-slate-700">{vend?.name || 'Cash Vendor'}</td>
  <td className="p-3 text-slate-600 font-medium max-w-xs truncate">
  <div className="flex flex-col">

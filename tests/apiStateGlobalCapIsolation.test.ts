@@ -119,12 +119,12 @@ beforeAll(async () => {
   smallInvoiceId2 = generateId();
   await db.insert(schema.invoices).values([
     {
-      id: smallInvoiceId1, invoiceNumber: 'INV-CAPISO-SMALL-1', date: '2026-08-01', customerId: smallCustomerId,
+      id: smallInvoiceId1, invoiceNumber: 'INV-CAPISO-SMALL-1', docDate: '2026-08-01', postingDate: '2026-08-01', customerId: smallCustomerId,
       taxSlabId: smallTaxSlabId, bankId: smallBankId, paymentStatus: 'Unpaid', notes: 'x', status: 'Active',
       createdById: smallAdminId, createdAt: olderCreatedAt, companyId: companySmallId,
     },
     {
-      id: smallInvoiceId2, invoiceNumber: 'INV-CAPISO-SMALL-2', date: '2026-08-01', customerId: smallCustomerId,
+      id: smallInvoiceId2, invoiceNumber: 'INV-CAPISO-SMALL-2', docDate: '2026-08-01', postingDate: '2026-08-01', customerId: smallCustomerId,
       taxSlabId: smallTaxSlabId, bankId: smallBankId, paymentStatus: 'Unpaid', notes: 'x', status: 'Active',
       createdById: smallAdminId, createdAt: olderCreatedAt, companyId: companySmallId,
     },
@@ -137,7 +137,7 @@ beforeAll(async () => {
   const now = new Date();
   await db.insert(schema.invoices).values(
     noisyInvoiceIds.map((id, i) => ({
-      id, invoiceNumber: `INV-CAPISO-NOISY-${i}`, date: '2026-08-02', customerId: noisyCustomerId,
+      id, invoiceNumber: `INV-CAPISO-NOISY-${i}`, docDate: '2026-08-02', postingDate: '2026-08-02', customerId: noisyCustomerId,
       taxSlabId: noisyTaxSlabId, bankId: noisyBankId, paymentStatus: 'Unpaid', notes: 'x', status: 'Active',
       createdById: noisyAdminId, createdAt: now, companyId: companyNoisyId,
     })) as any
