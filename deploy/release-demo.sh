@@ -56,6 +56,8 @@ say "[2/6] Database schema (db:push) on the DEMO database erp_demo — READ THE 
 # A unique key that existing tables gain (needed as a foreign-key target). Created here, idempotently, because drizzle-kit would otherwise ask
 # interactively whether to TRUNCATE the populated table to add it. Never answer that prompt with yes.
 PGPASSWORD="$(read_secret SQL_PASSWORD)" psql -h "$(read_secret SQL_HOST)" -U "$(read_secret SQL_USER)" -d "$(read_secret SQL_DB_NAME)" -v ON_ERROR_STOP=1 -q   -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'branches_id_company_unique') THEN ALTER TABLE branches ADD CONSTRAINT branches_id_company_unique UNIQUE (company_id, id); END IF; END \$\$"
+# in-place date-field renames (docs/date-fields-standard.md): idempotent, must run before db:push so drizzle-kit never sees a drop
+npx tsx scripts/migrate-date-fields.mjs
 SCHEMA_CHANGED=1
 if git rev-parse -q --verify refs/tags/last-release-demo >/dev/null && git diff --quiet last-release-demo HEAD -- src/db/schema.ts; then SCHEMA_CHANGED=0; fi
 [ "$FORCE_SCHEMA" = "1" ] && SCHEMA_CHANGED=1

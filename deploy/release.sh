@@ -193,6 +193,8 @@ if should_run 4; then
     fi
     echo "Expect ONLY additions (new tables, new nullable columns). Decline anything that drops, renames or"
     echo "retypes, and anything unrelated to the changes listed above (db:push diffs the LIVE database)."
+    echo "First the in-place date-field renames (idempotent; drizzle-kit would otherwise drop the old columns):"
+    npx tsx scripts/migrate-date-fields.mjs
     npm run db:push
     confirm "Did db:push finish applying ONLY the changes you expected, with no errors?"
   fi
