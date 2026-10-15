@@ -83,7 +83,7 @@ Creating, changing, importing, mapping and deactivating accounts is written to t
 
 ### JNL — Journals and opening balances
 
-**BR-JNL-01 Manual journals with maker-checker** — Must, Built, Blueprint FR-JE-01, source Decision, sprint S1.
+**BR-JNL-01 Manual journals with maker-checker** — Must, Built, Blueprint FR-JE-01, source Decision, sprint S1, S11.
 An accountant prepares a journal as a draft, submits it, and a different person with the posting right approves it (which posts it) or rejects it with a written reason, returning it to draft.
 
 **BR-JNL-02 Balanced entries only** — Must, Built, Blueprint FR-JE-01, source Blueprint, sprint S1.
@@ -101,7 +101,7 @@ Manual journals receive a unique sequential number per company; a discarded draf
 **BR-JNL-06 Reversal of a manual journal** — Must, Built, source Decision, sprint S1.
 A posted manual journal is reversed by a reversing draft that follows the same approval path; the original stays posted until the reversal is approved. Entries made by documents are reversed through their document, never by hand.
 
-**BR-JNL-07 Self-approval safeguard** — Should, Built, Blueprint FR-APR-03, source Decision, sprint S1.
+**BR-JNL-07 Self-approval safeguard** — Should, Built, Blueprint FR-APR-03, source Decision, sprint S1, S11.
 A preparer cannot approve their own journal unless the company owner switches that safeguard on; when on, such journals are marked and the change is audited.
 
 **BR-JNL-08 Journal listing and entry detail** — Must, Built, source Decision, sprint S1.
@@ -110,7 +110,7 @@ Every posting of the company, from documents and from manual journals, can be li
 **BR-JNL-09 Opening balances** — Must, Built, source Decision, sprint S1.
 A company that starts using the ledger part-way can post an opening entry: previewed first, balanced (a difference may be put to an equity account), posted once, with a confirmation, and reversible with a reason.
 
-**BR-JNL-10 Amount-threshold approval rules** — Should, Planned, Blueprint FR-APR-01, FR-APR-02, FR-APR-03, FR-APR-04, FR-APR-05, FR-APR-06, source Blueprint, sprint S11.
+**BR-JNL-10 Amount-threshold approval rules** — Should, Planned, Blueprint FR-APR-01, FR-APR-02, FR-APR-03, FR-APR-04, FR-APR-05, FR-APR-06, source Blueprint, sprint S11, S11.
 Approval rules per document type (journal, vendor bill, vendor payment, credit note) by amount, with several sequential levels, server-enforced, with no self-approval at any level and a full approval history; a document without a matching rule posts directly.
 
 ### PER — Periods, posting control and close

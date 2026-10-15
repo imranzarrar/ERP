@@ -80,3 +80,12 @@ Approval Rules (list, rule editor with levels and amount bands, test-a-document 
 
 ## 6. Out of scope for S11
 Parallel multi-branch routing by cost-centre hierarchy, e-signature, scheduled auto-approve, approval by external email links.
+
+## 7. Owner decisions (2026-10-15) — binding for Sprint 11
+
+1. **Order:** vendor payments and vendor bills first, then credit notes, then manual journals folded into the engine.
+2. **Approvers:** roles **and** the manager hierarchy. Users gain a manager link (`users.manager_id`, additive, nullable) and a rule level may name "manager of the submitter" (and the manager's manager, up to N steps) besides a role, a user or a permission.
+3. **Self-approval:** a **company-level setting in General Ledger settings**, on or off. Off (the default) = a submitter can never approve their own document at any level; on = allowed, the document is flagged "self-approved" and the setting change and every use are audited. The setting covers payments, bills and credit notes as well as journals (today's journal switch becomes this one setting).
+4. **Delegation with validity dates in version 1; escalation after a timeout in 1.1.**
+5. **Notification inside the system only:** a "My approvals" worklist and a count in the menu. No email or mobile.
+6. **Back-dating, lock-date override and reopening a reconciliation remain authority rights**, not workflow.

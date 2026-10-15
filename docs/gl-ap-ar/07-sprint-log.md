@@ -153,7 +153,10 @@ Amount-threshold, multi-level approval for journals, bills, payments and credit 
 
 | Item | Title | Business requirements | System requirements |
 |---|---|---|---|
-| S11-01 | Approval rules, requests, actions; self-approval ban at every level; history | BR-JNL-10 Amount-threshold approval rules | FR-JNL-10.1 |
+| S11-01 | Approval engine for vendor payments and bills, then credit notes: rules by amount band, sequential levels, requests, append-only history, My Approvals worklist | BR-JNL-10 Amount-threshold approval rules | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 |
+| S11-02 | Manager hierarchy and delegation with validity dates as approver sources | BR-JNL-10 Amount-threshold approval rules | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 |
+| S11-03 | Company-level self-approval setting for every document type (replaces the journal-only switch) | BR-JNL-07 Self-approval safeguard | FR-JNL-07.1 |
+| S11-04 | Manual journals folded into the engine | BR-JNL-01 Manual journals with maker-checker | FR-JNL-01.1 |
 
 ## Sprint 12 — Period control (Planned)
 
@@ -250,16 +253,16 @@ Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to
 | BR-COA-06 | Account mapping | Built | S1 |
 | BR-COA-07 | Chart import and export | Built | S1 |
 | BR-COA-08 | Audit of chart changes | Built | S1 |
-| BR-JNL-01 | Manual journals with maker-checker | Built | S1 |
+| BR-JNL-01 | Manual journals with maker-checker | Built | S1, S11 |
 | BR-JNL-02 | Balanced entries only | Built | S1 |
 | BR-JNL-03 | Posted entries are immutable | Built | S1 |
 | BR-JNL-04 | Source and dimension recorded | Built | S1 |
 | BR-JNL-05 | Entry numbering | Built | S1 |
 | BR-JNL-06 | Reversal of a manual journal | Built | S1 |
-| BR-JNL-07 | Self-approval safeguard | Built | S1 |
+| BR-JNL-07 | Self-approval safeguard | Built | S1, S11 |
 | BR-JNL-08 | Journal listing and entry detail | Built | S1 |
 | BR-JNL-09 | Opening balances | Built | S1 |
-| BR-JNL-10 | Amount-threshold approval rules | Planned | S11 |
+| BR-JNL-10 | Amount-threshold approval rules | Planned | S11, S11 |
 | BR-PER-01 | Open fiscal month rule | Built | S5 |
 | BR-PER-02 | VAT quarter freeze | Built | S5 |
 | BR-PER-03 | Lock date | Built | S5 |
@@ -347,7 +350,7 @@ Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to
 
 | Sprint | Name | Delivers |
 |---|---|---|
-| S11 | Approval rules | BR-JNL-10 |
+| S11 | Approval rules | BR-JNL-10; BR-JNL-10; BR-JNL-07; BR-JNL-01 |
 | S12 | Period control | BR-PER-07; BR-PER-08; BR-PER-09; BR-PER-11 |
 | S13 | Year-end close | BR-PER-10 |
 | S14 | Tax postings | BR-TAX-02; BR-TAX-01, BR-TAX-03 |

@@ -16,6 +16,7 @@ export const MODULES = [
   { id: 'OPN', name: 'Opening balances', ref: 'Blueprint FR-JE' },
   { id: 'DIM', name: 'Dimensions (branch, department, custom)', ref: 'Blueprint FR-DIM' },
   { id: 'RPT', name: 'Ledger reports and the report designer', ref: 'Blueprint FR-RPT' },
+  { id: 'APR', name: 'Approval rules (Sprint 11)', ref: 'Blueprint FR-APR-01..06; docs/gl-ap-ar/s11-approval-rules-tier1-research.md' },
   { id: 'AR', name: 'Receivables: invoices and credit notes', ref: 'Blueprint FR-AR, FR-APR-06' },
   { id: 'RCP', name: 'Customer receipts (Receive Payment)', ref: 'Blueprint FR-AR-01' },
   { id: 'AP', name: 'Payables: expenses, bills and returns', ref: 'Blueprint FR-AP-01..02' },
@@ -170,6 +171,21 @@ add('RPT', [
   ['The consistency check passes all error-level rules after a day of mixed activity', 'Integration', 'P1', 'Invoices, receipts, payments, journals, bank reconciliation', 'The consistency check runs', 'No error-level failure', 'API', 'tests/bankReconciliation.test.ts'],
   ['A report over 100000 ledger lines returns within the agreed time', 'Performance', 'P2', 'A company with 100000 lines', 'Trial balance and general ledger are run', 'Under 5 seconds each', 'API', 'Candidate'],
   ['Branch-restricted users see branch totals only and are told so', 'Security', 'P1', 'A restricted user', 'Run a report', 'Figures cover their branches; the notice is shown', 'UI+API', 'Candidate'],
+]);
+
+add('APR', [
+  ['A document with no matching rule posts directly', 'Regression', 'P1', 'A company with no approval rules', 'A vendor payment and a vendor bill are created', 'Both post immediately, exactly as before', 'API', 'Candidate'],
+  ['A payment inside a rule band enters Pending Approval and posts nothing', 'Functional', 'P1', 'A rule: payments above 5000 need one approval', 'A payment of 6000 is submitted', 'No voucher, no ledger entry, no bank movement; the document is Pending Approval', 'API+DB', 'Candidate'],
+  ['Amount band boundaries: exactly at the threshold and just above it', 'Boundary', 'P1', 'Threshold 5000', 'Payments of 5000.00 and 5000.01', 'The first follows the rule defined for its band, the second the next band, with no gap or overlap', 'API', 'Candidate'],
+  ['A two-level chain needs both approvals in order', 'Functional', 'P1', 'A rule with level 1 (accountant role) and level 2 (finance manager)', 'Level 2 tries first, then level 1 approves, then level 2', 'Level 2 first is refused; after level 1 then level 2 the payment posts once', 'API+DB', 'Candidate'],
+  ['The submitter cannot approve while self-approval is off', 'Security', 'P1', 'The company setting is off', 'The submitter approves their own payment, bill, credit note and journal', 'Each is refused server-side at every level', 'API', 'Candidate'],
+  ['With self-approval on the submitter may approve and the document is flagged', 'Functional', 'P1', 'The company setting is on (changed by the owner, audited)', 'The submitter approves their own payment', 'It posts; flagged self-approved; the audit log shows the setting change and the use', 'API+DB', 'Candidate'],
+  ['Only owner/admin may change the self-approval setting', 'Security', 'P1', 'A finance manager without admin rights', 'They change the setting', '403; the setting is unchanged', 'API', 'Candidate'],
+  ['A manager of the submitter can be the approver', 'Functional', 'P2', 'A user with a manager; a level naming manager of the submitter', 'The submitter submits; the manager approves', 'Only that manager (or a valid delegate) may approve', 'API', 'Candidate'],
+  ['Rejection returns the document to draft with remarks and nothing posts', 'Functional', 'P1', 'A pending payment', 'An approver rejects without, then with remarks', 'Refused without remarks; with remarks the document is Draft and the history shows them', 'API+DB', 'Candidate'],
+  ['Editing a pending document recalls it; raising the amount restarts approval', 'Functional', 'P2', 'A payment pending at level 2 after level 1 approved', 'The amount is raised', 'Approval restarts from level 1 and earlier approvals no longer count', 'API', 'Candidate'],
+  ['A delegate with a valid period may decide; outside it may not', 'Functional', 'P2', 'A delegation from manager to deputy for 3 days', 'The deputy approves inside and after the period', 'Allowed inside, refused after; both recorded with the delegator', 'API', 'Candidate'],
+  ['The posting guard is re-checked at final approval and tenant isolation holds', 'Security', 'P1', 'A pending payment dated before a lock date set after submission; two companies', 'The last level approves; company B calls company A requests', 'Posting is refused by the guard; company B gets 404 and sees none of the rules or requests', 'API', 'Candidate'],
 ]);
 
 add('AR', [
