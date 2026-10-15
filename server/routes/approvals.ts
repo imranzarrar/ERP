@@ -13,7 +13,7 @@ const router = express.Router();
 const fail = (res: any, status: number, error: string) => res.status(status).json({ error });
 const bad = (message: string) => Object.assign(new Error(message), { status: 400 });
 const ID = /^[0-9a-f-]{36}$/i;
-const SUPPORTED: ApprovalDocType[] = ['VendorPayment', 'VendorBill', 'CreditNote']; // grows as executors are registered (bills, credit notes, journals)
+const SUPPORTED: ApprovalDocType[] = ['VendorPayment', 'VendorBill', 'CreditNote', 'Journal']; // grows as executors are registered (bills, credit notes, journals)
 const LEVEL_TYPES = ['Role', 'User', 'Permission', 'Manager'];
 
 async function readRule(tx: any, companyId: string, r: any) {
@@ -25,7 +25,7 @@ async function readRule(tx: any, companyId: string, r: any) {
 // checks the body of a rule, and that every id it names belongs to this company
 async function cleanRule(tx: any, companyId: string, b: any) {
   const name = String(b?.name || '').trim().slice(0, 120); if (!name) throw bad('Give the rule a name.');
-  if (!SUPPORTED.includes(b.documentType)) throw bad('Approval rules are available for vendor payments, vendor bills and credit notes at present.');
+  if (!SUPPORTED.includes(b.documentType)) throw bad('Approval rules are available for vendor payments, vendor bills, credit notes and manual journals.');
   const min = Number(b.minAmount ?? 0); const max = b.maxAmount === null || b.maxAmount === '' || b.maxAmount === undefined ? null : Number(b.maxAmount);
   if (!(min >= 0) || (max !== null && !(max > min))) throw bad('The amount band is not valid: the ceiling must be above the floor.');
   const levels = Array.isArray(b.levels) ? b.levels : []; if (!levels.length || levels.length > 5) throw bad('A rule needs one to five approval levels.');

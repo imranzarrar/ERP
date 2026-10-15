@@ -70,7 +70,7 @@ const inv = async (id: string) => (await db.select().from(schema.invoices).where
 const receipt = (body: any, s = admin) => post(s, '/api/settlements/receipts', { partyId: cust, bankId, docDate: TODAY, ...body });
 const patch = (s: string, p: string, b: any = {}) => api(s, p, { method: 'PATCH', body: JSON.stringify(b) });
 let roleA = '', roleB = '', S = { s: '', id: '' }, UA = { s: '', id: '' }, Bu = { s: '', id: '' }, M = { s: '', id: '' }, S2 = { s: '', id: '' };
-const ROLE_PERMS = { vendorPayments: on('create', 'read', 'delete'), approvals: on('read'), purchaseBills: on('create', 'read'), invoice: on('create', 'read') };
+const ROLE_PERMS = { vendorPayments: on('create', 'read', 'delete'), approvals: on('read'), purchaseBills: on('create', 'read'), invoice: on('create', 'read'), journals: on('create', 'read', 'update') };
 async function mkU(permissions: any, roleId?: string) {
   const rid = roleId || generateId(), userId = generateId(), username = `ap_${userId.slice(-12)}`;
   if (!roleId) await db.insert(schema.roles).values({ id: rid, companyId: A_, name: `Role ${rid.slice(-6)}`, permissions });
@@ -110,7 +110,7 @@ describe('rules and the direct path', () => {
     expect((await post(S.s, R('/rules'), { name: 'x', documentType: 'VendorPayment', levels: [{ approverType: 'Role', approverRef: roleA }] })).status).toBe(403);
     expect((await rule({ levels: [{ approverType: 'Role', approverRef: generateId() }] })).status).toBe(400);
     expect((await rule({ minAmount: 500, maxAmount: 100 })).status).toBe(400);
-    expect((await rule({ documentType: 'Journal' })).status).toBe(400);                         // only vendor payments are routed in this release
+    expect((await rule({ documentType: 'Quotation' })).status).toBe(400);                       // only the routed document types are accepted
     expect((await rule({ levels: [] })).status).toBe(400);
   });
 });
@@ -323,5 +323,37 @@ describe('credit notes follow the same rules (Sprint 11)', () => {
     const note = (await db.select().from(schema.invoices).where(eq(schema.invoices.originalInvoiceId, big)))[0];
     expect(note).toMatchObject({ documentType: 'CreditNote', createdById: S.id });
     expect((await post(admin, `/api/transactions/invoices/${big}/note`, { type: 'CreditNote' })).status).toBe(400);   // already credited
+  });
+});
+
+describe('manual journals follow the same rules (Sprint 11)', () => {
+  it('APR-017 a journal above the band needs every level (no journals.post needed), posts once at the last, and below the band the single maker-checker step is unchanged', async () => {
+    await deactivateAll();
+    const accts = await db.select().from(schema.companyAccounts).where(eq(schema.companyAccounts.companyId, A_));
+    const exp = accts.find(a => a.type === 'Expense' && !a.isGroup && !a.isControl && a.isActive)!.id, liab = accts.find(a => a.type === 'Liability' && !a.isGroup && !a.isControl && a.isActive)!.id;
+    expect((await rule({ name: 'Journals above 100', documentType: 'Journal', minAmount: 100, levels: [{ approverType: 'Role', approverRef: roleA }, { approverType: 'Role', approverRef: roleB }] })).status).toBe(200);
+    const draft = async (amount: number) => (await post(S.s, '/api/ledger/manual-journals', { docDate: TODAY, description: 'Accrual ' + amount, reference: 'APR-J', lines: [{ accountId: exp, debit: amount }, { accountId: liab, credit: amount }] })).body.id as string;
+    const status = async (id: string) => (await db.select().from(schema.manualJournals).where(eq(schema.manualJournals.id, id)))[0];
+    const big = await draft(300);
+    expect((await post(S.s, `/api/ledger/manual-journals/${big}/submit`)).status).toBe(200);
+    const reqRow = ((await db.execute(sql`SELECT id FROM approval_requests WHERE company_id = ${A_}::uuid AND document_type = 'Journal' AND payload->>'journalId' = ${big}`)) as any).rows[0]; expect(reqRow).toBeTruthy();
+    expect((await post(S.s, `/api/ledger/manual-journals/${big}/approve`)).status).toBe(403);                  // the preparer, switch off
+    expect((await post(Bu.s, `/api/ledger/manual-journals/${big}/approve`)).status).toBe(403);                 // level 2 cannot go first
+    expect((await post(UA.s, `/api/ledger/manual-journals/${big}/approve`)).body.status).toBe('Pending');      // level 1 (holds no journals.post: the level is the authority)
+    expect((await status(big)).status).toBe('Pending');
+    expect((await post(Bu.s, `/api/ledger/manual-journals/${big}/approve`)).body.status).toBe('Approved');
+    const posted = await status(big); expect(posted.status).toBe('Posted'); expect(posted.journalEntryId).toBeTruthy();
+    expect(((await db.execute(sql`SELECT COUNT(*)::int AS n FROM journal_entries WHERE company_id = ${A_}::uuid AND reference_type = 'Manual' AND reference_id = ${big}`)) as any).rows[0].n).toBe(1);
+    // rejection by a level holder sends it back to the preparer
+    const rej = await draft(400); await post(S.s, `/api/ledger/manual-journals/${rej}/submit`);
+    expect((await post(UA.s, `/api/ledger/manual-journals/${rej}/reject`, {})).status).toBe(400);               // a reason is required
+    expect((await post(UA.s, `/api/ledger/manual-journals/${rej}/reject`, { note: 'wrong account' })).status).toBe(200);
+    expect((await status(rej)).status).toBe('Rejected');
+    // below the band: no request, and the existing single step (journals.post holder, not the preparer) posts it
+    const small = await draft(50); await post(S.s, `/api/ledger/manual-journals/${small}/submit`);
+    expect(((await db.execute(sql`SELECT COUNT(*)::int AS n FROM approval_requests WHERE company_id = ${A_}::uuid AND document_type = 'Journal' AND payload->>'journalId' = ${small}`)) as any).rows[0].n).toBe(0);
+    expect((await post(UA.s, `/api/ledger/manual-journals/${small}/approve`)).status).toBe(403);               // no journals.post and no rule level
+    expect((await post(admin, `/api/ledger/manual-journals/${small}/approve`)).status).toBe(200);
+    expect((await status(small)).status).toBe('Posted');
   });
 });

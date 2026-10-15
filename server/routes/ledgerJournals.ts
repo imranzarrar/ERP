@@ -21,6 +21,7 @@ import { applyRules, entitiesOfType, loadRules, loadTypes, parseDimFilters, reso
 import { documentDates } from '../lib/documentDates.js';
 import { assertPostingAllowed } from '../lib/postingGuard.js';
 import { postedEntry } from '../lib/postingPrint.js';
+import { submitForApproval, registerApprovalExecutor, decideRequest } from '../lib/approvals.js';
 
 const router = express.Router();
 const fail = (res: any, status: number, error: string) => res.status(status).json({ error });
@@ -395,27 +396,21 @@ router.post('/manual-journals/:id/submit', withTenantDb, async (req: any, res) =
     await checkPeriod(req, j.postingDate, touchesVat, j.backDateReason);
     await tdb.update(schema.manualJournals).set({ status: 'Pending', submittedAt: nowDate(), decisionNote: null }).where(and(eq(schema.manualJournals.id, j.id), eq(schema.manualJournals.companyId, companyId)));
     await addEvent(tdb, req, j.id, 'Submitted', String(req.body?.note ?? '').trim().slice(0, 300) || null);
+    // An approval rule for journals above an amount replaces the single approval step by its levels; no matching rule = the existing single maker-checker step.
+    const amount = round2(checked.lines.reduce((n, l) => n + (l.debit || 0), 0));
+    const sub = await submitForApproval(tdb, req, { documentType: 'Journal', amount, summary: `Journal ${j.number} of ${amount.toFixed(2)}: ${j.description}`.slice(0, 200), payload: { journalId: j.id, docDate: j.postingDate, reference: j.number } });
+    if (sub.pending) await addEvent(tdb, req, j.id, 'Submitted', `Held by an approval rule: ${sub.levels} approval level(s)`);
     recordAuditLog(req, 'SUBMIT_MANUAL_JOURNAL', 'manual_journal', j.id, { number: j.number });
     res.json({ success: true });
   } catch (e: any) { fail(res, e.status || 500, e.message); }
 });
 
-// ---- approve (posts to the ledger) ----
-router.post('/manual-journals/:id/approve', withTenantDb, async (req: any, res) => {
-  try {
-    if (!hasPermission(req.user, 'journals.post')) return fail(res, 403, 'Forbidden');
-    const tdb = tenantDb();
-    const companyId = req.targetCompanyId;
-    const [lock] = await tdb.select().from(schema.manualJournals).where(and(eq(schema.manualJournals.id, String(req.params.id)), eq(schema.manualJournals.companyId, companyId))).for('update');
-    if (!lock || !branchVisible(req, lock.branchId)) return fail(res, 404, 'Journal not found.');
-    const j = lock;
-    if (j.status !== 'Pending') return fail(res, 400, `Only a journal pending approval can be approved (this one is ${j.status.toLowerCase()}).`);
-    const own = j.preparedById === req.user.id;
-    const selfOk = await selfApprovalOn(tdb, companyId);
-    if (own && !selfOk) return fail(res, 403, 'You prepared this journal, so someone else must approve it.');
+// Posts a pending manual journal to the ledger. Used by the approve route (a journal with no approval rule) and by the Journal executor of the approval engine (the last level of a rule); both have
+// already decided WHO may approve, `own` says whether the approver is the preparer (allowed only under the company switch).
+async function postManualJournal(tdb: any, req: any, companyId: string, j: any, own: boolean) {
     const rawLines = await tdb.select().from(schema.manualJournalLines).where(and(eq(schema.manualJournalLines.journalId, j.id), eq(schema.manualJournalLines.companyId, companyId))).orderBy(asc(schema.manualJournalLines.sortOrder));
     const checked = await checkLines(tdb, companyId, await storedLines(tdb, companyId, rawLines), true, !!j.reversalOfId);
-    if (checked.error) return fail(res, 400, checked.error);
+    if (checked.error) throw Object.assign(new Error(checked.error), { status: 400 });
     const combos = await lineCombinations(tdb, req, companyId, checked.lines, j.reversalOfId ? 'draft' : 'strict'); // a reversal mirrors the original's tags as they were
     const touchesVat = checked.lines.some(l => VAT_ROLES.includes(checked.accounts.get(l.accountId)?.systemKey));
     await checkPeriod(req, j.postingDate, touchesVat, j.backDateReason);
@@ -423,7 +418,7 @@ router.post('/manual-journals/:id/approve', withTenantDb, async (req: any, res) 
     let reversalOfEntryId: string | null = null;
     if (j.reversalOfId) {
       const orig = await loadJournal(tdb, companyId, j.reversalOfId);
-      if (!orig || orig.status !== 'Posted' || !orig.journalEntryId) return fail(res, 400, 'The journal this reverses is not posted.');
+      if (!orig || orig.status !== 'Posted' || !orig.journalEntryId) throw Object.assign(new Error('The journal this reverses is not posted.'), { status: 400 });
       reversalOfEntryId = orig.journalEntryId;
     }
     const entryId = await postJournalEntry(tdb, {
@@ -437,6 +432,45 @@ router.post('/manual-journals/:id/approve', withTenantDb, async (req: any, res) 
     await addEvent(tdb, req, j.id, 'Approved', own ? 'Approved by its preparer (company setting allows it)' : (String(req.body?.note ?? '').trim().slice(0, 300) || null));
     await addEvent(tdb, req, j.id, 'Posted');
     recordAuditLog(req, 'APPROVE_MANUAL_JOURNAL', 'manual_journal', j.id, { number: j.number, entryId, selfApproved: own });
+    return entryId;
+}
+
+registerApprovalExecutor('Journal', {
+  async execute(tx, approverReq, request) {
+    const p = request.payload as any;
+    const [j] = await tx.select().from(schema.manualJournals).where(and(eq(schema.manualJournals.id, p.journalId), eq(schema.manualJournals.companyId, request.companyId))).for('update');
+    if (!j || j.status !== 'Pending') throw Object.assign(new Error('The journal is no longer waiting for approval.'), { status: 400 });
+    return postManualJournal(tx, { ...approverReq, targetCompanyId: request.companyId }, request.companyId, j, j.preparedById === approverReq.user.id);
+  },
+});
+// the open approval request of a journal, if a rule held it at submit
+async function openJournalRequest(tdb: any, companyId: string, journalId: string) {
+  const rows: any[] = await tdb.select().from(schema.approvalRequests).where(and(eq(schema.approvalRequests.companyId, companyId), eq(schema.approvalRequests.documentType, 'Journal'), eq(schema.approvalRequests.status, 'Pending'), sql`${schema.approvalRequests.payload}->>'journalId' = ${journalId}`));
+  return rows[0] || null;
+}
+
+// ---- approve (posts to the ledger) ----
+router.post('/manual-journals/:id/approve', withTenantDb, async (req: any, res) => {
+  try {
+    const tdb = tenantDb();
+    const companyId = req.targetCompanyId;
+    const [lock] = await tdb.select().from(schema.manualJournals).where(and(eq(schema.manualJournals.id, String(req.params.id)), eq(schema.manualJournals.companyId, companyId))).for('update');
+    if (!lock || !branchVisible(req, lock.branchId)) return fail(res, 404, 'Journal not found.');
+    const j = lock;
+    if (j.status !== 'Pending') return fail(res, 400, `Only a journal pending approval can be approved (this one is ${j.status.toLowerCase()}).`);
+    // A journal held by an approval rule is decided by the engine (levels, delegation, self-approval switch); the last level posts it through the executor above.
+    const open = await openJournalRequest(tdb, companyId, j.id);
+    if (open) {
+      const r = await decideRequest(tdb, req, open.id, 'Approved', String(req.body?.note ?? ''));
+      if (r.status === 'Pending') await addEvent(tdb, req, j.id, 'Approved', `Level ${(r as any).nextLevel - 1} approved; waiting for level ${(r as any).nextLevel}`);
+      recordAuditLog(req, 'APPROVE_MANUAL_JOURNAL_LEVEL', 'manual_journal', j.id, { number: j.number, requestStatus: r.status });
+      return res.json({ success: true, status: r.status, journalEntryId: r.documentId });
+    }
+    if (!hasPermission(req.user, 'journals.post')) return fail(res, 403, 'Forbidden');
+    const own = j.preparedById === req.user.id;
+    const selfOk = await selfApprovalOn(tdb, companyId);
+    if (own && !selfOk) return fail(res, 403, 'You prepared this journal, so someone else must approve it.');
+    const entryId = await postManualJournal(tdb, req, companyId, j, own);
     res.json({ success: true, journalEntryId: entryId });
   } catch (e: any) { fail(res, e.status || 500, e.message); }
 });
@@ -444,14 +478,16 @@ router.post('/manual-journals/:id/approve', withTenantDb, async (req: any, res) 
 // ---- reject (back to the preparer, with a reason) ----
 router.post('/manual-journals/:id/reject', withTenantDb, async (req: any, res) => {
   try {
-    if (!hasPermission(req.user, 'journals.post')) return fail(res, 403, 'Forbidden');
     const tdb = tenantDb();
     const companyId = req.targetCompanyId;
     const j = await loadJournal(tdb, companyId, String(req.params.id));
     if (!j || !branchVisible(req, j.branchId)) return fail(res, 404, 'Journal not found.');
+    const openReq = await openJournalRequest(tdb, companyId, j.id);
+    if (!openReq && !hasPermission(req.user, 'journals.post')) return fail(res, 403, 'Forbidden');
     if (j.status !== 'Pending') return fail(res, 400, `Only a journal pending approval can be rejected (this one is ${j.status.toLowerCase()}).`);
     const note = String(req.body?.note ?? '').trim().slice(0, 300);
     if (!note) return fail(res, 400, 'Write the reason for rejecting, so the preparer knows what to correct.');
+    if (openReq) await decideRequest(tdb, req, openReq.id, 'Rejected', note);   // the engine checks the level's authority; the journal then goes back to its preparer as before
     await tdb.update(schema.manualJournals).set({ status: 'Rejected', decidedById: req.user.id, decidedAt: nowDate(), decisionNote: note }).where(and(eq(schema.manualJournals.id, j.id), eq(schema.manualJournals.companyId, companyId)));
     await addEvent(tdb, req, j.id, 'Rejected', note);
     recordAuditLog(req, 'REJECT_MANUAL_JOURNAL', 'manual_journal', j.id, { number: j.number, reason: note });

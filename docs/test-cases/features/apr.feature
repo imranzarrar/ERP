@@ -114,3 +114,10 @@ Feature: Approval rules (Sprint 11)
     When A credit note of 115 and one of 1150 are requested; the submitter and then the level holder try to approve
     Then The small one is issued; the large one waits (no note); the submitter is refused; the approver issues it with the submitter as creator; a second credit note against the same invoice is refused
     # automated by tests/approvals.test.ts
+
+  @APR-017 @P1 @Functional @API+DB @automated
+  Scenario: A manual journal above the band needs every level and posts once at the last; rejection returns it to the preparer; below the band the single maker-checker step is unchanged
+    Given A two-level rule for journals above 100; a preparer without the posting right
+    When A journal of 300 is submitted and decided out of order and in order; one of 400 is rejected; one of 50 is submitted
+    Then Out of order and by the preparer refused; after both levels the journal is Posted with one ledger entry; the rejected one is back with its preparer; the small one needs journals.post and creates no approval request
+    # automated by tests/approvals.test.ts

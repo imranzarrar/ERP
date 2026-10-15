@@ -108,6 +108,7 @@ await call(`/api/bank-reconciliations/${sess}/complete`, {}).catch((e: any) => c
 await page.reload(); await page.waitForTimeout(4000); await nav(null, 'Bank Reconciliation'); try { await page.locator('tbody tr').first().click(); await page.waitForTimeout(1500); await shot('bank-reconciliation-completed'); await page.getByText('Print report').first().click(); await shot('bank-reconciliation-statement-print', 2000); } catch (e: any) { console.log('rec print', e.message.slice(0, 100)); }
 
 await reset(); await nav(null, 'Approval Rules'); await shot('approval-rules');
+try { await page.getByText('New rule', { exact: true }).first().click(); await page.waitForTimeout(900); await shot('approval-rule-editor'); await closeOverlays(); } catch (e: any) { console.log('rule editor', e.message.slice(0, 100)); }
 await nav(null, 'My Approvals'); await shot('my-approvals');
 try { await page.locator('tbody tr').last().click(); await page.waitForTimeout(1200); await shot('approval-request'); } catch (e: any) { console.log('approval request', e.message.slice(0, 100)); }
 void pendingPay;

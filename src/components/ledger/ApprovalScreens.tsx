@@ -8,7 +8,7 @@ import { erpApi, Card, Notice, Modal, Drawer, inputCls, labelCls, primaryBtn, gh
 // every level has approved; the person who submitted it cannot approve it unless the company allows self-approval (switch on the rules screen, owner / administrator only).
 const API = '/api/approvals';
 type Level = { approverType: string; approverRef: string; managerSteps: number };
-const TYPE_LABEL: Record<string, string> = { VendorPayment: 'Vendor payment', VendorBill: 'Vendor bill', CreditNote: 'Credit note' };
+const TYPE_LABEL: Record<string, string> = { VendorPayment: 'Vendor payment', VendorBill: 'Vendor bill', CreditNote: 'Credit note', Journal: 'Manual journal' };
 
 export function ApprovalRulesScreen({ db }: { db: DatabaseState }) {
   const { t } = useTranslation(db);
@@ -81,7 +81,7 @@ function RuleEditor({ db, rule, roles, users, currency, onClose, onSaved }: { db
       {error && <Notice tone="error">{error}</Notice>}
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2"><label className={labelCls}>{t('Rule name')}</label><input className={inputCls} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></div>
-        <div><label className={labelCls}>{t('Applies to')}</label><select className={inputCls} value={f.documentType} disabled={!!f.id} onChange={e => setF({ ...f, documentType: e.target.value })}><option value="VendorPayment">{t('Vendor payment')}</option><option value="VendorBill">{t('Vendor bill')}</option><option value="CreditNote">{t('Credit note')}</option></select></div>
+        <div><label className={labelCls}>{t('Applies to')}</label><select className={inputCls} value={f.documentType} disabled={!!f.id} onChange={e => setF({ ...f, documentType: e.target.value })}><option value="VendorPayment">{t('Vendor payment')}</option><option value="VendorBill">{t('Vendor bill')}</option><option value="CreditNote">{t('Credit note')}</option><option value="Journal">{t('Manual journal')}</option></select></div>
         <div><label className={labelCls}>{t('Priority (lowest first)')}</label><input type="number" min="1" className={inputCls} value={f.priority} onChange={e => setF({ ...f, priority: e.target.value })} /></div>
         <div><label className={labelCls}>{t('Amount above')} ({currency})</label><input type="number" min="0" step="0.01" className={`${inputCls} font-mono`} value={f.minAmount} onChange={e => setF({ ...f, minAmount: e.target.value })} /></div>
         <div><label className={labelCls}>{t('Up to and including (empty = no ceiling)')}</label><input type="number" min="0" step="0.01" className={`${inputCls} font-mono`} value={f.maxAmount} onChange={e => setF({ ...f, maxAmount: e.target.value })} /></div>

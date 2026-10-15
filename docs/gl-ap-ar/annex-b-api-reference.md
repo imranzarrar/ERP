@@ -34,7 +34,7 @@ Parsed from `server/routes/*.ts`. "Permission" lists the `hasPermission` keys fo
 | POST | /api/ledger/manual-journals | journals.create |
 | PUT | /api/ledger/manual-journals/:id | journals.update |
 | POST | /api/ledger/manual-journals/:id/submit | journals.create, journals.update |
-| POST | /api/ledger/manual-journals/:id/approve | journals.post |
+| POST | /api/ledger/manual-journals/:id/approve |  |
 | POST | /api/ledger/manual-journals/:id/reject | journals.post |
 | DELETE | /api/ledger/manual-journals/:id | journals.delete |
 | POST | /api/ledger/manual-journals/:id/reverse | journals.reverse |

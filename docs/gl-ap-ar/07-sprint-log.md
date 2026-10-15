@@ -17,7 +17,7 @@ Sprints are numbered. Done sprints list the commits that delivered them (git, br
 | S8 | Bank reconciliation | Done | 2026-10-15 | Reconciliation sessions per FR-BANK-01..05. |
 | S9 | Print-outs and test catalogue | Done | 2026-10-15 | Vouchers and reconciliation prints; automation-ready test cases. |
 | S10 | Documentation set | In progress | 2026-10-15 | BRD, SRS, design, test strategy, manual, sprint log and traceability generated from one source. |
-| S11 | Approval rules | In progress | 2026-10-15 → | Amount-threshold, multi-level approval for journals, bills, payments and credit notes. |
+| S11 | Approval rules | Done | 2026-10-15 | Amount-threshold, multi-level approval for journals, bills, payments and credit notes. |
 | S12 | Period control | Planned | TBD | Restricted month, adjustment period, readiness checklist, ledger-verified month close, per-module close. |
 | S13 | Year-end close | Planned | TBD | One closing entry into retained earnings; next year opens automatically. |
 | S14 | Tax postings | Planned | TBD | Tax-code tags on lines, VAT settlement entry, cash rounding account. |
@@ -147,7 +147,7 @@ BRD, SRS, design, test strategy, manual, sprint log and traceability generated f
 |---|---|---|---|
 | S10-01 | Generated BRD, SRS, sprint log, traceability matrix and annexes | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
 
-## Sprint 11 — Approval rules (In progress)
+## Sprint 11 — Approval rules (Done)
 
 Amount-threshold, multi-level approval for journals, bills, payments and credit notes.
 
@@ -156,7 +156,7 @@ Amount-threshold, multi-level approval for journals, bills, payments and credit 
 | S11-01 | Approval engine, delivered for vendor payments, vendor bills and credit notes: rules by amount band, sequential levels, requests, append-only history, My Approvals worklist | BR-JNL-10 Amount-threshold approval rules | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 |
 | S11-02 | Manager hierarchy (done: manager on the user form, validated) and delegation with validity dates (done: delegation card on My Approvals) as approver sources, plus recall by the submitter | BR-JNL-10 Amount-threshold approval rules | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 |
 | S11-03 | Company-level self-approval setting for every document type (replaces the journal-only switch) | BR-JNL-07 Self-approval safeguard | FR-JNL-07.1 |
-| S11-04 | Manual journals folded into the engine | BR-JNL-01 Manual journals with maker-checker | FR-JNL-01.1 |
+| S11-04 | Manual journals held by a rule follow its levels (done); with no rule the single maker-checker step is unchanged | BR-JNL-01 Manual journals with maker-checker | FR-JNL-01.1 |
 
 ## Sprint 12 — Period control (Planned)
 
