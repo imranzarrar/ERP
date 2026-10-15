@@ -66,17 +66,19 @@ Feature: Approval rules (Sprint 11)
     Then Refused without remarks; with remarks the document is Draft and the history shows them
     # automated by tests/approvals.test.ts
 
-  @APR-010 @P2 @Functional @API @candidate
-  Scenario: Editing a pending document recalls it; raising the amount restarts approval
-    Given A payment pending at level 2 after level 1 approved
-    When The amount is raised
-    Then Approval restarts from level 1 and earlier approvals no longer count
+  @APR-010 @P2 @Functional @API+DB @automated
+  Scenario: The submitter can recall a pending request; nobody else can; nothing was posted; a corrected one can be resubmitted
+    Given A payment pending approval
+    When Another user tries to recall it, then the submitter recalls it, then it is decided or recalled again, then a new one is submitted
+    Then Others are refused; the request is Recalled with the history kept; it can no longer be decided; a fresh request is accepted
+    # automated by tests/approvals.test.ts
 
-  @APR-011 @P2 @Functional @API @candidate
+  @APR-011 @P2 @Functional @API+DB @automated
   Scenario: A delegate with a valid period may decide; outside it may not
-    Given A delegation from manager to deputy for 3 days
-    When The deputy approves inside and after the period
-    Then Allowed inside, refused after; both recorded with the delegator
+    Given A delegation from an approver to a deputy with a validity period
+    When The deputy decides before the period, after it, after it was ended, and inside it
+    Then Refused before, after and when ended; allowed inside; the history names who they acted for; another company sees no delegations
+    # automated by tests/approvals.test.ts
 
   @APR-012 @P1 @Security @API @automated
   Scenario: The posting guard is re-checked at final approval and tenant isolation holds

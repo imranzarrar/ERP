@@ -154,7 +154,7 @@ Amount-threshold, multi-level approval for journals, bills, payments and credit 
 | Item | Title | Business requirements | System requirements |
 |---|---|---|---|
 | S11-01 | Approval engine, delivered for vendor payments and vendor bills (credit notes next): rules by amount band, sequential levels, requests, append-only history, My Approvals worklist | BR-JNL-10 Amount-threshold approval rules | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 |
-| S11-02 | Manager hierarchy (done: manager on the user form, validated) and delegation with validity dates (open) as approver sources | BR-JNL-10 Amount-threshold approval rules | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 |
+| S11-02 | Manager hierarchy (done: manager on the user form, validated) and delegation with validity dates (done: delegation card on My Approvals) as approver sources, plus recall by the submitter | BR-JNL-10 Amount-threshold approval rules | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 |
 | S11-03 | Company-level self-approval setting for every document type (replaces the journal-only switch) | BR-JNL-07 Self-approval safeguard | FR-JNL-07.1 |
 | S11-04 | Manual journals folded into the engine | BR-JNL-01 Manual journals with maker-checker | FR-JNL-01.1 |
 

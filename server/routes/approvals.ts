@@ -7,7 +7,7 @@ import { withTenantDb, tenantDb } from '../lib/tenantDb.js';
 import { hasPermission } from '../lib/authz.js';
 import { recordAuditLog } from '../lib/audit.js';
 import { nowDate } from '../lib/clock.js';
-import { decideRequest, requestDetail, worklist, type ApprovalDocType } from '../lib/approvals.js';
+import { decideRequest, recallRequest, requestDetail, worklist, type ApprovalDocType } from '../lib/approvals.js';
 
 const router = express.Router();
 const fail = (res: any, status: number, error: string) => res.status(status).json({ error });
@@ -114,6 +114,51 @@ router.post('/requests/:id/decide', withTenantDb, async (req: any, res) => {
     const r = await decideRequest(tenantDb(), req, req.params.id, action, req.body?.remarks);
     recordAuditLog(req, action === 'Approved' ? 'APPROVAL_APPROVED' : 'APPROVAL_REJECTED', 'approval_request', req.params.id, { remarks: String(req.body?.remarks || '').slice(0, 200), result: r.status });
     res.json({ success: true, ...r });
+  } catch (e: any) { fail(res, e.status || 500, e.message); }
+});
+
+router.post('/requests/:id/recall', withTenantDb, async (req: any, res) => {
+  try {
+    if (!hasPermission(req.user, 'approvals.read')) return fail(res, 403, 'Forbidden');
+    if (!ID.test(req.params.id)) return fail(res, 400, 'Invalid id.');
+    await recallRequest(tenantDb(), req, req.params.id, req.body?.remarks);
+    recordAuditLog(req, 'APPROVAL_RECALLED', 'approval_request', req.params.id, { remarks: String(req.body?.remarks || '').slice(0, 200) });
+    res.json({ success: true });
+  } catch (e: any) { fail(res, e.status || 500, e.message); }
+});
+
+// Delegation: a person hands their own approval authority to a colleague for a period (absence). The delegator is always the signed-in user.
+router.get('/delegations', withTenantDb, async (req: any, res) => {
+  try {
+    if (!hasPermission(req.user, 'approvals.read')) return fail(res, 403, 'Forbidden');
+    const tx = tenantDb(); const rows: any[] = await tx.select().from(schema.approvalDelegations).where(and(eq(schema.approvalDelegations.companyId, req.targetCompanyId), eq(schema.approvalDelegations.delegatorId, req.user.id))).orderBy(desc(schema.approvalDelegations.createdAt)).limit(50);
+    res.json({ rows: rows.map(r => ({ id: r.id, delegateId: r.delegateId, validFrom: String(r.validFrom).slice(0, 10), validTo: String(r.validTo).slice(0, 10), isActive: r.isActive })) });
+  } catch (e: any) { fail(res, e.status || 500, e.message); }
+});
+router.post('/delegations', withTenantDb, async (req: any, res) => {
+  try {
+    if (!hasPermission(req.user, 'approvals.read')) return fail(res, 403, 'Forbidden');
+    const tx = tenantDb(); const b = req.body || {}; const date = /^\d{4}-\d{2}-\d{2}$/;
+    if (!ID.test(String(b.delegateId || ''))) return fail(res, 400, 'Choose who takes over.');
+    if (b.delegateId === req.user.id) return fail(res, 400, 'You cannot delegate to yourself.');
+    if (!date.test(String(b.validFrom || '')) || !date.test(String(b.validTo || '')) || b.validTo < b.validFrom) return fail(res, 400, 'Enter a valid period: the end date cannot be before the start date.');
+    const [u] = await tx.select({ id: schema.users.id }).from(schema.users).where(and(eq(schema.users.id, b.delegateId), eq(schema.users.companyId, req.targetCompanyId)));
+    if (!u) return fail(res, 400, 'That person is not a user of this company.');
+    const id = generateId();
+    await tx.insert(schema.approvalDelegations).values({ id, companyId: req.targetCompanyId, delegatorId: req.user.id, delegateId: b.delegateId, validFrom: b.validFrom, validTo: b.validTo, isActive: true, createdAt: nowDate() });
+    recordAuditLog(req, 'CREATE_APPROVAL_DELEGATION', 'approval_delegation', id, { delegateId: b.delegateId, validFrom: b.validFrom, validTo: b.validTo });
+    res.json({ success: true, id });
+  } catch (e: any) { fail(res, e.status || 500, e.message); }
+});
+router.patch('/delegations/:id/end', withTenantDb, async (req: any, res) => {
+  try {
+    if (!hasPermission(req.user, 'approvals.read')) return fail(res, 403, 'Forbidden');
+    if (!ID.test(req.params.id)) return fail(res, 400, 'Invalid id.');
+    const tx = tenantDb(); const [d] = await tx.select().from(schema.approvalDelegations).where(and(eq(schema.approvalDelegations.id, req.params.id), eq(schema.approvalDelegations.companyId, req.targetCompanyId), eq(schema.approvalDelegations.delegatorId, req.user.id)));
+    if (!d) return fail(res, 404, 'Delegation not found.');
+    await tx.update(schema.approvalDelegations).set({ isActive: false }).where(eq(schema.approvalDelegations.id, d.id));
+    recordAuditLog(req, 'END_APPROVAL_DELEGATION', 'approval_delegation', d.id, {});
+    res.json({ success: true });
   } catch (e: any) { fail(res, e.status || 500, e.message); }
 });
 

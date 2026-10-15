@@ -240,8 +240,8 @@ Coverage: 100 business requirements → 108 system requirements → 305 of 305 t
 | APR-007 | Only owner/admin may change the self-approval setting | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
 | APR-008 | A manager of the submitter can be the approver | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
 | APR-009 | Rejection returns the document to draft with remarks and nothing posts | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
-| APR-010 | Editing a pending document recalls it; raising the amount restarts approval | Candidate | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
-| APR-011 | A delegate with a valid period may decide; outside it may not | Candidate | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
+| APR-010 | The submitter can recall a pending request; nobody else can; nothing was posted; a corrected one can be resubmitted | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
+| APR-011 | A delegate with a valid period may decide; outside it may not | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
 | APR-012 | The posting guard is re-checked at final approval and tenant isolation holds | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
 | APR-013 | A vendor bill follows the same rules: above the band it waits and creates nothing, the last approval creates it once | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
 | APR-014 | The "paid at delivery" shortcut cannot bypass an approval rule | tests/approvals.test.ts | FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8 | BR-JNL-10 |
@@ -450,7 +450,7 @@ None.
 | S9 Print-outs and test catalogue | S9-02 Test-case catalogue and generator | BR-NFR-03 |
 | S10 Documentation set | S10-01 Generated BRD, SRS, sprint log, traceability matrix and annexes | BR-NFR-05 |
 | S11 Approval rules | S11-01 Approval engine, delivered for vendor payments and vendor bills (credit notes next): rules by amount band, sequential levels, requests, append-only history, My Approvals worklist | BR-JNL-10 |
-| S11 Approval rules | S11-02 Manager hierarchy (done: manager on the user form, validated) and delegation with validity dates (open) as approver sources | BR-JNL-10 |
+| S11 Approval rules | S11-02 Manager hierarchy (done: manager on the user form, validated) and delegation with validity dates (done: delegation card on My Approvals) as approver sources, plus recall by the submitter | BR-JNL-10 |
 | S11 Approval rules | S11-03 Company-level self-approval setting for every document type (replaces the journal-only switch) | BR-JNL-07 |
 | S11 Approval rules | S11-04 Manual journals folded into the engine | BR-JNL-01 |
 | S12 Period control | S12-01 Ledger-verified month close | BR-PER-07 |

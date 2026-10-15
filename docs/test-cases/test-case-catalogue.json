@@ -2013,15 +2013,15 @@
       "module": "Approval rules (Sprint 11)",
       "moduleId": "APR",
       "ref": "Blueprint FR-APR-01..06; docs/gl-ap-ar/s11-approval-rules-tier1-research.md",
-      "title": "Editing a pending document recalls it; raising the amount restarts approval",
+      "title": "The submitter can recall a pending request; nobody else can; nothing was posted; a corrected one can be resubmitted",
       "type": "Functional",
       "priority": "P2",
-      "given": "A payment pending at level 2 after level 1 approved",
-      "when": "The amount is raised",
-      "then": "Approval restarts from level 1 and earlier approvals no longer count",
-      "layer": "API",
-      "automation": "Candidate",
-      "status": "Candidate"
+      "given": "A payment pending approval",
+      "when": "Another user tries to recall it, then the submitter recalls it, then it is decided or recalled again, then a new one is submitted",
+      "then": "Others are refused; the request is Recalled with the history kept; it can no longer be decided; a fresh request is accepted",
+      "layer": "API+DB",
+      "automation": "tests/approvals.test.ts",
+      "status": "Automated"
     },
     {
       "id": "APR-011",
@@ -2031,12 +2031,12 @@
       "title": "A delegate with a valid period may decide; outside it may not",
       "type": "Functional",
       "priority": "P2",
-      "given": "A delegation from manager to deputy for 3 days",
-      "when": "The deputy approves inside and after the period",
-      "then": "Allowed inside, refused after; both recorded with the delegator",
-      "layer": "API",
-      "automation": "Candidate",
-      "status": "Candidate"
+      "given": "A delegation from an approver to a deputy with a validity period",
+      "when": "The deputy decides before the period, after it, after it was ended, and inside it",
+      "then": "Refused before, after and when ended; allowed inside; the history names who they acted for; another company sees no delegations",
+      "layer": "API+DB",
+      "automation": "tests/approvals.test.ts",
+      "status": "Automated"
     },
     {
       "id": "APR-012",

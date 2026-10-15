@@ -266,3 +266,40 @@ describe('the manager of a user (feeds the Manager approver)', () => {
     await db.delete(schema.users).where(eq(schema.users.id, foreign.id));
   });
 });
+
+describe('recall and delegation (Sprint 11)', () => {
+  const pend = async (amount: number, session = admin) => (await post(session, '/api/settlements/payments', payBody(amount))).body.requestId as string;
+  it('APR-010 the submitter can recall a pending request (nobody else can); nothing was posted and the history keeps it; it can be resubmitted', async () => {
+    await deactivateAll(); expect((await rule()).status).toBe(200); await expense(1000, 'R1');
+    const id = await pend(280); const before = await vouchersFor();
+    expect((await post(UA.s, R(`/requests/${id}/recall`), {})).status).toBe(403);                     // not the submitter
+    expect((await post(admin, R(`/requests/${id}/recall`), { remarks: 'wrong bank' })).status).toBe(200);
+    const d = (await get(admin, R(`/requests/${id}`))).body; expect(d.status).toBe('Recalled'); expect(d.actions[0]).toMatchObject({ action: 'Recalled', remarks: 'wrong bank' });
+    expect((await post(UA.s, R(`/requests/${id}/decide`), { action: 'Approved' })).status).toBe(400);   // no longer pending
+    expect(await vouchersFor()).toBe(before);
+    expect((await post(admin, R(`/requests/${id}/recall`), {})).status).toBe(400);                       // only once
+    expect(await pend(280)).toBeTruthy();                                                                 // a fresh request can be submitted
+  });
+
+  it('APR-011 a delegate may decide inside the period and not outside it, and the history names who they acted for', async () => {
+    await deactivateAll(); expect((await rule()).status).toBe(200); await expense(1000, 'R2');
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10), yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10), nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+    const deputy = await mkU(ROLE_PERMS);                                                                  // holds no level authority of their own
+    const id = await pend(290);
+    expect((await post(deputy.s, R(`/requests/${id}/decide`), { action: 'Approved' })).status).toBe(403);
+    expect((await post(UA.s, R('/delegations'), { delegateId: UA.id, validFrom: yesterday, validTo: nextWeek })).status).toBe(400);   // not to yourself
+    expect((await post(UA.s, R('/delegations'), { delegateId: deputy.id, validFrom: nextWeek, validTo: yesterday })).status).toBe(400); // end before start
+    const future = await post(UA.s, R('/delegations'), { delegateId: deputy.id, validFrom: tomorrow, validTo: nextWeek }); expect(future.status).toBe(200);
+    expect((await post(deputy.s, R(`/requests/${id}/decide`), { action: 'Approved' })).status).toBe(403);   // not started yet
+    await patch(UA.s, R(`/delegations/${future.body.id}/end`));
+    expect((await post(UA.s, R('/delegations'), { delegateId: deputy.id, validFrom: yesterday, validTo: yesterday })).status).toBe(200);
+    expect((await post(deputy.s, R(`/requests/${id}/decide`), { action: 'Approved' })).status).toBe(403);   // already over
+    const live = await post(UA.s, R('/delegations'), { delegateId: deputy.id, validFrom: yesterday, validTo: nextWeek }); expect(live.status).toBe(200);
+    expect((await get(deputy.s, R('/my'))).body.waiting.some((x: any) => x.id === id)).toBe(true);
+    const before = await vouchersFor();
+    expect((await post(deputy.s, R(`/requests/${id}/decide`), { action: 'Approved' })).body.status).toBe('Approved');
+    expect(await vouchersFor()).toBe(before + 1);
+    expect((await get(admin, R(`/requests/${id}`))).body.actions[0].onBehalfOf).toBeTruthy();
+    expect((await get(other.admin, R('/delegations'))).body.rows).toHaveLength(0);                         // another company sees none
+  });
+});

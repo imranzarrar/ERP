@@ -121,13 +121,14 @@ export function MyApprovalsScreen({ db }: { db: DatabaseState }) {
     <tr key={r.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => setOpen(r.id)}>
       <td className="p-3 font-bold text-indigo-700">{t(TYPE_LABEL[r.documentType] || r.documentType)}</td><td className="p-3">{r.summary}</td>
       <td className="p-3 text-end font-mono tabular-nums">{money(r.amount)} {currency}</td><td className="p-3">{t('Level')} {r.currentLevel} / {r.levels}</td>
-      <td className="p-3">{mine ? (r.status === 'Pending' ? <span className="text-amber-600 font-bold">{t('Waiting')}</span> : r.status === 'Approved' ? <span className="text-emerald-700 font-bold">{t('Approved')}</span> : <span className="text-rose-600 font-bold">{t('Rejected')}</span>) : String(r.submittedAt).slice(0, 10)}</td>
+      <td className="p-3">{mine ? (r.status === 'Pending' ? <span className="text-amber-600 font-bold">{t('Waiting')}</span> : r.status === 'Approved' ? <span className="text-emerald-700 font-bold">{t('Approved')}</span> : r.status === 'Recalled' ? <span className="text-slate-500 font-bold">{t('Recalled')}</span> : <span className="text-rose-600 font-bold">{t('Rejected')}</span>) : String(r.submittedAt).slice(0, 10)}</td>
     </tr>
   );
   const head = (last: string) => <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500 tracking-wider"><tr><th className="p-3 text-start">{t('Document')}</th><th className="p-3 text-start">{t('Description')}</th><th className="p-3 text-end">{t('Amount')}</th><th className="p-3 text-start">{t('Level')}</th><th className="p-3 text-start">{last}</th></tr></thead>;
   return (
     <div className="space-y-4 pb-10">
       {banner && <Notice tone={banner.tone}>{banner.text}</Notice>}
+      <DelegationCard db={db} onChanged={load} show={show} />
       <div className="text-xs font-bold text-slate-800">{t('Waiting for you')} ({data.waiting.length})</div>
       <Card className="overflow-x-auto"><table className="w-full text-xs text-start">{head(t('Submitted'))}<tbody className="divide-y divide-slate-100">
         {data.waiting.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-slate-400">{t('Nothing is waiting for your approval.')}</td></tr>}{data.waiting.map((r: any) => row(r, false))}</tbody></table></Card>
@@ -139,15 +140,40 @@ export function MyApprovalsScreen({ db }: { db: DatabaseState }) {
   );
 }
 
+function DelegationCard({ db, onChanged, show }: { db: DatabaseState; onChanged: () => void; show: (tone: 'error' | 'success', text: string) => void }) {
+  const { t } = useTranslation(db);
+  const today = new Date().toISOString().slice(0, 10);
+  const [rows, setRows] = React.useState<any[]>([]); const [delegateId, setDelegateId] = React.useState(''); const [from, setFrom] = React.useState(today); const [to, setTo] = React.useState(today);
+  const users: any[] = (db.users || []).filter((u: any) => u.isActive !== false && u.id !== db.currentUser?.id && (!db.currentUser?.companyId || u.companyId === db.currentUser.companyId));
+  const load = React.useCallback(async () => { try { setRows((await erpApi<{ rows: any[] }>(`${API}/delegations`)).rows); } catch { /* the card is optional */ } }, []);
+  React.useEffect(() => { load(); }, [load]);
+  const add = async () => { try { await erpApi(`${API}/delegations`, { method: 'POST', body: { delegateId, validFrom: from, validTo: to } }); setDelegateId(''); await load(); onChanged(); show('success', t('Saved.')); } catch (e: any) { show('error', e.message); } };
+  const end = async (id: string) => { try { await erpApi(`${API}/delegations/${id}/end`, { method: 'PATCH' }); await load(); onChanged(); } catch (e: any) { show('error', e.message); } };
+  return (
+    <Card className="p-4 space-y-3">
+      <div className="text-xs font-bold text-slate-800">{t('Delegate my approvals while I am away')}</div>
+      <div className="grid grid-cols-12 gap-2 items-end">
+        <div className="col-span-5"><label className={labelCls}>{t('Who takes over')}</label><select className={inputCls} value={delegateId} onChange={e => setDelegateId(e.target.value)}><option value="">{t('Choose a user')}</option>{users.map((u: any) => <option key={u.id} value={u.id}>{u.username}</option>)}</select></div>
+        <div className="col-span-3"><label className={labelCls}>{t('From')}</label><input type="date" className={inputCls} value={from} onChange={e => setFrom(e.target.value)} /></div>
+        <div className="col-span-3"><label className={labelCls}>{t('To')}</label><input type="date" className={inputCls} value={to} onChange={e => setTo(e.target.value)} /></div>
+        <div className="col-span-1"><button className={`${primaryBtn} w-full justify-center`} disabled={!delegateId} onClick={add}><Plus className="w-3.5 h-3.5" /></button></div>
+      </div>
+      {rows.filter(r => r.isActive).map(r => <div key={r.id} className="flex items-center gap-3 text-xs"><span className="font-bold">{users.find((u: any) => u.id === r.delegateId)?.username || r.delegateId}</span><span className="text-slate-500 font-mono">{r.validFrom} → {r.validTo}</span><button className="text-rose-600 hover:underline cursor-pointer ms-auto" onClick={() => end(r.id)}>{t('End now')}</button></div>)}
+      <p className="text-slate-500 text-[11px]">{t('The person you choose can decide what you could decide, for these dates only. Approvals that need a specific permission cannot be delegated.')}</p>
+    </Card>
+  );
+}
+
 function RequestDrawer({ db, id, canDecide, currency, onClose, onDone }: { db: DatabaseState; id: string; canDecide: boolean; currency: string; onClose: () => void; onDone: () => void }) {
   const { t } = useTranslation(db);
   const [d, setD] = React.useState<any>(null); const [remarks, setRemarks] = React.useState(''); const [error, setError] = React.useState(''); const [busy, setBusy] = React.useState(false);
   React.useEffect(() => { erpApi(`${API}/requests/${id}`).then(setD).catch(e => setError(e.message)); }, [id]);
+  const recall = async () => { setBusy(true); setError(''); try { await erpApi(`${API}/requests/${id}/recall`, { method: 'POST', body: { remarks } }); onDone(); } catch (e: any) { setError(e.message); } finally { setBusy(false); } };
   const decide = async (action: 'Approved' | 'Rejected') => { setBusy(true); setError(''); try { await erpApi(`${API}/requests/${id}/decide`, { method: 'POST', body: { action, remarks } }); onDone(); } catch (e: any) { setError(e.message); } finally { setBusy(false); } };
   const p = d?.payload || {};
   return (
     <Drawer title={d ? `${t(TYPE_LABEL[d.documentType] || d.documentType)} · ${money(d.amount)} ${currency}` : t('Approval')} onClose={onClose} width="max-w-lg"
-      footer={d && d.status === 'Pending' && canDecide ? <><button className={dangerBtn} disabled={busy} onClick={() => decide('Rejected')}><XCircle className="w-3.5 h-3.5" />{t('Reject')}</button><button className={greenBtn} disabled={busy} onClick={() => decide('Approved')}><CheckCircle2 className="w-3.5 h-3.5" />{t('Approve')}</button></> : undefined}>
+      footer={d && d.status === 'Pending' && d.submittedById === db.currentUser?.id && !canDecide ? <button className={ghostBtn} disabled={busy} onClick={recall}>{t('Recall')}</button> : d && d.status === 'Pending' && canDecide ? <><button className={dangerBtn} disabled={busy} onClick={() => decide('Rejected')}><XCircle className="w-3.5 h-3.5" />{t('Reject')}</button><button className={greenBtn} disabled={busy} onClick={() => decide('Approved')}><CheckCircle2 className="w-3.5 h-3.5" />{t('Approve')}</button></> : undefined}>
       {error && <Notice tone="error">{error}</Notice>}
       {d && (<>
         <div className="grid grid-cols-2 gap-3">
@@ -159,7 +185,7 @@ function RequestDrawer({ db, id, canDecide, currency, onClose, onDone }: { db: D
         </div>
         <div className="text-slate-500">{d.summary}</div>
         <div className={labelCls}>{t('History')}</div>
-        <div className="space-y-1">{d.actions.length === 0 && <div className="text-slate-400">{t('No decision yet.')}</div>}{d.actions.map((a: any, i: number) => <div key={i}><b>{t(a.action)}</b> · {t('Level')} {a.level} · {a.by} · {String(a.at).slice(0, 16).replace('T', ' ')}{a.remarks ? ` — ${a.remarks}` : ''}</div>)}</div>
+        <div className="space-y-1">{d.actions.length === 0 && <div className="text-slate-400">{t('No decision yet.')}</div>}{d.actions.map((a: any, i: number) => <div key={i}><b>{t(a.action)}</b> · {t('Level')} {a.level} · {a.by} · {String(a.at).slice(0, 16).replace('T', ' ')}{a.onBehalfOf ? ` · ${t('for')} ${a.onBehalfOf}` : ''}{a.remarks ? ` — ${a.remarks}` : ''}</div>)}</div>
         {d.status === 'Pending' && canDecide && <div><label className={labelCls}>{t('Remarks (required to reject)')}</label><input className={inputCls} value={remarks} onChange={e => setRemarks(e.target.value)} /></div>}
         {d.status === 'Approved' && <Notice tone="success">{t('Approved: the document was created.')}</Notice>}
       </>)}

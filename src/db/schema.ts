@@ -1522,7 +1522,7 @@ export const companyOnboardingRequests = pgTable('company_onboarding_requests', 
   contactEmail: text('contact_email').notNull(),
   contactPhone: text('contact_phone'),
   notes: text('notes'),
-  status: text('status').notNull().default('Pending'), // 'Pending' | 'Approved' | 'Rejected'
+  status: text('status').notNull().default('Pending'), // 'Pending' | 'Approved' | 'Rejected' | 'Recalled' (withdrawn by its submitter; resubmit after correcting)
   reviewedById: uuid('reviewed_by_id').references(() => users.id),
   reviewedAt: timestamp('reviewed_at'),
   rejectionReason: text('rejection_reason'),
@@ -2863,7 +2863,7 @@ export const approvalRequests = pgTable('approval_requests', {
 }, (table) => ({
   companyIdx: index('approval_requests_company_idx').on(table.companyId, table.status),
   idCompanyUnique: unique('approval_requests_id_company_unique').on(table.companyId, table.id),
-  statusCheck: check('approval_requests_status_check', sql`${table.status} IN ('Pending','Approved','Rejected')`),
+  statusCheck: check('approval_requests_status_check', sql`${table.status} IN ('Pending','Approved','Rejected','Recalled')`),
   tenantIsolationPolicy: tenantPolicy('approval_requests_tenant_isolation', table),
 })).enableRLS();
 
@@ -2873,11 +2873,29 @@ export const approvalActions = pgTable('approval_actions', {
   requestId: uuid('request_id').notNull(),
   level: integer('level').notNull(),
   actorId: uuid('actor_id').notNull().references(() => users.id),
-  action: text('action').notNull(), // 'Approved' | 'Rejected'
+  action: text('action').notNull(), // 'Approved' | 'Rejected' | 'Recalled'
+  onBehalfOfId: uuid('on_behalf_of_id').references(() => users.id), // set when a delegate decided for the person who holds the level
   remarks: text('remarks'),
   createdAt: timestamp('created_at').notNull(),
 }, (table) => ({
   requestIdx: index('approval_actions_request_idx').on(table.companyId, table.requestId),
   requestFk: foreignKey({ name: 'approval_actions_request_company_fk', columns: [table.requestId, table.companyId], foreignColumns: [approvalRequests.id, approvalRequests.companyId] }),
   tenantIsolationPolicy: tenantPolicy('approval_actions_tenant_isolation', table),
+})).enableRLS();
+
+// Delegation of approval authority for a period (absence): the delegate may decide what the delegator could decide, between valid_from and valid_to. Levels naming a permission cannot be delegated
+// (a permission belongs to a person's roles); role, named-user and manager levels can.
+export const approvalDelegations = pgTable('approval_delegations', {
+  id: uuid('id').primaryKey(),
+  companyId: uuid('company_id').notNull().references(() => companies.id),
+  delegatorId: uuid('delegator_id').notNull().references(() => users.id),
+  delegateId: uuid('delegate_id').notNull().references(() => users.id),
+  validFrom: businessDate('valid_from').notNull(),
+  validTo: businessDate('valid_to').notNull(),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull(),
+}, (table) => ({
+  companyIdx: index('approval_delegations_company_idx').on(table.companyId, table.delegateId),
+  periodCheck: check('approval_delegations_period_check', sql`${table.validTo} >= ${table.validFrom} AND ${table.delegatorId} <> ${table.delegateId}`),
+  tenantIsolationPolicy: tenantPolicy('approval_delegations_tenant_isolation', table),
 })).enableRLS();

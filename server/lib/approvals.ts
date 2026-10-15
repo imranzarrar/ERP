@@ -58,8 +58,8 @@ async function managerChain(tx: any, companyId: string, userId: string, steps: n
   return out;
 }
 
-// Does this user hold the authority of this level for this request?
-export async function holdsLevelAuthority(tx: any, companyId: string, user: any, level: RuleLevel, submitterId: string): Promise<boolean> {
+// Does this user hold the authority of this level for this request? Directly, or because the holder delegated it to them for a period that includes today.
+async function holdsOwnAuthority(tx: any, companyId: string, user: any, level: RuleLevel, submitterId: string): Promise<boolean> {
   if (level.approverType === 'User') return level.approverRef === user.id;
   if (level.approverType === 'Permission') return !!level.approverRef && hasPermission(user, level.approverRef);
   if (level.approverType === 'Role') {
@@ -68,6 +68,22 @@ export async function holdsLevelAuthority(tx: any, companyId: string, user: any,
     return rows.length > 0;
   }
   return (await managerChain(tx, companyId, submitterId, Math.max(1, level.managerSteps))).includes(user.id);
+}
+export async function activeDelegators(tx: any, companyId: string, delegateId: string): Promise<string[]> {
+  const today = nowDate().toISOString().slice(0, 10);
+  const rows: any[] = await tx.select({ d: schema.approvalDelegations.delegatorId }).from(schema.approvalDelegations).where(and(eq(schema.approvalDelegations.companyId, companyId), eq(schema.approvalDelegations.delegateId, delegateId), eq(schema.approvalDelegations.isActive, true),
+    sql`${schema.approvalDelegations.validFrom} <= ${today}::date AND ${schema.approvalDelegations.validTo} >= ${today}::date`));
+  return rows.map(r => r.d);
+}
+// returns null (no authority), 'self' or the id of the delegator the user acts for
+export async function levelAuthority(tx: any, companyId: string, user: any, level: RuleLevel, submitterId: string): Promise<null | 'self' | string> {
+  if (await holdsOwnAuthority(tx, companyId, user, level, submitterId)) return 'self';
+  if (level.approverType === 'Permission') return null;                                   // a permission cannot be delegated
+  for (const d of await activeDelegators(tx, companyId, user.id)) if (await holdsOwnAuthority(tx, companyId, { id: d }, level, submitterId)) return d;
+  return null;
+}
+export async function holdsLevelAuthority(tx: any, companyId: string, user: any, level: RuleLevel, submitterId: string): Promise<boolean> {
+  return (await levelAuthority(tx, companyId, user, level, submitterId)) !== null;
 }
 
 // requests this user may decide right now (current level authority, not already acted, and not their own unless allowed)
@@ -96,12 +112,15 @@ export async function decideRequest(tx: any, req: any, requestId: string, action
   const self = r.submittedById === req.user.id;
   const selfOk = self && await selfApprovalAllowed(tx, companyId);
   if (self && !selfOk) throw fail(403, 'You submitted this document, so someone else must decide it.');
-  if (!(await holdsLevelAuthority(tx, companyId, req.user, lv, r.submittedById)) && !(selfOk)) throw fail(403, 'You do not hold the authority of this approval level.');
+  const authority = await levelAuthority(tx, companyId, req.user, lv, r.submittedById);
+  if (authority === null && !selfOk) throw fail(403, 'You do not hold the authority of this approval level.');
+  const onBehalf = authority && authority !== 'self' ? authority : null;
+  if (onBehalf && onBehalf === r.submittedById && !(await selfApprovalAllowed(tx, companyId))) throw fail(403, 'The person you act for submitted this document, so someone else must decide it.');
   const earlier: any[] = await tx.select({ id: schema.approvalActions.id }).from(schema.approvalActions).where(and(eq(schema.approvalActions.companyId, companyId), eq(schema.approvalActions.requestId, r.id), eq(schema.approvalActions.actorId, req.user.id)));
   if (earlier.length && !selfOk) throw fail(403, 'You already acted on an earlier level of this request; a different person must decide this level.');
   const note = String(remarks || '').trim().slice(0, 300);
   if (action === 'Rejected' && !note) throw fail(400, 'Write the reason for rejecting.');
-  await tx.insert(schema.approvalActions).values({ id: generateId(), companyId, requestId: r.id, level: r.currentLevel, actorId: req.user.id, action, remarks: note || null, createdAt: nowDate() });
+  await tx.insert(schema.approvalActions).values({ id: generateId(), companyId, requestId: r.id, level: r.currentLevel, actorId: req.user.id, onBehalfOfId: onBehalf, action, remarks: note || null, createdAt: nowDate() });
   if (action === 'Rejected') {
     await tx.update(schema.approvalRequests).set({ status: 'Rejected', decidedAt: nowDate() }).where(eq(schema.approvalRequests.id, r.id));
     return { status: 'Rejected' as const, documentId: null };
@@ -118,13 +137,24 @@ export async function decideRequest(tx: any, req: any, requestId: string, action
   return { status: 'Approved' as const, documentId };
 }
 
+// The submitter withdraws a request that is still pending (to correct and resubmit it). Nothing was posted, so nothing is undone; the history keeps the recall.
+export async function recallRequest(tx: any, req: any, requestId: string, remarks: string) {
+  const companyId = req.targetCompanyId;
+  const [r] = await tx.select().from(schema.approvalRequests).where(and(eq(schema.approvalRequests.id, requestId), eq(schema.approvalRequests.companyId, companyId))).for('update');
+  if (!r) throw fail(404, 'Approval request not found.');
+  if (r.submittedById !== req.user.id) throw fail(403, 'Only the person who submitted it can recall it.');
+  if (r.status !== 'Pending') throw fail(400, `This request is already ${r.status.toLowerCase()}.`);
+  await tx.insert(schema.approvalActions).values({ id: generateId(), companyId, requestId: r.id, level: r.currentLevel, actorId: req.user.id, action: 'Recalled', remarks: String(remarks || '').trim().slice(0, 300) || null, createdAt: nowDate() });
+  await tx.update(schema.approvalRequests).set({ status: 'Recalled', decidedAt: nowDate() }).where(eq(schema.approvalRequests.id, r.id));
+}
+
 export async function requestDetail(tx: any, companyId: string, id: string) {
   const [r] = await tx.select().from(schema.approvalRequests).where(and(eq(schema.approvalRequests.id, id), eq(schema.approvalRequests.companyId, companyId)));
   if (!r) throw fail(404, 'Approval request not found.');
   const actions: any[] = await tx.select().from(schema.approvalActions).where(and(eq(schema.approvalActions.companyId, companyId), eq(schema.approvalActions.requestId, id))).orderBy(asc(schema.approvalActions.createdAt));
-  const ids = [...new Set([r.submittedById, ...actions.map(a => a.actorId)])];
+  const ids = [...new Set([r.submittedById, ...actions.map(a => a.actorId), ...actions.map(a => a.onBehalfOfId).filter(Boolean)])] as string[];
   const users: any[] = await tx.select({ id: schema.users.id, username: schema.users.username }).from(schema.users).where(inArray(schema.users.id, ids));
   const name = new Map<string, string>(users.map(u => [u.id, u.username]));
-  return { ...r, amount: Number(r.amount), submittedByName: name.get(r.submittedById) || '', actions: actions.map(a => ({ level: a.level, action: a.action, remarks: a.remarks, at: a.createdAt, by: name.get(a.actorId) || '' })) };
+  return { ...r, amount: Number(r.amount), submittedByName: name.get(r.submittedById) || '', actions: actions.map(a => ({ level: a.level, action: a.action, remarks: a.remarks, at: a.createdAt, by: name.get(a.actorId) || '', onBehalfOf: a.onBehalfOfId ? name.get(a.onBehalfOfId) || '' : '' })) };
 }
 void sql;
