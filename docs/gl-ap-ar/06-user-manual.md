@@ -120,6 +120,10 @@ A payment kept on account is an **advance to the vendor**: it appears as an asse
 
 *New rule* opens the editor: name, what it applies to (vendor payment, vendor bill, credit note or manual journal), the amount band, the priority, and the levels in order (a role, a named user, anyone holding a permission, or the manager of the submitter, with **Add a level**).
 
+![Manager field on the user form](user-manual/screens/37-user-manager-field.png)
+
+The **Manager** field sits on the user form (**Settings & Companies › Governance & Staff › Staff Permissions**, below the account email). It is what a *manager of the submitter* level looks up: pick someone from the same company, never the person themselves and never a loop.
+
 ![My approvals](user-manual/screens/35-my-approvals.png)
 
 When a payment falls inside a rule, **Save Payment** sends it for approval and **nothing is posted**: no voucher, no ledger entry, no bank movement. **Accounting Operations › My Approvals** lists what waits for you and what you submitted.

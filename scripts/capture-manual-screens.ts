@@ -111,6 +111,8 @@ await reset(); await nav(null, 'Approval Rules'); await shot('approval-rules');
 try { await page.getByText('New rule', { exact: true }).first().click(); await page.waitForTimeout(900); await shot('approval-rule-editor'); await closeOverlays(); } catch (e: any) { console.log('rule editor', e.message.slice(0, 100)); }
 await nav(null, 'My Approvals'); await shot('my-approvals');
 try { await page.locator('tbody tr').last().click(); await page.waitForTimeout(1200); await shot('approval-request'); } catch (e: any) { console.log('approval request', e.message.slice(0, 100)); }
+// the Manager field on a user record (used by 'manager of the submitter' approval levels)
+try { await reset(); await click('Settings & Companies'); await page.waitForTimeout(1500); await click('Governance & Staff').catch(() => {}); await page.waitForTimeout(800); await click('Staff Permissions'); await page.waitForTimeout(1500); await page.waitForTimeout(1000); await page.getByText('Manager (used by approval rules)').first().scrollIntoViewIfNeeded(); await shot('user-manager-field'); await closeOverlays(); } catch (e: any) { console.log('user manager field', e.message.slice(0, 100)); }
 void pendingPay;
 await browser.close();
 await purgeCompany(companyId);
