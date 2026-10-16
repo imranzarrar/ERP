@@ -8,7 +8,7 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../../src/db/schema.js';
 import { generateId } from '../../src/id.js';
 import { nowDate } from './clock.js';
-import { hasPermission } from './authz.js';
+import { hasPermission, resolveUserPermissions } from './authz.js';
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const fail = (status: number, message: string) => Object.assign(new Error(message), { status });
@@ -75,11 +75,19 @@ export async function activeDelegators(tx: any, companyId: string, delegateId: s
     sql`${schema.approvalDelegations.validFrom} <= ${today}::date AND ${schema.approvalDelegations.validTo} >= ${today}::date`));
   return rows.map(r => r.d);
 }
+async function delegatorUser(tx: any, companyId: string, id: string): Promise<any | null> {
+  const [u]: any[] = await tx.select().from(schema.users).where(and(eq(schema.users.id, id), eq(schema.users.companyId, companyId)));
+  if (!u || u.isDeleted || u.isActive === false) return null;
+  return { id: u.id, role: u.role, isSuperAdmin: u.isSuperAdmin, permissions: await resolveUserPermissions(u.id) };
+}
 // returns null (no authority), 'self' or the id of the delegator the user acts for
 export async function levelAuthority(tx: any, companyId: string, user: any, level: RuleLevel, submitterId: string): Promise<null | 'self' | string> {
   if (await holdsOwnAuthority(tx, companyId, user, level, submitterId)) return 'self';
-  if (level.approverType === 'Permission') return null;                                   // a permission cannot be delegated
-  for (const d of await activeDelegators(tx, companyId, user.id)) if (await holdsOwnAuthority(tx, companyId, { id: d }, level, submitterId)) return d;
+  for (const d of await activeDelegators(tx, companyId, user.id)) {
+    // a level that names a permission is judged against the delegator's own permissions, so the delegate acts exactly as they could
+    const who = level.approverType === 'Permission' ? await delegatorUser(tx, companyId, d) : { id: d };
+    if (who && await holdsOwnAuthority(tx, companyId, who, level, submitterId)) return d;
+  }
   return null;
 }
 export async function holdsLevelAuthority(tx: any, companyId: string, user: any, level: RuleLevel, submitterId: string): Promise<boolean> {

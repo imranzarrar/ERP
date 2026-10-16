@@ -132,7 +132,7 @@ When a payment falls inside a rule, **Save Payment** sends it for approval and *
 
 Open a request to see who submitted it, the date, the reference, the level and the history. **Approve** moves it to the next level; the last approval creates the payment (the posting-control rules are checked again at that moment). **Reject** needs a reason and nothing is posted. The person who submitted a request can **Recall** it while it is pending (nothing was posted, so nothing is undone); to correct a payment or bill, recall it and submit a new one.
 
-**Delegating while you are away.** At the top of My Approvals, *Delegate my approvals while I am away*: choose who takes over and the dates. For those dates they can decide what you could decide (role, named-user and manager levels; levels that name a permission cannot be delegated), and the history shows *for <your name>*. **End now** stops it early. A person cannot approve a level for a payment they submitted (unless the company switch is on) or act twice on the same request.
+**Delegating while you are away.** At the top of My Approvals, *Delegate my approvals while I am away*: choose who takes over and the dates. For those dates they can decide whatever you could decide (role, named-user, permission and manager levels alike), and the history shows *for <your name>*. **End now** stops it early. A person cannot approve a level for a payment they submitted (unless the company switch is on) or act twice on the same request.
 
 ---
 

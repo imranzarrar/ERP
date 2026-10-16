@@ -772,7 +772,7 @@ export const GL_TRANSLATIONS: [key: string, ar: string, ur: string][] = [
   ['No manager', 'بلا مدير', 'کوئی مینیجر نہیں'],
   ['Delegate my approvals while I am away', 'تفويض اعتماداتي أثناء غيابي', 'میری غیر موجودگی میں میری منظوریاں تفویض کریں'],
   ['Who takes over', 'من يتولى المهمة', 'کون سنبھالے گا'], ['From', 'من', 'سے'], ['To', 'إلى', 'تک'], ['End now', 'إنهاء الآن', 'ابھی ختم کریں'],
-  ['The person you choose can decide what you could decide, for these dates only. Approvals that need a specific permission cannot be delegated.', 'يستطيع من تختاره أن يقرر ما كنت تقرره، لهذه التواريخ فقط. لا يمكن تفويض الاعتمادات التي تتطلب صلاحية محددة.', 'جسے آپ چنیں وہ انہی تاریخوں میں وہ فیصلے کر سکتا ہے جو آپ کر سکتے تھے۔ جن منظوریوں کے لیے مخصوص اجازت درکار ہو وہ تفویض نہیں ہو سکتیں۔'],
+  ['The person you choose can decide whatever you could decide, for these dates only.', 'يستطيع من تختاره أن يقرر كل ما كنت تقرره، لهذه التواريخ فقط.', 'جسے آپ چنیں وہ انہی تاریخوں میں وہ تمام فیصلے کر سکتا ہے جو آپ کر سکتے تھے۔'],
   ['Recall', 'سحب', 'واپس لیں'], ['Recalled', 'مسحوب', 'واپس لیا گیا'], ['for', 'نيابةً عن', 'بطور نمائندہ'],
   ['Credit note', 'إشعار دائن', 'کریڈٹ نوٹ'],
   ['Saved.', 'تم الحفظ.', 'محفوظ ہو گیا۔'],

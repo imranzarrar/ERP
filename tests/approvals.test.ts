@@ -302,6 +302,23 @@ describe('recall and delegation (Sprint 11)', () => {
     expect((await get(admin, R(`/requests/${id}`))).body.actions[0].onBehalfOf).toBeTruthy();
     expect((await get(other.admin, R('/delegations'))).body.rows).toHaveLength(0);                         // another company sees none
   });
+
+  it('APR-018 a level that names a permission is delegated too: the delegate acts as the holder of that permission, but not as someone who lacks it', async () => {
+    await deactivateAll();
+    expect((await rule({ levels: [{ approverType: 'Permission', approverRef: 'banks.transfer' }] })).status).toBe(200);
+    const holder = await mkU({ ...ROLE_PERMS, banks: on('transfer') }), deputy = await mkU(ROLE_PERMS), outsider = await mkU(ROLE_PERMS);
+    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10), nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+    const id = await pend(295);
+    expect((await post(deputy.s, R(`/requests/${id}/decide`), { action: 'Approved' })).status).toBe(403);       // no permission, no delegation
+    expect((await post(UA.s, R('/delegations'), { delegateId: outsider.id, validFrom: yesterday, validTo: nextWeek })).status).toBe(200); // UA lacks the permission
+    expect((await post(outsider.s, R(`/requests/${id}/decide`), { action: 'Approved' })).status).toBe(403);     // a delegation cannot give what the delegator never had
+    expect((await post(holder.s, R('/delegations'), { delegateId: deputy.id, validFrom: yesterday, validTo: nextWeek })).status).toBe(200);
+    expect((await get(deputy.s, R('/my'))).body.waiting.some((x: any) => x.id === id)).toBe(true);
+    const before = await vouchersFor();
+    expect((await post(deputy.s, R(`/requests/${id}/decide`), { action: 'Approved' })).body.status).toBe('Approved');
+    expect(await vouchersFor()).toBe(before + 1);
+    expect((await get(admin, R(`/requests/${id}`))).body.actions[0].onBehalfOf).toBe(`ap_${holder.id.slice(-12)}`);
+  });
 });
 
 describe('credit notes follow the same rules (Sprint 11)', () => {

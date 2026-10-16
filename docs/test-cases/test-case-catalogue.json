@@ -1,5 +1,5 @@
 {
-  "generated": "2026-10-15",
+  "generated": "2026-10-16",
   "modules": [
     {
       "id": "PC",
@@ -2124,6 +2124,21 @@
       "given": "A two-level rule for journals above 100; a preparer without the posting right",
       "when": "A journal of 300 is submitted and decided out of order and in order; one of 400 is rejected; one of 50 is submitted",
       "then": "Out of order and by the preparer refused; after both levels the journal is Posted with one ledger entry; the rejected one is back with its preparer; the small one needs journals.post and creates no approval request",
+      "layer": "API+DB",
+      "automation": "tests/approvals.test.ts",
+      "status": "Automated"
+    },
+    {
+      "id": "APR-018",
+      "module": "Approval rules (Sprint 11)",
+      "moduleId": "APR",
+      "ref": "Blueprint FR-APR-01..06; docs/gl-ap-ar/s11-approval-rules-tier1-research.md",
+      "title": "A level that names a permission can be delegated: the delegate acts as the holder of that permission for the dates chosen, and a delegation from someone without the permission gives nothing",
+      "type": "Functional",
+      "priority": "P1",
+      "given": "A rule whose level is the permission to transfer between banks; a holder, a delegate and an outsider",
+      "when": "A payment above the band is submitted; the delegate and the outsider try to approve before and after the delegations",
+      "then": "Refused without a delegation or from a delegator who lacks the permission; allowed from the holder, the history names the holder, one voucher posts",
       "layer": "API+DB",
       "automation": "tests/approvals.test.ts",
       "status": "Automated"

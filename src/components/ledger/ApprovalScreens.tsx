@@ -159,7 +159,7 @@ function DelegationCard({ db, onChanged, show }: { db: DatabaseState; onChanged:
         <div className="col-span-1"><button className={`${primaryBtn} w-full justify-center`} disabled={!delegateId} onClick={add}><Plus className="w-3.5 h-3.5" /></button></div>
       </div>
       {rows.filter(r => r.isActive).map(r => <div key={r.id} className="flex items-center gap-3 text-xs"><span className="font-bold">{users.find((u: any) => u.id === r.delegateId)?.username || r.delegateId}</span><span className="text-slate-500 font-mono">{r.validFrom} → {r.validTo}</span><button className="text-rose-600 hover:underline cursor-pointer ms-auto" onClick={() => end(r.id)}>{t('End now')}</button></div>)}
-      <p className="text-slate-500 text-[11px]">{t('The person you choose can decide what you could decide, for these dates only. Approvals that need a specific permission cannot be delegated.')}</p>
+      <p className="text-slate-500 text-[11px]">{t('The person you choose can decide whatever you could decide, for these dates only.')}</p>
     </Card>
   );
 }

@@ -121,3 +121,10 @@ Feature: Approval rules (Sprint 11)
     When A journal of 300 is submitted and decided out of order and in order; one of 400 is rejected; one of 50 is submitted
     Then Out of order and by the preparer refused; after both levels the journal is Posted with one ledger entry; the rejected one is back with its preparer; the small one needs journals.post and creates no approval request
     # automated by tests/approvals.test.ts
+
+  @APR-018 @P1 @Functional @API+DB @automated
+  Scenario: A level that names a permission can be delegated: the delegate acts as the holder of that permission for the dates chosen, and a delegation from someone without the permission gives nothing
+    Given A rule whose level is the permission to transfer between banks; a holder, a delegate and an outsider
+    When A payment above the band is submitted; the delegate and the outsider try to approve before and after the delegations
+    Then Refused without a delegation or from a delegator who lacks the permission; allowed from the holder, the history names the holder, one voucher posts
+    # automated by tests/approvals.test.ts

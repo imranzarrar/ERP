@@ -2883,7 +2883,7 @@ export const approvalActions = pgTable('approval_actions', {
   tenantIsolationPolicy: tenantPolicy('approval_actions_tenant_isolation', table),
 })).enableRLS();
 
-// Delegation of approval authority for a period (absence): the delegate may decide what the delegator could decide, between valid_from and valid_to. Levels naming a permission cannot be delegated
+// Delegation of approval authority for a period (absence): the delegate may decide what the delegator could decide, between valid_from and valid_to, whatever the level (role, user, permission or manager)
 // (a permission belongs to a person's roles); role, named-user and manager levels can.
 export const approvalDelegations = pgTable('approval_delegations', {
   id: uuid('id').primaryKey(),
