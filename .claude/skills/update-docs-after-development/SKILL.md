@@ -33,7 +33,7 @@ Rules: every BR is in at least one sprint item; every Built BR has a Done sprint
 | New term | `annex-g-glossary.md` |
 | Anything above changes the document map | `docs/gl-ap-ar/README.md` |
 | Research or decision on a future sprint | the sprint's own note (e.g. `s11-approval-rules-tier1-research.md`: decisions section) |
-| Earlier working notes that the change makes wrong | fix or add a dated correction note (`docs/ar-ap-bank-design.md` as-built section, `docs/posting-control.md`, `docs/date-fields-standard.md`, `docs/accounting-rules.md`, `docs/reporting-rules.md`) |
+| Earlier working notes that the change makes wrong | fix or add a dated correction note (`docs/design-notes/ar-ap-bank-design.md` as-built section, `docs/design-notes/posting-control.md`, `docs/design-notes/date-fields-standard.md`, `docs/design-notes/accounting-rules.md`, `docs/design-notes/reporting-rules.md`) |
 | Repo-wide commands, environments, conventions | `CLAUDE.md` |
 | Standing decisions or project state the next session needs | project memory (`project_*.md`, `MEMORY.md` index line) |
 
@@ -42,7 +42,9 @@ Rules: every BR is in at least one sprint item; every Built BR has a Done sprint
 node scripts/build-test-catalogue.mjs        # test cases: CSV, JSON, Gherkin, README
 npx tsx scripts/build-gl-docs.mjs            # BRD, SRS, sprint log, traceability, data dictionary (A), API reference (B), permissions (C)
 npx tsx scripts/build-gl-docs.mjs --check    # MUST print "OK" (fails on unmapped BR/FR/test/sprint)
+node scripts/build-docs-html.mjs             # the two reading copies: docs/technical/index.html (+3 linked pages) and docs/user-manual/warraq-erp-user-manual.html; MUST print "OK" (every link, image, anchor resolves)
 ```
+The two HTML documents are what people read (`docs/index.html` is the start page): never edit them. The technical one is built from the chapters listed in `CH` at the top of `scripts/build-docs-html.mjs` (add a new hand-written chapter there); the manual is the hand-built everyday-operations part (`docs/user-manual/source/part-a-everyday-operations.html`, edit by hand when a 1.0 screen changes) followed by the finance-core chapters from `docs/gl-ap-ar/06-user-manual.md`. Retired plans go to `docs/archive/` (add a line to its README), never into the top level.
 The data dictionary reads `src/db/schema.ts` (write a `// comment` on every new column: it becomes the "Note" column), the API reference reads `server/routes/*.ts` (add the route file to `APIFILES` in `scripts/build-gl-docs.mjs` if it is new, and its mount prefix is read from `server.ts`), the permission annex reads `src/permissionSchema.ts` (add the group to the filter if new).
 
 ## 4. Screens in the manual
@@ -54,7 +56,7 @@ Every new user-visible string: add `[key, Arabic, Urdu]` to `src/glTranslations.
 ## 6. Final gate (all must pass before "done")
 1. `npm run lint` clean · `npm run check:isolation` clean.
 2. New and affected tests pass: `TEST_BASE_URL=http://localhost:3001 npx vitest run <files>`; before a release, the full suite (only the SMTP-dependent `companyOnboarding` / `passwordReset` may fail).
-3. `node scripts/build-test-catalogue.mjs` and `npx tsx scripts/build-gl-docs.mjs` run; `--check` prints OK. **Chain the build, `--check`, lint and `git commit` with `&&` (never `;`) so a failure stops the commit and the push**: a source file with an unescaped apostrophe once broke the generators and was pushed.
+3. `node scripts/build-test-catalogue.mjs`, `npx tsx scripts/build-gl-docs.mjs` and `node scripts/build-docs-html.mjs` run; `--check` and the HTML build print OK. **Chain the build, `--check`, lint and `git commit` with `&&` (never `;`) so a failure stops the commit and the push**: a source file with an unescaped apostrophe once broke the generators and was pushed.
 4. Every row of section 2 reviewed (state "reviewed, no change" only when true).
 5. `git add -A`, commit with the sprint item in the message, `git push origin v2` (2.0 only; never merge v2 into master).
 6. If the release needs it: say which release steps changed (annex F) and run the Demo release (`deploy/release-demo.sh`); report the result.

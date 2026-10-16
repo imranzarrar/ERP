@@ -1,6 +1,6 @@
 # Test Strategy — General Ledger, Receivables, Payables 2.0
 
-Version 1.0 / 2026-10-15. The complete case list is the catalogue in `docs/test-cases/` (290 cases: CSV, JSON, Gherkin); each case is traced to a system requirement and a business requirement in the traceability matrix (08).
+Version 1.0 / 2026-10-15. The complete case list is the catalogue in `docs/test-cases/` (CSV, JSON, Gherkin); each case is traced to a system requirement and a business requirement in the traceability matrix (08).
 
 ## 1. Objectives
 

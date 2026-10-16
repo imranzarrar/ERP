@@ -1,4 +1,6 @@
-# GL / AP / AR 2.0 — documentation set
+# GL / AP / AR 2.0 — documentation sources
+
+> **Read the finished documents, not these files:** [technical documentation](../technical/index.html) and [user manual](../user-manual/warraq-erp-user-manual.html), both generated from this folder (`node scripts/build-docs-html.mjs`). Start page: [docs/index.html](../index.html). This folder holds their sources.
 
 The source of truth for the finance core of Warraq ERP 2.0 (General Ledger, Receivables, Payables, Bank). It is traceable end to end: **Blueprint → business requirement (BR) → system requirement (FR) → test case → sprint**, forwards and backwards, and the mapping is validated by a script.
 
@@ -8,7 +10,7 @@ The source of truth for the finance core of Warraq ERP 2.0 (General Ledger, Rece
 | 02 | [Software Requirements Specification](02-software-requirements-specification.md) | generated from `source/srs.mjs` |
 | 03 | [Solution Design Document](03-solution-design-document.md) | hand-written |
 | 04 | [Technical Design Document](04-technical-design-document.md) | hand-written |
-| 05 | [Test Strategy](05-test-strategy.md) + the 290-case catalogue in [`../test-cases`](../test-cases/README.md) | hand-written + generated |
+| 05 | [Test Strategy](05-test-strategy.md) + the test-case catalogue in [`../test-cases`](../test-cases/README.md) | hand-written + generated |
 | 06 | [User Manual](06-user-manual.md) (screens in `user-manual/screens`) | hand-written; screens captured by script |
 | 07 | [Sprint log and plan](07-sprint-log.md) | generated from `source/sprints.mjs` |
 | 08 | [Traceability matrix](08-traceability-matrix.md) | generated |
@@ -20,11 +22,11 @@ The source of truth for the finance core of Warraq ERP 2.0 (General Ledger, Rece
 | F | [Operations runbook](annex-f-operations-runbook.md) | hand-written |
 | G | [Glossary](annex-g-glossary.md) | hand-written |
 
-Earlier working documents (still valid as history and rationale): `docs/gl-step1-plan.md`, `gl-step1-5-decisions.md`, `ar-ap-bank-design.md` (see its *As built* section), `posting-control.md`, `date-fields-standard.md`, `accounting-rules.md`, `reporting-rules.md`, `sprint-log-gl-step*.md`.
+Earlier working documents (still valid as history and rationale): `docs/archive/gl-step1-plan.md`, `gl-step1-5-decisions.md`, `ar-ap-bank-design.md` (see its *As built* section), `posting-control.md`, `date-fields-standard.md`, `accounting-rules.md`, `reporting-rules.md`, `sprint-log-gl-step*.md`.
 
 ## Ids
 
-`BR-<AREA>-nn` business requirement · `FR-<AREA>-nn.k` system requirement (k-th of its BR) · `S<n>` sprint, `S<n>-nn` sprint item · test cases `<MODULE>-nnn` (e.g. `RCP-013`) · Blueprint `FR-XXX-nn` as printed in `docs/Finance-Core-Blueprint.pdf`.
+`BR-<AREA>-nn` business requirement · `FR-<AREA>-nn.k` system requirement (k-th of its BR) · `S<n>` sprint, `S<n>-nn` sprint item · test cases `<MODULE>-nnn` (e.g. `RCP-013`) · Blueprint `FR-XXX-nn` as printed in `docs/reference/Finance-Core-Blueprint.pdf`.
 
 ## How to change anything (the rule)
 

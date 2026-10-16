@@ -1,4 +1,4 @@
-// The date rules every document shares (docs/date-fields-standard.md). One place decides how the two core dates relate, so no route repeats the rule:
+// The date rules every document shares (docs/design-notes/date-fields-standard.md). One place decides how the two core dates relate, so no route repeats the rule:
 //   doc_date     the date of the document (what is printed on it; operational reports read it)
 //   posting_date the date the ledger and every period lock use (financial statements read it); equal to doc_date unless a back-date policy says otherwise
 // A document that posts takes `...documentDates(docDate)` into its insert; the back-date lock (server/lib/postingGuard.ts) decides whether a posting date is allowed.

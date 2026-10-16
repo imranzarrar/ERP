@@ -1,5 +1,5 @@
 // Posting profiles: what a document's party (customer / vendor) and bank bring to the ledger without the document choosing accounts or tags itself
-// (docs/gl-step1-5-decisions.md, "Control accounts and posting profiles"). Every posting goes through postJournalEntry, which asks this file two things:
+// (docs/design-notes/gl-step1-5-decisions.md, "Control accounts and posting profiles"). Every posting goes through postJournalEntry, which asks this file two things:
 //   1. which control account does this party's receivable / payable line post to (the customer's or vendor's own, else the company's AR / AP role account)
 //   2. which dimension tags do the lines start from (the bank's, then the party's; the document's own and the line's own tags still win)
 // The party is read from the SOURCE DOCUMENT of the entry (an invoice's customer, a bill's vendor ...), so no route has to remember to pass it and no

@@ -8,7 +8,7 @@ import { provisionStarterResources } from '../server/lib/companyProvisioning.js'
 import { ensureBankAccount } from '../server/lib/chartOfAccounts.js';
 import { purgeCompany } from './helpers/purgeCompany.js';
 
-// Posting control (docs/posting-control.md): the lock date, the back-date window, the reason rule and the two permissions that go past them, enforced for every
+// Posting control (docs/design-notes/posting-control.md): the lock date, the back-date window, the reason rule and the two permissions that go past them, enforced for every
 // document and journal through one guard. Real HTTP + real Postgres, no mocks.
 const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000';
 const PW = 'AutoTest_Pw_2026!';

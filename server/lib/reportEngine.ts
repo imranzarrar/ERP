@@ -1,4 +1,4 @@
-// The Report Definition engine (Finance Core Blueprint FR-RPT-CFG, docs/gl-step1-5-decisions.md). Every ledger statement (Trial Balance, Income Statement,
+// The Report Definition engine (Finance Core Blueprint FR-RPT-CFG, docs/design-notes/gl-step1-5-decisions.md). Every ledger statement (Trial Balance, Income Statement,
 // Balance Sheet, custom reports) is a definition of ROWS x COLUMNS evaluated against journal lines:
 //   row    = a heading, a group of accounts (include / exclude selectors, a balance display rule), a subtotal, a formula over other rows, profit to date, text
 //   column = a period basis x a value basis x an optional dimension filter, shown as one figure or as a debit / credit pair, or a variance / percent of columns

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Date-field standard (docs/date-fields-standard.md): renames each document table's `date` to `doc_date` (or `posting_date`) IN PLACE, converts it to a real
+// Date-field standard (docs/design-notes/date-fields-standard.md): renames each document table's `date` to `doc_date` (or `posting_date`) IN PLACE, converts it to a real
 // Postgres `date`, adds `posting_date` / `doc_date` back-filled from it, and creates the indexes. Run BEFORE `db:push` (both release scripts do): drizzle-kit
 // cannot tell a rename from a drop + add and would delete the column's data, so the rename is done here and drizzle then finds the schema already satisfied.
 // Idempotent: a table already migrated is skipped. Every table is migrated in its own transaction.
@@ -36,7 +36,7 @@ const STEPS = [
   { table: 'stock_ledger_transactions', stamp: { doc: false, posting: true }, index: ['stock_ledger_transactions_company_posting_date_idx', 'company_id, posting_date'] },
 ];
 
-// business dates that were timestamps: a calendar day is a `date`, never a moment (docs/date-fields-standard.md)
+// business dates that were timestamps: a calendar day is a `date`, never a moment (docs/design-notes/date-fields-standard.md)
 const CONVERTS = [['purchase_bills', 'due_date'], ['purchase_orders', 'delivery_date'], ['warehouse_dispatches', 'expected_arrival_date']];
 
 const q = (id) => `"${id}"`;

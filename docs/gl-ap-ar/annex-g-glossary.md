@@ -20,7 +20,7 @@
 | Payments outstanding | Money booked as paid, not yet on the bank statement |
 | Maker-checker | The preparer cannot approve their own journal |
 | RLS | PostgreSQL row-level security: the database refuses another company's rows |
-| Blueprint | `docs/Finance-Core-Blueprint.pdf`, the requirements baseline |
+| Blueprint | `docs/reference/Finance-Core-Blueprint.pdf`, the requirements baseline |
 | BR / FR / S | Business requirement / system requirement / sprint ids used in this set |
 | Approval rule | An amount band for one document type with the levels that must approve it |
 | Approval request | A document waiting for approval: it holds the intent of the document and posts nothing |

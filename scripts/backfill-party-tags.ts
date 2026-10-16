@@ -1,4 +1,4 @@
-// Gives every ledger line that posts to a customer or vendor control account the customer / vendor of its source document (docs/ar-ap-bank-design.md, decision 1).
+// Gives every ledger line that posts to a customer or vendor control account the customer / vendor of its source document (docs/design-notes/ar-ap-bank-design.md, decision 1).
 // New postings get the tag from the posting engine; this fills in history. Idempotent: a line that already carries a party is never changed. Dry run by default.
 // Usage: npx tsx scripts/backfill-party-tags.ts [--apply]
 import { sql } from 'drizzle-orm';

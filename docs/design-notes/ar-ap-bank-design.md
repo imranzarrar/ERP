@@ -1,7 +1,7 @@
 # AR, AP and bank reconciliation: design against the Finance Core Blueprint (Demo / 2.0)
 
-Written 2026-10-15 before building (architecture-first). Sources: `docs/Finance-Core-Blueprint.pdf` (FR-AR-01..03, FR-AP-01..04, FR-BANK-01..05, data model pages 21-28),
-`docs/gl-step1-5-decisions.md` (posting profiles, control accounts), the code as it stands.
+Written 2026-10-15 before building (architecture-first). Sources: `docs/reference/Finance-Core-Blueprint.pdf` (FR-AR-01..03, FR-AP-01..04, FR-BANK-01..05, data model pages 21-28),
+`docs/design-notes/gl-step1-5-decisions.md` (posting profiles, control accounts), the code as it stands.
 
 ## What the code already has
 

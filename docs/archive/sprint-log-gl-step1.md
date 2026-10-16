@@ -56,7 +56,7 @@ UX check by hand on localhost: created an account, prepared and submitted a jour
 
 ## Known limitations (be aware when testing)
 
-1. **Manual journals and opening balances appear in the ledger reports but not in the existing Balance Sheet / Profit & Loss**, because those are built from documents (decision in `docs/reporting-rules.md`). "Ledger vs Documents" shows the two side by side and the consistency rule R6 ignores manual entries. Proposed **Step 1.5**: build the financial statements from the ledger, so a manual journal (accrual, depreciation, correction) flows into the P&L and Balance Sheet.
+1. **Manual journals and opening balances appear in the ledger reports but not in the existing Balance Sheet / Profit & Loss**, because those are built from documents (decision in `docs/design-notes/reporting-rules.md`). "Ledger vs Documents" shows the two side by side and the consistency rule R6 ignores manual entries. Proposed **Step 1.5**: build the financial statements from the ledger, so a manual journal (accrual, depreciation, correction) flows into the P&L and Balance Sheet.
 2. Trial Balance (Ledger) is cumulative: profit-and-loss accounts are not closed to retained earnings in it.
 3. A manual journal cannot touch customer/supplier/stock/VAT/bank accounts (by design); opening balances for those come from their documents.
 4. Recurring/accrual expenses post to the default expense account (they carry no category).

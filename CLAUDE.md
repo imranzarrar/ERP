@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Environments: Live (1.0) and Demo / development (2.0)
 
-Two tracks run side by side — read `docs/environments.md` before any deploy-related or branch-related work. **Live / 1.0** = branch `master`, folder
+Two tracks run side by side — read `docs/operations/environments.md` before any deploy-related or branch-related work. **Live / 1.0** = branch `master`, folder
 `E:\ERP`, production at warraq.compbrain.io, fixes and small updates only. **Demo / 2.0** = branch `v2`, folder `E:\ERP-2.0` (a git worktree), local port 3001 /
 database `erp_v2`, VPS folder `~/apps/erp-demo` on port 4000 (127.0.0.1 only), all new development. A Live fix is made on `master` and then merged into `v2`
 (`git merge master` in `E:\ERP-2.0`). Nothing from `v2` is merged into `master` or deployed to Live until the user decides to promote it. Always ask
@@ -25,11 +25,11 @@ which track a request belongs to if it is not clear, and never run a Live releas
 
 ## Naming rule for columns
 
-One concept, one name, on every table: snake_case in the database, the same word in camelCase in code and JSON; dates are `<meaning>_date` / `<meaning>_at`, every document has `doc_date`, a ledger-posting one also `posting_date`. Read `.claude/skills/consistent-column-names/SKILL.md` and `docs/date-fields-standard.md` before adding or changing any column.
+One concept, one name, on every table: snake_case in the database, the same word in camelCase in code and JSON; dates are `<meaning>_date` / `<meaning>_at`, every document has `doc_date`, a ledger-posting one also `posting_date`. Read `.claude/skills/consistent-column-names/SKILL.md` and `docs/design-notes/date-fields-standard.md` before adding or changing any column.
 
 ## Documentation (GL / AR / AP 2.0)
 
-The finance-core document set is in `docs/gl-ap-ar/` (start at its `README.md`): BRD, SRS, solution and technical design, test strategy and catalogue, user manual with captured screens, sprint log and traceability matrix, annexes. **After any development on it, follow the skill `.claude/skills/update-docs-after-development/SKILL.md` before saying the work is done.**
+Documentation: open `docs/index.html`. It leads to two documents, the **technical documentation** (`docs/technical/index.html`: requirements, design, rules, tests, sprint log, annexes) and the **user manual** (`docs/user-manual/warraq-erp-user-manual.html`), both generated from sources: the finance-core set in `docs/gl-ap-ar/` (start at its `README.md`), `docs/design-notes/`, `docs/operations/`, `docs/proposals/`, `docs/test-cases/` and the hand-built part of the manual in `docs/user-manual/source/`. Superseded material is in `docs/archive/`. **After any development on it, follow the skill `.claude/skills/update-docs-after-development/SKILL.md` before saying the work is done.**
 
 ## Architecture
 
@@ -47,7 +47,7 @@ The finance-core document set is in `docs/gl-ap-ar/` (start at its `README.md`):
 - Every company has its own **chart of accounts** (`company_accounts`, seeded from `server/lib/chartOfAccounts.ts`; one ledger account per bank, created in `ensureBankAccount`). A document names a *posting role* (`journal_lines.account_key`, e.g. `AR`, `DIRECT_OPEX`); `postJournalEntry` stamps every line with the concrete `account_id` **at posting time**, so re-pointing a role on the Account Mapping screen never moves history. Expense categories post to their own mapped account (`expense_category_accounts`); a cancel/reversal credits the exact account the original debited.
 - Control accounts (customers, suppliers, stock, VAT, banks) are posted by their documents only: manual journals and opening balances refuse them (banks are allowed in opening balances).
 - **Manual journals** (`server/routes/ledgerJournals.ts`): Draft -> Pending -> Posted, maker-checker (the preparer cannot approve their own journal unless the owner switches `companies.journal_self_approval` on). Only an approval writes to the ledger; a posted journal is never edited, only reversed by another journal that also needs approval. "Delete" = discard a draft (status `Discarded`, number kept).
-- Ledger reports (`ledgerReports.ts`) and opening balances (`ledgerOpening.ts`) are computed in Postgres through `server/lib/ledgerQueries.ts` (`resolvedLines`). The existing Balance Sheet / P&L are still document-based; manual journals and opening balances show in the ledger reports only (see `docs/sprint-log-gl-step1.md`).
+- Ledger reports (`ledgerReports.ts`) and opening balances (`ledgerOpening.ts`) are computed in Postgres through `server/lib/ledgerQueries.ts` (`resolvedLines`). The existing Balance Sheet / P&L are still document-based; manual journals and opening balances show in the ledger reports only (see `docs/archive/sprint-log-gl-step1.md`).
 - Whenever a table is added that references `companies`, `bank_accounts`, `users` or the journal, also add it to the company-deletion routine in `server/routes/companies.ts` and run `tests/companyDeletion.test.ts`.
 - GL screens' Arabic / Urdu text lives in `src/glTranslations.ts`; apply it to a database with `npx tsx scripts/apply-gl-translations.ts --apply`.
 

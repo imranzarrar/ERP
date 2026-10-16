@@ -1,7 +1,7 @@
 # Sprint log: General Ledger, Step 1.5 (dimensions, financial statements, posting profiles) — Demo / 2.0 only
 
 Status: **built and tested locally; not yet on the Demo until the release script is run.** Branch `v2`. Nothing here touches Live (1.0).
-Design record: `docs/gl-step1-5-decisions.md` (CFO and architect decisions, Blueprint reconciliation). Step 1 is in `docs/sprint-log-gl-step1.md`.
+Design record: `docs/design-notes/gl-step1-5-decisions.md` (CFO and architect decisions, Blueprint reconciliation). Step 1 is in `docs/archive/sprint-log-gl-step1.md`.
 
 ## What you can try
 

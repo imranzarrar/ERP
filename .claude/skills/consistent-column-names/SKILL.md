@@ -1,6 +1,6 @@
 ---
 name: consistent-column-names
-description: Use whenever you add or change a database table or column (src/db/schema.ts), a JSON field a route returns or accepts, or a TypeScript property for stored data. One concept, one name, on every table, in the database, the API and the code. Covers dates (doc_date, posting_date, due_date, created_at ...), audit fields, party / account / branch references, amounts and flags. Read docs/date-fields-standard.md first for dates.
+description: Use whenever you add or change a database table or column (src/db/schema.ts), a JSON field a route returns or accepts, or a TypeScript property for stored data. One concept, one name, on every table, in the database, the API and the code. Covers dates (doc_date, posting_date, due_date, created_at ...), audit fields, party / account / branch references, amounts and flags. Read docs/design-notes/date-fields-standard.md first for dates.
 ---
 
 # Consistent column names (this ERP)
@@ -10,7 +10,7 @@ The user's standing rule (2026-10-15): **the same thing is called the same name 
 ## The rules
 
 1. **Database**: lowercase `snake_case`, letters, digits and underscores only. No spaces, no camelCase, no abbreviations a stranger could not read. **Code and JSON**: the same name in `camelCase` (`posting_date` / `postingDate`). The pair never differs in meaning or spelling beyond the case convention.
-2. **Dates** (full rule and table map: `docs/date-fields-standard.md`):
+2. **Dates** (full rule and table map: `docs/design-notes/date-fields-standard.md`):
    * a calendar day is `<meaning>_date`, Postgres `date`, a `'YYYY-MM-DD'` string in code (`businessDate()` in schema.ts);
    * a system moment is `<meaning>_at`, `timestamp`; who did it is `<meaning>_by_id`;
    * every document table has **`doc_date`** (the date of the document; operational reports read it); a document that posts to the ledger or the stock ledger also has **`posting_date`** (financial statements and every period / back-date lock read it, default = `doc_date`); every table has `created_at` / `created_by_id`, editable ones `updated_at` / `updated_by_id`;
@@ -26,5 +26,5 @@ The user's standing rule (2026-10-15): **the same thing is called the same name 
 * Did I search `src/db/schema.ts` for the concept first (a name for it may already exist)?
 * Names: snake_case in the database, the same word in camelCase in code; suffixes `_id`, `_date`, `_at`, `_number`, `_amount`, `_percentage` used correctly?
 * New document table: `doc_date`, `created_at`, `created_by_id` (+ `posting_date` if it posts, `updated_at` / `updated_by_id` if editable) present, and an index on `(company_id, doc_date)`?
-* Added to the table map in `docs/date-fields-standard.md` if it is a date?
+* Added to the table map in `docs/design-notes/date-fields-standard.md` if it is a date?
 * Any API field that mirrors the column uses the same name (no `date` for `doc_date` in a payload a screen reads)?

@@ -4,7 +4,7 @@
 // [id, title, requirement (what the business needs), source, priority, status, blueprint FRs]
 //   priority  Must | Should | Could            (MoSCoW; "Won't" items are in OUT_OF_SCOPE)
 //   status    Built (delivered in Demo 2.0) | Partial (delivered in part; the gap is named in the text) | Planned (in scope, not built yet)
-//   source    Blueprint (docs/Finance-Core-Blueprint.pdf) | Decision (a recorded owner decision) | Compliance (ZATCA / VAT / audit) | Standard (tier-1 ERP practice) | Platform
+//   source    Blueprint (docs/reference/Finance-Core-Blueprint.pdf) | Decision (a recorded owner decision) | Compliance (ZATCA / VAT / audit) | Standard (tier-1 ERP practice) | Platform
 
 export const AREAS = [
   { id: 'COA', name: 'Chart of accounts and account mapping' },

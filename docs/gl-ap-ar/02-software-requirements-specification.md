@@ -78,7 +78,7 @@ A multi-tenant web application (React client, Node/Express API, PostgreSQL with 
 
 | FR | BR | The system shall | Implemented in | Test cases |
 |---|---|---|---|---|
-| FR-DAT-01.1 | BR-DAT-01 | Every document table shall have doc_date (type date, not null) holding the date of the document. | schema.ts; docs/date-fields-standard.md | DT-001, DT-003, DT-009 |
+| FR-DAT-01.1 | BR-DAT-01 | Every document table shall have doc_date (type date, not null) holding the date of the document. | schema.ts; docs/design-notes/date-fields-standard.md | DT-001, DT-003, DT-009 |
 | FR-DAT-02.1 | BR-DAT-02 | Every posting document shall have posting_date defaulting to doc_date; statements, locks and VAT shall read posting_date. | server/lib/documentDates.ts | DT-001, DT-002, DT-004 |
 | FR-DAT-03.1 | BR-DAT-03 | Business dates shall be stored as Postgres date (businessDate helper) and named <meaning>_date; the API shall not accept the retired date field. | schema.ts businessDate; server/lib/pickFields.ts | DT-005, DT-006, DT-010 |
 | FR-DAT-04.1 | BR-DAT-04 | Documents shall carry created_at/created_by and updated_at/updated_by. | schema.ts | DT-007, DT-008 |

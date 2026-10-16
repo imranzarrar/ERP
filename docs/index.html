@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Warraq ERP Documentation</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"><style>
+:root{--primary:#4f46e5;--primary-dark:#1e1b4b;--primary-soft:#f5f3ff;--primary-line:#ddd6fe;--ink:#1a1c23;--ink-soft:#565b6b;--paper:#f6f5fb;--raised:#fff;--line:#e2e1ee;--good:#059669;--warn:#d97706;--font-display:"Space Grotesk","Segoe UI",system-ui,sans-serif;--font-body:"Inter","Segoe UI",system-ui,sans-serif;--font-mono:"JetBrains Mono",Consolas,ui-monospace,monospace}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.62 var(--font-body)}
+a{color:var(--primary)}h1,h2,h3,h4{font-family:var(--font-display);color:var(--primary-dark);letter-spacing:-.01em;text-wrap:balance}
+code{font-family:var(--font-mono);font-size:.85em;background:var(--primary-soft);border:1px solid var(--primary-line);padding:.05em .4em;border-radius:4px;color:#312e81}
+.layout{display:grid;grid-template-columns:290px minmax(0,1fr);max-width:1500px;margin:0 auto}
+.rail{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;padding:1.2rem 1rem 2rem;border-right:1px solid var(--line);background:var(--raised);font-size:.84rem}
+.rail .mark{font:700 1rem var(--font-display);color:var(--primary-dark);margin-bottom:.2rem}.rail .sub{color:var(--ink-soft);font-size:.74rem;margin-bottom:1rem}
+.rail .grp{font:700 .66rem var(--font-display);letter-spacing:.08em;text-transform:uppercase;color:var(--primary);margin:1.1rem 0 .3rem}
+.rail a{display:block;padding:.28rem .55rem;border-radius:7px;color:var(--ink);text-decoration:none}.rail a:hover{background:var(--primary-soft)}.rail a.active{background:var(--primary);color:#fff}
+.rail a.home{font-weight:600}
+main{padding:2rem 2.4rem 4rem;min-width:0}
+.chapter{max-width:1040px;margin:0 0 3.5rem;scroll-margin-top:1rem}
+.chapter>h2{font-size:1.7rem;margin:0 0 .3rem;padding-top:1.6rem;position:relative}.chapter>h2::before{content:"";position:absolute;top:0;left:0;width:46px;height:4px;border-radius:4px;background:linear-gradient(90deg,#4f46e5,#818cf8)}
+.eyebrow{font:600 .72rem var(--font-mono);color:var(--primary);margin:0 0 .4rem}.src{font-size:.74rem;color:var(--ink-soft);margin:0 0 1.2rem}
+.chapter h3{font-size:1.2rem;margin:2rem 0 .6rem}.chapter h4{font-size:1rem;margin:1.4rem 0 .5rem;color:#312e81}.chapter h5,.chapter h6{font-size:.92rem;margin:1.1rem 0 .4rem}
+.table-wrap{overflow-x:auto;margin:1rem 0 1.6rem;border:1px solid var(--line);border-radius:12px;background:var(--raised)}
+table.plan{width:100%;border-collapse:collapse;font-size:.84rem}table.plan th{text-align:left;font:700 .66rem var(--font-display);letter-spacing:.05em;text-transform:uppercase;color:#fff;background:var(--primary-dark);padding:.6rem .8rem;white-space:nowrap}
+table.plan td{padding:.55rem .8rem;border-top:1px solid var(--line);vertical-align:top}table.plan tr:nth-child(even) td{background:#fbfaff}
+pre.code{background:#0f172a;color:#e2e8f0;padding:1rem 1.2rem;border-radius:12px;overflow:auto;font:.8rem/1.55 var(--font-mono)}pre.code code{background:none;border:0;padding:0;color:inherit}
+pre.mermaid{background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:1rem;overflow:auto;text-align:center}
+.callout{background:var(--raised);border:1px solid var(--line);border-left:4px solid var(--primary);border-radius:0 14px 14px 0;padding:.9rem 1.2rem;margin:1.2rem 0}.callout .label{font:700 .68rem var(--font-display);letter-spacing:.08em;text-transform:uppercase;color:var(--primary);margin-bottom:.3rem}.callout p:last-child{margin-bottom:0}
+.callout.warn{border-left-color:var(--warn)}.callout.warn .label{color:#92400e}
+figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 28px -14px rgba(30,27,75,.35)}figure.shot figcaption{font-size:.76rem;color:var(--ink-soft);margin-top:.35rem}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin:1.2rem 0}.card{background:var(--raised);border:1px solid var(--line);border-radius:14px;padding:1.1rem 1.25rem;text-decoration:none;color:var(--ink);display:block}.card:hover{border-color:var(--primary)}.card b{font:700 1rem var(--font-display);color:var(--primary-dark);display:block;margin-bottom:.25rem}.card span{font-size:.84rem;color:var(--ink-soft)}
+.pill{display:inline-block;font:600 .68rem var(--font-mono);padding:.1rem .5rem;border-radius:99px;background:var(--primary-soft);color:#3730a3;border:1px solid var(--primary-line)}
+.filters{display:flex;flex-wrap:wrap;gap:.6rem;margin:1rem 0}.filters input,.filters select{font:inherit;padding:.4rem .6rem;border:1px solid var(--line);border-radius:8px;background:var(--raised)}
+@media (max-width:900px){.layout{grid-template-columns:1fr}.rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:1.2rem 1rem 3rem}}
+@media print{.rail{display:none}.layout{grid-template-columns:1fr}.chapter{page-break-before:always}}
+</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Documentation</div><a class="home" href="user-manual/warraq-erp-user-manual.html">User manual</a><a class="home" href="technical/index.html">Technical documentation</a></aside><main><p class="eyebrow">Warraq ERP</p><h1 style="font-size:2.4rem;margin:.2rem 0 .6rem">Documentation: start here</h1>
+<p style="max-width:70ch">Two documents cover the system. Open one of these; everything else in this folder is either a source they are built from, or an archive.</p>
+<div class="cards">
+<a class="card" href="user-manual/warraq-erp-user-manual.html"><b>User manual</b><span>For people who use Warraq: every screen step by step. Everyday operations (point of sale, invoices, purchasing, reports, set-up) and the finance core (ledger, receivables, payables, bank, approvals).</span></a>
+<a class="card" href="technical/index.html"><b>Technical documentation</b><span>For analysts, developers and testers: requirements, design, rules, tests, sprint log, API, data, operations. One document with three linked tables.</span></a>
+</div>
+<h3 style="margin-top:2.4rem">Related</h3>
+<div class="cards">
+<a class="card" href="zatca/zatca-onboarding-user-manual.html"><b>ZATCA onboarding guide</b><span>Setting a company up for e-invoicing, step by step.</span></a>
+<a class="card" href="zatca/sandbox-qa-test-plan.html"><b>ZATCA QA test plan</b><span>How anything touching the e-invoicing pipeline is verified.</span></a>
+<a class="card" href="reference/Finance-Core-Blueprint.pdf"><b>Finance Core Blueprint</b><span>The original requirements blueprint (PDF).</span></a>
+<a class="card" href="archive/README.md"><b>Archive</b><span>Superseded plans and experiments, kept for history.</span></a>
+</div>
+<h3 style="margin-top:2.4rem">What the folders are</h3>
+<div class="table-wrap"><table class="plan"><thead><tr><th>Folder</th><th>What it holds</th></tr></thead><tbody>
+<tr><td><code>user-manual/</code>, <code>technical/</code></td><td>The two documents above (generated; do not edit)</td></tr>
+<tr><td><code>gl-ap-ar/</code></td><td>Sources of both: Markdown chapters, <code>source/*.mjs</code> for requirements and sprints, manual screenshots</td></tr>
+<tr><td><code>design-notes/</code>, <code>operations/</code>, <code>proposals/</code></td><td>Hand-written chapters included in the technical document</td></tr>
+<tr><td><code>test-cases/</code></td><td>The test-case catalogue: source, CSV, JSON, Gherkin</td></tr>
+<tr><td><code>zatca/</code>, <code>reference/</code></td><td>ZATCA guides and the blueprint</td></tr>
+<tr><td><code>archive/</code></td><td>Superseded; not current</td></tr>
+</tbody></table></div><p class="src">Built 2026-10-16. To rebuild: <code>npx tsx scripts/build-gl-docs.mjs &amp;&amp; node scripts/build-docs-html.mjs</code>.</p></main></div><script>(function(){var l=[].slice.call(document.querySelectorAll('.rail a[href^="#"]'));var s=l.map(function(a){return document.querySelector(a.getAttribute('href'))}).filter(Boolean);if(!('IntersectionObserver' in window))return;var io=new IntersectionObserver(function(e){e.forEach(function(x){if(!x.isIntersecting)return;var id='#'+x.target.id;l.forEach(function(a){a.classList.toggle('active',a.getAttribute('href')===id)})})},{rootMargin:'-10% 0px -80% 0px'});s.forEach(function(x){io.observe(x)})})();</script></body></html>

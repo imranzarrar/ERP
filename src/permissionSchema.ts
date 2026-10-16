@@ -243,7 +243,7 @@ export const PERMISSION_MODULES: PermissionModuleDef[] = [
   },
   {
     // General Ledger Step 1. "delete" never erases a financial record: for an account it is Deactivate; for a journal it is Discard (a Draft only).
-    // A posted journal is reversed, never deleted. See docs/gl-step1-plan.md.
+    // A posted journal is reversed, never deleted. See docs/archive/gl-step1-plan.md.
     id: 'chartOfAccounts', groupId: 'general_ledger', label: 'Chart of Accounts', leaves: [
       { key: 'create', label: 'Create Accounts' },
       { key: 'read', label: 'View Chart of Accounts' },

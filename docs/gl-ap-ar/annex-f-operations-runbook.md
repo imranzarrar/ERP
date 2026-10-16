@@ -1,7 +1,7 @@
 # Annex F — Operations runbook (ledger core)
 
 ## Tracks
-Live: branch `master`, folder `E:\ERP`, production warraq.compbrain.io, fixes only. Demo / 2.0: branch `v2`, folder `E:\ERP-2.0`, local port 3001 / database `erp_v2`, VPS `~/apps/erp-demo` port 4000 (127.0.0.1 only; reach it through an SSH tunnel). See `docs/environments.md`.
+Live: branch `master`, folder `E:\ERP`, production warraq.compbrain.io, fixes only. Demo / 2.0: branch `v2`, folder `E:\ERP-2.0`, local port 3001 / database `erp_v2`, VPS `~/apps/erp-demo` port 4000 (127.0.0.1 only; reach it through an SSH tunnel). See `docs/operations/environments.md`.
 
 ## Demo release (VPS, as the demo OS user)
 ```bash

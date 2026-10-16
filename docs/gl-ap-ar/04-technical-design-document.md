@@ -47,11 +47,11 @@ React 19 + Vite client, Node/Express API (`tsx server.ts` in development, esbuil
 
 ## 5. Posting guard (`assertPostingAllowed(req, postingDate, { vat, reason })`)
 
-Order: (1) open existing fiscal month, not future; (2) VAT quarter (`vat`: `'none'` | `'filed'` | `'frozen'`); (3) `posting_policies.lock_date` unless `postingControl.overrideLock`; (4) `max_back_days` unless `postingControl.backDate`; (5) reason when older than `reason_after_days`; (6) audit `BACKDATED_POSTING` when an override or a reason was used. No policy row = rules 1–2 only. Every route listed in `docs/posting-control.md` calls it; manual journals call it at submit and approval; settlements and bank adjustments call it from the route.
+Order: (1) open existing fiscal month, not future; (2) VAT quarter (`vat`: `'none'` | `'filed'` | `'frozen'`); (3) `posting_policies.lock_date` unless `postingControl.overrideLock`; (4) `max_back_days` unless `postingControl.backDate`; (5) reason when older than `reason_after_days`; (6) audit `BACKDATED_POSTING` when an override or a reason was used. No policy row = rules 1–2 only. Every route listed in `docs/design-notes/posting-control.md` calls it; manual journals call it at submit and approval; settlements and bank adjustments call it from the route.
 
 ## 6. Document dates
 
-`doc_date` (document), `posting_date` (ledger; defaults to doc_date via `documentDates()`), `<meaning>_date` as Postgres `date` via the `businessDate` custom type (string `YYYY-MM-DD`; raw `tx.execute` also returns strings). Renames were done in place by `scripts/migrate-date-fields.mjs` before `db:push`. Naming rules: `docs/date-fields-standard.md` and skill `consistent-column-names`.
+`doc_date` (document), `posting_date` (ledger; defaults to doc_date via `documentDates()`), `<meaning>_date` as Postgres `date` via the `businessDate` custom type (string `YYYY-MM-DD`; raw `tx.execute` also returns strings). Renames were done in place by `scripts/migrate-date-fields.mjs` before `db:push`. Naming rules: `docs/design-notes/date-fields-standard.md` and skill `consistent-column-names`.
 
 ## 7. Settlements (`server/lib/settlements.ts`)
 

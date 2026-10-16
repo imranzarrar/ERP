@@ -1,7 +1,7 @@
 import { relations, sql } from 'drizzle-orm';
 import { integer, bigint, pgTable, serial, text, timestamp, date as pgDate, boolean, decimal, jsonb, uuid, primaryKey, uniqueIndex, unique, foreignKey, index, pgPolicy, check, customType } from 'drizzle-orm/pg-core';
 
-// A business date: a calendar day without a time, read and written as a 'YYYY-MM-DD' string (docs/date-fields-standard.md). Named <meaning>_date.
+// A business date: a calendar day without a time, read and written as a 'YYYY-MM-DD' string (docs/design-notes/date-fields-standard.md). Named <meaning>_date.
 const businessDate = (name: string) => pgDate(name, { mode: 'string' });
 
 // Postgres bytea <-> Node Buffer (drizzle-orm/pg-core ships no bytea builder).
@@ -847,7 +847,7 @@ export const taxReturns = pgTable('tax_returns', {
 export const quotations = pgTable('quotations', {
   id: uuid('id').primaryKey(),
   quotationNumber: text('quotation_number').notNull(),
-  docDate: businessDate('doc_date').notNull(), // the date of the quotation (docs/date-fields-standard.md)
+  docDate: businessDate('doc_date').notNull(), // the date of the quotation (docs/design-notes/date-fields-standard.md)
   customerId: uuid('customer_id').references(() => customers.id).notNull(),
   taxSlabId: uuid('tax_slab_id').references(() => taxSlabs.id).notNull(),
   notes: text('notes').notNull(),
@@ -2194,7 +2194,7 @@ export const stockLedgerTransactions = pgTable('stock_ledger_transactions', {
   transactionType: text('transaction_type').notNull(), // 'GRN', 'Return', 'Sale', 'Adjustment', 'StockTake', 'TransferOut', 'TransferIn'
   // Polymorphic (GRN/Sale/Adjustment/etc depending on transactionType) — no single-table FK.
   referenceId: uuid('reference_id').notNull(),
-  postingDate: businessDate('posting_date').notNull(), // the date the movement counts in (docs/date-fields-standard.md)
+  postingDate: businessDate('posting_date').notNull(), // the date the movement counts in (docs/design-notes/date-fields-standard.md)
   createdAt: timestamp('created_at').notNull(), // the moment of the movement; orders movements within a day (average cost depends on it)
   quantityChange: decimal('quantity_change', { precision: 12, scale: 3 }).notNull(), // positive or negative
   endingQuantity: decimal('ending_quantity', { precision: 12, scale: 3 }).notNull(),
@@ -2471,7 +2471,7 @@ export const openingBalanceRuns = pgTable('opening_balance_runs', {
   }),
 })).enableRLS();
 
-// ---- General Ledger Step 1.5: dynamic dimensions (Finance Core Blueprint FR-DIM). See docs/gl-step1-5-decisions.md. ----
+// ---- General Ledger Step 1.5: dynamic dimensions (Finance Core Blueprint FR-DIM). See docs/design-notes/gl-step1-5-decisions.md. ----
 // A company defines as many dimension types as it needs (Profit Centre, Project, Department ...). Branch and Department are seeded. Values of a Custom type
 // live in dimension_values; Branch and Department are linked to the branches / cost_centers masters. A ledger line carries ONE combination of tags.
 const tenantPolicy = (name: string, table: any) => pgPolicy(name, {
@@ -2602,7 +2602,7 @@ export const accountDimensionRules = pgTable('account_dimension_rules', {
   tenantIsolationPolicy: tenantPolicy('account_dimension_rules_tenant_isolation', table),
 })).enableRLS();
 
-// ---- General Ledger Step 1.5: the Report Definition engine (Finance Core Blueprint FR-RPT-CFG). See docs/gl-step1-5-decisions.md. ----
+// ---- General Ledger Step 1.5: the Report Definition engine (Finance Core Blueprint FR-RPT-CFG). See docs/design-notes/gl-step1-5-decisions.md. ----
 // Trial Balance, Income Statement and Balance Sheet are seeded, editable and cloneable instances of ONE engine: a definition is rows x columns evaluated
 // against journal lines. A row selects accounts (include / exclude selectors) or calculates from other rows; a column picks a period basis, a value basis and
 // an optional dimension filter.
@@ -2715,7 +2715,7 @@ export const reportColumns = pgTable('report_columns', {
   tenantIsolationPolicy: tenantPolicy('report_columns_tenant_isolation', table),
 })).enableRLS();
 
-// Posting control (docs/posting-control.md): one row per company that wants rules on top of the open / closed fiscal month. A company with no row has none of
+// Posting control (docs/design-notes/posting-control.md): one row per company that wants rules on top of the open / closed fiscal month. A company with no row has none of
 // them. lock_date: nothing may be dated on or before it (except for the right postingControl.overrideLock); max_back_days: nothing may be dated more than
 // that many days before today (except for postingControl.backDate); reason_after_days: a posting older than that needs a written reason.
 export const postingPolicies = pgTable('posting_policies', {
@@ -2808,7 +2808,7 @@ export const bankStatementLines = pgTable('bank_statement_lines', {
   tenantIsolationPolicy: tenantPolicy('bank_statement_lines_tenant_isolation', table),
 })).enableRLS();
 
-// Approval rules (Blueprint FR-APR-01..06, docs/gl-ap-ar/s11-approval-rules-tier1-research.md). A rule applies to one document type and an amount band; a document with no matching rule posts directly.
+// Approval rules (Blueprint FR-APR-01..06, docs/design-notes/approval-rules-tier1-research.md). A rule applies to one document type and an amount band; a document with no matching rule posts directly.
 // A matching document is held as an approval REQUEST carrying the intent (payload) of the document, and nothing is posted until every level has approved.
 export const approvalRules = pgTable('approval_rules', {
   id: uuid('id').primaryKey(),

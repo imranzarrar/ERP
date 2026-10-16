@@ -1,0 +1,3505 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Traceability matrix — GL / AR / AP 2.0 · Warraq ERP</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"><style>
+:root{--primary:#4f46e5;--primary-dark:#1e1b4b;--primary-soft:#f5f3ff;--primary-line:#ddd6fe;--ink:#1a1c23;--ink-soft:#565b6b;--paper:#f6f5fb;--raised:#fff;--line:#e2e1ee;--good:#059669;--warn:#d97706;--font-display:"Space Grotesk","Segoe UI",system-ui,sans-serif;--font-body:"Inter","Segoe UI",system-ui,sans-serif;--font-mono:"JetBrains Mono",Consolas,ui-monospace,monospace}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.62 var(--font-body)}
+a{color:var(--primary)}h1,h2,h3,h4{font-family:var(--font-display);color:var(--primary-dark);letter-spacing:-.01em;text-wrap:balance}
+code{font-family:var(--font-mono);font-size:.85em;background:var(--primary-soft);border:1px solid var(--primary-line);padding:.05em .4em;border-radius:4px;color:#312e81}
+.layout{display:grid;grid-template-columns:290px minmax(0,1fr);max-width:1500px;margin:0 auto}
+.rail{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;padding:1.2rem 1rem 2rem;border-right:1px solid var(--line);background:var(--raised);font-size:.84rem}
+.rail .mark{font:700 1rem var(--font-display);color:var(--primary-dark);margin-bottom:.2rem}.rail .sub{color:var(--ink-soft);font-size:.74rem;margin-bottom:1rem}
+.rail .grp{font:700 .66rem var(--font-display);letter-spacing:.08em;text-transform:uppercase;color:var(--primary);margin:1.1rem 0 .3rem}
+.rail a{display:block;padding:.28rem .55rem;border-radius:7px;color:var(--ink);text-decoration:none}.rail a:hover{background:var(--primary-soft)}.rail a.active{background:var(--primary);color:#fff}
+.rail a.home{font-weight:600}
+main{padding:2rem 2.4rem 4rem;min-width:0}
+.chapter{max-width:1040px;margin:0 0 3.5rem;scroll-margin-top:1rem}
+.chapter>h2{font-size:1.7rem;margin:0 0 .3rem;padding-top:1.6rem;position:relative}.chapter>h2::before{content:"";position:absolute;top:0;left:0;width:46px;height:4px;border-radius:4px;background:linear-gradient(90deg,#4f46e5,#818cf8)}
+.eyebrow{font:600 .72rem var(--font-mono);color:var(--primary);margin:0 0 .4rem}.src{font-size:.74rem;color:var(--ink-soft);margin:0 0 1.2rem}
+.chapter h3{font-size:1.2rem;margin:2rem 0 .6rem}.chapter h4{font-size:1rem;margin:1.4rem 0 .5rem;color:#312e81}.chapter h5,.chapter h6{font-size:.92rem;margin:1.1rem 0 .4rem}
+.table-wrap{overflow-x:auto;margin:1rem 0 1.6rem;border:1px solid var(--line);border-radius:12px;background:var(--raised)}
+table.plan{width:100%;border-collapse:collapse;font-size:.84rem}table.plan th{text-align:left;font:700 .66rem var(--font-display);letter-spacing:.05em;text-transform:uppercase;color:#fff;background:var(--primary-dark);padding:.6rem .8rem;white-space:nowrap}
+table.plan td{padding:.55rem .8rem;border-top:1px solid var(--line);vertical-align:top}table.plan tr:nth-child(even) td{background:#fbfaff}
+pre.code{background:#0f172a;color:#e2e8f0;padding:1rem 1.2rem;border-radius:12px;overflow:auto;font:.8rem/1.55 var(--font-mono)}pre.code code{background:none;border:0;padding:0;color:inherit}
+pre.mermaid{background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:1rem;overflow:auto;text-align:center}
+.callout{background:var(--raised);border:1px solid var(--line);border-left:4px solid var(--primary);border-radius:0 14px 14px 0;padding:.9rem 1.2rem;margin:1.2rem 0}.callout .label{font:700 .68rem var(--font-display);letter-spacing:.08em;text-transform:uppercase;color:var(--primary);margin-bottom:.3rem}.callout p:last-child{margin-bottom:0}
+.callout.warn{border-left-color:var(--warn)}.callout.warn .label{color:#92400e}
+figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 28px -14px rgba(30,27,75,.35)}figure.shot figcaption{font-size:.76rem;color:var(--ink-soft);margin-top:.35rem}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin:1.2rem 0}.card{background:var(--raised);border:1px solid var(--line);border-radius:14px;padding:1.1rem 1.25rem;text-decoration:none;color:var(--ink);display:block}.card:hover{border-color:var(--primary)}.card b{font:700 1rem var(--font-display);color:var(--primary-dark);display:block;margin-bottom:.25rem}.card span{font-size:.84rem;color:var(--ink-soft)}
+.pill{display:inline-block;font:600 .68rem var(--font-mono);padding:.1rem .5rem;border-radius:99px;background:var(--primary-soft);color:#3730a3;border:1px solid var(--primary-line)}
+.filters{display:flex;flex-wrap:wrap;gap:.6rem;margin:1rem 0}.filters input,.filters select{font:inherit;padding:.4rem .6rem;border:1px solid var(--line);border-radius:8px;background:var(--raised)}
+@media (max-width:900px){.layout{grid-template-columns:1fr}.rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:1.2rem 1rem 3rem}}
+@media print{.rail{display:none}.layout{grid-template-columns:1fr}.chapter{page-break-before:always}}
+</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Technical documentation</div><a class="home" href="index.html">← Technical documentation</a><a class="home" href="../index.html">← All documentation</a></aside><main><section class="chapter"><p class="eyebrow">Technical documentation · linked page</p><h2>Traceability matrix — GL / AR / AP 2.0</h2><p class="src">Source: <code>docs/gl-ap-ar/08-traceability-matrix.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+</div>
+<p>Coverage: 100 business requirements → 108 system requirements → 308 of 308 test cases traced → 21 sprints. Every test case is tied to a requirement.</p>
+<h3 id="traceability--p">1. Forward: business requirement → system requirements → test cases → sprints</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>BR</th>
+<th>Title</th>
+<th>Status</th>
+<th>FRs</th>
+<th>Test cases</th>
+<th>Sprints</th>
+</tr>
+</thead><tbody><tr>
+<td>BR-COA-01</td>
+<td>Company-owned hierarchical chart</td>
+<td>Built</td>
+<td>FR-COA-01.1</td>
+<td>8: COA-002, COA-003, COA-004, COA-005, COA-006, COA-007 …</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-COA-02</td>
+<td>Starter chart at provisioning</td>
+<td>Built</td>
+<td>FR-COA-02.1</td>
+<td>2: COA-001, COA-015</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-COA-03</td>
+<td>Control accounts</td>
+<td>Built</td>
+<td>FR-COA-03.1, FR-COA-03.2</td>
+<td>3: COA-011, COA-020, JV-001</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-COA-04</td>
+<td>Retire, never delete</td>
+<td>Built</td>
+<td>FR-COA-04.1</td>
+<td>4: COA-010, COA-011, COA-012, COA-013</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-COA-05</td>
+<td>Show dependants before deactivation</td>
+<td>Partial</td>
+<td>FR-COA-05.1</td>
+<td>2: COA-022, COA-012</td>
+<td>S20</td>
+</tr>
+<tr>
+<td>BR-COA-06</td>
+<td>Account mapping</td>
+<td>Built</td>
+<td>FR-COA-06.1</td>
+<td>2: COA-014, COA-017</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-COA-07</td>
+<td>Chart import and export</td>
+<td>Built</td>
+<td>FR-COA-07.1</td>
+<td>2: COA-018, COA-019</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-COA-08</td>
+<td>Audit of chart changes</td>
+<td>Built</td>
+<td>FR-COA-08.1</td>
+<td>1: SEC-011</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-JNL-01</td>
+<td>Manual journals with maker-checker</td>
+<td>Built</td>
+<td>FR-JNL-01.1</td>
+<td>7: JV-001, JV-002, JV-003, JV-007, JV-008, JV-009 …</td>
+<td>S1, S11</td>
+</tr>
+<tr>
+<td>BR-JNL-02</td>
+<td>Balanced entries only</td>
+<td>Built</td>
+<td>FR-JNL-02.1</td>
+<td>3: JV-004, JV-005, JV-006</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-JNL-03</td>
+<td>Posted entries are immutable</td>
+<td>Built</td>
+<td>FR-JNL-03.1</td>
+<td>3: JV-015, JV-016, JV-017</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-JNL-04</td>
+<td>Source and dimension recorded</td>
+<td>Built</td>
+<td>FR-JNL-04.1</td>
+<td>2: DIM-011, SUB-001</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-JNL-05</td>
+<td>Entry numbering</td>
+<td>Built</td>
+<td>FR-JNL-05.1</td>
+<td>2: JV-014, JV-021</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-JNL-06</td>
+<td>Reversal of a manual journal</td>
+<td>Built</td>
+<td>FR-JNL-06.1</td>
+<td>3: JV-015, JV-016, JV-017</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-JNL-07</td>
+<td>Self-approval safeguard</td>
+<td>Built</td>
+<td>FR-JNL-07.1</td>
+<td>2: JV-010, JV-011</td>
+<td>S1, S11</td>
+</tr>
+<tr>
+<td>BR-JNL-08</td>
+<td>Journal listing and entry detail</td>
+<td>Built</td>
+<td>FR-JNL-08.1</td>
+<td>3: JV-024, JV-018, JV-019</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-JNL-09</td>
+<td>Opening balances</td>
+<td>Built</td>
+<td>FR-JNL-09.1</td>
+<td>6: OPN-001, OPN-002, OPN-003, OPN-004, OPN-005, OPN-006</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-JNL-10</td>
+<td>Amount-threshold approval rules</td>
+<td>Partial</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>18: APR-001, APR-002, APR-003, APR-004, APR-005, APR-006 …</td>
+<td>S11, S11</td>
+</tr>
+<tr>
+<td>BR-PER-01</td>
+<td>Open fiscal month rule</td>
+<td>Built</td>
+<td>FR-PER-01.1</td>
+<td>1: PC-012</td>
+<td>S5</td>
+</tr>
+<tr>
+<td>BR-PER-02</td>
+<td>VAT quarter freeze</td>
+<td>Built</td>
+<td>FR-PER-02.1</td>
+<td>2: PC-013, PC-014</td>
+<td>S5</td>
+</tr>
+<tr>
+<td>BR-PER-03</td>
+<td>Lock date</td>
+<td>Built</td>
+<td>FR-PER-03.1</td>
+<td>5: PC-001, PC-002, PC-003, PC-004, PC-017</td>
+<td>S5</td>
+</tr>
+<tr>
+<td>BR-PER-04</td>
+<td>Back-date window</td>
+<td>Built</td>
+<td>FR-PER-04.1</td>
+<td>2: PC-005, PC-006</td>
+<td>S5</td>
+</tr>
+<tr>
+<td>BR-PER-05</td>
+<td>Reason for back-dating</td>
+<td>Built</td>
+<td>FR-PER-05.1</td>
+<td>2: PC-007, PC-008</td>
+<td>S5</td>
+</tr>
+<tr>
+<td>BR-PER-06</td>
+<td>One guard for every dated posting</td>
+<td>Built</td>
+<td>FR-PER-06.1</td>
+<td>9: JV-013, JV-020, PC-009, PC-010, PC-011, PC-015 …</td>
+<td>S5</td>
+</tr>
+<tr>
+<td>BR-PER-07</td>
+<td>Month close from posted lines</td>
+<td>Partial</td>
+<td>FR-PER-07.1</td>
+<td>1: XR-004</td>
+<td>S12</td>
+</tr>
+<tr>
+<td>BR-PER-08</td>
+<td>Month-close readiness checklist</td>
+<td>Planned</td>
+<td>FR-PER-08.1</td>
+<td>—</td>
+<td>S12</td>
+</tr>
+<tr>
+<td>BR-PER-09</td>
+<td>Restricted month and adjustment period</td>
+<td>Planned</td>
+<td>FR-PER-09.1</td>
+<td>—</td>
+<td>S12</td>
+</tr>
+<tr>
+<td>BR-PER-10</td>
+<td>Year-end close</td>
+<td>Planned</td>
+<td>FR-PER-10.1</td>
+<td>—</td>
+<td>S13</td>
+</tr>
+<tr>
+<td>BR-PER-11</td>
+<td>Per-module close</td>
+<td>Planned</td>
+<td>FR-PER-11.1</td>
+<td>—</td>
+<td>S12</td>
+</tr>
+<tr>
+<td>BR-DAT-01</td>
+<td>Document date on every document</td>
+<td>Built</td>
+<td>FR-DAT-01.1</td>
+<td>3: DT-001, DT-003, DT-009</td>
+<td>S4</td>
+</tr>
+<tr>
+<td>BR-DAT-02</td>
+<td>Posting date for the ledger</td>
+<td>Built</td>
+<td>FR-DAT-02.1</td>
+<td>3: DT-001, DT-002, DT-004</td>
+<td>S4</td>
+</tr>
+<tr>
+<td>BR-DAT-03</td>
+<td>Consistent date naming</td>
+<td>Built</td>
+<td>FR-DAT-03.1</td>
+<td>3: DT-005, DT-006, DT-010</td>
+<td>S4</td>
+</tr>
+<tr>
+<td>BR-DAT-04</td>
+<td>Audit stamps</td>
+<td>Built</td>
+<td>FR-DAT-04.1</td>
+<td>2: DT-007, DT-008</td>
+<td>S4</td>
+</tr>
+<tr>
+<td>BR-DIM-01</td>
+<td>Configurable dimension types</td>
+<td>Built</td>
+<td>FR-DIM-01.1</td>
+<td>3: DIM-001, DIM-002, DIM-003</td>
+<td>S2</td>
+</tr>
+<tr>
+<td>BR-DIM-02</td>
+<td>Dimension values and cost centres</td>
+<td>Built</td>
+<td>FR-DIM-02.1</td>
+<td>2: DIM-004, DIM-005</td>
+<td>S2</td>
+</tr>
+<tr>
+<td>BR-DIM-03</td>
+<td>Account dimension rules</td>
+<td>Built</td>
+<td>FR-DIM-03.1</td>
+<td>4: DIM-006, DIM-007, DIM-008, DIM-009</td>
+<td>S2</td>
+</tr>
+<tr>
+<td>BR-DIM-04</td>
+<td>Default tags from context</td>
+<td>Built</td>
+<td>FR-DIM-04.1</td>
+<td>4: DIM-010, DIM-011, DIM-012, DIM-013</td>
+<td>S2</td>
+</tr>
+<tr>
+<td>BR-DIM-05</td>
+<td>Dimension filters</td>
+<td>Built</td>
+<td>FR-DIM-05.1</td>
+<td>3: DIM-014, RPT-013, RPT-023</td>
+<td>S2</td>
+</tr>
+<tr>
+<td>BR-DIM-06</td>
+<td>Dimensions captured on documents</td>
+<td>Planned</td>
+<td>FR-DIM-06.1</td>
+<td>—</td>
+<td>S16</td>
+</tr>
+<tr>
+<td>BR-DIM-07</td>
+<td>Monthly allocation run</td>
+<td>Planned</td>
+<td>FR-DIM-07.1</td>
+<td>—</td>
+<td>S15</td>
+</tr>
+<tr>
+<td>BR-DIM-08</td>
+<td>Branch profit and loss subtotals</td>
+<td>Planned</td>
+<td>FR-DIM-08.1</td>
+<td>—</td>
+<td>S15</td>
+</tr>
+<tr>
+<td>BR-RPT-01</td>
+<td>General ledger detail</td>
+<td>Built</td>
+<td>FR-RPT-01.1</td>
+<td>1: RPT-018</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-RPT-02</td>
+<td>One report engine</td>
+<td>Built</td>
+<td>FR-RPT-02.1</td>
+<td>8: RPT-001, RPT-002, RPT-003, RPT-004, RPT-005, RPT-006 …</td>
+<td>S2</td>
+</tr>
+<tr>
+<td>BR-RPT-03</td>
+<td>Custom report designer</td>
+<td>Built</td>
+<td>FR-RPT-03.1</td>
+<td>7: RPT-009, RPT-010, RPT-011, RPT-012, RPT-013, RPT-014 …</td>
+<td>S2</td>
+</tr>
+<tr>
+<td>BR-RPT-04</td>
+<td>Drill-down to the ledger</td>
+<td>Built</td>
+<td>FR-RPT-04.1</td>
+<td>1: RPT-016</td>
+<td>S2</td>
+</tr>
+<tr>
+<td>BR-RPT-05</td>
+<td>Comparatives, variance and dimension columns</td>
+<td>Built</td>
+<td>FR-RPT-05.1</td>
+<td>3: RPT-002, RPT-012, RPT-013</td>
+<td>S2</td>
+</tr>
+<tr>
+<td>BR-RPT-06</td>
+<td>Excel export with formatting</td>
+<td>Built</td>
+<td>FR-RPT-06.1</td>
+<td>1: RPT-017</td>
+<td>S2</td>
+</tr>
+<tr>
+<td>BR-RPT-07</td>
+<td>Integrity shown on the page</td>
+<td>Built</td>
+<td>FR-RPT-07.1</td>
+<td>3: RPT-003, RPT-004, RPT-014</td>
+<td>S2</td>
+</tr>
+<tr>
+<td>BR-RPT-08</td>
+<td>Ledger versus documents</td>
+<td>Built</td>
+<td>FR-RPT-08.1</td>
+<td>6: XR-003, XR-006, RPT-019, RPT-020, RPT-021, SUB-002</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-RPT-09</td>
+<td>Server-side, company-scoped figures</td>
+<td>Built</td>
+<td>FR-RPT-09.1</td>
+<td>3: XR-007, SEC-003, RPT-022</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-RPT-10</td>
+<td>Branch-restricted reading</td>
+<td>Built</td>
+<td>FR-RPT-10.1</td>
+<td>2: RPT-023, XR-008</td>
+<td>S2</td>
+</tr>
+<tr>
+<td>BR-RPT-11</td>
+<td>Printed financial statements</td>
+<td>Planned</td>
+<td>FR-RPT-11.1</td>
+<td>—</td>
+<td>S19</td>
+</tr>
+<tr>
+<td>BR-RPT-12</td>
+<td>Cut-over of document-based statements</td>
+<td>Planned</td>
+<td>FR-RPT-12.1</td>
+<td>1: RPT-019</td>
+<td>S19</td>
+</tr>
+<tr>
+<td>BR-AR-01</td>
+<td>Invoices and credit notes post to receivables</td>
+<td>Built</td>
+<td>FR-AR-01.1</td>
+<td>14: AR-004, AR-008, AR-009, AR-010, AR-011, AR-013 …</td>
+<td>S6</td>
+</tr>
+<tr>
+<td>BR-AR-02</td>
+<td>Customer posting profile</td>
+<td>Built</td>
+<td>FR-AR-02.1</td>
+<td>2: AR-002, COA-020</td>
+<td>S3</td>
+</tr>
+<tr>
+<td>BR-AR-03</td>
+<td>Receipt across invoices or on account</td>
+<td>Built</td>
+<td>FR-AR-03.1</td>
+<td>13: RCP-023, RCP-025, RCP-027, RCP-001, RCP-002, RCP-003 …</td>
+<td>S7</td>
+</tr>
+<tr>
+<td>BR-AR-04</td>
+<td>Apply money held on account</td>
+<td>Built</td>
+<td>FR-AR-04.1</td>
+<td>4: RCP-024, RCP-004, RCP-005, RCP-022</td>
+<td>S7</td>
+</tr>
+<tr>
+<td>BR-AR-05</td>
+<td>Cancel a receipt</td>
+<td>Built</td>
+<td>FR-AR-05.1</td>
+<td>4: RCP-026, RCP-013, RCP-014, RCP-015</td>
+<td>S7</td>
+</tr>
+<tr>
+<td>BR-AR-06</td>
+<td>Aging from the ledger</td>
+<td>Built</td>
+<td>FR-AR-06.1</td>
+<td>8: SUB-009, SUB-010, SUB-003, SUB-004, SUB-005, SUB-006 …</td>
+<td>S6</td>
+</tr>
+<tr>
+<td>BR-AR-07</td>
+<td>Customer ledger</td>
+<td>Built</td>
+<td>FR-AR-07.1</td>
+<td>3: AR-015, SUB-003, SUB-008</td>
+<td>S6</td>
+</tr>
+<tr>
+<td>BR-AR-08</td>
+<td>Document reports follow settlements</td>
+<td>Built</td>
+<td>FR-AR-08.1</td>
+<td>10: RCP-016, RCP-017, RCP-018, RCP-019, RCP-020, RCP-021 …</td>
+<td>S7</td>
+</tr>
+<tr>
+<td>BR-AR-09</td>
+<td>Credit note application</td>
+<td>Planned</td>
+<td>FR-AR-09.1</td>
+<td>—</td>
+<td>S17</td>
+</tr>
+<tr>
+<td>BR-AR-10</td>
+<td>Customer statement printing and reminders</td>
+<td>Planned</td>
+<td>FR-AR-10.1</td>
+<td>—</td>
+<td>S17</td>
+</tr>
+<tr>
+<td>BR-AP-01</td>
+<td>Goods receipt against clearing</td>
+<td>Built</td>
+<td>FR-AP-01.1</td>
+<td>1: AP-006</td>
+<td>S6</td>
+</tr>
+<tr>
+<td>BR-AP-02</td>
+<td>Matched bill recognises the payable</td>
+<td>Built</td>
+<td>FR-AP-02.1</td>
+<td>3: AP-007, AP-008, AP-010</td>
+<td>S6</td>
+</tr>
+<tr>
+<td>BR-AP-03</td>
+<td>Expenses share the payable ledger</td>
+<td>Built</td>
+<td>FR-AP-03.1</td>
+<td>7: AP-001, AP-003, AP-004, AP-005, AP-012, AP-013 …</td>
+<td>S6</td>
+</tr>
+<tr>
+<td>BR-AP-04</td>
+<td>Vendor posting profile</td>
+<td>Built</td>
+<td>FR-AP-04.1</td>
+<td>1: AP-002</td>
+<td>S3</td>
+</tr>
+<tr>
+<td>BR-AP-05</td>
+<td>Payment across bills and expenses</td>
+<td>Built</td>
+<td>FR-AP-05.1</td>
+<td>6: PAY-001, PAY-002, PAY-003, PAY-004, PAY-008, PAY-009</td>
+<td>S7</td>
+</tr>
+<tr>
+<td>BR-AP-06</td>
+<td>Payables aging and vendor ledger</td>
+<td>Built</td>
+<td>FR-AP-06.1</td>
+<td>5: PAY-010, SUB-006, PAY-005, PAY-006, PAY-007</td>
+<td>S6</td>
+</tr>
+<tr>
+<td>BR-AP-07</td>
+<td>Returns, vendor credit and refunds</td>
+<td>Built</td>
+<td>FR-AP-07.1</td>
+<td>3: AP-009, AP-011, AP-014</td>
+<td>S6</td>
+</tr>
+<tr>
+<td>BR-AP-08</td>
+<td>Approval of large payments</td>
+<td>Planned</td>
+<td>FR-AP-08.1</td>
+<td>1: PAY-011</td>
+<td>S18</td>
+</tr>
+<tr>
+<td>BR-AP-09</td>
+<td>Payment runs</td>
+<td>Planned</td>
+<td>FR-AP-09.1</td>
+<td>—</td>
+<td>S18</td>
+</tr>
+<tr>
+<td>BR-BNK-01</td>
+<td>Reconciliation session per bank and statement</td>
+<td>Built</td>
+<td>FR-BNK-01.1</td>
+<td>4: BNK-001, BNK-002, BNK-003, BNK-004</td>
+<td>S8</td>
+</tr>
+<tr>
+<td>BR-BNK-02</td>
+<td>Clear ledger lines against statement lines</td>
+<td>Built</td>
+<td>FR-BNK-02.1</td>
+<td>5: BNK-012, BNK-013, BNK-014, BNK-015, BNK-029</td>
+<td>S8</td>
+</tr>
+<tr>
+<td>BR-BNK-03</td>
+<td>Live reconciling formula and blocked completion</td>
+<td>Built</td>
+<td>FR-BNK-03.1</td>
+<td>4: BNK-005, BNK-006, BNK-007, BNK-031</td>
+<td>S8</td>
+</tr>
+<tr>
+<td>BR-BNK-04</td>
+<td>Discrepancies by journal entry</td>
+<td>Built</td>
+<td>FR-BNK-04.1</td>
+<td>5: BNK-016, BNK-017, BNK-018, BNK-020, PC-018</td>
+<td>S8</td>
+</tr>
+<tr>
+<td>BR-BNK-05</td>
+<td>Completed reconciliation locks its lines</td>
+<td>Built</td>
+<td>FR-BNK-05.1</td>
+<td>6: BNK-021, BNK-022, BNK-023, BNK-024, BNK-025, BNK-027</td>
+<td>S8</td>
+</tr>
+<tr>
+<td>BR-BNK-06</td>
+<td>Statement import</td>
+<td>Built</td>
+<td>FR-BNK-06.1</td>
+<td>5: BNK-008, BNK-009, BNK-010, BNK-011, BNK-030</td>
+<td>S8</td>
+</tr>
+<tr>
+<td>BR-BNK-07</td>
+<td>Excel statement import and saved formats</td>
+<td>Planned</td>
+<td>FR-BNK-07.1</td>
+<td>—</td>
+<td>S20</td>
+</tr>
+<tr>
+<td>BR-BNK-08</td>
+<td>Bank charges and interest in every statement</td>
+<td>Built</td>
+<td>FR-BNK-08.1</td>
+<td>2: BNK-019, XR-001</td>
+<td>S8</td>
+</tr>
+<tr>
+<td>BR-TAX-01</td>
+<td>VAT posted to its own accounts</td>
+<td>Partial</td>
+<td>FR-TAX-01.1</td>
+<td>1: AR-001</td>
+<td>S14</td>
+</tr>
+<tr>
+<td>BR-TAX-02</td>
+<td>VAT settlement entry</td>
+<td>Planned</td>
+<td>FR-TAX-02.1</td>
+<td>—</td>
+<td>S14</td>
+</tr>
+<tr>
+<td>BR-TAX-03</td>
+<td>Line rounding and cash rounding</td>
+<td>Partial</td>
+<td>FR-TAX-03.1</td>
+<td>1: AR-006</td>
+<td>S14</td>
+</tr>
+<tr>
+<td>BR-PRT-01</td>
+<td>Receipt and payment voucher</td>
+<td>Built</td>
+<td>FR-PRT-01.1</td>
+<td>5: PRT-001, PRT-002, PRT-003, PRT-004, PRT-011</td>
+<td>S9</td>
+</tr>
+<tr>
+<td>BR-PRT-02</td>
+<td>Journal voucher</td>
+<td>Built</td>
+<td>FR-PRT-02.1</td>
+<td>4: JV-023, PRT-005, PRT-006, PRT-012</td>
+<td>S9</td>
+</tr>
+<tr>
+<td>BR-PRT-03</td>
+<td>Bank reconciliation statement</td>
+<td>Built</td>
+<td>FR-PRT-03.1</td>
+<td>1: PRT-007</td>
+<td>S9</td>
+</tr>
+<tr>
+<td>BR-PRT-04</td>
+<td>Right-to-left printing</td>
+<td>Built</td>
+<td>FR-PRT-04.1</td>
+<td>4: PRT-008, PRT-009, PRT-010, COA-021</td>
+<td>S9</td>
+</tr>
+<tr>
+<td>BR-SEC-01</td>
+<td>Tenant isolation</td>
+<td>Built</td>
+<td>FR-SEC-01.1</td>
+<td>8: COA-016, SEC-001, SEC-002, SEC-004, SEC-005, JV-022 …</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-SEC-02</td>
+<td>Permission model</td>
+<td>Built</td>
+<td>FR-SEC-02.1</td>
+<td>12: SEC-008, SEC-009, SEC-010, SEC-013, SEC-014, SEC-006 …</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-SEC-03</td>
+<td>Audit trail of elevated actions</td>
+<td>Built</td>
+<td>FR-SEC-03.1</td>
+<td>2: SEC-011, BNK-023</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-SEC-04</td>
+<td>No bulk overwrite</td>
+<td>Built</td>
+<td>FR-SEC-04.1</td>
+<td>1: SEC-012</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-LOC-01</td>
+<td>English, Arabic and Urdu</td>
+<td>Built</td>
+<td>FR-LOC-01.1</td>
+<td>3: I18N-001, I18N-006, I18N-007</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-LOC-02</td>
+<td>Right-to-left layout</td>
+<td>Built</td>
+<td>FR-LOC-02.1</td>
+<td>4: I18N-002, I18N-003, I18N-004, I18N-005</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-LOC-03</td>
+<td>Amount in words in Arabic and Urdu</td>
+<td>Planned</td>
+<td>FR-LOC-03.1</td>
+<td>1: PRT-013</td>
+<td>S20</td>
+</tr>
+<tr>
+<td>BR-NFR-01</td>
+<td>Scale</td>
+<td>Built</td>
+<td>FR-NFR-01.1</td>
+<td>6: NFR-001, NFR-002, NFR-003, NFR-006, NFR-007, NFR-009</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-NFR-02</td>
+<td>Atomic requests</td>
+<td>Built</td>
+<td>FR-NFR-02.1</td>
+<td>2: NFR-004, NFR-005</td>
+<td>S1</td>
+</tr>
+<tr>
+<td>BR-NFR-03</td>
+<td>Real-database automated tests</td>
+<td>Built</td>
+<td>FR-NFR-03.1</td>
+<td>1: NFR-008</td>
+<td>S9</td>
+</tr>
+<tr>
+<td>BR-NFR-04</td>
+<td>Safe releases and environments</td>
+<td>Built</td>
+<td>FR-NFR-04.1</td>
+<td>9: REL-001, REL-002, REL-003, REL-004, REL-005, REL-006 …</td>
+<td>S0</td>
+</tr>
+<tr>
+<td>BR-NFR-05</td>
+<td>Maintainable documentation</td>
+<td>Planned</td>
+<td>FR-NFR-05.1</td>
+<td>—</td>
+<td>S10</td>
+</tr>
+<tr>
+<td>BR-NFR-06</td>
+<td>Promotion to Live</td>
+<td>Planned</td>
+<td>FR-NFR-06.1</td>
+<td>1: REL-009</td>
+<td>S20</td>
+</tr>
+</tbody></table></div>
+<h3 id="traceability--section">2. Backward: test case → system requirement → business requirement</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Case</th>
+<th>Title</th>
+<th>Automation</th>
+<th>FR</th>
+<th>BR</th>
+</tr>
+</thead><tbody><tr>
+<td>PC-001</td>
+<td>A posting dated on or before the lock date is refused for every document type</td>
+<td>tests/postingControl.test.ts</td>
+<td>FR-PER-03.1</td>
+<td>BR-PER-03</td>
+</tr>
+<tr>
+<td>PC-002</td>
+<td>A posting the day after the lock date is accepted</td>
+<td>tests/postingControl.test.ts</td>
+<td>FR-PER-03.1</td>
+<td>BR-PER-03</td>
+</tr>
+<tr>
+<td>PC-003</td>
+<td>Cancelling an old document posts on the cancellation date and is also guarded</td>
+<td>tests/postingControl.test.ts</td>
+<td>FR-PER-03.1</td>
+<td>BR-PER-03</td>
+</tr>
+<tr>
+<td>PC-004</td>
+<td>Only the override-lock permission lets a posting through the lock date, and it is audited</td>
+<td>Candidate</td>
+<td>FR-PER-03.1</td>
+<td>BR-PER-03</td>
+</tr>
+<tr>
+<td>PC-005</td>
+<td>Back-date window: today passes, N days back passes, N+1 days back is refused</td>
+<td>tests/postingControl.test.ts</td>
+<td>FR-PER-04.1</td>
+<td>BR-PER-04</td>
+</tr>
+<tr>
+<td>PC-006</td>
+<td>A holder of the back-date permission may go past the window and an audit entry is written</td>
+<td>tests/postingControl.test.ts</td>
+<td>FR-PER-04.1</td>
+<td>BR-PER-04</td>
+</tr>
+<tr>
+<td>PC-007</td>
+<td>A reason is required once an entry is older than the reason threshold</td>
+<td>tests/postingControl.test.ts</td>
+<td>FR-PER-05.1</td>
+<td>BR-PER-05</td>
+</tr>
+<tr>
+<td>PC-008</td>
+<td>The rules judge the posting date, not the document date</td>
+<td>tests/postingControl.test.ts</td>
+<td>FR-PER-05.1</td>
+<td>BR-PER-05</td>
+</tr>
+<tr>
+<td>PC-009</td>
+<td>The same rules apply to expenses, payments and journals, not only invoices</td>
+<td>tests/postingControl.test.ts</td>
+<td>FR-PER-06.1</td>
+<td>BR-PER-06</td>
+</tr>
+<tr>
+<td>PC-010</td>
+<td>No policy means no restriction beyond the open fiscal month</td>
+<td>tests/postingControl.test.ts</td>
+<td>FR-PER-06.1</td>
+<td>BR-PER-06</td>
+</tr>
+<tr>
+<td>PC-011</td>
+<td>The policy can be read by everyone but changed only with its own permission</td>
+<td>tests/postingControl.test.ts</td>
+<td>FR-PER-06.1</td>
+<td>BR-PER-06</td>
+</tr>
+<tr>
+<td>PC-012</td>
+<td>A closed fiscal month refuses every posting dated in it; reopening allows them</td>
+<td>tests/periodStory.test.ts</td>
+<td>FR-PER-01.1</td>
+<td>BR-PER-01</td>
+</tr>
+<tr>
+<td>PC-013</td>
+<td>A filed VAT quarter refuses VAT-touching postings but accepts others</td>
+<td>Candidate</td>
+<td>FR-PER-02.1</td>
+<td>BR-PER-02</td>
+</tr>
+<tr>
+<td>PC-014</td>
+<td>A frozen (not yet filed) VAT quarter refuses VAT journals</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-PER-02.1</td>
+<td>BR-PER-02</td>
+</tr>
+<tr>
+<td>PC-015</td>
+<td>The Posting Control screen shows the current rules and saves changes</td>
+<td>Manual</td>
+<td>FR-PER-06.1</td>
+<td>BR-PER-06</td>
+</tr>
+<tr>
+<td>PC-016</td>
+<td>The Posting Control screen is read-only for a user without update permission</td>
+<td>Manual</td>
+<td>FR-PER-06.1</td>
+<td>BR-PER-06</td>
+</tr>
+<tr>
+<td>PC-017</td>
+<td>A policy change in company A never affects company B</td>
+<td>Candidate</td>
+<td>FR-PER-03.1</td>
+<td>BR-PER-03</td>
+</tr>
+<tr>
+<td>PC-018</td>
+<td>The bank-reconciliation fee entry obeys the lock date and the back-date window</td>
+<td>Candidate</td>
+<td>FR-PER-06.1, FR-BNK-04.1</td>
+<td>BR-PER-06, BR-BNK-04</td>
+</tr>
+<tr>
+<td>PC-019</td>
+<td>A receipt or vendor payment dated in a locked period is refused</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-PER-06.1</td>
+<td>BR-PER-06</td>
+</tr>
+<tr>
+<td>DT-001</td>
+<td>A document with only a document date gets the same posting date</td>
+<td>Candidate</td>
+<td>FR-DAT-01.1, FR-DAT-02.1</td>
+<td>BR-DAT-01, BR-DAT-02</td>
+</tr>
+<tr>
+<td>DT-002</td>
+<td>A document posted into a later period keeps its own document date</td>
+<td>tests/postingControl.test.ts</td>
+<td>FR-DAT-02.1</td>
+<td>BR-DAT-02</td>
+</tr>
+<tr>
+<td>DT-003</td>
+<td>Operational reports (sales register, customer statement) use the document date</td>
+<td>Candidate</td>
+<td>FR-DAT-01.1</td>
+<td>BR-DAT-01</td>
+</tr>
+<tr>
+<td>DT-004</td>
+<td>Financial statements (trial balance, balance sheet, VAT) use the posting date</td>
+<td>Candidate</td>
+<td>FR-DAT-02.1</td>
+<td>BR-DAT-02</td>
+</tr>
+<tr>
+<td>DT-005</td>
+<td>The API no longer accepts the retired date field</td>
+<td>tests/createRouteFieldAllowList.test.ts</td>
+<td>FR-DAT-03.1</td>
+<td>BR-DAT-03</td>
+</tr>
+<tr>
+<td>DT-006</td>
+<td>An invalid date string is refused on every dated endpoint</td>
+<td>Candidate</td>
+<td>FR-DAT-03.1</td>
+<td>BR-DAT-03</td>
+</tr>
+<tr>
+<td>DT-007</td>
+<td>Created-by and created-at are stamped on every document and a later edit stamps updated-by / updated-at</td>
+<td>Candidate</td>
+<td>FR-DAT-04.1</td>
+<td>BR-DAT-04</td>
+</tr>
+<tr>
+<td>DT-008</td>
+<td>A document entered just before and just after midnight keeps the date the user chose</td>
+<td>Candidate</td>
+<td>FR-DAT-04.1</td>
+<td>BR-DAT-04</td>
+</tr>
+<tr>
+<td>DT-009</td>
+<td>Every renamed date column exists once in the live schema and no old name remains</td>
+<td>Candidate</td>
+<td>FR-DAT-01.1</td>
+<td>BR-DAT-01</td>
+</tr>
+<tr>
+<td>DT-010</td>
+<td>Date columns are Postgres date, not timestamp, for business dates</td>
+<td>Candidate</td>
+<td>FR-DAT-03.1</td>
+<td>BR-DAT-03</td>
+</tr>
+<tr>
+<td>COA-001</td>
+<td>A new company gets the standard chart with every posting role mapped once and an account for its bank</td>
+<td>tests/ledgerAccounts.test.ts</td>
+<td>FR-COA-02.1</td>
+<td>BR-COA-02</td>
+</tr>
+<tr>
+<td>COA-002</td>
+<td>Company A never sees company B accounts</td>
+<td>tests/ledgerAccounts.test.ts</td>
+<td>FR-COA-01.1</td>
+<td>BR-COA-01</td>
+</tr>
+<tr>
+<td>COA-003</td>
+<td>A read-only role can list but not create, edit, deactivate, import, export or map</td>
+<td>tests/ledgerAccounts.test.ts</td>
+<td>FR-COA-01.1, FR-SEC-02.1</td>
+<td>BR-COA-01, BR-SEC-02</td>
+</tr>
+<tr>
+<td>COA-004</td>
+<td>A user with no ledger keys is refused the account list</td>
+<td>tests/ledgerAccounts.test.ts</td>
+<td>FR-COA-01.1, FR-SEC-02.1</td>
+<td>BR-COA-01, BR-SEC-02</td>
+</tr>
+<tr>
+<td>COA-005</td>
+<td>Create an account under a heading</td>
+<td>tests/ledgerAccounts.test.ts</td>
+<td>FR-COA-01.1</td>
+<td>BR-COA-01</td>
+</tr>
+<tr>
+<td>COA-006</td>
+<td>Duplicate account code is refused</td>
+<td>tests/ledgerAccounts.test.ts</td>
+<td>FR-COA-01.1</td>
+<td>BR-COA-01</td>
+</tr>
+<tr>
+<td>COA-007</td>
+<td>A parent of a different type or a non-heading parent is refused</td>
+<td>tests/ledgerAccounts.test.ts</td>
+<td>FR-COA-01.1</td>
+<td>BR-COA-01</td>
+</tr>
+<tr>
+<td>COA-008</td>
+<td>Tree depth: four levels are accepted, a fifth is refused</td>
+<td>Candidate</td>
+<td>FR-COA-01.1</td>
+<td>BR-COA-01</td>
+</tr>
+<tr>
+<td>COA-009</td>
+<td>A parent cannot become its own descendant (loop)</td>
+<td>Candidate</td>
+<td>FR-COA-01.1</td>
+<td>BR-COA-01</td>
+</tr>
+<tr>
+<td>COA-010</td>
+<td>An account with postings cannot change type</td>
+<td>tests/ledgerAccounts.test.ts</td>
+<td>FR-COA-04.1</td>
+<td>BR-COA-04</td>
+</tr>
+<tr>
+<td>COA-011</td>
+<td>A control account can be renamed but not retyped or deactivated</td>
+<td>tests/ledgerAccounts.test.ts</td>
+<td>FR-COA-03.1, FR-COA-03.2, FR-COA-04.1</td>
+<td>BR-COA-03, BR-COA-04</td>
+</tr>
+<tr>
+<td>COA-012</td>
+<td>An account with a balance cannot be deactivated; a zero-balance one can, and can be reactivated</td>
+<td>tests/ledgerAccounts.test.ts</td>
+<td>FR-COA-04.1, FR-COA-05.1</td>
+<td>BR-COA-04, BR-COA-05</td>
+</tr>
+<tr>
+<td>COA-013</td>
+<td>A heading with active children cannot be deactivated</td>
+<td>tests/ledgerAccounts.test.ts</td>
+<td>FR-COA-04.1</td>
+<td>BR-COA-04</td>
+</tr>
+<tr>
+<td>COA-014</td>
+<td>Pointing a posting role at another account is not retroactive</td>
+<td>tests/ledgerAccounts.test.ts</td>
+<td>FR-COA-06.1</td>
+<td>BR-COA-06</td>
+</tr>
+<tr>
+<td>COA-015</td>
+<td>A bank line posts to the bank own account</td>
+<td>tests/ledgerAccounts.test.ts</td>
+<td>FR-COA-02.1</td>
+<td>BR-COA-02</td>
+</tr>
+<tr>
+<td>COA-016</td>
+<td>The database refuses a line that points at another company account</td>
+<td>tests/ledgerAccounts.test.ts</td>
+<td>FR-SEC-01.1</td>
+<td>BR-SEC-01</td>
+</tr>
+<tr>
+<td>COA-017</td>
+<td>Expense categories start on a default account and can be re-pointed to an Expense account only</td>
+<td>tests/ledgerAccounts.test.ts</td>
+<td>FR-COA-06.1</td>
+<td>BR-COA-06</td>
+</tr>
+<tr>
+<td>COA-018</td>
+<td>Excel import previews first and saves only the chosen rows, never changing a type</td>
+<td>tests/ledgerAccounts.test.ts</td>
+<td>FR-COA-07.1</td>
+<td>BR-COA-07</td>
+</tr>
+<tr>
+<td>COA-019</td>
+<td>A file with the wrong columns is refused; a reader may neither import nor export</td>
+<td>tests/ledgerAccounts.test.ts</td>
+<td>FR-COA-07.1</td>
+<td>BR-COA-07</td>
+</tr>
+<tr>
+<td>COA-020</td>
+<td>An ordinary account becomes a customer or vendor control account only if it fits and has no postings</td>
+<td>tests/ledgerPostingProfile.test.ts</td>
+<td>FR-COA-03.1, FR-COA-03.2, FR-AR-02.1</td>
+<td>BR-COA-03, BR-AR-02</td>
+</tr>
+<tr>
+<td>COA-021</td>
+<td>Arabic account names show on Arabic documents and the chart</td>
+<td>Manual</td>
+<td>FR-PRT-04.1</td>
+<td>BR-PRT-04</td>
+</tr>
+<tr>
+<td>COA-022</td>
+<td>Expense accounts picked in a bank reconciliation exclude headings, control and inactive accounts</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-COA-05.1</td>
+<td>BR-COA-05</td>
+</tr>
+<tr>
+<td>JV-001</td>
+<td>A draft saves with a number and refuses control, bank, heading, inactive, foreign and malformed lines</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-COA-03.1, FR-COA-03.2, FR-JNL-01.1</td>
+<td>BR-COA-03, BR-JNL-01</td>
+</tr>
+<tr>
+<td>JV-002</td>
+<td>A user without journals.create cannot draft</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-01.1</td>
+<td>BR-JNL-01</td>
+</tr>
+<tr>
+<td>JV-003</td>
+<td>A draft can be edited (lines replaced) only with the update key</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-01.1</td>
+<td>BR-JNL-01</td>
+</tr>
+<tr>
+<td>JV-004</td>
+<td>An unbalanced journal cannot be submitted</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-02.1</td>
+<td>BR-JNL-02</td>
+</tr>
+<tr>
+<td>JV-005</td>
+<td>A line with both debit and credit, or neither, is refused</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-02.1</td>
+<td>BR-JNL-02</td>
+</tr>
+<tr>
+<td>JV-006</td>
+<td>Negative and absurdly large amounts are refused</td>
+<td>Candidate</td>
+<td>FR-JNL-02.1</td>
+<td>BR-JNL-02</td>
+</tr>
+<tr>
+<td>JV-007</td>
+<td>Submit moves the draft to pending and locks it from editing</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-01.1</td>
+<td>BR-JNL-01</td>
+</tr>
+<tr>
+<td>JV-008</td>
+<td>Approval by someone else posts it to the ledger exactly once</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-01.1</td>
+<td>BR-JNL-01</td>
+</tr>
+<tr>
+<td>JV-009</td>
+<td>Two approvers approve at the same moment: one entry only</td>
+<td>Candidate</td>
+<td>FR-JNL-01.1</td>
+<td>BR-JNL-01</td>
+</tr>
+<tr>
+<td>JV-010</td>
+<td>The preparer cannot approve their own journal unless the owner allows self-approval</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-07.1</td>
+<td>BR-JNL-07</td>
+</tr>
+<tr>
+<td>JV-011</td>
+<td>Only the owner / admin may change the self-approval setting</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-07.1</td>
+<td>BR-JNL-07</td>
+</tr>
+<tr>
+<td>JV-012</td>
+<td>Rejection needs a reason and returns the journal to the preparer</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-01.1</td>
+<td>BR-JNL-01</td>
+</tr>
+<tr>
+<td>JV-013</td>
+<td>A month closed after submission blocks approval</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-PER-06.1</td>
+<td>BR-PER-06</td>
+</tr>
+<tr>
+<td>JV-014</td>
+<td>Discarding a draft keeps its number on record; a posted journal cannot be discarded</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-05.1</td>
+<td>BR-JNL-05</td>
+</tr>
+<tr>
+<td>JV-015</td>
+<td>Reversal creates a reversing draft that itself needs approval and posts the mirror once</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-03.1, FR-JNL-06.1</td>
+<td>BR-JNL-03, BR-JNL-06</td>
+</tr>
+<tr>
+<td>JV-016</td>
+<td>A discarded reversal frees the original to be reversed again</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-03.1, FR-JNL-06.1</td>
+<td>BR-JNL-03, BR-JNL-06</td>
+</tr>
+<tr>
+<td>JV-017</td>
+<td>A document-made entry has no manual journal to reverse</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-03.1, FR-JNL-06.1</td>
+<td>BR-JNL-03, BR-JNL-06</td>
+</tr>
+<tr>
+<td>JV-018</td>
+<td>The journal list filters by status, date and text and pages</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-08.1</td>
+<td>BR-JNL-08</td>
+</tr>
+<tr>
+<td>JV-019</td>
+<td>A posted entry shows its accounts and is invisible to another company</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-08.1</td>
+<td>BR-JNL-08</td>
+</tr>
+<tr>
+<td>JV-020</td>
+<td>A back-dated journal beyond the reason threshold needs a reason that is kept</td>
+<td>tests/postingControl.test.ts</td>
+<td>FR-PER-06.1</td>
+<td>BR-PER-06</td>
+</tr>
+<tr>
+<td>JV-021</td>
+<td>Journal numbers are unique per company and never reused</td>
+<td>Candidate</td>
+<td>FR-JNL-05.1</td>
+<td>BR-JNL-05</td>
+</tr>
+<tr>
+<td>JV-022</td>
+<td>Row-level security hides other companies manual journals even without a WHERE clause</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-SEC-01.1</td>
+<td>BR-SEC-01</td>
+</tr>
+<tr>
+<td>JV-023</td>
+<td>Journal voucher print data exists for a manual journal and the entry it posted</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-PRT-02.1</td>
+<td>BR-PRT-02</td>
+</tr>
+<tr>
+<td>JV-024</td>
+<td>The journal form keeps typed data when a validation error is shown</td>
+<td>Manual</td>
+<td>FR-JNL-08.1</td>
+<td>BR-JNL-08</td>
+</tr>
+<tr>
+<td>OPN-001</td>
+<td>Eligible accounts exclude control accounts but include banks with their own opening figure</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-09.1</td>
+<td>BR-JNL-09</td>
+</tr>
+<tr>
+<td>OPN-002</td>
+<td>A preview does not save and refuses control, P&amp;L, heading and foreign accounts</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-09.1</td>
+<td>BR-JNL-09</td>
+</tr>
+<tr>
+<td>OPN-003</td>
+<td>An unbalanced sheet cannot be posted until the difference goes to an Equity account</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-09.1</td>
+<td>BR-JNL-09</td>
+</tr>
+<tr>
+<td>OPN-004</td>
+<td>Opening posts once, needs the post key and a confirmation</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-09.1</td>
+<td>BR-JNL-09</td>
+</tr>
+<tr>
+<td>OPN-005</td>
+<td>A wrong opening entry can be reversed with a reason and a corrected one accepted</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-JNL-09.1</td>
+<td>BR-JNL-09</td>
+</tr>
+<tr>
+<td>OPN-006</td>
+<td>The opening balance sheet figure flows into the first period reports</td>
+<td>Candidate</td>
+<td>FR-JNL-09.1</td>
+<td>BR-JNL-09</td>
+</tr>
+<tr>
+<td>DIM-001</td>
+<td>Branch and Department are seeded for every company and offered to pickers</td>
+<td>tests/ledgerDimensions.test.ts</td>
+<td>FR-DIM-01.1</td>
+<td>BR-DIM-01</td>
+</tr>
+<tr>
+<td>DIM-002</td>
+<td>Custom dimensions can be added; duplicates are refused</td>
+<td>tests/ledgerDimensions.test.ts</td>
+<td>FR-DIM-01.1</td>
+<td>BR-DIM-01</td>
+</tr>
+<tr>
+<td>DIM-003</td>
+<td>Seeded dimensions can never be removed or re-sourced</td>
+<td>tests/ledgerDimensions.test.ts</td>
+<td>FR-DIM-01.1</td>
+<td>BR-DIM-01</td>
+</tr>
+<tr>
+<td>DIM-004</td>
+<td>A value tree refuses loops, foreign parents and non-hierarchical nesting</td>
+<td>tests/ledgerDimensions.test.ts</td>
+<td>FR-DIM-02.1</td>
+<td>BR-DIM-02</td>
+</tr>
+<tr>
+<td>DIM-005</td>
+<td>Cost centres have an optional home branch, hierarchy and the same guards</td>
+<td>tests/ledgerDimensions.test.ts</td>
+<td>FR-DIM-02.1</td>
+<td>BR-DIM-02</td>
+</tr>
+<tr>
+<td>DIM-006</td>
+<td>A rule on one account sets optional / required / not allowed with an optional default</td>
+<td>tests/ledgerDimensions.test.ts</td>
+<td>FR-DIM-03.1</td>
+<td>BR-DIM-03</td>
+</tr>
+<tr>
+<td>DIM-007</td>
+<td>A rule applies to a type, heading, range or list with a preview first</td>
+<td>tests/ledgerDimensions.test.ts</td>
+<td>FR-DIM-03.1</td>
+<td>BR-DIM-03</td>
+</tr>
+<tr>
+<td>DIM-008</td>
+<td>A Required tag missing blocks submit but not draft save</td>
+<td>tests/ledgerDimensions.test.ts</td>
+<td>FR-DIM-03.1</td>
+<td>BR-DIM-03</td>
+</tr>
+<tr>
+<td>DIM-009</td>
+<td>A tag the account does not allow, an unknown, foreign or inactive value is refused</td>
+<td>tests/ledgerDimensions.test.ts</td>
+<td>FR-DIM-03.1</td>
+<td>BR-DIM-03</td>
+</tr>
+<tr>
+<td>DIM-010</td>
+<td>Equal tags on several lines share one combination</td>
+<td>tests/ledgerDimensions.test.ts</td>
+<td>FR-DIM-04.1</td>
+<td>BR-DIM-04</td>
+</tr>
+<tr>
+<td>DIM-011</td>
+<td>A reversal carries the original tags; an account default fills a missing tag</td>
+<td>tests/ledgerDimensions.test.ts</td>
+<td>FR-JNL-04.1, FR-DIM-04.1</td>
+<td>BR-JNL-04, BR-DIM-04</td>
+</tr>
+<tr>
+<td>DIM-012</td>
+<td>Documents apply defaults but never block on a Required rule</td>
+<td>tests/ledgerDimensions.test.ts</td>
+<td>FR-DIM-04.1</td>
+<td>BR-DIM-04</td>
+</tr>
+<tr>
+<td>DIM-013</td>
+<td>The database refuses a dimension entry pointing at another company value</td>
+<td>tests/ledgerDimensions.test.ts</td>
+<td>FR-DIM-04.1</td>
+<td>BR-DIM-04</td>
+</tr>
+<tr>
+<td>DIM-014</td>
+<td>Branch-restricted user only sees entries of their own branches in ledger reads</td>
+<td>Candidate</td>
+<td>FR-DIM-05.1</td>
+<td>BR-DIM-05</td>
+</tr>
+<tr>
+<td>RPT-001</td>
+<td>Every company has the five standard reports as editable defaults; another company sees none of them</td>
+<td>tests/ledgerReportEngine.test.ts</td>
+<td>FR-RPT-02.1</td>
+<td>BR-RPT-02</td>
+</tr>
+<tr>
+<td>RPT-002</td>
+<td>Income Statement: revenue positive, subtotals and formulas follow, comparatives and variance tie</td>
+<td>tests/ledgerReportEngine.test.ts</td>
+<td>FR-RPT-02.1, FR-RPT-05.1</td>
+<td>BR-RPT-02, BR-RPT-05</td>
+</tr>
+<tr>
+<td>RPT-003</td>
+<td>Balance Sheet balances, carries profit to date in equity, compares with the prior year end</td>
+<td>tests/ledgerReportEngine.test.ts</td>
+<td>FR-RPT-02.1, FR-RPT-07.1</td>
+<td>BR-RPT-02, BR-RPT-07</td>
+</tr>
+<tr>
+<td>RPT-004</td>
+<td>Trial Balance balances in opening, movement and closing, in Summary and Detailed mode</td>
+<td>tests/ledgerReportEngine.test.ts</td>
+<td>FR-RPT-02.1, FR-RPT-07.1</td>
+<td>BR-RPT-02, BR-RPT-07</td>
+</tr>
+<tr>
+<td>RPT-005</td>
+<td>A viewer needs the report own permission; designer permissions do not give it</td>
+<td>tests/ledgerReportEngine.test.ts</td>
+<td>FR-RPT-02.1</td>
+<td>BR-RPT-02</td>
+</tr>
+<tr>
+<td>RPT-006</td>
+<td>Cash Flow (indirect) explains the change in cash and agrees with bank and cash accounts</td>
+<td>tests/ledgerReportEngine.test.ts</td>
+<td>FR-RPT-02.1</td>
+<td>BR-RPT-02</td>
+</tr>
+<tr>
+<td>RPT-007</td>
+<td>Changes in Equity: opening + profit + movements = closing equity</td>
+<td>tests/ledgerReportEngine.test.ts</td>
+<td>FR-RPT-02.1</td>
+<td>BR-RPT-02</td>
+</tr>
+<tr>
+<td>RPT-008</td>
+<td>A row can pin to the opening balance; the Cash selector finds every bank account</td>
+<td>tests/ledgerReportEngine.test.ts</td>
+<td>FR-RPT-02.1</td>
+<td>BR-RPT-02</td>
+</tr>
+<tr>
+<td>RPT-009</td>
+<td>Copy a standard report, edit it; only a designer can</td>
+<td>tests/ledgerReportEngine.test.ts</td>
+<td>FR-RPT-03.1</td>
+<td>BR-RPT-03</td>
+</tr>
+<tr>
+<td>RPT-010</td>
+<td>Account selection by range, rollup, type and role, include and exclude; double counting refused</td>
+<td>tests/ledgerReportEngine.test.ts</td>
+<td>FR-RPT-03.1</td>
+<td>BR-RPT-03</td>
+</tr>
+<tr>
+<td>RPT-011</td>
+<td>Every balance display rule, subtotal, formula, hidden and non-zero row works</td>
+<td>tests/ledgerReportEngine.test.ts</td>
+<td>FR-RPT-03.1</td>
+<td>BR-RPT-03</td>
+</tr>
+<tr>
+<td>RPT-012</td>
+<td>Every column option: debit / credit / opening / closing, Dr/Cr pairs, ranges, variance columns</td>
+<td>tests/ledgerReportEngine.test.ts</td>
+<td>FR-RPT-03.1, FR-RPT-05.1</td>
+<td>BR-RPT-03, BR-RPT-05</td>
+</tr>
+<tr>
+<td>RPT-013</td>
+<td>Dimension filters on columns give a branch comparison; on the run they narrow the report</td>
+<td>tests/ledgerReportEngine.test.ts</td>
+<td>FR-DIM-05.1, FR-RPT-03.1, FR-RPT-05.1</td>
+<td>BR-DIM-05, BR-RPT-03, BR-RPT-05</td>
+</tr>
+<tr>
+<td>RPT-014</td>
+<td>Accounts no row covers are listed with a warning count</td>
+<td>tests/ledgerReportEngine.test.ts</td>
+<td>FR-RPT-03.1, FR-RPT-07.1</td>
+<td>BR-RPT-03, BR-RPT-07</td>
+</tr>
+<tr>
+<td>RPT-015</td>
+<td>Malformed formatting is refused; default can be set; deactivate and reset work</td>
+<td>tests/ledgerReportEngine.test.ts</td>
+<td>FR-RPT-03.1</td>
+<td>BR-RPT-03</td>
+</tr>
+<tr>
+<td>RPT-016</td>
+<td>Every figure drills down to the accounts and the General Ledger reproduces it</td>
+<td>tests/ledgerReportEngine.test.ts</td>
+<td>FR-RPT-04.1</td>
+<td>BR-RPT-04</td>
+</tr>
+<tr>
+<td>RPT-017</td>
+<td>Excel export carries bold, double underline, shading and number formats</td>
+<td>tests/ledgerReportEngine.test.ts</td>
+<td>FR-RPT-06.1</td>
+<td>BR-RPT-06</td>
+</tr>
+<tr>
+<td>RPT-018</td>
+<td>General Ledger: opening, movements, running balance and closing add up</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-RPT-01.1</td>
+<td>BR-RPT-01</td>
+</tr>
+<tr>
+<td>RPT-019</td>
+<td>Ledger vs Documents separates manual journals from document postings and agrees to the cent</td>
+<td>tests/ledgerJournals.test.ts</td>
+<td>FR-RPT-08.1, FR-RPT-12.1</td>
+<td>BR-RPT-08, BR-RPT-12</td>
+</tr>
+<tr>
+<td>RPT-020</td>
+<td>Money held on account is compared like with like in Ledger vs Documents</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-RPT-08.1</td>
+<td>BR-RPT-08</td>
+</tr>
+<tr>
+<td>RPT-021</td>
+<td>The consistency check passes all error-level rules after a day of mixed activity</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-RPT-08.1</td>
+<td>BR-RPT-08</td>
+</tr>
+<tr>
+<td>RPT-022</td>
+<td>A report over 100000 ledger lines returns within the agreed time</td>
+<td>Candidate</td>
+<td>FR-RPT-09.1</td>
+<td>BR-RPT-09</td>
+</tr>
+<tr>
+<td>RPT-023</td>
+<td>Branch-restricted users see branch totals only and are told so</td>
+<td>Candidate</td>
+<td>FR-DIM-05.1, FR-RPT-10.1</td>
+<td>BR-DIM-05, BR-RPT-10</td>
+</tr>
+<tr>
+<td>APR-001</td>
+<td>A document with no matching rule posts directly</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>APR-002</td>
+<td>A payment inside a rule band enters Pending Approval and posts nothing</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>APR-003</td>
+<td>Amount band boundaries: exactly at the threshold and just above it</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>APR-004</td>
+<td>A two-level chain needs both approvals in order</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>APR-005</td>
+<td>The submitter cannot approve while self-approval is off</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>APR-006</td>
+<td>With self-approval on the submitter may approve and the document is flagged</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>APR-007</td>
+<td>Only owner/admin may change the self-approval setting</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>APR-008</td>
+<td>A manager of the submitter can be the approver</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>APR-009</td>
+<td>Rejection returns the document to draft with remarks and nothing posts</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>APR-010</td>
+<td>The submitter can recall a pending request; nobody else can; nothing was posted; a corrected one can be resubmitted</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>APR-011</td>
+<td>A delegate with a valid period may decide; outside it may not</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>APR-012</td>
+<td>The posting guard is re-checked at final approval and tenant isolation holds</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>APR-013</td>
+<td>A vendor bill follows the same rules: above the band it waits and creates nothing, the last approval creates it once</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>APR-014</td>
+<td>The &quot;paid at delivery&quot; shortcut cannot bypass an approval rule</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>APR-015</td>
+<td>A user&#39;s manager must be a user of the same company, never themselves, and the chain cannot loop</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>APR-016</td>
+<td>A credit note follows the same rules: above the band it waits and issues nothing; the last approval issues it once, created by the submitter</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>APR-017</td>
+<td>A manual journal above the band needs every level and posts once at the last; rejection returns it to the preparer; below the band the single maker-checker step is unchanged</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>APR-018</td>
+<td>A level that names a permission can be delegated: the delegate acts as the holder of that permission for the dates chosen, and a delegation from someone without the permission gives nothing</td>
+<td>tests/approvals.test.ts</td>
+<td>FR-JNL-10.1, FR-JNL-10.2, FR-JNL-10.3, FR-JNL-10.4, FR-JNL-10.5, FR-JNL-10.6, FR-JNL-10.7, FR-JNL-10.8</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>AR-001</td>
+<td>An invoice posts Dr receivable, Cr revenue and VAT output, the receivable line tagged with the customer</td>
+<td>tests/ledgerSubledger.test.ts</td>
+<td>FR-AR-01.1, FR-TAX-01.1</td>
+<td>BR-AR-01, BR-TAX-01</td>
+</tr>
+<tr>
+<td>AR-002</td>
+<td>An invoice for a customer with a posting profile uses the profile control account and tags</td>
+<td>tests/ledgerPostingProfile.test.ts</td>
+<td>FR-AR-02.1</td>
+<td>BR-AR-02</td>
+</tr>
+<tr>
+<td>AR-003</td>
+<td>A credit note reverses revenue and VAT and keeps the customer tag</td>
+<td>tests/ledgerSubledger.test.ts</td>
+<td>FR-AR-01.1</td>
+<td>BR-AR-01</td>
+</tr>
+<tr>
+<td>AR-004</td>
+<td>A paid invoice cannot be cancelled once ZATCA cleared it; a credit note is the only way</td>
+<td>Candidate</td>
+<td>FR-AR-01.1</td>
+<td>BR-AR-01</td>
+</tr>
+<tr>
+<td>AR-005</td>
+<td>Cancelling an unpaid invoice reverses its entry on the cancellation date</td>
+<td>tests/ledgerPostingProfile.test.ts</td>
+<td>FR-AR-01.1</td>
+<td>BR-AR-01</td>
+</tr>
+<tr>
+<td>AR-006</td>
+<td>An invoice with a header discount posts the discounted revenue and correct VAT</td>
+<td>Candidate</td>
+<td>FR-AR-01.1, FR-TAX-03.1</td>
+<td>BR-AR-01, BR-TAX-03</td>
+</tr>
+<tr>
+<td>AR-007</td>
+<td>An invoice for a stock item also posts cost of goods sold and relieves inventory</td>
+<td>Candidate</td>
+<td>FR-AR-01.1</td>
+<td>BR-AR-01</td>
+</tr>
+<tr>
+<td>AR-008</td>
+<td>Invoice payment status moves Unpaid, Partially Paid, Paid with amounts</td>
+<td>tests/invoicePaidRoute.test.ts</td>
+<td>FR-AR-01.1</td>
+<td>BR-AR-01</td>
+</tr>
+<tr>
+<td>AR-009</td>
+<td>A payment larger than the outstanding amount on the invoice route is refused</td>
+<td>tests/invoicePaidRoute.test.ts</td>
+<td>FR-AR-01.1</td>
+<td>BR-AR-01</td>
+</tr>
+<tr>
+<td>AR-010</td>
+<td>A B2B invoice with missing buyer fields is refused for ZATCA; B2C is accepted</td>
+<td>Candidate</td>
+<td>FR-AR-01.1</td>
+<td>BR-AR-01</td>
+</tr>
+<tr>
+<td>AR-011</td>
+<td>Invoice numbering is gap-free per company and per year rule</td>
+<td>tests/documentNumbering.test.ts</td>
+<td>FR-AR-01.1</td>
+<td>BR-AR-01</td>
+</tr>
+<tr>
+<td>AR-012</td>
+<td>A POS sale posts like an invoice and a POS return posts like a credit note</td>
+<td>tests/posSaleZatcaPipeline.test.ts</td>
+<td>FR-AR-01.1</td>
+<td>BR-AR-01</td>
+</tr>
+<tr>
+<td>AR-013</td>
+<td>ZATCA submission runs after the creating transaction commits and never blocks the request</td>
+<td>tests/posSaleZatcaPipeline.test.ts</td>
+<td>FR-AR-01.1</td>
+<td>BR-AR-01</td>
+</tr>
+<tr>
+<td>AR-014</td>
+<td>The ZATCA XML of a cleared invoice validates with the SDK (dual gate)</td>
+<td>Manual</td>
+<td>FR-AR-01.1</td>
+<td>BR-AR-01</td>
+</tr>
+<tr>
+<td>AR-015</td>
+<td>The customer list screen shows balances that equal the ledger</td>
+<td>Candidate</td>
+<td>FR-AR-07.1</td>
+<td>BR-AR-07</td>
+</tr>
+<tr>
+<td>AR-016</td>
+<td>An invoice dated outside the open month is refused with the month message</td>
+<td>tests/periodStory.test.ts</td>
+<td>FR-AR-01.1</td>
+<td>BR-AR-01</td>
+</tr>
+<tr>
+<td>RCP-001</td>
+<td>One receipt settles several invoices: one voucher, one ledger entry tagged with the customer, N allocations</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-03.1</td>
+<td>BR-AR-03</td>
+</tr>
+<tr>
+<td>RCP-002</td>
+<td>A receipt can be read back with its allocations and listed with applied and on-account figures</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-03.1</td>
+<td>BR-AR-03</td>
+</tr>
+<tr>
+<td>RCP-003</td>
+<td>A partial allocation keeps the rest on account and the aging shows the credit</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-03.1</td>
+<td>BR-AR-03</td>
+</tr>
+<tr>
+<td>RCP-004</td>
+<td>Money on account can be applied later to open invoices</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-04.1</td>
+<td>BR-AR-04</td>
+</tr>
+<tr>
+<td>RCP-005</td>
+<td>Applying more than is held, or more than is owed on a document, is refused</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-04.1</td>
+<td>BR-AR-04</td>
+</tr>
+<tr>
+<td>RCP-006</td>
+<td>A receipt of zero, a negative, NaN or an absurd amount is refused</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-03.1</td>
+<td>BR-AR-03</td>
+</tr>
+<tr>
+<td>RCP-007</td>
+<td>Allocations that exceed the receipt amount are refused</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-03.1</td>
+<td>BR-AR-03</td>
+</tr>
+<tr>
+<td>RCP-008</td>
+<td>A document listed twice, a document of another customer, or another company is refused</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-03.1</td>
+<td>BR-AR-03</td>
+</tr>
+<tr>
+<td>RCP-009</td>
+<td>An inactive or foreign bank is refused</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-03.1</td>
+<td>BR-AR-03</td>
+</tr>
+<tr>
+<td>RCP-010</td>
+<td>A receipt needs customerReceipts.create; reading needs read; cancelling needs delete</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-03.1, FR-SEC-02.1</td>
+<td>BR-AR-03, BR-SEC-02</td>
+</tr>
+<tr>
+<td>RCP-011</td>
+<td>Another company cannot see, apply or cancel a receipt</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-03.1</td>
+<td>BR-AR-03</td>
+</tr>
+<tr>
+<td>RCP-012</td>
+<td>A receipt obeys the posting control (lock date, back-date window)</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-03.1</td>
+<td>BR-AR-03</td>
+</tr>
+<tr>
+<td>RCP-013</td>
+<td>Cancelling a receipt needs a reason, reverses the entry, writes a reversal voucher and reopens the invoices</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-05.1</td>
+<td>BR-AR-05</td>
+</tr>
+<tr>
+<td>RCP-014</td>
+<td>A cancelled receipt cannot be cancelled again or applied</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-05.1</td>
+<td>BR-AR-05</td>
+</tr>
+<tr>
+<td>RCP-015</td>
+<td>An invoice settled through a receipt cannot be cancelled until the receipt is</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-05.1</td>
+<td>BR-AR-05</td>
+</tr>
+<tr>
+<td>RCP-016</td>
+<td>Receipt on account shows as Customer advances on the Balance Sheet and Trial Balance, which still balance</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-08.1</td>
+<td>BR-AR-08</td>
+</tr>
+<tr>
+<td>RCP-017</td>
+<td>The balance sheet as at an earlier date ignores money applied or received later</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-08.1</td>
+<td>BR-AR-08</td>
+</tr>
+<tr>
+<td>RCP-018</td>
+<td>The customer statement shows the receipt at its full amount on its own date, and the cancellation</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-08.1</td>
+<td>BR-AR-08</td>
+</tr>
+<tr>
+<td>RCP-019</td>
+<td>A cancelled receipt takes the cash back out of the bank balance</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-08.1</td>
+<td>BR-AR-08</td>
+</tr>
+<tr>
+<td>RCP-020</td>
+<td>The cash flow statement counts a receipt on the day the cash arrived, applied or not</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-08.1</td>
+<td>BR-AR-08</td>
+</tr>
+<tr>
+<td>RCP-021</td>
+<td>Cash-basis revenue follows the application date of each allocation</td>
+<td>Candidate</td>
+<td>FR-AR-08.1</td>
+<td>BR-AR-08</td>
+</tr>
+<tr>
+<td>RCP-022</td>
+<td>Two requests apply the same on-account money at once: only one wins</td>
+<td>Candidate</td>
+<td>FR-AR-04.1</td>
+<td>BR-AR-04</td>
+</tr>
+<tr>
+<td>RCP-023</td>
+<td>Double-click on Save Receipt creates one receipt</td>
+<td>Manual</td>
+<td>FR-AR-03.1</td>
+<td>BR-AR-03</td>
+</tr>
+<tr>
+<td>RCP-024</td>
+<td>Allocate oldest first fills invoices in date order until the amount is used</td>
+<td>Manual</td>
+<td>FR-AR-04.1</td>
+<td>BR-AR-04</td>
+</tr>
+<tr>
+<td>RCP-025</td>
+<td>The Receive Payment screen blocks save when allocations exceed the amount</td>
+<td>Manual</td>
+<td>FR-AR-03.1</td>
+<td>BR-AR-03</td>
+</tr>
+<tr>
+<td>RCP-026</td>
+<td>Receipts list filters by customer and shows On account / Settled / Cancelled</td>
+<td>Manual</td>
+<td>FR-AR-05.1</td>
+<td>BR-AR-05</td>
+</tr>
+<tr>
+<td>RCP-027</td>
+<td>Receipt voucher voucher numbers are sequential with the other vouchers of the company</td>
+<td>Candidate</td>
+<td>FR-AR-03.1</td>
+<td>BR-AR-03</td>
+</tr>
+<tr>
+<td>AP-001</td>
+<td>An expense posts Dr expense (and VAT input) Cr payable, the payable line tagged with the vendor</td>
+<td>tests/ledgerSubledger.test.ts</td>
+<td>FR-AP-03.1</td>
+<td>BR-AP-03</td>
+</tr>
+<tr>
+<td>AP-002</td>
+<td>A vendor posting profile sends the payable line to the vendor control account; the form refuses a wrong account</td>
+<td>tests/ledgerPostingProfile.test.ts</td>
+<td>FR-AP-04.1</td>
+<td>BR-AP-04</td>
+</tr>
+<tr>
+<td>AP-003</td>
+<td>Paying an expense later posts Dr payable Cr bank for the amount paid</td>
+<td>tests/expensePayCancel.test.ts</td>
+<td>FR-AP-03.1</td>
+<td>BR-AP-03</td>
+</tr>
+<tr>
+<td>AP-004</td>
+<td>A cancelled expense reverses every entry including its payments</td>
+<td>tests/expensePayCancel.test.ts</td>
+<td>FR-AP-03.1</td>
+<td>BR-AP-03</td>
+</tr>
+<tr>
+<td>AP-005</td>
+<td>A capitalised (Asset) expense posts to fixed assets, not an expense account</td>
+<td>Candidate</td>
+<td>FR-AP-03.1</td>
+<td>BR-AP-03</td>
+</tr>
+<tr>
+<td>AP-006</td>
+<td>A goods receipt posts Dr inventory Cr GR/IR clearing at cost, without VAT</td>
+<td>tests/purchaseBillsRoutes.test.ts</td>
+<td>FR-AP-01.1</td>
+<td>BR-AP-01</td>
+</tr>
+<tr>
+<td>AP-007</td>
+<td>A purchase bill clears GR/IR, posts VAT input and credits payable</td>
+<td>tests/purchaseBillsRoutes.test.ts</td>
+<td>FR-AP-02.1</td>
+<td>BR-AP-02</td>
+</tr>
+<tr>
+<td>AP-008</td>
+<td>A bill needs the vendor bill reference number</td>
+<td>tests/purchaseBillsRoutes.test.ts</td>
+<td>FR-AP-02.1</td>
+<td>BR-AP-02</td>
+</tr>
+<tr>
+<td>AP-009</td>
+<td>A purchase return before billing reverses GR/IR; after billing reduces payable; after payment creates vendor credit</td>
+<td>tests/purchaseReturnsAndStockTakes.test.ts</td>
+<td>FR-AP-07.1</td>
+<td>BR-AP-07</td>
+</tr>
+<tr>
+<td>AP-010</td>
+<td>A billed GRN cannot be reversed; a purchase return is the way</td>
+<td>tests/purchaseBillsRoutes.test.ts</td>
+<td>FR-AP-02.1</td>
+<td>BR-AP-02</td>
+</tr>
+<tr>
+<td>AP-011</td>
+<td>A purchase return in a filed VAT quarter is refused or posted in the open period as designed</td>
+<td>tests/purchaseReturnVatPeriod.test.ts</td>
+<td>FR-AP-07.1</td>
+<td>BR-AP-07</td>
+</tr>
+<tr>
+<td>AP-012</td>
+<td>Recurring expense templates post expenses and accruals through the same path</td>
+<td>tests/recurringTemplates.test.ts</td>
+<td>FR-AP-03.1</td>
+<td>BR-AP-03</td>
+</tr>
+<tr>
+<td>AP-013</td>
+<td>A settled accrual is counted once in payables and in the vendor statement</td>
+<td>tests/accrualSettlementVariance.test.ts</td>
+<td>FR-AP-03.1</td>
+<td>BR-AP-03</td>
+</tr>
+<tr>
+<td>AP-014</td>
+<td>A vendor refund receipt and its cancellation move cash and the vendor credit receivable</td>
+<td>Candidate</td>
+<td>FR-AP-07.1</td>
+<td>BR-AP-07</td>
+</tr>
+<tr>
+<td>AP-015</td>
+<td>An expense dated in a closed month or locked period is refused</td>
+<td>Candidate</td>
+<td>FR-AP-03.1</td>
+<td>BR-AP-03</td>
+</tr>
+<tr>
+<td>PAY-001</td>
+<td>One payment settles several expenses and bills: one voucher, one entry (payable Dr, bank Cr, vendor tag), N allocations</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AP-05.1</td>
+<td>BR-AP-05</td>
+</tr>
+<tr>
+<td>PAY-002</td>
+<td>A payment can include a surplus kept on account with the vendor</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AP-05.1</td>
+<td>BR-AP-05</td>
+</tr>
+<tr>
+<td>PAY-003</td>
+<td>A purchase bill can be settled by a vendor payment</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AP-05.1</td>
+<td>BR-AP-05</td>
+</tr>
+<tr>
+<td>PAY-004</td>
+<td>An expense settled through a payment cannot be cancelled until the payment is cancelled</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AP-05.1</td>
+<td>BR-AP-05</td>
+</tr>
+<tr>
+<td>PAY-005</td>
+<td>A vendor payment on account is an asset on the Balance Sheet until applied</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AP-06.1</td>
+<td>BR-AP-06</td>
+</tr>
+<tr>
+<td>PAY-006</td>
+<td>The vendor statement shows the payment at its full amount and its cancellation</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AP-06.1</td>
+<td>BR-AP-06</td>
+</tr>
+<tr>
+<td>PAY-007</td>
+<td>A cancelled payment brings the cash back into the bank balance</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AP-06.1</td>
+<td>BR-AP-06</td>
+</tr>
+<tr>
+<td>PAY-008</td>
+<td>Payments need vendorPayments.create; reading read; cancelling delete</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AP-05.1, FR-SEC-02.1</td>
+<td>BR-AP-05, BR-SEC-02</td>
+</tr>
+<tr>
+<td>PAY-009</td>
+<td>A payment to a vendor with a negative open item (reversed paid expense) nets correctly</td>
+<td>Candidate</td>
+<td>FR-AP-05.1</td>
+<td>BR-AP-05</td>
+</tr>
+<tr>
+<td>PAY-010</td>
+<td>The Pay Vendor screen lists bills and expenses together oldest first</td>
+<td>Manual</td>
+<td>FR-AP-06.1</td>
+<td>BR-AP-06</td>
+</tr>
+<tr>
+<td>PAY-011</td>
+<td>Payment approval thresholds route large payments to a second person</td>
+<td>Manual</td>
+<td>FR-AP-08.1</td>
+<td>BR-AP-08</td>
+</tr>
+<tr>
+<td>SUB-001</td>
+<td>Every receivable line carries its customer on whichever control account it posts and every payable line its vendor</td>
+<td>tests/ledgerSubledger.test.ts</td>
+<td>FR-JNL-04.1</td>
+<td>BR-JNL-04</td>
+</tr>
+<tr>
+<td>SUB-002</td>
+<td>Balances per party add up to the Trial Balance control accounts</td>
+<td>tests/ledgerSubledger.test.ts</td>
+<td>FR-RPT-08.1</td>
+<td>BR-RPT-08</td>
+</tr>
+<tr>
+<td>SUB-003</td>
+<td>A party ledger shows opening balance, postings, running balance and document number</td>
+<td>tests/ledgerSubledger.test.ts</td>
+<td>FR-AR-06.1, FR-AR-07.1</td>
+<td>BR-AR-06, BR-AR-07</td>
+</tr>
+<tr>
+<td>SUB-004</td>
+<td>Aging ages open charges from their document date and sets payments against the oldest charge first</td>
+<td>tests/ledgerSubledger.test.ts</td>
+<td>FR-AR-06.1</td>
+<td>BR-AR-06</td>
+</tr>
+<tr>
+<td>SUB-005</td>
+<td>Aging bucket boundaries: day 30 is in the first bucket, day 31 in the next</td>
+<td>Candidate</td>
+<td>FR-AR-06.1</td>
+<td>BR-AR-06</td>
+</tr>
+<tr>
+<td>SUB-006</td>
+<td>The payables aging mirrors it for vendors</td>
+<td>tests/ledgerSubledger.test.ts</td>
+<td>FR-AR-06.1, FR-AP-06.1</td>
+<td>BR-AR-06, BR-AP-06</td>
+</tr>
+<tr>
+<td>SUB-007</td>
+<td>Money held on account is shown in its own column and nets the party total</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-06.1</td>
+<td>BR-AR-06</td>
+</tr>
+<tr>
+<td>SUB-008</td>
+<td>Aging and party ledger export to Excel</td>
+<td>tests/ledgerSubledger.test.ts</td>
+<td>FR-AR-07.1</td>
+<td>BR-AR-07</td>
+</tr>
+<tr>
+<td>SUB-009</td>
+<td>The backfill repairs an untagged historical line and is idempotent</td>
+<td>tests/ledgerSubledger.test.ts</td>
+<td>FR-AR-06.1</td>
+<td>BR-AR-06</td>
+</tr>
+<tr>
+<td>SUB-010</td>
+<td>Each subledger report needs its own permission and other companies see nothing</td>
+<td>tests/ledgerSubledger.test.ts</td>
+<td>FR-AR-06.1</td>
+<td>BR-AR-06</td>
+</tr>
+<tr>
+<td>SUB-011</td>
+<td>A customer with no activity does not appear; one with a zero balance only on request</td>
+<td>Candidate</td>
+<td>FR-AR-06.1</td>
+<td>BR-AR-06</td>
+</tr>
+<tr>
+<td>BNK-001</td>
+<td>A session lists the bank account ledger lines up to the statement date and nothing else</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-01.1</td>
+<td>BR-BNK-01</td>
+</tr>
+<tr>
+<td>BNK-002</td>
+<td>Only one reconciliation per bank can be in progress</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-01.1</td>
+<td>BR-BNK-01</td>
+</tr>
+<tr>
+<td>BNK-003</td>
+<td>A new statement date must be after the last completed reconciliation of the bank</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-01.1</td>
+<td>BR-BNK-01</td>
+</tr>
+<tr>
+<td>BNK-004</td>
+<td>A statement date in the future is refused</td>
+<td>Candidate</td>
+<td>FR-BNK-01.1</td>
+<td>BR-BNK-01</td>
+</tr>
+<tr>
+<td>BNK-005</td>
+<td>The reconciling formula is live: statement + deposits in transit - payments outstanding equals the book balance when cleared</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-03.1</td>
+<td>BR-BNK-03</td>
+</tr>
+<tr>
+<td>BNK-006</td>
+<td>Completion is blocked while the difference is not zero and the reason is shown</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-03.1</td>
+<td>BR-BNK-03</td>
+</tr>
+<tr>
+<td>BNK-007</td>
+<td>Completion is blocked while a statement line is unmatched</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-03.1</td>
+<td>BR-BNK-03</td>
+</tr>
+<tr>
+<td>BNK-008</td>
+<td>Statement lines can be typed or imported; a second import of the same file adds nothing</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-06.1</td>
+<td>BR-BNK-06</td>
+</tr>
+<tr>
+<td>BNK-009</td>
+<td>Two equal lines inside one file (two equal fees on a day) are both kept</td>
+<td>Candidate</td>
+<td>FR-BNK-06.1</td>
+<td>BR-BNK-06</td>
+</tr>
+<tr>
+<td>BNK-010</td>
+<td>Invalid statement lines (bad date, zero amount, too many rows) are refused</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-06.1</td>
+<td>BR-BNK-06</td>
+</tr>
+<tr>
+<td>BNK-011</td>
+<td>CSV import accepts day-first dates, Debit/Credit columns, quoted text and semicolons</td>
+<td>Candidate</td>
+<td>FR-BNK-06.1</td>
+<td>BR-BNK-06</td>
+</tr>
+<tr>
+<td>BNK-012</td>
+<td>Match suggestions pair equal amounts within 10 days without applying them</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-02.1</td>
+<td>BR-BNK-02</td>
+</tr>
+<tr>
+<td>BNK-013</td>
+<td>Matching refuses unequal amounts, already matched lines and lines of another bank or company</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-02.1</td>
+<td>BR-BNK-02</td>
+</tr>
+<tr>
+<td>BNK-014</td>
+<td>A matched ledger line cannot be un-cleared until it is un-matched</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-02.1</td>
+<td>BR-BNK-02</td>
+</tr>
+<tr>
+<td>BNK-015</td>
+<td>A line cleared in a completed reconciliation cannot be cleared again elsewhere</td>
+<td>Candidate</td>
+<td>FR-BNK-02.1</td>
+<td>BR-BNK-02</td>
+</tr>
+<tr>
+<td>BNK-016</td>
+<td>A bank fee on the statement is posted from the session as a voucher and an entry, matched at once</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-04.1</td>
+<td>BR-BNK-04</td>
+</tr>
+<tr>
+<td>BNK-017</td>
+<td>Bank interest posts as a Receipt voucher to an income account</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-04.1</td>
+<td>BR-BNK-04</td>
+</tr>
+<tr>
+<td>BNK-018</td>
+<td>A charge to a revenue account, interest to an expense account, or any non P&amp;L account is refused</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-04.1</td>
+<td>BR-BNK-04</td>
+</tr>
+<tr>
+<td>BNK-019</td>
+<td>Bank charges and interest flow into the document based reports: balance sheet balances, trial balance lines, P&amp;L, cash flow</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-08.1</td>
+<td>BR-BNK-08</td>
+</tr>
+<tr>
+<td>BNK-020</td>
+<td>A fee entry can be reversed while the session is open and the reversal does not clear</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-04.1</td>
+<td>BR-BNK-04</td>
+</tr>
+<tr>
+<td>BNK-021</td>
+<td>Completion freezes the book balance and locks the cleared lines</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-05.1</td>
+<td>BR-BNK-05</td>
+</tr>
+<tr>
+<td>BNK-022</td>
+<td>A document behind a cleared line cannot be cancelled (receipt, payment) and nothing is half done</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-05.1</td>
+<td>BR-BNK-05</td>
+</tr>
+<tr>
+<td>BNK-023</td>
+<td>Reopening needs its own permission, a reason, only the latest completed session, and is audited</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-05.1, FR-SEC-03.1</td>
+<td>BR-BNK-05, BR-SEC-03</td>
+</tr>
+<tr>
+<td>BNK-024</td>
+<td>After reopening, un-matching and un-clearing a line frees its document for cancellation</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-05.1</td>
+<td>BR-BNK-05</td>
+</tr>
+<tr>
+<td>BNK-025</td>
+<td>A session can be discarded, which releases every line it cleared</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-05.1</td>
+<td>BR-BNK-05</td>
+</tr>
+<tr>
+<td>BNK-026</td>
+<td>A reconciliation of another company is invisible and untouchable</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-SEC-01.1</td>
+<td>BR-SEC-01</td>
+</tr>
+<tr>
+<td>BNK-027</td>
+<td>Permissions are separate: read, create, match, adjust, complete, reopen</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-BNK-05.1, FR-SEC-02.1</td>
+<td>BR-BNK-05, BR-SEC-02</td>
+</tr>
+<tr>
+<td>BNK-028</td>
+<td>Row-level security hides other companies sessions and statement lines without a WHERE clause</td>
+<td>Candidate</td>
+<td>FR-SEC-01.1</td>
+<td>BR-SEC-01</td>
+</tr>
+<tr>
+<td>BNK-029</td>
+<td>A bank with an opening balance reconciles from its first statement</td>
+<td>Candidate</td>
+<td>FR-BNK-02.1</td>
+<td>BR-BNK-02</td>
+</tr>
+<tr>
+<td>BNK-030</td>
+<td>Large bank file: 2000 lines import and match within the time limit</td>
+<td>Candidate</td>
+<td>FR-BNK-06.1</td>
+<td>BR-BNK-06</td>
+</tr>
+<tr>
+<td>BNK-031</td>
+<td>The UI shows green check when the formula balances and disables Complete otherwise</td>
+<td>Manual</td>
+<td>FR-BNK-03.1</td>
+<td>BR-BNK-03</td>
+</tr>
+<tr>
+<td>PRT-001</td>
+<td>A Receipt Voucher shows party, amount in words, bank, settled documents, held on account and the accounting entry</td>
+<td>Manual</td>
+<td>FR-PRT-01.1</td>
+<td>BR-PRT-01</td>
+</tr>
+<tr>
+<td>PRT-002</td>
+<td>A Payment Voucher mirrors it for vendors with Paid to / Paid from wording</td>
+<td>Manual</td>
+<td>FR-PRT-01.1</td>
+<td>BR-PRT-01</td>
+</tr>
+<tr>
+<td>PRT-003</td>
+<td>A cancelled voucher prints a CANCELLED stamp, strikes cancelled allocations and shows the reversing entry</td>
+<td>Manual</td>
+<td>FR-PRT-01.1</td>
+<td>BR-PRT-01</td>
+</tr>
+<tr>
+<td>PRT-004</td>
+<td>Voucher print data carries the posting with the party tag and the preparer</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-PRT-01.1</td>
+<td>BR-PRT-01</td>
+</tr>
+<tr>
+<td>PRT-005</td>
+<td>A Journal Voucher prints any manual journal (any status) and any posted entry with account, party, dimensions and totals in words</td>
+<td>Manual</td>
+<td>FR-PRT-02.1</td>
+<td>BR-PRT-02</td>
+</tr>
+<tr>
+<td>PRT-006</td>
+<td>A Journal Voucher shows the approval trail: prepared by, approved by, self-approved flag</td>
+<td>Manual</td>
+<td>FR-PRT-02.1</td>
+<td>BR-PRT-02</td>
+</tr>
+<tr>
+<td>PRT-007</td>
+<td>The Bank Reconciliation Statement shows statement balance, deposits in transit, payments outstanding, adjusted balance, book balance, difference and the lists</td>
+<td>Manual</td>
+<td>FR-PRT-03.1</td>
+<td>BR-PRT-03</td>
+</tr>
+<tr>
+<td>PRT-008</td>
+<td>Arabic and Urdu vouchers print right to left with the right fonts</td>
+<td>Manual</td>
+<td>FR-PRT-04.1</td>
+<td>BR-PRT-04</td>
+</tr>
+<tr>
+<td>PRT-009</td>
+<td>The print popup keeps colours, page size and no blank second page</td>
+<td>Manual</td>
+<td>FR-PRT-04.1</td>
+<td>BR-PRT-04</td>
+</tr>
+<tr>
+<td>PRT-010</td>
+<td>Print overlay sits above the detail drawer</td>
+<td>Manual</td>
+<td>FR-PRT-04.1</td>
+<td>BR-PRT-04</td>
+</tr>
+<tr>
+<td>PRT-011</td>
+<td>A voucher of another company cannot be printed</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-PRT-01.1</td>
+<td>BR-PRT-01</td>
+</tr>
+<tr>
+<td>PRT-012</td>
+<td>Print data for a journal entry of another branch is hidden from a branch-restricted user</td>
+<td>Candidate</td>
+<td>FR-PRT-02.1</td>
+<td>BR-PRT-02</td>
+</tr>
+<tr>
+<td>PRT-013</td>
+<td>Amount in words is correct for 0.50, 1.00, 1000000.99 and negative totals</td>
+<td>Candidate</td>
+<td>FR-LOC-03.1</td>
+<td>BR-LOC-03</td>
+</tr>
+<tr>
+<td>XR-001</td>
+<td>Balance sheet balances after every kind of activity (documents, settlements, bank adjustments)</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-AR-08.1, FR-BNK-08.1</td>
+<td>BR-AR-08, BR-BNK-08</td>
+</tr>
+<tr>
+<td>XR-002</td>
+<td>Balance sheet at past dates reflects payments made later</td>
+<td>tests/balanceSheetAsAtPastDate.test.ts</td>
+<td>FR-AR-08.1</td>
+<td>BR-AR-08</td>
+</tr>
+<tr>
+<td>XR-003</td>
+<td>Trial balance debits equal credits in every period</td>
+<td>Candidate</td>
+<td>FR-RPT-08.1</td>
+<td>BR-RPT-08</td>
+</tr>
+<tr>
+<td>XR-004</td>
+<td>A month-close stores a profit that equals the profit and loss for that month</td>
+<td>Candidate</td>
+<td>FR-PER-07.1</td>
+<td>BR-PER-07</td>
+</tr>
+<tr>
+<td>XR-005</td>
+<td>Customer and vendor statements end at the ledger balance of the party</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-08.1</td>
+<td>BR-AR-08</td>
+</tr>
+<tr>
+<td>XR-006</td>
+<td>Dashboard KPIs equal the underlying reports</td>
+<td>tests/reportsReconcileLedgerScenario.test.ts</td>
+<td>FR-RPT-08.1</td>
+<td>BR-RPT-08</td>
+</tr>
+<tr>
+<td>XR-007</td>
+<td>Reports are computed server side and never from the capped state list</td>
+<td>tests/apiStateGlobalCapIsolation.test.ts</td>
+<td>FR-RPT-09.1</td>
+<td>BR-RPT-09</td>
+</tr>
+<tr>
+<td>XR-008</td>
+<td>A branch-restricted report excludes other branches and carries a notice</td>
+<td>Candidate</td>
+<td>FR-RPT-10.1</td>
+<td>BR-RPT-10</td>
+</tr>
+<tr>
+<td>XR-009</td>
+<td>Outstanding report lists open invoices, expenses and bills with the paid amounts that settlements moved</td>
+<td>tests/settlements.test.ts</td>
+<td>FR-AR-08.1</td>
+<td>BR-AR-08</td>
+</tr>
+<tr>
+<td>SEC-001</td>
+<td>Every table has row-level security with a real predicate</td>
+<td>tests/rlsPolicyCoverage.test.ts</td>
+<td>FR-SEC-01.1</td>
+<td>BR-SEC-01</td>
+</tr>
+<tr>
+<td>SEC-002</td>
+<td>A restricted tenant connection with no WHERE clause sees only its own company rows (per new table)</td>
+<td>Candidate</td>
+<td>FR-SEC-01.1</td>
+<td>BR-SEC-01</td>
+</tr>
+<tr>
+<td>SEC-003</td>
+<td>No route accepts a client supplied company id</td>
+<td>tests/companyScoping.test.ts</td>
+<td>FR-RPT-09.1</td>
+<td>BR-RPT-09</td>
+</tr>
+<tr>
+<td>SEC-004</td>
+<td>Foreign keys of one company cannot point into another (composite keys)</td>
+<td>tests/crossCompanyIsolation.test.ts</td>
+<td>FR-SEC-01.1</td>
+<td>BR-SEC-01</td>
+</tr>
+<tr>
+<td>SEC-005</td>
+<td>The static isolation tripwire passes</td>
+<td>Candidate</td>
+<td>FR-SEC-01.1</td>
+<td>BR-SEC-01</td>
+</tr>
+<tr>
+<td>SEC-006</td>
+<td>Permission matrix: each route refuses a user lacking its key and each key unlocks only its own action</td>
+<td>tests/permissionCrudModel.test.ts</td>
+<td>FR-SEC-02.1</td>
+<td>BR-SEC-02</td>
+</tr>
+<tr>
+<td>SEC-007</td>
+<td>A super-admin acting on a company only affects that company</td>
+<td>tests/companyScoping.test.ts</td>
+<td>FR-SEC-02.1</td>
+<td>BR-SEC-02</td>
+</tr>
+<tr>
+<td>SEC-008</td>
+<td>Text fields are stored and rendered without script execution (XSS) on screens and prints</td>
+<td>Manual</td>
+<td>FR-SEC-02.1</td>
+<td>BR-SEC-02</td>
+</tr>
+<tr>
+<td>SEC-009</td>
+<td>SQL special characters in search and description fields do not alter queries</td>
+<td>Candidate</td>
+<td>FR-SEC-02.1</td>
+<td>BR-SEC-02</td>
+</tr>
+<tr>
+<td>SEC-010</td>
+<td>An expired or foreign session id is refused</td>
+<td>Candidate</td>
+<td>FR-SEC-02.1</td>
+<td>BR-SEC-02</td>
+</tr>
+<tr>
+<td>SEC-011</td>
+<td>Audit log records posting overrides, reopenings and cancellations with user and company</td>
+<td>tests/auditLogCoverage.test.ts</td>
+<td>FR-COA-08.1, FR-SEC-03.1</td>
+<td>BR-COA-08, BR-SEC-03</td>
+</tr>
+<tr>
+<td>SEC-012</td>
+<td>Bulk &quot;save everything&quot; endpoints do not exist</td>
+<td>tests/noBulkSave.test.ts</td>
+<td>FR-SEC-04.1</td>
+<td>BR-SEC-04</td>
+</tr>
+<tr>
+<td>SEC-013</td>
+<td>Passwords and secrets are never returned by any list endpoint</td>
+<td>Candidate</td>
+<td>FR-SEC-02.1</td>
+<td>BR-SEC-02</td>
+</tr>
+<tr>
+<td>SEC-014</td>
+<td>Rate limiting protects login and the public onboarding form</td>
+<td>tests/companyOnboarding.test.ts</td>
+<td>FR-SEC-02.1</td>
+<td>BR-SEC-02</td>
+</tr>
+<tr>
+<td>I18N-001</td>
+<td>Every new screen string has an Arabic and Urdu translation in the live table</td>
+<td>Candidate</td>
+<td>FR-LOC-01.1</td>
+<td>BR-LOC-01</td>
+</tr>
+<tr>
+<td>I18N-002</td>
+<td>Right-to-left layout mirrors tables, totals and drawers</td>
+<td>Manual</td>
+<td>FR-LOC-02.1</td>
+<td>BR-LOC-02</td>
+</tr>
+<tr>
+<td>I18N-003</td>
+<td>Dates and numbers keep the Western digit format everywhere</td>
+<td>Manual</td>
+<td>FR-LOC-02.1</td>
+<td>BR-LOC-02</td>
+</tr>
+<tr>
+<td>I18N-004</td>
+<td>Account names show in Arabic when present on the General Ledger and vouchers</td>
+<td>Manual</td>
+<td>FR-LOC-02.1</td>
+<td>BR-LOC-02</td>
+</tr>
+<tr>
+<td>I18N-005</td>
+<td>No translated text is cut off in buttons, tabs and column headers (longer Arabic and Urdu strings)</td>
+<td>Manual</td>
+<td>FR-LOC-02.1</td>
+<td>BR-LOC-02</td>
+</tr>
+<tr>
+<td>I18N-006</td>
+<td>Server messages shown to the user are readable in the UI language or clearly English</td>
+<td>Manual</td>
+<td>FR-LOC-01.1</td>
+<td>BR-LOC-01</td>
+</tr>
+<tr>
+<td>I18N-007</td>
+<td>Auto-registered missing keys do not create junk rows for tenant data (names, descriptions)</td>
+<td>Candidate</td>
+<td>FR-LOC-01.1</td>
+<td>BR-LOC-01</td>
+</tr>
+<tr>
+<td>NFR-001</td>
+<td>Concurrent receipts for the same customer never over-allocate an invoice</td>
+<td>Candidate</td>
+<td>FR-NFR-01.1</td>
+<td>BR-NFR-01</td>
+</tr>
+<tr>
+<td>NFR-002</td>
+<td>Concurrent invoice creation yields unique gap-free numbers</td>
+<td>tests/documentNumbering.test.ts</td>
+<td>FR-NFR-01.1</td>
+<td>BR-NFR-01</td>
+</tr>
+<tr>
+<td>NFR-003</td>
+<td>Hash-chain reservation serialises ZATCA invoices per company only</td>
+<td>Candidate</td>
+<td>FR-NFR-01.1</td>
+<td>BR-NFR-01</td>
+</tr>
+<tr>
+<td>NFR-004</td>
+<td>A request that fails half way leaves nothing behind (transaction rollback)</td>
+<td>tests/bankReconciliation.test.ts</td>
+<td>FR-NFR-02.1</td>
+<td>BR-NFR-02</td>
+</tr>
+<tr>
+<td>NFR-005</td>
+<td>Retrying a failed or duplicated request is safe</td>
+<td>Candidate</td>
+<td>FR-NFR-02.1</td>
+<td>BR-NFR-02</td>
+</tr>
+<tr>
+<td>NFR-006</td>
+<td>Trial balance for a company with 100000 lines under 5 seconds</td>
+<td>Candidate</td>
+<td>FR-NFR-01.1</td>
+<td>BR-NFR-01</td>
+</tr>
+<tr>
+<td>NFR-007</td>
+<td>Listing receipts, journals and sessions pages with a limit and stays fast at 10000 rows</td>
+<td>Candidate</td>
+<td>FR-NFR-01.1</td>
+<td>BR-NFR-01</td>
+</tr>
+<tr>
+<td>NFR-008</td>
+<td>The dev server restart picks up backend edits</td>
+<td>Manual</td>
+<td>FR-NFR-03.1</td>
+<td>BR-NFR-03</td>
+</tr>
+<tr>
+<td>NFR-009</td>
+<td>Thousands of concurrent users: login, dashboard and posting stay within the agreed latency</td>
+<td>Candidate</td>
+<td>FR-NFR-01.1</td>
+<td>BR-NFR-01</td>
+</tr>
+<tr>
+<td>REL-001</td>
+<td>The release script is idempotent: running it twice changes nothing the second time</td>
+<td>Manual</td>
+<td>FR-NFR-04.1</td>
+<td>BR-NFR-04</td>
+</tr>
+<tr>
+<td>REL-002</td>
+<td>The date migration renames columns in place, keeping data</td>
+<td>Manual</td>
+<td>FR-NFR-04.1</td>
+<td>BR-NFR-04</td>
+</tr>
+<tr>
+<td>REL-003</td>
+<td>db:push shows no drop, rename or retype on the release</td>
+<td>Manual</td>
+<td>FR-NFR-04.1</td>
+<td>BR-NFR-04</td>
+</tr>
+<tr>
+<td>REL-004</td>
+<td>Row-level security predicates are applied after every push and verified</td>
+<td>tests/rlsPolicyCoverage.test.ts</td>
+<td>FR-NFR-04.1</td>
+<td>BR-NFR-04</td>
+</tr>
+<tr>
+<td>REL-005</td>
+<td>Check constraints match schema.ts after push</td>
+<td>Manual</td>
+<td>FR-NFR-04.1</td>
+<td>BR-NFR-04</td>
+</tr>
+<tr>
+<td>REL-006</td>
+<td>The party-tag backfill tags history and a second run tags nothing</td>
+<td>tests/ledgerSubledger.test.ts</td>
+<td>FR-NFR-04.1</td>
+<td>BR-NFR-04</td>
+</tr>
+<tr>
+<td>REL-007</td>
+<td>Translations are applied without overwriting edited ones</td>
+<td>Manual</td>
+<td>FR-NFR-04.1</td>
+<td>BR-NFR-04</td>
+</tr>
+<tr>
+<td>REL-008</td>
+<td>Rollback to the previous tag restores service and never touches the database</td>
+<td>Manual</td>
+<td>FR-NFR-04.1</td>
+<td>BR-NFR-04</td>
+</tr>
+<tr>
+<td>REL-009</td>
+<td>Live (master) never receives v2 changes</td>
+<td>Manual</td>
+<td>FR-NFR-04.1, FR-NFR-06.1</td>
+<td>BR-NFR-04, BR-NFR-06</td>
+</tr>
+</tbody></table></div>
+<h3 id="traceability---2">3. Test cases not tied to a requirement</h3>
+<p>None.</p>
+<h3 id="traceability--p-2">4. Sprint → business requirement</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Sprint</th>
+<th>Item</th>
+<th>Business requirements</th>
+</tr>
+</thead><tbody><tr>
+<td>S0 Platform and environments</td>
+<td>S0-01 Demo environment, release script, clone-and-scrub of Live data</td>
+<td>BR-NFR-04</td>
+</tr>
+<tr>
+<td>S1 General Ledger foundation</td>
+<td>S1-01 Company chart, starter chart, control accounts, deactivation rules</td>
+<td>BR-COA-01, BR-COA-02, BR-COA-03, BR-COA-04</td>
+</tr>
+<tr>
+<td>S1 General Ledger foundation</td>
+<td>S1-02 Account mapping, expense-category accounts, Excel import/export, audit</td>
+<td>BR-COA-06, BR-COA-07, BR-COA-08</td>
+</tr>
+<tr>
+<td>S1 General Ledger foundation</td>
+<td>S1-03 Manual journals: maker-checker, balance rule, immutability, numbering, reversal, self-approval setting</td>
+<td>BR-JNL-01, BR-JNL-02, BR-JNL-03, BR-JNL-04, BR-JNL-05, BR-JNL-06, BR-JNL-07</td>
+</tr>
+<tr>
+<td>S1 General Ledger foundation</td>
+<td>S1-04 Journal listing and entry detail</td>
+<td>BR-JNL-08</td>
+</tr>
+<tr>
+<td>S1 General Ledger foundation</td>
+<td>S1-05 Opening balances</td>
+<td>BR-JNL-09</td>
+</tr>
+<tr>
+<td>S1 General Ledger foundation</td>
+<td>S1-06 General ledger detail and Ledger vs Documents</td>
+<td>BR-RPT-01, BR-RPT-08, BR-RPT-09</td>
+</tr>
+<tr>
+<td>S1 General Ledger foundation</td>
+<td>S1-07 Permission modules, RLS on new tables, EN/AR/UR text</td>
+<td>BR-SEC-01, BR-SEC-02, BR-SEC-03, BR-SEC-04, BR-LOC-01, BR-LOC-02, BR-NFR-01, BR-NFR-02</td>
+</tr>
+<tr>
+<td>S2 Dimensions and report engine</td>
+<td>S2-01 Dimension types, values, cost centres, account rules, tagging in the posting engine, filters</td>
+<td>BR-DIM-01, BR-DIM-02, BR-DIM-03, BR-DIM-04, BR-DIM-05</td>
+</tr>
+<tr>
+<td>S2 Dimensions and report engine</td>
+<td>S2-02 Report definition engine, five standard statements, designer, drill-down, comparatives, Excel, integrity indicators</td>
+<td>BR-RPT-02, BR-RPT-03, BR-RPT-04, BR-RPT-05, BR-RPT-06, BR-RPT-07, BR-RPT-10</td>
+</tr>
+<tr>
+<td>S3 Control accounts and posting profiles</td>
+<td>S3-01 Customer/vendor/bank control accounts and default dimensions</td>
+<td>BR-AR-02, BR-AP-04</td>
+</tr>
+<tr>
+<td>S4 Document date standard</td>
+<td>S4-01 Date-field migration, API and UI renames, standard and skill</td>
+<td>BR-DAT-01, BR-DAT-02, BR-DAT-03, BR-DAT-04</td>
+</tr>
+<tr>
+<td>S5 Posting control</td>
+<td>S5-01 Period rules, lock date, window, reason, overrides, audit, screen</td>
+<td>BR-PER-01, BR-PER-02, BR-PER-03, BR-PER-04, BR-PER-05, BR-PER-06</td>
+</tr>
+<tr>
+<td>S6 Receivable and payable subledgers</td>
+<td>S6-01 Party tags on lines, back-fill, aging, party ledger, control reconciliation, R8 rules, screens, export</td>
+<td>BR-AR-01, BR-AR-06, BR-AR-07, BR-AP-03, BR-AP-06</td>
+</tr>
+<tr>
+<td>S6 Receivable and payable subledgers</td>
+<td>S6-02 GRN, bill, return and expense postings confirmed against the subledger</td>
+<td>BR-AP-01, BR-AP-02, BR-AP-07</td>
+</tr>
+<tr>
+<td>S7 Receipts and vendor payments</td>
+<td>S7-01 Settlements engine, routes, screens</td>
+<td>BR-AR-03, BR-AR-04, BR-AR-05, BR-AP-05</td>
+</tr>
+<tr>
+<td>S7 Receipts and vendor payments</td>
+<td>S7-02 Document-based reports understand settlements and money on account</td>
+<td>BR-AR-08</td>
+</tr>
+<tr>
+<td>S8 Bank reconciliation</td>
+<td>S8-01 Sessions, statement lines, matching, formula, completion, lock, reopen, CSV import</td>
+<td>BR-BNK-01, BR-BNK-02, BR-BNK-03, BR-BNK-05, BR-BNK-06</td>
+</tr>
+<tr>
+<td>S8 Bank reconciliation</td>
+<td>S8-02 Bank fee / interest entries and their effect on every statement</td>
+<td>BR-BNK-04, BR-BNK-08</td>
+</tr>
+<tr>
+<td>S9 Print-outs and test catalogue</td>
+<td>S9-01 Receipt/Payment voucher, Journal voucher, Reconciliation statement, RTL</td>
+<td>BR-PRT-01, BR-PRT-02, BR-PRT-03, BR-PRT-04</td>
+</tr>
+<tr>
+<td>S9 Print-outs and test catalogue</td>
+<td>S9-02 Test-case catalogue and generator</td>
+<td>BR-NFR-03</td>
+</tr>
+<tr>
+<td>S10 Documentation set</td>
+<td>S10-01 Generated BRD, SRS, sprint log, traceability matrix and annexes</td>
+<td>BR-NFR-05</td>
+</tr>
+<tr>
+<td>S11 Approval rules</td>
+<td>S11-01 Approval engine, delivered for vendor payments, vendor bills and credit notes: rules by amount band, sequential levels, requests, append-only history, My Approvals worklist</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>S11 Approval rules</td>
+<td>S11-02 Manager hierarchy (done: manager on the user form, validated) and delegation with validity dates (done: delegation card on My Approvals) as approver sources, plus recall by the submitter</td>
+<td>BR-JNL-10</td>
+</tr>
+<tr>
+<td>S11 Approval rules</td>
+<td>S11-03 Company-level self-approval setting for every document type (replaces the journal-only switch)</td>
+<td>BR-JNL-07</td>
+</tr>
+<tr>
+<td>S11 Approval rules</td>
+<td>S11-04 Manual journals held by a rule follow its levels (done); with no rule the single maker-checker step is unchanged</td>
+<td>BR-JNL-01</td>
+</tr>
+<tr>
+<td>S12 Period control</td>
+<td>S12-01 Ledger-verified month close</td>
+<td>BR-PER-07</td>
+</tr>
+<tr>
+<td>S12 Period control</td>
+<td>S12-02 Month-close readiness checklist</td>
+<td>BR-PER-08</td>
+</tr>
+<tr>
+<td>S12 Period control</td>
+<td>S12-03 Restricted status and adjustment period</td>
+<td>BR-PER-09</td>
+</tr>
+<tr>
+<td>S12 Period control</td>
+<td>S12-04 Per-module close dates</td>
+<td>BR-PER-11</td>
+</tr>
+<tr>
+<td>S13 Year-end close</td>
+<td>S13-01 Year-end close</td>
+<td>BR-PER-10</td>
+</tr>
+<tr>
+<td>S14 Tax postings</td>
+<td>S14-01 VAT settlement entry on filing</td>
+<td>BR-TAX-02</td>
+</tr>
+<tr>
+<td>S14 Tax postings</td>
+<td>S14-02 Tax code on lines; cash rounding posting</td>
+<td>BR-TAX-01, BR-TAX-03</td>
+</tr>
+<tr>
+<td>S15 Cost allocation</td>
+<td>S15-01 Allocation run</td>
+<td>BR-DIM-07</td>
+</tr>
+<tr>
+<td>S15 Cost allocation</td>
+<td>S15-02 Branch P&amp;L subtotals</td>
+<td>BR-DIM-08</td>
+</tr>
+<tr>
+<td>S16 Dimensions on documents</td>
+<td>S16-01 Document dimension capture</td>
+<td>BR-DIM-06</td>
+</tr>
+<tr>
+<td>S17 Receivables enhancements</td>
+<td>S17-01 Credit note and customer credit application</td>
+<td>BR-AR-09</td>
+</tr>
+<tr>
+<td>S17 Receivables enhancements</td>
+<td>S17-02 Statement print and reminders</td>
+<td>BR-AR-10</td>
+</tr>
+<tr>
+<td>S18 Payables enhancements</td>
+<td>S18-01 Payment approval thresholds</td>
+<td>BR-AP-08</td>
+</tr>
+<tr>
+<td>S18 Payables enhancements</td>
+<td>S18-02 Payment runs</td>
+<td>BR-AP-09</td>
+</tr>
+<tr>
+<td>S19 Reporting cut-over and printing</td>
+<td>S19-01 Printed financial statements</td>
+<td>BR-RPT-11</td>
+</tr>
+<tr>
+<td>S19 Reporting cut-over and printing</td>
+<td>S19-02 Cut-over gate and retirement</td>
+<td>BR-RPT-12</td>
+</tr>
+<tr>
+<td>S20 Hardening and Live promotion</td>
+<td>S20-01 Excel statement import and saved layouts</td>
+<td>BR-BNK-07</td>
+</tr>
+<tr>
+<td>S20 Hardening and Live promotion</td>
+<td>S20-02 Amount in words in Arabic and Urdu</td>
+<td>BR-LOC-03</td>
+</tr>
+<tr>
+<td>S20 Hardening and Live promotion</td>
+<td>S20-03 References panel before deactivation</td>
+<td>BR-COA-05</td>
+</tr>
+<tr>
+<td>S20 Hardening and Live promotion</td>
+<td>S20-04 Controlled promotion of v2 to Live on a production copy first</td>
+<td>BR-NFR-06</td>
+</tr>
+</tbody></table></div>
+<h3 id="traceability--p-3">5. Blueprint requirement → business requirement</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Blueprint</th>
+<th>BR</th>
+<th>Status</th>
+</tr>
+</thead><tbody><tr>
+<td>FR-AP-01</td>
+<td>BR-AP-01</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-AP-02</td>
+<td>BR-AP-02</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-AP-03</td>
+<td>BR-AP-03</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-AP-04</td>
+<td>BR-AP-05</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-AP-04</td>
+<td>BR-AP-06</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-APR-01</td>
+<td>BR-JNL-10</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td>FR-APR-02</td>
+<td>BR-JNL-10</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td>FR-APR-02</td>
+<td>BR-AP-08</td>
+<td>Planned</td>
+</tr>
+<tr>
+<td>FR-APR-03</td>
+<td>BR-JNL-07</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-APR-03</td>
+<td>BR-JNL-10</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td>FR-APR-04</td>
+<td>BR-JNL-10</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td>FR-APR-05</td>
+<td>BR-JNL-10</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td>FR-APR-06</td>
+<td>BR-JNL-10</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td>FR-AR-01</td>
+<td>BR-AR-01</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-AR-02</td>
+<td>BR-AR-03</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-AR-02</td>
+<td>BR-AR-04</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-AR-03</td>
+<td>BR-AR-06</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-AR-03</td>
+<td>BR-AR-07</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-BANK-01</td>
+<td>BR-BNK-01</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-BANK-02</td>
+<td>BR-BNK-02</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-BANK-03</td>
+<td>BR-BNK-03</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-BANK-04</td>
+<td>BR-BNK-04</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-BANK-05</td>
+<td>BR-BNK-05</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-CLOSE-01</td>
+<td>BR-PER-07</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td>FR-CLOSE-02</td>
+<td>BR-PER-07</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td>FR-CLOSE-03</td>
+<td>BR-PER-08</td>
+<td>Planned</td>
+</tr>
+<tr>
+<td>FR-CLOSE-04</td>
+<td>BR-PER-10</td>
+<td>Planned</td>
+</tr>
+<tr>
+<td>FR-CLOSE-05</td>
+<td>BR-PER-10</td>
+<td>Planned</td>
+</tr>
+<tr>
+<td>FR-CLOSE-06</td>
+<td>BR-PER-10</td>
+<td>Planned</td>
+</tr>
+<tr>
+<td>FR-CLOSE-07</td>
+<td>BR-PER-09</td>
+<td>Planned</td>
+</tr>
+<tr>
+<td>FR-CLOSE-08</td>
+<td>BR-PER-09</td>
+<td>Planned</td>
+</tr>
+<tr>
+<td>FR-COA-01</td>
+<td>BR-COA-01</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-COA-02</td>
+<td>BR-COA-03</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-COA-03</td>
+<td>BR-COA-02</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-COA-04</td>
+<td>BR-COA-04</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-COA-05</td>
+<td>BR-COA-05</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td>FR-DIM-01</td>
+<td>BR-DIM-01</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-DIM-02</td>
+<td>BR-DIM-02</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-DIM-03</td>
+<td>BR-DIM-07</td>
+<td>Planned</td>
+</tr>
+<tr>
+<td>FR-DIM-04</td>
+<td>BR-DIM-08</td>
+<td>Planned</td>
+</tr>
+<tr>
+<td>FR-JE-01</td>
+<td>BR-JNL-01</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-JE-01</td>
+<td>BR-JNL-02</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-JE-02</td>
+<td>BR-JNL-03</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-JE-03</td>
+<td>BR-JNL-04</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-JE-03</td>
+<td>BR-DIM-03</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-JE-04</td>
+<td>BR-JNL-05</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>FR-RND-01</td>
+<td>BR-TAX-03</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td>FR-RND-02</td>
+<td>BR-TAX-03</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td>FR-TAX-01</td>
+<td>BR-TAX-01</td>
+<td>Partial</td>
+</tr>
+<tr>
+<td>FR-TAX-02</td>
+<td>BR-TAX-02</td>
+<td>Planned</td>
+</tr>
+</tbody></table></div>
+</section></main></div><script>(function(){var l=[].slice.call(document.querySelectorAll('.rail a[href^="#"]'));var s=l.map(function(a){return document.querySelector(a.getAttribute('href'))}).filter(Boolean);if(!('IntersectionObserver' in window))return;var io=new IntersectionObserver(function(e){e.forEach(function(x){if(!x.isIntersecting)return;var id='#'+x.target.id;l.forEach(function(a){a.classList.toggle('active',a.getAttribute('href')===id)})})},{rootMargin:'-10% 0px -80% 0px'});s.forEach(function(x){io.observe(x)})})();</script></body></html>

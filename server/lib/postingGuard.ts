@@ -1,4 +1,4 @@
-// The one place that decides whether a posting date is allowed (docs/posting-control.md). Every route that posts something dated, or reverses something at its
+// The one place that decides whether a posting date is allowed (docs/design-notes/posting-control.md). Every route that posts something dated, or reverses something at its
 // own date, calls assertPostingAllowed() instead of repeating "open month + VAT quarter" pairs, so the rules below cannot be applied to one document type and
 // forgotten on another:
 //   1. the fiscal month: it must exist, be open, and not be in the future                           (validateTransactionDate)

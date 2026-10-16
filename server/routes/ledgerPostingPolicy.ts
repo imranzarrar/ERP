@@ -1,4 +1,4 @@
-// Posting control (docs/posting-control.md): the company's lock date and back-dating rules. Everyone signed in may READ the policy (document forms need it to ask
+// Posting control (docs/design-notes/posting-control.md): the company's lock date and back-dating rules. Everyone signed in may READ the policy (document forms need it to ask
 // for a reason); changing it needs postingControl.update. The rules themselves are enforced in server/lib/postingGuard.ts.
 import express from 'express';
 import { eq } from 'drizzle-orm';

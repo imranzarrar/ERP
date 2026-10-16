@@ -9,21 +9,21 @@
 // Conventions: money in SAR with 2 decimals; "today" is the server clock; every scenario runs in its own throw-away company unless it says otherwise.
 
 export const MODULES = [
-  { id: 'PC', name: 'Posting control and period locks', ref: 'docs/posting-control.md; Blueprint FR-PER' },
-  { id: 'DT', name: 'Document date standard', ref: 'docs/date-fields-standard.md' },
+  { id: 'PC', name: 'Posting control and period locks', ref: 'docs/design-notes/posting-control.md; Blueprint FR-PER' },
+  { id: 'DT', name: 'Document date standard', ref: 'docs/design-notes/date-fields-standard.md' },
   { id: 'COA', name: 'Chart of accounts and account mapping', ref: 'Blueprint FR-COA' },
   { id: 'JV', name: 'Manual journals and approval', ref: 'Blueprint FR-JE' },
   { id: 'OPN', name: 'Opening balances', ref: 'Blueprint FR-JE' },
   { id: 'DIM', name: 'Dimensions (branch, department, custom)', ref: 'Blueprint FR-DIM' },
   { id: 'RPT', name: 'Ledger reports and the report designer', ref: 'Blueprint FR-RPT' },
-  { id: 'APR', name: 'Approval rules (Sprint 11)', ref: 'Blueprint FR-APR-01..06; docs/gl-ap-ar/s11-approval-rules-tier1-research.md' },
+  { id: 'APR', name: 'Approval rules (Sprint 11)', ref: 'Blueprint FR-APR-01..06; docs/design-notes/approval-rules-tier1-research.md' },
   { id: 'AR', name: 'Receivables: invoices and credit notes', ref: 'Blueprint FR-AR, FR-APR-06' },
   { id: 'RCP', name: 'Customer receipts (Receive Payment)', ref: 'Blueprint FR-AR-01' },
   { id: 'AP', name: 'Payables: expenses, bills and returns', ref: 'Blueprint FR-AP-01..02' },
   { id: 'PAY', name: 'Vendor payments (Pay Vendor)', ref: 'Blueprint FR-AP-03' },
   { id: 'SUB', name: 'Customer and vendor subledgers', ref: 'Blueprint FR-AR-02, FR-AP-04' },
   { id: 'BNK', name: 'Bank reconciliation', ref: 'Blueprint FR-BANK-01..05' },
-  { id: 'PRT', name: 'Voucher and posting print-outs', ref: 'docs/ar-ap-bank-design.md decision 6' },
+  { id: 'PRT', name: 'Voucher and posting print-outs', ref: 'docs/design-notes/ar-ap-bank-design.md decision 6' },
   { id: 'XR', name: 'Document reports and statements (legacy, document-based)', ref: 'server/lib/financialReports.ts' },
   { id: 'SEC', name: 'Security, permissions and tenant isolation', ref: 'rls-tenant-isolation skill; permission-crud-model skill' },
   { id: 'I18N', name: 'Arabic / Urdu and right-to-left', ref: 'ux-translation skill' },
@@ -65,7 +65,7 @@ add('DT', [
   ['An invalid date string is refused on every dated endpoint', 'Negative', 'P2', 'Documents are posted with 2026-13-45, empty, and non-date text', 'Each is submitted', 'A clear 400 message; nothing is written', 'API', 'Candidate'],
   ['Created-by and created-at are stamped on every document and a later edit stamps updated-by / updated-at', 'Functional', 'P2', 'A document is created then edited by another user', 'Both rows are read', 'created_* belongs to the first user, updated_* to the second', 'API+DB', 'Candidate'],
   ['A document entered just before and just after midnight keeps the date the user chose', 'Boundary', 'P2', 'A document is dated today at 23:59 and at 00:01 local time', 'Both are saved', 'Each keeps its chosen date (no timezone shift)', 'API', 'Candidate'],
-  ['Every renamed date column exists once in the live schema and no old name remains', 'Regression', 'P1', 'A migrated database', 'information_schema is queried for date / posting_date columns', 'Names follow docs/date-fields-standard.md; no table still has a plain "date" column', 'DB', 'Candidate'],
+  ['Every renamed date column exists once in the live schema and no old name remains', 'Regression', 'P1', 'A migrated database', 'information_schema is queried for date / posting_date columns', 'Names follow docs/design-notes/date-fields-standard.md; no table still has a plain "date" column', 'DB', 'Candidate'],
   ['Date columns are Postgres date, not timestamp, for business dates', 'Regression', 'P2', 'A migrated database', 'Column types are read', 'doc_date, posting_date and the <meaning>_date columns are of type date', 'DB', 'Candidate'],
 ]);
 

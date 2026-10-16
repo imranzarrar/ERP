@@ -18,7 +18,7 @@
 # Step 4 (db:push) runs ONLY when src/db/schema.ts changed since the last successful release (the
 # `last-release` git tag). A code-only release skips it entirely and says so — the database is not
 # touched. When it does run, db:push against production is never automatic (see
-# docs/deployment-plan.md's guardrails): it prints drizzle's plan and waits for you to read it and
+# docs/operations/deployment-plan.md's guardrails): it prints drizzle's plan and waits for you to read it and
 # type "yes". --force-schema runs it regardless. Everything else runs by itself and stops at the
 # first failure.
 #

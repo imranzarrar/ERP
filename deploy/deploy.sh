@@ -4,7 +4,7 @@
 # with zero downtime (cluster reload — one instance restarts while the other keeps serving).
 #
 # Deliberately does NOT run db:push automatically — a schema change is always its own
-# separate, manually reviewed step (see docs/deployment-plan.md's guardrails). If this
+# separate, manually reviewed step (see docs/operations/deployment-plan.md's guardrails). If this
 # deploy includes a schema change, run 'npm run db:push' yourself, before or after this
 # script, and read its printed plan first.
 set -euo pipefail

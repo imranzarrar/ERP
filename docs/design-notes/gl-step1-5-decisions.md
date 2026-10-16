@@ -1,7 +1,7 @@
 # GL Step 1.5: dimensions and configurable statements. CFO and architect decisions
 
-Status: decided 2026-10-14, before any of this is built. Sources: `docs/Finance-Core-Blueprint.pdf` (FR-DIM, FR-RPT-CFG, FR-RPT-GL, ERD, posting contract, rollout),
-`docs/accounting-rules.md`, `docs/reporting-rules.md`, `docs/gl-step1-plan.md`, `docs/sprint-log-gl-step1.md`, the project memory, and what the code does today.
+Status: decided 2026-10-14, before any of this is built. Sources: `docs/reference/Finance-Core-Blueprint.pdf` (FR-DIM, FR-RPT-CFG, FR-RPT-GL, ERD, posting contract, rollout),
+`docs/design-notes/accounting-rules.md`, `docs/design-notes/reporting-rules.md`, `docs/archive/gl-step1-plan.md`, `docs/archive/sprint-log-gl-step1.md`, the project memory, and what the code does today.
 The earlier "statement layout designer" mock is superseded where it differs from the Blueprint (names and column model); its formatting, selector and safety ideas are kept.
 
 ## What the documents already decided (and I must follow)

@@ -1,4 +1,4 @@
-// Dynamic dimensions (Finance Core Blueprint FR-DIM, docs/gl-step1-5-decisions.md). A company defines as many dimension types as it needs; Branch and
+// Dynamic dimensions (Finance Core Blueprint FR-DIM, docs/design-notes/gl-step1-5-decisions.md). A company defines as many dimension types as it needs; Branch and
 // Department are seeded. Every ledger line carries one deduplicated combination of tags (dimension_combinations), which is what every dimension filter
 // reads. This file is the only place that creates combinations, expands hierarchies and applies the account rules, so postings, manual journals and
 // reports all agree.

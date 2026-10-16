@@ -56,7 +56,7 @@ say "[2/6] Database schema (db:push) on the DEMO database erp_demo — READ THE 
 # A unique key that existing tables gain (needed as a foreign-key target). Created here, idempotently, because drizzle-kit would otherwise ask
 # interactively whether to TRUNCATE the populated table to add it. Never answer that prompt with yes.
 PGPASSWORD="$(read_secret SQL_PASSWORD)" psql -h "$(read_secret SQL_HOST)" -U "$(read_secret SQL_USER)" -d "$(read_secret SQL_DB_NAME)" -v ON_ERROR_STOP=1 -q   -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'branches_id_company_unique') THEN ALTER TABLE branches ADD CONSTRAINT branches_id_company_unique UNIQUE (company_id, id); END IF; END \$\$"
-# in-place date-field renames (docs/date-fields-standard.md): idempotent, must run before db:push so drizzle-kit never sees a drop
+# in-place date-field renames (docs/design-notes/date-fields-standard.md): idempotent, must run before db:push so drizzle-kit never sees a drop
 npx tsx scripts/migrate-date-fields.mjs
 # unique keys a new table's foreign keys need on populated tables (otherwise drizzle-kit asks to truncate them)
 npx tsx scripts/pre-push-keys.mjs

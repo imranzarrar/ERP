@@ -20,7 +20,7 @@ function getBrowser(): Promise<Browser> {
     // software silently blocks Playwright's own freshly-downloaded, unsigned Chromium
     // binary from ever spawning (fails with a generic "spawn UNKNOWN", no clearer
     // signal) while an already-installed, signed system browser launches fine. Normal
-    // production deployment (a Linux VPS, per docs/deployment-plan.md) never needs this
+    // production deployment (a Linux VPS, per docs/operations/deployment-plan.md) never needs this
     // — `npx playwright install --with-deps chromium` there uses Playwright's own
     // bundled binary exactly as intended; leave this unset on the server.
     const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined;

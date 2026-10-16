@@ -56,7 +56,7 @@ ${GEN}
 | Product | Warraq ERP 2.0 — finance core (General Ledger, Receivables, Payables, Bank) |
 | Version / date | 1.0 / ${today} |
 | Status | Baseline for the delivered scope (Sprints 0–9); planned scope in Sprints 11–20 |
-| Source documents | \`docs/Finance-Core-Blueprint.pdf\` (v0.1), owner decisions recorded in \`docs/gl-step1-plan.md\`, \`docs/gl-step1-5-decisions.md\`, \`docs/ar-ap-bank-design.md\`, \`docs/date-fields-standard.md\`, \`docs/posting-control.md\` |
+| Source documents | \`docs/reference/Finance-Core-Blueprint.pdf\` (v0.1), owner decisions recorded in \`docs/archive/gl-step1-plan.md\`, \`docs/design-notes/gl-step1-5-decisions.md\`, \`docs/design-notes/ar-ap-bank-design.md\`, \`docs/design-notes/date-fields-standard.md\`, \`docs/design-notes/posting-control.md\` |
 | Related | SRS (02), Solution design (03), Technical design (04), Test strategy (05), User manual (06), Sprint log (07), Traceability (08) |
 
 ## 1. Purpose
@@ -224,7 +224,7 @@ const comments = new Map(); // table -> col -> comment ; table -> description
 const IN_SCOPE = ['company_accounts', 'system_accounts', 'journal_entries', 'journal_lines', 'manual_journals', 'manual_journal_lines', 'manual_journal_events', 'posting_policies', 'payment_allocations', 'vouchers', 'bank_reconciliations', 'bank_statement_lines', 'bank_accounts', 'customers', 'vendors', 'invoices', 'expenses', 'purchase_bills', 'fiscal_months', 'dimension_types', 'dimension_values', 'dimension_combinations', 'dimension_combination_entries', 'cost_centers', 'account_dimension_rules', 'report_definitions', 'report_rows', 'report_row_selectors', 'report_columns', 'audit_logs'];
 const tables = new Map();
 for (const v of Object.values(schema)) { try { const c = getTableConfig(v); tables.set(c.name, c); } catch { /* not a table */ } }
-let dd = `# Annex A — Data dictionary (GL / AR / AP tables)\n\n${GEN}\n\nColumn comments are taken from \`src/db/schema.ts\`. Every table has row-level security on \`company_id\` (or its parent). Business dates follow \`docs/date-fields-standard.md\`.\n`;
+let dd = `# Annex A — Data dictionary (GL / AR / AP tables)\n\n${GEN}\n\nColumn comments are taken from \`src/db/schema.ts\`. Every table has row-level security on \`company_id\` (or its parent). Business dates follow \`docs/design-notes/date-fields-standard.md\`.\n`;
 for (const name of IN_SCOPE) {
   const c = tables.get(name); if (!c) { dd += `\n## ${name}\n\n(not found)\n`; continue; }
   const meta = comments.get(name);

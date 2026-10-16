@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Sets up Postgres streaming (physical) replication between the current production VPS
 # (the "primary") and a second, independent VPS (the "standby") — see
-# docs/high-availability-plan.md for the reasoning. This is a Postgres server feature, not
+# docs/proposals/high-availability-plan.md for the reasoning. This is a Postgres server feature, not
 # application code: the app never knows replication is happening, it just connects to
 # whichever host app.secrets' SQL_HOST currently points to.
 #

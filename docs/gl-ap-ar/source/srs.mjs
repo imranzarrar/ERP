@@ -45,7 +45,7 @@ export const SRS = {
   'BR-PER-10': { fr: [['Year-end close shall post one closing entry of all revenue and expense balances into retained earnings and open the next year (Sprint 13).', 'planned']], tests: [] },
   'BR-PER-11': { fr: [['Subledger close dates per module shall be configurable (Sprint 12).', 'planned']], tests: [] },
 
-  'BR-DAT-01': { fr: [['Every document table shall have doc_date (type date, not null) holding the date of the document.', 'schema.ts; docs/date-fields-standard.md']], tests: ['DT-001', 'DT-003', 'DT-009'] },
+  'BR-DAT-01': { fr: [['Every document table shall have doc_date (type date, not null) holding the date of the document.', 'schema.ts; docs/design-notes/date-fields-standard.md']], tests: ['DT-001', 'DT-003', 'DT-009'] },
   'BR-DAT-02': { fr: [['Every posting document shall have posting_date defaulting to doc_date; statements, locks and VAT shall read posting_date.', 'server/lib/documentDates.ts']], tests: ['DT-001', 'DT-002', 'DT-004'] },
   'BR-DAT-03': { fr: [['Business dates shall be stored as Postgres date (businessDate helper) and named <meaning>_date; the API shall not accept the retired date field.', 'schema.ts businessDate; server/lib/pickFields.ts']], tests: ['DT-005', 'DT-006', 'DT-010'] },
   'BR-DAT-04': { fr: [['Documents shall carry created_at/created_by and updated_at/updated_by.', 'schema.ts']], tests: ['DT-007', 'DT-008'] },

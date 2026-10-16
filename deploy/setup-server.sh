@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-time VPS provisioning — run this from INSIDE the cloned repo, as the deploy user
 # (never as root), after: a deploy user with sudo exists, root SSH login is disabled, and
-# this repo has already been git-cloned. See docs/deployment-plan.md for the full context
+# this repo has already been git-cloned. See docs/operations/deployment-plan.md for the full context
 # and the exact commands for that earlier, pre-repo phase (creating the deploy user,
 # generating a GitHub deploy key, cloning) — this script picks up from there.
 #
@@ -25,7 +25,7 @@ echo "==> Installing base packages (curl, build tools, ufw, fail2ban)"
 sudo apt-get update -y
 sudo apt-get install -y curl build-essential ufw fail2ban
 
-echo "==> Firewall: allow SSH + app port (no domain/Nginx yet — see docs/deployment-plan.md)"
+echo "==> Firewall: allow SSH + app port (no domain/Nginx yet — see docs/operations/deployment-plan.md)"
 sudo ufw allow OpenSSH
 sudo ufw allow 3000/tcp
 sudo ufw --force enable

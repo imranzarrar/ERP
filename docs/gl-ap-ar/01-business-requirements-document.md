@@ -7,7 +7,7 @@
 | Product | Warraq ERP 2.0 — finance core (General Ledger, Receivables, Payables, Bank) |
 | Version / date | 1.0 / 2026-10-15 |
 | Status | Baseline for the delivered scope (Sprints 0–9); planned scope in Sprints 11–20 |
-| Source documents | `docs/Finance-Core-Blueprint.pdf` (v0.1), owner decisions recorded in `docs/gl-step1-plan.md`, `docs/gl-step1-5-decisions.md`, `docs/ar-ap-bank-design.md`, `docs/date-fields-standard.md`, `docs/posting-control.md` |
+| Source documents | `docs/reference/Finance-Core-Blueprint.pdf` (v0.1), owner decisions recorded in `docs/archive/gl-step1-plan.md`, `docs/design-notes/gl-step1-5-decisions.md`, `docs/design-notes/ar-ap-bank-design.md`, `docs/design-notes/date-fields-standard.md`, `docs/design-notes/posting-control.md` |
 | Related | SRS (02), Solution design (03), Technical design (04), Test strategy (05), User manual (06), Sprint log (07), Traceability (08) |
 
 ## 1. Purpose

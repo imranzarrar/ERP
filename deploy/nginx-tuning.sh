@@ -7,7 +7,7 @@
 #
 #   bash deploy/nginx-tuning.sh your.domain.example
 #
-# What each part fixes (all measured on the real deployment, see docs/deployment-plan.md Part 3):
+# What each part fixes (all measured on the real deployment, see docs/operations/deployment-plan.md Part 3):
 #   HTTP/2      browsers over HTTP/1.1 fetch only ~6 files at a time; on a high-latency link a burst
 #               of requests queued for seconds and blocked the ones that mattered.
 #   gzip        JS/CSS/JSON were sent uncompressed (2.1 MB bundle, 1.8 MB /api/state).

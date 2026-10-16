@@ -1,4 +1,4 @@
-<title>Warraq — ERP User Manual</title>
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Warraq ERP User Manual</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
@@ -251,6 +251,9 @@
     a { color: var(--w-primary); text-decoration: none; }
   }
   ::selection { background: var(--w-light-border); color: var(--w-primary-dark); }
+
+  .fc figure.shot{margin:1.2rem 0 1.6rem}.fc figure.shot img{max-width:100%;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}.fc figure.shot figcaption{font-size:.76rem;color:var(--ink-soft);margin-top:.35rem}
+  .fc pre.code{background:#0f172a;color:#e2e8f0;padding:1rem 1.2rem;border-radius:12px;overflow:auto;font-size:.8rem}.fc pre.code code{background:none;border:0;color:inherit}.fc table.plan td{vertical-align:top}.fc h3{scroll-margin-top:2rem}
 </style>
 
 <div class="doc">
@@ -262,7 +265,7 @@
       <span class="cover-kicker">User Manual</span>
     </div>
     <div class="cover-mid">
-      <p class="cover-eyebrow">Master Data · Transactions · Reports · Configuration</p>
+      <p class="cover-eyebrow">Master Data · Transactions · Reports · Configuration · General Ledger, Receivables, Payables, Bank</p>
       <h1 class="cover-word">Warraq</h1>
       <p class="cover-sub">ERP System</p>
       <p class="cover-title">The Complete Administrator's Guide</p>
@@ -270,7 +273,7 @@
     </div>
     <div class="cover-bottom">
       <div class="stat"><b>Audience</b><span>Company Admin / Super Admin</span></div>
-      <div class="stat"><b>Coverage</b><span>40+ screens, every module</span></div>
+      <div class="stat"><b>Coverage</b><span>Everyday operations + the 2.0 finance core</span></div>
       <div class="stat"><b>Reading order</b><span>Master Data → Transactions → Reports → Config</span></div>
       <div class="stat"><b>Companion doc</b><span>ZATCA Onboarding Guide</span></div>
     </div>
@@ -302,6 +305,20 @@
         <a href="#config-ops">Templates, POS &amp; Translations</a>
         <a href="#config-fiscal">Fiscal Periods, Capital &amp; VAT Filing</a>
         <a href="#config-backup">Backup &amp; Data Portability</a>
+        <div class="rail-group">Finance core (Warraq 2.0)</div>
+        <a href="#fc-intro">Overview</a>
+        <a href="#fc-1">1. Signing in and finding your way</a>
+        <a href="#fc-2">2. Setting up the books (once)</a>
+        <a href="#fc-3">3. Receivables: invoices and receipts</a>
+        <a href="#fc-4">4. Payables: expenses, bills and payments</a>
+        <a href="#fc-5">5. Who owes what: aging and party ledgers</a>
+        <a href="#fc-6">6. Journals</a>
+        <a href="#fc-7">7. Financial statements</a>
+        <a href="#fc-8">8. Bank reconciliation</a>
+        <a href="#fc-9">9. Period routine and corrections</a>
+        <a href="#fc-10">10. Roles and permissions</a>
+        <a href="#fc-11">11. Arabic and Urdu</a>
+        <a href="#fc-12">12. Screen index</a>
         <div class="rail-group">Reference</div>
         <a href="#appendix">Glossary &amp; quick reference</a>
       </nav>
@@ -1521,6 +1538,330 @@
       </section>
 
 
+      <section id="fc-intro" class="wide fc" style="max-width:none;"><p class="section-eyebrow">Finance core (Warraq 2.0)</p><h2>General Ledger, Receivables, Payables and Bank</h2>
+<div class="callout risk"><div class="label">Which version</div><p style="margin:0">The chapters from here to the glossary describe <b>Warraq 2.0</b> (the Demo). Live (1.0) does not have them yet. The screens in these chapters are real screenshots of a demonstration company, <i>Al-Noor Trading Co</i>; the panels above are reproductions.</p></div>
+<p><strong>Who does what.</strong> <em>Accountant</em> prepares and posts; <em>Approver / Finance manager</em> approves journals, reopens reconciliations, overrides locks; <em>Clerk</em> receives and pays; <em>Administrator</em> sets roles. A person&#39;s rights come from their roles (chapter 10).</p>
+<hr>
+
+<p>For how the system works inside, and what each requirement is, see the <a href="../technical/index.html">technical documentation</a>.</p></section>
+
+<section id="fc-1" class="wide fc" style="max-width:none;"><p class="section-eyebrow">Finance core · chapter 1</p><h2>Signing in and finding your way</h2><p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/01-sign-in.png" alt="Sign in" loading="lazy"><figcaption>Sign in</figcaption></figure></p>
+<p>Sign in with your user name and password. The first time, you may be asked to change the password.</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/02-dashboard.png" alt="Dashboard" loading="lazy"><figcaption>Dashboard</figcaption></figure></p>
+<p>The left menu is the whole system. Work in this manual lives in three menu sections that follow the order of the work: <strong>General Ledger Setup</strong> (Chart of Accounts, Dimensions, Opening Balances, Posting Control, Approval Rules), <strong>Accounting Operations</strong> (My Approvals, Journals, Receivables, Payables, Bank Reconciliation) and <strong>General Ledger Reports</strong>. Your menu shows only what your roles allow. The top of the menu shows your company and the open fiscal month. Use <strong>Filter menu…</strong> to find a screen by name.</p>
+<hr>
+</section>
+
+<section id="fc-2" class="wide fc" style="max-width:none;"><p class="section-eyebrow">Finance core · chapter 2</p><h2>Setting up the books (once)</h2><h3 id="fc-2--section">2.1 Chart of accounts (BR-COA-01…08)</h3>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/03-chart-of-accounts.png" alt="Chart of accounts" loading="lazy"><figcaption>Chart of accounts</figcaption></figure></p>
+<p><strong>General Ledger Setup › Chart of Accounts › Accounts.</strong> Every company starts with a standard Saudi chart. Headings (bold) group accounts and show totals; only accounts take postings. You can:</p>
+<ul>
+<li><strong>New Account</strong> (menu <em>New Account</em>): code, name, Arabic name, type, parent heading.</li>
+<li>Rename or recode an account. You cannot change the <strong>type</strong> of an account that has postings, a role or a bank.</li>
+<li><strong>Deactivate</strong> an account only when its balance is zero; accounts that documents depend on (roles, banks, control accounts) cannot be deactivated.</li>
+<li><strong>Import / Export</strong> to Excel: the import shows a preview and saves only the rows you tick.</li>
+</ul>
+<p><em>Control accounts</em> (receivables, payables, stock, VAT, banks) can be posted only by their documents; manual journals refuse them.</p>
+<h3 id="fc-2--pp">2.2 Account mapping (BR-COA-06)</h3>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/04-account-mapping.png" alt="Account mapping" loading="lazy"><figcaption>Account mapping</figcaption></figure></p>
+<p><strong>Chart of Accounts › Account Mapping.</strong> Choose which account each posting role uses (for example <em>Sales revenue</em>, <em>Accounts receivable</em>) and which account each <strong>expense category</strong> posts to (rent, utilities …). A change applies to <strong>new</strong> postings only; history stays where it was posted.</p>
+<p>To give one customer or vendor its own receivable/payable account or default dimensions, open the customer or vendor in <strong>Trading Partners</strong> and set the <em>Posting profile</em> (needs the Account Mapping permission).</p>
+<h3 id="fc-2---2">2.3 Dimensions (BR-DIM-01…05)</h3>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/05-dimension-types.png" alt="Dimension types" loading="lazy"><figcaption>Dimension types</figcaption></figure></p>
+<p><strong>Dimensions</strong> are analysis tags on ledger lines. <em>Branch</em> and <em>Department</em> exist for every company; add your own (for example <em>Project</em>). Menu order: <strong>1 Dimension Types → 2 Dimension Values / Cost Centres → 3 Account Dimension Rules</strong>. A rule says, per account, whether a dimension is <strong>required</strong>, <strong>optional</strong> or <strong>not allowed</strong>, with an optional default; apply a rule to many accounts at once after a preview. Manual journals enforce <em>required</em>; documents apply defaults.</p>
+<h3 id="fc-2--p-p">2.4 Posting control (BR-PER-03…06)</h3>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/06-posting-control.png" alt="Posting control" loading="lazy"><figcaption>Posting control</figcaption></figure></p>
+<p><strong>Posting Control</strong> decides how far back anyone may post:</p>
+<ul>
+<li><strong>Lock date</strong> — nothing may be dated on or before it.</li>
+<li><strong>Back-date window (days)</strong> — nothing may be dated more than this many days before today.</li>
+<li><strong>Reason after (days)</strong> — older entries must carry a reason.</li>
+</ul>
+<p>Anyone can read the rules; changing them needs <em>Posting Control › update</em>. People holding <em>back-date</em> or <em>override lock</em> rights can go past the window or the lock, and every use is written to the audit log. The fiscal month must also be open and, for tax documents, the VAT quarter not yet filed.</p>
+<h3 id="fc-2--p">2.5 Opening balances (BR-JNL-09)</h3>
+<p><strong>Opening Balances.</strong> If you start part-way through a year, enter the opening figure of each account, <strong>Preview</strong> (nothing is saved), put any difference to an equity account, then <strong>Post</strong> once with confirmation. A wrong opening entry can be reversed with a reason and a corrected one posted.</p>
+<hr>
+</section>
+
+<section id="fc-3" class="wide fc" style="max-width:none;"><p class="section-eyebrow">Finance core · chapter 3</p><h2>Receivables: invoices and receipts</h2><h3 id="fc-3--section">3.1 Invoices</h3>
+<p>Invoices and credit notes are created in <strong>Sales &amp; Receivables</strong> (unchanged). Each posts to the receivable control account tagged with the customer (BR-AR-01).</p>
+<h3 id="fc-3--p">3.2 Receive Payment (BR-AR-03, 04)</h3>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/07-receive-payment-blank.png" alt="Receive payment" loading="lazy"><figcaption>Receive payment</figcaption></figure></p>
+<p><strong>Receivables › Receive Payment.</strong> Choose the <strong>customer</strong>, the bank to <strong>deposit to</strong>, the <strong>date</strong>, the <strong>amount</strong> and an optional reference (cheque or transfer number).</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/08-receive-payment-allocated.png" alt="Receive payment, allocated" loading="lazy"><figcaption>Receive payment, allocated</figcaption></figure></p>
+<p>The customer&#39;s open invoices appear. Type how much goes to each, or press <strong>Allocate oldest first</strong>. The bar below shows <em>Amount</em>, <em>Applied to documents</em> and <em>Held on account</em>. Anything not applied stays <strong>on account</strong> with the customer. <strong>Save Receipt</strong> creates one voucher and one ledger entry. A receipt dated in a locked period, with an inactive bank, or with allocations above the amount or above what an invoice still owes, is refused with a message.</p>
+<h3 id="fc-3--p-p-pp">3.3 Receipts: list, detail, print, apply, cancel</h3>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/09-receipts-list.png" alt="Receipts list" loading="lazy"><figcaption>Receipts list</figcaption></figure></p>
+<p><strong>Receivables › Receipts</strong> lists every receipt with <em>Amount</em>, <em>Applied to documents</em>, <em>Held on account</em> and status (On account / Settled / Cancelled). Filter by customer.</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/10-receipt-detail.png" alt="Receipt detail" loading="lazy"><figcaption>Receipt detail</figcaption></figure></p>
+<p>Click a row for the detail: party, bank, allocations. From here:</p>
+<ul>
+<li><strong>Print voucher</strong> — the Receipt Voucher with settled documents and the accounting entry (below).</li>
+<li><strong>Apply to documents</strong> — put money held on account against invoices later.</li>
+<li><strong>Cancel</strong> — needs a reason; the entry is reversed, a reversal voucher is written and the invoices become open again. An invoice paid through a receipt cannot be cancelled until that receipt is.</li>
+</ul>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/11-receipt-voucher-print.png" alt="Receipt voucher print" loading="lazy"><figcaption>Receipt voucher print</figcaption></figure></p>
+<p>The <strong>Receipt Voucher</strong> shows who paid, the amount in words, where it was deposited, which invoices it settled, what is held on account, the accounting entry (bank debited, receivable credited, customer named) and signature boxes. Press <strong>Print</strong> in the preview.</p>
+<hr>
+</section>
+
+<section id="fc-4" class="wide fc" style="max-width:none;"><p class="section-eyebrow">Finance core · chapter 4</p><h2>Payables: expenses, bills and payments</h2><p>Expenses, goods receipts and purchase bills are entered in <strong>Procurements</strong> (unchanged). Each posts to the payable control account tagged with the vendor (BR-AP-01…03).</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/12-pay-vendor-allocated.png" alt="Pay vendor" loading="lazy"><figcaption>Pay vendor</figcaption></figure></p>
+<p><strong>Payables › Pay Vendor</strong> works exactly like Receive Payment, for the vendor&#39;s open <strong>bills and expenses</strong> together (BR-AP-05). <strong>Payables › Vendor Payments</strong> lists payments; a payment can be applied later or cancelled with a reason.</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/13-vendor-payments-list.png" alt="Vendor payments" loading="lazy"><figcaption>Vendor payments</figcaption></figure></p>
+<p>A payment kept on account is an <strong>advance to the vendor</strong>: it appears as an asset until it is applied.</p>
+<h3 id="fc-4--pp-p">4.1 Approval of large payments and bills (BR-JNL-10)</h3>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/33-approval-rules.png" alt="Approval rules" loading="lazy"><figcaption>Approval rules</figcaption></figure></p>
+<p><strong>General Ledger Setup › Approval Rules</strong> (setup, once). A rule says: <em>vendor payments (or vendor bills) above this amount (up to an optional ceiling) need these approvers, level by level</em>. Each level names a <strong>role</strong>, a <strong>named user</strong>, <strong>anyone holding a permission</strong>, or the <strong>manager of the submitter</strong> (set each person&#39;s <strong>Manager</strong> on their user record in Settings › Users: it must be someone in the same company and cannot loop back). Lower priority numbers are checked first. A payment or bill that matches no rule posts directly, as before. A <strong>manual journal</strong> whose total falls inside a <em>Manual journal</em> rule is submitted as before but needs the rule&#39;s levels instead of the single approval step: each level holder approves from the journal&#39;s own screen or from My Approvals (they need not hold the journal posting right), the last approval posts it, and rejecting returns it to the preparer. A journal with no matching rule keeps the single approval step. A credit note that matches a rule (rule type <em>Credit note</em>, judged on the invoice total) waits in the same way: nothing is issued and the invoice is untouched until the last approval, and the credit note is created in the name of the person who requested it. A vendor bill that matches a rule waits in the same way (nothing is created and the goods receipt stays unbilled until the last approval). The goods-receipt option <em>paid at delivery</em> is refused when a rule would hold the bill or its payment: receive the goods, then bill and pay through the normal screens. The switch at the top decides whether the person who submits a payment may approve it themselves: <strong>off</strong> (recommended) means someone else must always approve; only the company owner / administrator can change it, and every use of it is marked and audited.</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/34-approval-rule-editor.png" alt="Rule editor" loading="lazy"><figcaption>Rule editor</figcaption></figure></p>
+<p><em>New rule</em> opens the editor: name, what it applies to (vendor payment, vendor bill, credit note or manual journal), the amount band, the priority, and the levels in order (a role, a named user, anyone holding a permission, or the manager of the submitter, with <strong>Add a level</strong>).</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/37-user-manager-field.png" alt="Manager field on the user form" loading="lazy"><figcaption>Manager field on the user form</figcaption></figure></p>
+<p>The <strong>Manager</strong> field sits on the user form (<strong>Settings &amp; Companies › Governance &amp; Staff › Staff Permissions</strong>, below the account email). It is what a <em>manager of the submitter</em> level looks up: pick someone from the same company, never the person themselves and never a loop.</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/35-my-approvals.png" alt="My approvals" loading="lazy"><figcaption>My approvals</figcaption></figure></p>
+<p>When a payment falls inside a rule, <strong>Save Payment</strong> sends it for approval and <strong>nothing is posted</strong>: no voucher, no ledger entry, no bank movement. <strong>Accounting Operations › My Approvals</strong> lists what waits for you and what you submitted.</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/36-approval-request.png" alt="Approval request" loading="lazy"><figcaption>Approval request</figcaption></figure></p>
+<p>Open a request to see who submitted it, the date, the reference, the level and the history. <strong>Approve</strong> moves it to the next level; the last approval creates the payment (the posting-control rules are checked again at that moment). <strong>Reject</strong> needs a reason and nothing is posted. The person who submitted a request can <strong>Recall</strong> it while it is pending (nothing was posted, so nothing is undone); to correct a payment or bill, recall it and submit a new one.</p>
+<p><strong>Delegating while you are away.</strong> At the top of My Approvals, <em>Delegate my approvals while I am away</em>: choose who takes over and the dates. For those dates they can decide whatever you could decide (role, named-user, permission and manager levels alike), and the history shows <em>for <your name></em>. <strong>End now</strong> stops it early. A person cannot approve a level for a payment they submitted (unless the company switch is on) or act twice on the same request.</p>
+<hr>
+</section>
+
+<section id="fc-5" class="wide fc" style="max-width:none;"><p class="section-eyebrow">Finance core · chapter 5</p><h2>Who owes what: aging and party ledgers (BR-AR-06, 07; BR-AP-06)</h2><p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/14-receivables-aging.png" alt="Receivables aging" loading="lazy"><figcaption>Receivables aging</figcaption></figure></p>
+<p><strong>Ledger Reports › Receivables Aging</strong> shows each customer&#39;s open charges by age (payments are set against the oldest charge first), money held <strong>On account</strong> in its own column, and a green line proving the customers add up to the receivable control account. Click a name to open the customer&#39;s ledger. <strong>Export</strong> to Excel.</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/15-customer-ledger.png" alt="Customer ledger" loading="lazy"><figcaption>Customer ledger</figcaption></figure></p>
+<p><strong>Customer Ledger</strong> lists every posting of one customer with opening balance, running balance and the document number; click a line to open the entry.</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/16-payables-aging.png" alt="Payables aging" loading="lazy"><figcaption>Payables aging</figcaption></figure></p>
+<p><strong>Payables Aging</strong> and <strong>Vendor Ledger</strong> are the same for vendors.</p>
+<hr>
+</section>
+
+<section id="fc-6" class="wide fc" style="max-width:none;"><p class="section-eyebrow">Finance core · chapter 6</p><h2>Journals</h2><h3 id="fc-6--section">6.1 Journal listing and detail (BR-JNL-08)</h3>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/17-journal-listing.png" alt="Journal listing" loading="lazy"><figcaption>Journal listing</figcaption></figure></p>
+<p><strong>Journals › Journal Listing</strong> shows every posting of the company — documents and manual journals — with filters for status, period, source and text.</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/18-journal-detail.png" alt="Journal detail" loading="lazy"><figcaption>Journal detail</figcaption></figure></p>
+<p>Click a row to see accounts, totals and the <strong>approval trail</strong>, and to <strong>Print voucher</strong>, <strong>Reject</strong> or <strong>Approve and post</strong> (if you may).</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/19-journal-voucher-print.png" alt="Journal voucher" loading="lazy"><figcaption>Journal voucher</figcaption></figure></p>
+<p>The <strong>Journal Voucher</strong> prints any entry: accounts, parties, dimensions, totals in words, prepared-by and approved-by. A journal that is not yet posted prints with a <em>NOT POSTED</em> banner.</p>
+<h3 id="fc-6---2">6.2 New manual journal (BR-JNL-01…07)</h3>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/20-new-manual-journal.png" alt="New manual journal" loading="lazy"><figcaption>New manual journal</figcaption></figure></p>
+<p><strong>Journals › New Manual Journal.</strong> Enter the date, description, reference and at least two lines (an account and a debit <strong>or</strong> a credit). Control, bank and heading accounts are not offered — they are posted by their documents. Save as a <strong>draft</strong>, then <strong>submit for approval</strong>. Dates must satisfy Posting Control; a date older than the reason threshold needs a reason.</p>
+<h3 id="fc-6--pp">6.3 Approval (maker-checker)</h3>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/21-pending-approval.png" alt="Pending approval" loading="lazy"><figcaption>Pending approval</figcaption></figure></p>
+<p><strong>Journals › Pending Approval</strong> lists journals waiting for someone <strong>other than the preparer</strong> with the <em>post</em> right. Approving posts the journal (the date rules are checked again). Rejecting needs a written reason and returns it to draft. The company owner may allow self-approval; such journals are marked.</p>
+<p><strong>Reversing</strong> a posted journal creates a reversing draft that goes through the same approval; the original stays posted until then.</p>
+<hr>
+</section>
+
+<section id="fc-7" class="wide fc" style="max-width:none;"><p class="section-eyebrow">Finance core · chapter 7</p><h2>Financial statements (BR-RPT-01…10)</h2><p>All statements are computed from the ledger on the server for your company only. Each has <strong>Run</strong>, <strong>Design</strong>, <strong>Print</strong>, <strong>Excel</strong>, optional <strong>Dimensions</strong> filters and comparative columns.</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/22-trial-balance.png" alt="Trial balance" loading="lazy"><figcaption>Trial balance</figcaption></figure></p>
+<p><strong>Trial Balance (Ledger)</strong> — opening, movement and closing for every account. A green line states that debits equal credits. Click any figure to open the <strong>General Ledger</strong> for exactly the accounts, period and filters behind it.</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/23-income-statement.png" alt="Income statement" loading="lazy"><figcaption>Income statement</figcaption></figure></p>
+<p><strong>Income Statement</strong> — revenue, cost of sales, expenses and profit, with comparative and variance columns.</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/24-balance-sheet.png" alt="Balance sheet" loading="lazy"><figcaption>Balance sheet</figcaption></figure></p>
+<p><strong>Balance Sheet (Ledger)</strong> — assets, liabilities and equity as at a date, with profit to date inside equity and a statement of whether assets equal liabilities plus equity.</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/25-cash-flow.png" alt="Cash flow" loading="lazy"><figcaption>Cash flow</figcaption></figure></p>
+<p><strong>Cash Flow Statement</strong> — indirect method, reconciled to the bank and cash accounts. <strong>Changes in Equity</strong> completes the set.</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/26-ledger-vs-documents.png" alt="Ledger vs documents" loading="lazy"><figcaption>Ledger vs documents</figcaption></figure></p>
+<p><strong>Ledger vs Documents</strong> compares the ledger with the document-based reports account by account (money held on account is netted). Differences must read 0.00; a difference means a rule is broken and should be reported, never &quot;adjusted&quot;.</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/27-report-designer.png" alt="Report designer" loading="lazy"><figcaption>Report designer</figcaption></figure></p>
+<p><strong>Report Designer</strong> (for authorised users) copies a standard statement or builds your own: choose rows (accounts by account, parent, range, type or role; subtotals; formulas; text) and columns (period, value, dimension filter, variance), then format. Accounts that no row covers are listed with a warning so nothing is silently left out. <strong>Reset to standard</strong> restores a built-in one.</p>
+<hr>
+</section>
+
+<section id="fc-8" class="wide fc" style="max-width:none;"><p class="section-eyebrow">Finance core · chapter 8</p><h2>Bank reconciliation (BR-BNK-01…08)</h2><p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/28-bank-reconciliation-list.png" alt="Bank reconciliation list" loading="lazy"><figcaption>Bank reconciliation list</figcaption></figure></p>
+<p><strong>Bank Reconciliation</strong> lists sessions. <strong>Start reconciliation</strong>: choose the bank, the <strong>statement date</strong> and the <strong>ending balance</strong> printed on the statement. Only one session per bank can be in progress, and each statement date must be after the last completed one.</p>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/29-bank-reconciliation-session.png" alt="Session" loading="lazy"><figcaption>Session</figcaption></figure></p>
+<p>The session shows, left, every posted line of that bank&#39;s ledger account up to the statement date, and, right, the <strong>statement lines</strong>. At the top, the <strong>formula</strong> updates live: <em>statement balance + deposits in transit − payments outstanding</em> must equal the <em>book balance</em>, and the <strong>Difference</strong> must be zero.</p>
+<ol>
+<li>Add statement lines by typing them, or <strong>Import CSV</strong> (columns Date, Description and Amount — or Debit and Credit; day-first dates are understood; a preview is shown; importing the same file twice adds nothing).</li>
+<li><strong>Tick</strong> ledger lines that appear on the statement, or <strong>Suggest matches</strong> (equal amount within 10 days — you accept them) and <strong>Match to…</strong>.</li>
+</ol>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/30-bank-reconciliation-matched.png" alt="Matched" loading="lazy"><figcaption>Matched</figcaption></figure></p>
+<ol start="3">
+<li>A bank <strong>fee</strong> or <strong>interest</strong> that the books do not have yet: on that statement line press <strong>Post as bank charge</strong> (expense account) or <strong>Post as interest</strong> (income account). One entry is posted, cleared and matched in one step. A mistaken one can be <strong>Reversed</strong> while the session is open. A session is <strong>never</strong> forced to balance.</li>
+</ol>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/31-bank-reconciliation-completed.png" alt="Completed" loading="lazy"><figcaption>Completed</figcaption></figure></p>
+<ol start="4">
+<li><strong>Complete</strong> is enabled only when the difference is zero and every statement line is matched. A completed session is <strong>locked</strong>: a payment or receipt behind a cleared line cannot be cancelled. <strong>Reopen</strong> (own permission, a reason, latest completed session only) is audited.</li>
+</ol>
+<p><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/32-bank-reconciliation-statement-print.png" alt="Reconciliation statement" loading="lazy"><figcaption>Reconciliation statement</figcaption></figure></p>
+<p><strong>Print report</strong> produces the Bank Reconciliation Statement: balance per bank, deposits in transit, payments outstanding, adjusted balance, balance per books, difference and the outstanding lists.</p>
+<hr>
+</section>
+
+<section id="fc-9" class="wide fc" style="max-width:none;"><p class="section-eyebrow">Finance core · chapter 9</p><h2>Period routine and corrections</h2><p><strong>Daily:</strong> post documents; receive and pay; check <em>Pending Approval</em>.
+<strong>Weekly:</strong> Receivables / Payables Aging; chase overdue items.
+<strong>Month end:</strong> (1) reconcile every bank; (2) clear <em>Pending Approval</em>; (3) run Trial Balance and Balance Sheet — both must show the balanced line; (4) run <em>Ledger vs Documents</em> — all differences 0.00; (5) file VAT if due; (6) close the fiscal month in the existing period screen.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>I need to…</th>
+<th>Do this</th>
+</tr>
+</thead><tbody><tr>
+<td>Undo a receipt or payment</td>
+<td>Receipts / Vendor Payments › open it › <strong>Cancel</strong> with a reason</td>
+</tr>
+<tr>
+<td>Correct a posted manual journal</td>
+<td>Open it › <strong>Reverse</strong>; approve the reversal; post the right one</td>
+</tr>
+<tr>
+<td>Correct a sales invoice already sent to ZATCA</td>
+<td>Raise a <strong>credit note</strong>; invoices cleared by ZATCA cannot be cancelled</td>
+</tr>
+<tr>
+<td>Correct a bank fee posted by mistake</td>
+<td>In the open reconciliation, <strong>Reverse</strong> that line</td>
+</tr>
+<tr>
+<td>Post into a locked period</td>
+<td>Ask a user holding <em>override lock</em>; the use is audited</td>
+</tr>
+</tbody></table></div>
+<p><strong>If the system says…</strong></p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Message</th>
+<th>Meaning and action</th>
+</tr>
+</thead><tbody><tr>
+<td>&quot;…locked&quot; / &quot;…back-date window&quot; / &quot;…reason&quot;</td>
+<td>Posting Control rule: choose a later date, give a reason, or ask an authorised user</td>
+</tr>
+<tr>
+<td>&quot;…month is closed&quot; / &quot;…VAT quarter…&quot;</td>
+<td>The fiscal month or VAT quarter is closed or filed; date it in the open period</td>
+</tr>
+<tr>
+<td>&quot;…settled through receipt / payment …&quot;</td>
+<td>Cancel that receipt/payment first</td>
+</tr>
+<tr>
+<td>&quot;…the approval rule … applies to it&quot;</td>
+<td>The receipt&#39;s <em>paid at delivery</em> option would bypass an approval rule: save the receipt without it, then bill and pay normally</td>
+</tr>
+<tr>
+<td>&quot;…cleared in a bank reconciliation…&quot;</td>
+<td>Open the reconciliation, un-clear the line (or have it reopened), then cancel</td>
+</tr>
+<tr>
+<td>&quot;The reconciliation does not balance&quot;</td>
+<td>Post an entry for what is missing (fee/interest) or fix the document; never force it</td>
+</tr>
+<tr>
+<td>&quot;…control account…&quot;</td>
+<td>Post through the customer/vendor document, not a manual journal</td>
+</tr>
+</tbody></table></div>
+<hr>
+</section>
+
+<section id="fc-10" class="wide fc" style="max-width:none;"><p class="section-eyebrow">Finance core · chapter 10</p><h2>Roles and permissions</h2><p>Set in <strong>Settings › Roles</strong>. Suggested bundles (each leaf is <em>module.leaf</em>; see annex C):</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Role</th>
+<th>Typical rights</th>
+</tr>
+</thead><tbody><tr>
+<td>Accountant</td>
+<td><code>chartOfAccounts</code> read/create/update, <code>journals</code> create/read/update, <code>openingBalances</code> read/preview, reports read, <code>bankReconciliation</code> create/read/match/adjust/complete, <code>customerReceipts</code> &amp; <code>vendorPayments</code> create/read</td>
+</tr>
+<tr>
+<td>Finance manager</td>
+<td>Accountant + <code>journals.post</code>, <code>journals.reverse</code>, <code>accountMapping</code>, <code>postingControl.update</code>, <code>bankReconciliation.reopen</code>, <code>customerReceipts/vendorPayments.delete</code></td>
+</tr>
+<tr>
+<td>Controller</td>
+<td>Finance manager + <code>postingControl.backDate</code>, <code>postingControl.overrideLock</code>, <code>openingBalances.post</code></td>
+</tr>
+<tr>
+<td>AR / AP clerk</td>
+<td><code>customerReceipts</code> / <code>vendorPayments</code> create, read; aging reports</td>
+</tr>
+<tr>
+<td>Approver (any level)</td>
+<td><code>approvals.read</code>, plus whatever the rule names (a role, a named user, a permission, or being the submitter&#39;s manager)</td>
+</tr>
+<tr>
+<td>Auditor</td>
+<td>All <code>read</code> leaves and reports; no create/update</td>
+</tr>
+</tbody></table></div>
+<p>A person&#39;s rights are the union of their roles. Administrators hold every right. Branch-restricted users see their branches&#39; figures only, and the screens say so.</p>
+</section>
+
+<section id="fc-11" class="wide fc" style="max-width:none;"><p class="section-eyebrow">Finance core · chapter 11</p><h2>Arabic and Urdu</h2><p>Choose the language at sign-in or in your profile. Screens mirror right-to-left; vouchers, journal vouchers and reconciliation statements print right-to-left, with Arabic account names where the chart has them. Amount in words is currently printed in English.</p>
+</section>
+
+<section id="fc-12" class="wide fc" style="max-width:none;"><p class="section-eyebrow">Finance core · chapter 12</p><h2>Screen index</h2><div class="table-wrap"><table class="plan"><thead><tr>
+<th>Screen</th>
+<th>Menu path</th>
+<th>BRD</th>
+</tr>
+</thead><tbody><tr>
+<td>Chart of Accounts / New Account / Import–Export</td>
+<td>General Ledger › Chart of Accounts</td>
+<td>COA</td>
+</tr>
+<tr>
+<td>Account Mapping</td>
+<td>Chart of Accounts › Account Mapping</td>
+<td>COA-06</td>
+</tr>
+<tr>
+<td>Dimension Types / Values / Cost Centres / Rules</td>
+<td>Dimensions</td>
+<td>DIM</td>
+</tr>
+<tr>
+<td>Posting Control</td>
+<td>General Ledger Setup › Posting Control</td>
+<td>PER</td>
+</tr>
+<tr>
+<td>Approval Rules</td>
+<td>General Ledger Setup › Approval Rules</td>
+<td>JNL-10</td>
+</tr>
+<tr>
+<td>My Approvals</td>
+<td>Accounting Operations › My Approvals</td>
+<td>JNL-10</td>
+</tr>
+<tr>
+<td>Receive Payment / Receipts</td>
+<td>Receivables</td>
+<td>AR-03…05</td>
+</tr>
+<tr>
+<td>Pay Vendor / Vendor Payments</td>
+<td>Payables</td>
+<td>AP-05</td>
+</tr>
+<tr>
+<td>Receivables Aging / Customer Ledger / Payables Aging / Vendor Ledger</td>
+<td>Ledger Reports</td>
+<td>AR-06, 07; AP-06</td>
+</tr>
+<tr>
+<td>Journal Listing / New Manual Journal / Pending Approval</td>
+<td>Journals</td>
+<td>JNL</td>
+</tr>
+<tr>
+<td>General Ledger, Trial Balance, Income Statement, Balance Sheet, Cash Flow, Changes in Equity, Custom Reports, Report Designer, Ledger vs Documents</td>
+<td>Ledger Reports</td>
+<td>RPT</td>
+</tr>
+<tr>
+<td>Bank Reconciliation</td>
+<td>Accounting Operations › Bank Reconciliation</td>
+<td>BNK</td>
+</tr>
+<tr>
+<td>Opening Balances</td>
+<td>General Ledger Setup › Opening Balances</td>
+<td>JNL-09</td>
+</tr>
+</tbody></table></div>
+</section>
+
       <section id="appendix" style="max-width:74ch;">
         <p class="section-eyebrow">Reference</p>
         <h2>Glossary &amp; quick reference</h2>
@@ -1557,7 +1898,7 @@
           </tbody>
         </table></div>
 
-        <div class="signoff">
+        <div class="signoff"><p style="color:#c6c8ef;margin:0 0 1rem">Back to <a style="color:#fff" href="../index.html">all documentation</a> · <a style="color:#fff" href="../technical/index.html">technical documentation</a> · <a style="color:#fff" href="../zatca/zatca-onboarding-user-manual.html">ZATCA onboarding guide</a></p>
           <h2>A note on how this manual stays accurate</h2>
           <ul class="checklist">
             <li>Every screen mockup in this document reproduces the live Warraq application as it exists at the time of writing — same field names, same defaults, same layout.</li>

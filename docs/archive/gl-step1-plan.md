@@ -1,6 +1,6 @@
 # GL Step 1 — Company chart of accounts, ledger screens, manual journals (plan for review, no code yet)
 
-Status: DRAFT for review. Nothing here is built. Source: `docs/Finance-Core-Blueprint.pdf` (v0.1), reconciled with what the code does today.
+Status: DRAFT for review. Nothing here is built. Source: `docs/reference/Finance-Core-Blueprint.pdf` (v0.1), reconciled with what the code does today.
 
 ## Where the remaining ERP work stands
 
@@ -15,7 +15,7 @@ costing are all queries over, or postings into, the same journal.
 * `system_accounts`: **16 fixed accounts shared by every company** (Bank, AR, Inventory, GR/IR, VAT input/output/payable, Vendor Credit Receivable,
   Fixed Assets, AP, Paid-in Capital, Retained Earnings, Sales Revenue, COGS, **one** Direct Opex, Rounding). Bank lines carry `bankId`.
 * No per-company chart, no expense accounts by category (all expenses land in one DIRECT_OPEX), no manual journals, no ledger screens.
-* Reports (Trial Balance, P&L, Balance Sheet, aging, statements) are computed from documents by design (`docs/reporting-rules.md`); the journal is
+* Reports (Trial Balance, P&L, Balance Sheet, aging, statements) are computed from documents by design (`docs/design-notes/reporting-rules.md`); the journal is
   checked against them by consistency rule R6. This step does **not** change any existing report.
 
 ## Goal of Step 1

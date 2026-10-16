@@ -1,4 +1,4 @@
-// Approval engine (Blueprint FR-APR-01..06; design: docs/gl-ap-ar/s11-approval-rules-tier1-research.md). One engine for every document type:
+// Approval engine (Blueprint FR-APR-01..06; design: docs/design-notes/approval-rules-tier1-research.md). One engine for every document type:
 //   submitForApproval  finds the active rule for (document type, amount); no rule = "post directly" (the caller goes on exactly as before); a rule = an approval REQUEST that holds the
 //                      intent of the document, and NOTHING is posted (no voucher, no ledger entry, no bank movement);
 //   decideRequest      one level at a time, by someone with that level's authority who is not the submitter (unless the company allows self-approval) and who has not already acted on
