@@ -45,6 +45,8 @@ node scripts/build-test-catalogue.mjs        # test cases: CSV, JSON, Gherkin, R
 npx tsx scripts/build-gl-docs.mjs            # BRD, SRS, sprint log, traceability, data dictionary (A), API reference (B), permissions (C)
 npx tsx scripts/build-gl-docs.mjs --check    # MUST print "OK" (fails on unmapped BR/FR/test/sprint)
 node scripts/build-module-catalogue.mjs      # Annex H: one sheet per module of the WHOLE system (older 1.0 modules and 2.0), from the routes, schema, screens and tests. FAILS if a route file has no sheet: add the module to MODULES in that script
+node scripts/check-manual-freshness.mjs      # FAILS when a screen or route behind a manual chapter changed since the chapter was reviewed. Read the chapter against the running screen, fix the manual, re-capture screens (section 4), then run it with --accept
+node scripts/audit-manual-labels.mjs --prose  # advisory: labels in the hand-built manual that the application text no longer contains
 node scripts/build-docs-html.mjs             # the two reading copies: docs/technical/index.html (+3 linked pages) and docs/user-manual/warraq-erp-user-manual.html; MUST print "OK" (every link, image, anchor resolves)
 ```
 The two HTML documents are what people read (`docs/index.html` is the start page): never edit them. The technical one is built from the chapters listed in `CH` at the top of `scripts/build-docs-html.mjs` (add a new hand-written chapter there); the manual is the hand-built everyday-operations part (`docs/user-manual/source/part-a-everyday-operations.html`, edit by hand when a 1.0 screen changes) followed by the finance-core chapters from `docs/gl-ap-ar/06-user-manual.md`. Retired plans go to `docs/archive/` (add a line to its README), never into the top level.
@@ -59,7 +61,7 @@ Every new user-visible string: add `[key, Arabic, Urdu]` to `src/glTranslations.
 ## 6. Final gate (all must pass before "done")
 1. `npm run lint` clean · `npm run check:isolation` clean.
 2. New and affected tests pass: `TEST_BASE_URL=http://localhost:3001 npx vitest run <files>`; before a release, the full suite (only the SMTP-dependent `companyOnboarding` / `passwordReset` may fail).
-3. `node scripts/build-test-catalogue.mjs`, `npx tsx scripts/build-gl-docs.mjs`, `node scripts/build-module-catalogue.mjs` and `node scripts/build-docs-html.mjs` run; `--check` and the HTML build print OK. **Chain the build, `--check`, lint and `git commit` with `&&` (never `;`) so a failure stops the commit and the push**: a source file with an unescaped apostrophe once broke the generators and was pushed.
+3. `node scripts/check-manual-freshness.mjs` passes (or its stale chapters were reviewed and accepted); `node scripts/build-test-catalogue.mjs`, `npx tsx scripts/build-gl-docs.mjs`, `node scripts/build-module-catalogue.mjs` and `node scripts/build-docs-html.mjs` run; `--check` and the HTML build print OK. **Chain the build, `--check`, lint and `git commit` with `&&` (never `;`) so a failure stops the commit and the push**: a source file with an unescaped apostrophe once broke the generators and was pushed.
 4. Every row of section 2 reviewed (state "reviewed, no change" only when true).
 5. `git add -A`, commit with the sprint item in the message, `git push origin v2` (2.0 only; never merge v2 into master).
 6. If the release needs it: say which release steps changed (annex F) and run the Demo release (`deploy/release-demo.sh`); report the result.

@@ -406,9 +406,9 @@
             <h5>Stock Registry</h5>
             <div class="sub">Monitor physical inventory levels, serial numbers, batches, and locations in real-time.</div>
             <div class="mock-cards c3">
-              <div class="mock-card"><b>Bin Location</b><span>Raw Wood Warehouse</span></div>
+              <div class="mock-card"><b>Location / Warehouse</b><span>Raw Wood Warehouse</span></div>
               <div class="mock-card"><b>On-Hand Quantity</b><span style="color:var(--good-ink);">180</span></div>
-              <div class="mock-card"><b>Reorder Status</b><span>Above minimum</span></div>
+              <div class="mock-card"><b>Batch Number / Expiry Date</b><span>shown per balance</span></div>
             </div>
           </div>
         </div>
@@ -507,6 +507,8 @@
           <div class="label">Where these show up later</div>
           <p style="margin:0;">A customer becomes selectable the moment it's saved here — on Quotations, Sales Invoices, and the POS terminal's customer picker. A vendor becomes selectable on Purchase Requisitions, Purchase Orders, Goods Receipt Notes, Purchase Bills, and the Expenses screen's vendor field. Nothing else needs to be configured for a new party to start transacting.</p>
         </div>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/47-legacy-customers.png" alt="Warraq 2.0: Customers CRM" loading="lazy"><figcaption>Warraq 2.0: Customers CRM</figcaption></figure></div>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/48-legacy-vendors.png" alt="Warraq 2.0: Vendors Directory" loading="lazy"><figcaption>Warraq 2.0: Vendors Directory</figcaption></figure></div>
         <div class="callout"><div class="label">Warraq 2.0</div><p style="margin:0;">In 2.0 a customer or vendor can also carry a <b>posting profile</b> (its own control account and default dimensions), and customer and vendor balances are available from the ledger as aging and party-ledger reports. See <a href="#v2-changes">What is different in 2.0</a>.</p></div>
       </section>
 
@@ -603,6 +605,7 @@
 
         <h3>Modifier Groups</h3>
         <p>Reusable option sets for POS sales — e.g. a <i>Size</i> group (Small/Medium/Large) or a <i>Milk</i> group (Whole/Oat/None), each option optionally carrying its own price adjustment. A group is created once here, then attached to any product that needs it. See §Point of Sale's "Grid density &amp; product modifiers" for how a customer's picks actually price into the sale.</p>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/49-legacy-products.png" alt="Warraq 2.0: Products and Pricing" loading="lazy"><figcaption>Warraq 2.0: Products and Pricing</figcaption></figure></div>
       </section>
 
 
@@ -848,7 +851,7 @@
         <table class="plan" style="margin-top:0;"><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody>
           <tr><td>Sales Warehouse</td><td>Where the sold stock is deducted from — matters for physical products, ignored for services.</td></tr>
           <tr><td>Post Inflow Bank</td><td>Only meaningful when Payment Status is "Paid" — which bank account records the cash/transfer received.</td></tr>
-          <tr><td>Payment Status</td><td><b>Paid</b> books the receipt immediately. <b>Pending/Credit</b> leaves it as Accounts Receivable until collected later (via the invoice's own "Record Payment" action).</td></tr>
+          <tr><td>Payment Status</td><td><b>Paid</b> books the receipt immediately. <b>Pending / Credit</b> leaves it as Accounts Receivable until collected later (via the invoice's own "Record Payment" action).</td></tr>
           <tr><td>Per-line Tax Slab</td><td>Each line can carry its own VAT slab (e.g. a mixed invoice with a zero-rated export line and a standard 15% line) — it isn't forced to one rate for the whole document.</td></tr>
         </tbody></table>
         <div class="callout crit">
@@ -1108,6 +1111,9 @@
           <tr><td>Investor Profit Share</td><td>For companies with registered capital investors (§Fiscal Periods, Capital &amp; VAT Filing): each investor's share of profit for the period based on their recorded equity percentage.</td></tr>
           <tr><td>Fiscal Month Closing History</td><td>An audit trail of every month ever closed for this company, and who closed it.</td></tr>
         </tbody></table>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/50-legacy-profit-loss.png" alt="Warraq 2.0: Profit and Loss, filters and View Report" loading="lazy"><figcaption>Warraq 2.0: Profit and Loss, filters and View Report</figcaption></figure></div>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/51-legacy-outstanding-aging.png" alt="Warraq 2.0: Outstanding Aging and Balances" loading="lazy"><figcaption>Warraq 2.0: Outstanding Aging and Balances</figcaption></figure></div>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/52-legacy-vat-summary.png" alt="Warraq 2.0: VAT Return Summary" loading="lazy"><figcaption>Warraq 2.0: VAT Return Summary</figcaption></figure></div>
       </section>
 
 
@@ -1182,6 +1188,7 @@
           <tr><td>Stock Take Variance History</td><td>Every completed physical stock take and the gap it found between system quantity and physically counted quantity.</td></tr>
           <tr><td>Stock Movement Ledger</td><td>A chronological audit trail of every single quantity change for a product — sale, receipt, return, or manual adjustment — the lowest-level detail behind every other inventory report.</td></tr>
         </tbody></table>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/53-legacy-sales-register.png" alt="Warraq 2.0: Sales Register" loading="lazy"><figcaption>Warraq 2.0: Sales Register</figcaption></figure></div>
       </section>
 
 
@@ -1315,6 +1322,8 @@
           <tr><td>Show Branch Code</td><td>When on, the branch's short code (§Branches above) is woven into the printed number for that document type.</td></tr>
           <tr><td>Reset</td><td>Whether the sequence restarts (e.g. yearly) or counts forever — the underlying counter always counts company-wide, never per-branch, even when a branch code appears in the printed number as cosmetic text.</td></tr>
         </tbody></table>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/54-legacy-settings-company-profile.png" alt="Warraq 2.0: Settings, Company Profile" loading="lazy"><figcaption>Warraq 2.0: Settings, Company Profile</figcaption></figure></div>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/55-legacy-settings-document-numbering.png" alt="Warraq 2.0: Settings, Document Numbering" loading="lazy"><figcaption>Warraq 2.0: Settings, Document Numbering</figcaption></figure></div>
       </section>
 
 
@@ -1405,6 +1414,7 @@
           <tr><td>No per-user override</td><td>There is no individual exception layered on top of role assignment — a deliberate design choice, not a missing feature. To change what one person can do, change their role assignment.</td></tr>
           <tr><td>Admin / Super Admin bypass</td><td>An account marked <code>admin</code> or <code>super-admin</code> skips every granular permission check entirely and always sees everything for their scope.</td></tr>
         </tbody></table>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/58-legacy-settings-roles.png" alt="Warraq 2.0: Settings, Roles" loading="lazy"><figcaption>Warraq 2.0: Settings, Roles</figcaption></figure></div>
         <div class="callout"><div class="label">Warraq 2.0</div><p style="margin:0;">In 2.0 the roles editor also holds the permissions of the finance core (approval rules, approvals, bank reconciliation, receipts, vendor payments, posting control with its back-date and override-lock rights), and a user record has a <b>Manager</b> field. See <a href="#fc-10">Roles and permissions</a>.</p></div>
       </section>
 
@@ -1470,6 +1480,7 @@
           <div class="label">What belongs here — and what never should</div>
           <p style="margin:0;">Only fixed app vocabulary lives in this dictionary — field labels, buttons, status words. A customer name, a product name, or any other text a company itself typed in is never translated here and should never be added — there's no fixed set of possible values for it to translate correctly, and the shared dictionary is common to every company on the platform.</p>
         </div>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/56-legacy-settings-document-templates.png" alt="Warraq 2.0: Settings, Document Templates" loading="lazy"><figcaption>Warraq 2.0: Settings, Document Templates</figcaption></figure></div>
       </section>
 
 
@@ -1542,6 +1553,7 @@
           <div class="label">Filing is permanent</div>
           <p style="margin:0;">"Mark as ZATCA Filed" only records that you personally filed this return on ZATCA's own government VAT portal — it does not file anything for you. But once marked, it <b>permanently locks</b> every document in that quarter from further edits — only click it once the real filing on ZATCA's portal is actually done.</p>
         </div>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/57-legacy-settings-fiscal-capital.png" alt="Warraq 2.0: Settings, Fiscal and Capital" loading="lazy"><figcaption>Warraq 2.0: Settings, Fiscal and Capital</figcaption></figure></div>
         <div class="callout"><div class="label">Warraq 2.0</div><p style="margin:0;">In 2.0, closing a month is one of several controls on posting: the company can also set a <b>lock date</b> and a <b>back-date window</b> (General Ledger Setup › Posting Control). See <a href="#fc-9">Period routine and corrections</a>.</p></div>
       </section>
 
@@ -1931,7 +1943,7 @@
           </tbody>
         </table></div>
 
-        <div class="signoff"><p style="color:#c6c8ef;margin:0 0 1rem">Back to <a style="color:#fff" href="../index.html">all documentation</a> · <a style="color:#fff" href="../technical/index.html">technical documentation</a> · <a style="color:#fff" href="../zatca/zatca-onboarding-user-manual.html">ZATCA onboarding guide</a></p><p style="color:#c6c8ef;margin:0 0 1rem;font-size:.8rem">Version: built 2026-10-18, branch v2, after commit 849912b.</p>
+        <div class="signoff"><p style="color:#c6c8ef;margin:0 0 1rem">Back to <a style="color:#fff" href="../index.html">all documentation</a> · <a style="color:#fff" href="../technical/index.html">technical documentation</a> · <a style="color:#fff" href="../zatca/zatca-onboarding-user-manual.html">ZATCA onboarding guide</a></p><p style="color:#c6c8ef;margin:0 0 1rem;font-size:.8rem">Version: built 2026-10-18, branch v2, after commit 061ee71.</p>
           <h2>A note on how this manual stays accurate</h2>
           <ul class="checklist">
             <li>Every screen mockup in this document reproduces the live Warraq application as it exists at the time of writing — same field names, same defaults, same layout.</li>

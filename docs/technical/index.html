@@ -46,7 +46,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 </tbody></table></div>
 <div class="callout"><div class="label">Which version is described</div><p>The finance core is <b>Warraq 2.0</b> (branch <code>v2</code>, the Demo). Live (1.0, branch <code>master</code>) does not have it yet. Chapters say so where it matters; the <a href="#environments">Environments</a> chapter explains the two tracks.</p></div>
 <div class="callout warn"><div class="label">Reading copy, not the source</div><p>This page is generated. The requirements, system requirements, sprint log, traceability and annexes A to C are generated from <code>docs/gl-ap-ar/source/*.mjs</code> and from the code; the other chapters are hand-written Markdown under <code>docs/gl-ap-ar</code>, <code>docs/design-notes</code>, <code>docs/operations</code> and <code>docs/proposals</code>. Edit those, then run <code>npx tsx scripts/build-gl-docs.mjs</code> and <code>node scripts/build-docs-html.mjs</code>; never edit this page. The skill <code>update-docs-after-development</code> walks through it.</p></div>
-<p class="src">Version: built 2026-10-18, branch v2, after commit 849912b.</p></section>
+<p class="src">Version: built 2026-10-18, branch v2, after commit 061ee71.</p></section>
 <section class="chapter" id="environments"><p class="eyebrow">Chapter 2</p><h2>Environments: Live (1.0) and Demo / development (2.0)</h2><p class="src">Source: <code>docs/operations/environments.md</code></p><p>Two words are used everywhere from now on:</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th></th>
@@ -433,47 +433,47 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 </thead><tbody><tr>
 <td>GET</td>
 <td><code>/api/customers</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>customers.read</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/customers</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>customers.update, customers.create</code></td>
 </tr>
 <tr>
 <td>PATCH</td>
 <td><code>/api/customers/:id/toggle-active</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>customers.delete</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/vendors</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>vendors.read</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/vendors</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>vendors.update, vendors.create</code></td>
 </tr>
 <tr>
 <td>PATCH</td>
 <td><code>/api/vendors/:id/toggle-active</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>vendors.delete</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/products</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>products.read</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/products</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>products.update, products.create</code></td>
 </tr>
 <tr>
 <td>PATCH</td>
 <td><code>/api/products/:id/toggle-active</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>products.delete</code></td>
 </tr>
 <tr>
 <td>POST</td>
@@ -488,7 +488,7 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <tr>
 <td>PATCH</td>
 <td><code>/api/companies/:id/settings</code></td>
-<td><code>companyProfile.update</code></td>
+<td><code>companyProfile.update, documentNumbering.update</code></td>
 </tr>
 <tr>
 <td>GET</td>
@@ -528,7 +528,7 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <tr>
 <td>POST</td>
 <td><code>/api/tax-slabs</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>taxSlabs.update, taxSlabs.create</code></td>
 </tr>
 <tr>
 <td>PATCH</td>
@@ -538,17 +538,17 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <tr>
 <td>GET</td>
 <td><code>/api/product-categories</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>categories.read</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/product-categories</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>categories.update, categories.create</code></td>
 </tr>
 <tr>
 <td>PATCH</td>
 <td><code>/api/product-categories/:id/toggle-active</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>categories.delete</code></td>
 </tr>
 <tr>
 <td>GET</td>
@@ -568,77 +568,77 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <tr>
 <td>GET</td>
 <td><code>/api/units-of-measure</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>units.read</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/units-of-measure</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>units.update, units.create</code></td>
 </tr>
 <tr>
 <td>PATCH</td>
 <td><code>/api/units-of-measure/:id/toggle-active</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>units.delete</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/job-titles</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>jobTitles.read</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/job-titles</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>jobTitles.update, jobTitles.create</code></td>
 </tr>
 <tr>
 <td>PATCH</td>
 <td><code>/api/job-titles/:id/toggle-active</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>jobTitles.delete</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/product-unit-conversions</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>products.read</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/product-unit-conversions</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>products.update, products.create</code></td>
 </tr>
 <tr>
 <td>PATCH</td>
 <td><code>/api/product-unit-conversions/:id/toggle-active</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>products.update</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/warehouses</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>warehouses.read</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/warehouses</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>warehouses.update, warehouses.create</code></td>
 </tr>
 <tr>
 <td>PATCH</td>
 <td><code>/api/warehouses/:id/toggle-active</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>warehouses.delete</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/product-warehouses</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>products.read</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/product-warehouses</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>products.update</code></td>
 </tr>
 <tr>
 <td>DELETE</td>
 <td><code>/api/product-warehouses/:id</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>products.delete</code></td>
 </tr>
 </tbody></table></div>
 <h3 id="module-catalogue--p-p">Product import</h3>
@@ -658,17 +658,17 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 </thead><tbody><tr>
 <td>GET</td>
 <td><code>/api/master-import/products/template</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>products.create</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/master-import/products/validate</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>products.create</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/master-import/products/commit</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>products.create</code></td>
 </tr>
 </tbody></table></div>
 <h3 id="module-catalogue---2">Branches</h3>
@@ -688,22 +688,22 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 </thead><tbody><tr>
 <td>GET</td>
 <td><code>/api/branches</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>branches.read</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/branches</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>branches.update</code></td>
 </tr>
 <tr>
 <td>PATCH</td>
 <td><code>/api/branches/:id/toggle-active</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>branches.delete</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/branches/backfill-unassigned</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>branches.update</code></td>
 </tr>
 </tbody></table></div>
 <h3 id="module-catalogue--p">Employees and job titles</h3>
@@ -723,17 +723,17 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 </thead><tbody><tr>
 <td>GET</td>
 <td><code>/api/employees</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>employees.read</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/employees</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>employees.update, employees.create</code></td>
 </tr>
 <tr>
 <td>PATCH</td>
 <td><code>/api/employees/:id/toggle-active</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>employees.delete</code></td>
 </tr>
 </tbody></table></div>
 <h3 id="module-catalogue--p-2">Sales documents, fiscal months, recurring postings</h3>
@@ -753,57 +753,57 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 </thead><tbody><tr>
 <td>GET</td>
 <td><code>/api/transactions/quotations</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>quotation.read</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/transactions/quotations</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>quotation.update, quotation.create</code></td>
 </tr>
 <tr>
 <td>PUT</td>
 <td><code>/api/transactions/quotations/:id</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>quotation.update</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/transactions/quotations/:id/cancel</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>quotation.delete</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/transactions/quotations/:id/convert</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>invoice.create</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/transactions/invoices</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>invoice.read</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/transactions/invoices/:id/xml</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>invoice.read</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/transactions/invoices/:id/pdf</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>invoice.read</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/transactions/invoices</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>invoice.create</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/transactions/invoices/:id/note</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>invoice.create</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/transactions/invoices/:id/paid</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>invoice.update</code></td>
 </tr>
 <tr>
 <td>POST</td>
@@ -833,42 +833,42 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <tr>
 <td>POST</td>
 <td><code>/api/transactions/recurring-postings</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>expense.create</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/transactions/settle-accrual</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>expense.create</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/transactions/recurring-templates</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>expense.create</code></td>
 </tr>
 <tr>
 <td>PUT</td>
 <td><code>/api/transactions/recurring-templates/:id</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>expense.update</code></td>
 </tr>
 <tr>
 <td>PATCH</td>
 <td><code>/api/transactions/recurring-templates/:id/toggle</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>expense.delete</code></td>
 </tr>
 <tr>
 <td>DELETE</td>
 <td><code>/api/transactions/recurring-templates/:id</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>expense.delete</code></td>
 </tr>
 <tr>
 <td>PUT</td>
 <td><code>/api/transactions/accruals/:id</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>expense.update</code></td>
 </tr>
 <tr>
 <td>DELETE</td>
 <td><code>/api/transactions/accruals/:id</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>expense.delete</code></td>
 </tr>
 <tr>
 <td>POST</td>
@@ -893,27 +893,27 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 </thead><tbody><tr>
 <td>GET</td>
 <td><code>/api/expenses</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>expense.read</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/expenses</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>expense.create</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/expenses/:id/pay</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>expense.update</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/expenses/:id/reverse</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>expense.delete</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/expenses/:id/cancel</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>expense.delete</code></td>
 </tr>
 </tbody></table></div>
 <h3 id="module-catalogue--p-4">Procurement and inventory</h3>
@@ -953,7 +953,7 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <tr>
 <td>POST</td>
 <td><code>/api/inventory/goods-receipt-notes</code></td>
-<td><code>inventory.grn</code></td>
+<td><code>inventory.grn, purchaseBills.create</code></td>
 </tr>
 <tr>
 <td>POST</td>
@@ -1068,42 +1068,42 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 </thead><tbody><tr>
 <td>GET</td>
 <td><code>/api/pos/shifts</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>pos.access</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/pos/shifts</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>pos.shifts</code></td>
 </tr>
 <tr>
 <td>PUT</td>
 <td><code>/api/pos/shifts/:id</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>pos.shifts</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/pos/held-invoices</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>pos.access</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/pos/held-invoices</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>pos.access</code></td>
 </tr>
 <tr>
 <td>DELETE</td>
 <td><code>/api/pos/held-invoices/:id</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>pos.access</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/pos/returnable-invoices</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>pos.access</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/pos/returns</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>pos.return, pos.access</code></td>
 </tr>
 </tbody></table></div>
 <h3 id="module-catalogue--p-6">Reports and dashboard</h3>
@@ -1198,7 +1198,7 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <tr>
 <td>GET</td>
 <td><code>/api/reports/item-profitability</code></td>
-<td><code>reports.itemProfitability, reports.lowStock</code></td>
+<td><code>reports.itemProfitability</code></td>
 </tr>
 <tr>
 <td>GET</td>
@@ -1288,42 +1288,42 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 </thead><tbody><tr>
 <td>POST</td>
 <td><code>/api/zatca/submit-invoice/:invoiceId</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>invoice.create, invoice.update</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/zatca/company-status/:companyId</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>file-level gate (router.use)</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/zatca/company-config</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>file-level gate (router.use)</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/zatca/set-active-environment</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>file-level gate (router.use)</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/zatca/generate-keypair-csr</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>file-level gate (router.use)</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/zatca/request-compliance-csid</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>file-level gate (router.use)</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/zatca/run-compliance-suite</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>file-level gate (router.use)</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/zatca/request-production-csid</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>file-level gate (router.use)</code></td>
 </tr>
 </tbody></table></div>
 <h3 id="module-catalogue---5">Users</h3>
@@ -1348,7 +1348,7 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <tr>
 <td>POST</td>
 <td><code>/api/users</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>users.update, users.create</code></td>
 </tr>
 <tr>
 <td>PATCH</td>
@@ -1573,12 +1573,12 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 </thead><tbody><tr>
 <td>GET</td>
 <td><code>/api/approvals/rules</code></td>
-<td><code>approvalRules.read, approvalRules.create</code></td>
+<td><code>approvalRules.read</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/approvals/rules</code></td>
-<td><code>approvalRules.create, approvalRules.update</code></td>
+<td><code>approvalRules.create</code></td>
 </tr>
 <tr>
 <td>PUT</td>
@@ -1723,7 +1723,7 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 </thead><tbody><tr>
 <td>GET</td>
 <td><code>/api/ledger/journal-settings</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>checked by a helper in the handler</code></td>
 </tr>
 <tr>
 <td>PUT</td>
@@ -1733,17 +1733,17 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <tr>
 <td>GET</td>
 <td><code>/api/ledger/journals</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>checked by a helper in the handler</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/ledger/journals/entries/:id</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>checked by a helper in the handler</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/ledger/manual-journals/:id</code></td>
-<td><code>journals.create</code></td>
+<td><code>checked by a helper in the handler</code></td>
 </tr>
 <tr>
 <td>POST</td>
@@ -1763,7 +1763,7 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <tr>
 <td>POST</td>
 <td><code>/api/ledger/manual-journals/:id/approve</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>journals.post</code></td>
 </tr>
 <tr>
 <td>POST</td>
@@ -1783,12 +1783,12 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <tr>
 <td>GET</td>
 <td><code>/api/ledger/manual-journals/:id/print-data</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>checked by a helper in the handler</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/ledger/journals/entries/:id/print-data</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>checked by a helper in the handler</code></td>
 </tr>
 </tbody></table></div>
 <h3 id="module-catalogue--p-12">General ledger: reports (2.0)</h3>
@@ -1843,7 +1843,7 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <tr>
 <td>GET</td>
 <td><code>/api/ledger/report-definitions/:id</code></td>
-<td><code>reportDefinitions.create</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
 </tr>
 <tr>
 <td>POST</td>
@@ -1943,7 +1943,7 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <tr>
 <td>GET</td>
 <td><code>/api/ledger/cost-centers</code></td>
-<td><code>dimensions.create</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
 </tr>
 <tr>
 <td>POST</td>
@@ -2098,17 +2098,17 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 </thead><tbody><tr>
 <td>GET</td>
 <td><code>/api/settlements/open-items</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>checked by a helper in the handler</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/settlements</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>checked by a helper in the handler</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/settlements/:id</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>checked by a helper in the handler</code></td>
 </tr>
 <tr>
 <td>POST</td>
@@ -2123,12 +2123,12 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <tr>
 <td>POST</td>
 <td><code>/api/settlements/:id/apply</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>checked by a helper in the handler</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/settlements/:id/cancel</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>checked by a helper in the handler</code></td>
 </tr>
 </tbody></table></div>
 <h3 id="module-catalogue---11">Bank reconciliation (2.0)</h3>
@@ -2148,82 +2148,82 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 </thead><tbody><tr>
 <td>GET</td>
 <td><code>/api/bank-reconciliations</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>read</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/bank-reconciliations/adjustment-accounts</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>adjust</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/bank-reconciliations</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>create</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/bank-reconciliations/:id</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>read</code></td>
 </tr>
 <tr>
 <td>PATCH</td>
 <td><code>/api/bank-reconciliations/:id</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>match</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/bank-reconciliations/:id/clear</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>match</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/bank-reconciliations/:id/statement-lines</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>match</code></td>
 </tr>
 <tr>
 <td>DELETE</td>
 <td><code>/api/bank-reconciliations/:id/statement-lines/:lineId</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>match</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/bank-reconciliations/:id/match</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>match</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/bank-reconciliations/:id/unmatch</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>match</code></td>
 </tr>
 <tr>
 <td>GET</td>
 <td><code>/api/bank-reconciliations/:id/suggestions</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>match</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/bank-reconciliations/:id/adjustment</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>adjust</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/bank-reconciliations/:id/adjustments/:voucherId/reverse</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>adjust</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/bank-reconciliations/:id/complete</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>complete</code></td>
 </tr>
 <tr>
 <td>POST</td>
 <td><code>/api/bank-reconciliations/:id/reopen</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>reopen</code></td>
 </tr>
 <tr>
 <td>DELETE</td>
 <td><code>/api/bank-reconciliations/:id</code></td>
-<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+<td><code>create</code></td>
 </tr>
 </tbody></table></div>
 </section>
@@ -2527,7 +2527,7 @@ Every request is one database transaction: a failure anywhere leaves nothing hal
 Behaviour is proven by automated tests over real HTTP and real PostgreSQL, with no mocks; every new feature ships with tests.</p>
 <p><strong>BR-NFR-04 Safe releases and environments</strong> — Must, Built, source Platform, sprint S0.
 Live (1.0) and Demo (2.0) are separate tracks; releases run by script with a read-the-plan database step, row-level-security and constraint verification, and a rollback path.</p>
-<p><strong>BR-NFR-05 Maintainable documentation</strong> — Must, Planned, source Decision, sprint S10, S10, S10, S10, S10, S10.
+<p><strong>BR-NFR-05 Maintainable documentation</strong> — Must, Planned, source Decision, sprint S10, S10, S10, S10, S10, S10, S10.
 The requirements, design, test and sprint documents of the ledger core are generated from one traceable source and kept in the repository.</p>
 <p><strong>BR-NFR-06 Promotion to Live</strong> — Must, Planned, source Decision, sprint S20.
 The Demo release is promoted to the Live system in a controlled release, with data migration, back-fill and verification on a copy of production first.</p>
@@ -3720,7 +3720,7 @@ Each company has its own print templates (create, edit options and layout, activ
 <td>BR-NFR-05</td>
 <td>The BRD, SRS, sprint log and traceability matrix shall be generated from docs/gl-ap-ar/source and validated.</td>
 <td>scripts/build-gl-docs.mjs</td>
-<td>(target: sprint 10,10,10,10,10,10)</td>
+<td>(target: sprint 10,10,10,10,10,10,10)</td>
 </tr>
 <tr>
 <td>FR-NFR-06.1</td>
@@ -5330,8 +5330,8 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <tr>
 <td>S10</td>
 <td>Documentation set</td>
-<td>In progress</td>
-<td>2026-10-15 to (open)</td>
+<td>Done</td>
+<td>2026-10-15 to 2026-10-18</td>
 <td>One technical document and one user manual, generated from one source and covering every module, older and new.</td>
 </tr>
 <tr>
@@ -5700,7 +5700,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-NFR-03.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-6">Sprint 10 — Documentation set (In progress)</h3>
+<h3 id="sprint-log--p-5">Sprint 10 — Documentation set (Done)</h3>
 <p>One technical document and one user manual, generated from one source and covering every module, older and new.</p>
 <p>Commits: <code>7d03574</code>, <code>55a95cd</code>, <code>7f95b6a</code>, <code>56ee1b2</code></p>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -5735,13 +5735,19 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 <tr>
 <td>S10-05</td>
-<td>Pending: real screenshots for the remaining older screens (master data, financial and sales reports, settings) and a screen-by-screen walk-through of the older chapters against 2.0</td>
+<td>Real 2.0 screenshots for the remaining older screens (customers, vendors, products, profit and loss, outstanding aging, VAT summary, sales register, company profile, document numbering, templates, fiscal and capital, roles) added to the manual (done)</td>
 <td>BR-NFR-05 Maintainable documentation</td>
 <td>FR-NFR-05.1</td>
 </tr>
 <tr>
 <td>S10-06</td>
-<td>Pending: detect the permission of every endpoint in the module catalogue (149 endpoints show not detected) and a check that flags manual chapters when a screen changes</td>
+<td>Walk-through of the older chapters against 2.0 (done as an automated label audit, scripts/audit-manual-labels.mjs: 253 labels in the hand-built panels and bold UI names checked against the application text, 29 not found, all mock-up data, units or menu-path wording; one stale mock-up, the stock registry, corrected). A reviewer clicking through each older screen is still advisable</td>
+<td>BR-NFR-05 Maintainable documentation</td>
+<td>FR-NFR-05.1</td>
+</tr>
+<tr>
+<td>S10-07</td>
+<td>Permission detection in the module catalogue improved from 149 to 45 endpoints shown as not detected (the rest check inside helper functions); a manual-freshness check, scripts/check-manual-freshness.mjs, flags chapters whose screens or routes changed since they were reviewed (done)</td>
 <td>BR-NFR-05 Maintainable documentation</td>
 <td>FR-NFR-05.1</td>
 </tr>
@@ -5813,7 +5819,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-PER-11.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-7">Sprint 13 — Year-end close (Planned)</h3>
+<h3 id="sprint-log--p-p-6">Sprint 13 — Year-end close (Planned)</h3>
 <p>One closing entry into retained earnings; next year opens automatically.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -5849,7 +5855,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-TAX-01.1, FR-TAX-03.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-8">Sprint 15 — Cost allocation (Planned)</h3>
+<h3 id="sprint-log--p-p-7">Sprint 15 — Cost allocation (Planned)</h3>
 <p>Allocation run and branch P&amp;L subtotals.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -5870,7 +5876,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-DIM-08.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-9">Sprint 16 — Dimensions on documents (Planned)</h3>
+<h3 id="sprint-log--p-p-8">Sprint 16 — Dimensions on documents (Planned)</h3>
 <p>Collect dimensions on invoice, expense and bill forms; enforce Required.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -5885,7 +5891,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-DIM-06.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-10">Sprint 17 — Receivables enhancements (Planned)</h3>
+<h3 id="sprint-log--p-p-9">Sprint 17 — Receivables enhancements (Planned)</h3>
 <p>Credit note application, statement printing, reminders.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -6580,7 +6586,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>BR-NFR-05</td>
 <td>Maintainable documentation</td>
 <td>Planned</td>
-<td>S10, S10, S10, S10, S10, S10</td>
+<td>S10, S10, S10, S10, S10, S10, S10</td>
 </tr>
 <tr>
 <td>BR-NFR-06</td>
@@ -6811,7 +6817,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>SB1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-5">Roadmap (not yet built)</h3>
+<h3 id="sprint-log--p-6">Roadmap (not yet built)</h3>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Sprint</th>
 <th>Name</th>

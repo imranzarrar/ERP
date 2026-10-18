@@ -197,7 +197,7 @@ A multi-tenant web application (React client, Node/Express API, PostgreSQL with 
 | FR-NFR-02.1 | BR-NFR-02 | Each request shall run in one tenant transaction that rolls back on error. | tenantDb.ts | NFR-004, NFR-005 |
 | FR-NFR-03.1 | BR-NFR-03 | Behaviour shall be covered by vitest files over real HTTP and Postgres. | tests/ | NFR-008 |
 | FR-NFR-04.1 | BR-NFR-04 | Release scripts shall run the date migration, pre-push keys, db:push review, RLS, constraints, seed, back-fill and translations. | deploy/release-demo.sh; deploy/release.sh | REL-001, REL-002, REL-003, REL-004, REL-005, REL-006, REL-007, REL-008, REL-009 |
-| FR-NFR-05.1 | BR-NFR-05 | The BRD, SRS, sprint log and traceability matrix shall be generated from docs/gl-ap-ar/source and validated. | scripts/build-gl-docs.mjs | (target: sprint 10,10,10,10,10,10) |
+| FR-NFR-05.1 | BR-NFR-05 | The BRD, SRS, sprint log and traceability matrix shall be generated from docs/gl-ap-ar/source and validated. | scripts/build-gl-docs.mjs | (target: sprint 10,10,10,10,10,10,10) |
 | FR-NFR-06.1 | BR-NFR-06 | Live promotion shall run on a scrubbed copy of production first (Sprint 20). | planned | REL-009 |
 
 ### SAL — Sales documents (quotations, invoices, credit notes)

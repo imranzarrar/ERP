@@ -830,7 +830,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 <td>Planned</td>
 <td>FR-NFR-05.1</td>
 <td>—</td>
-<td>S10, S10, S10, S10, S10, S10</td>
+<td>S10, S10, S10, S10, S10, S10, S10</td>
 </tr>
 <tr>
 <td>BR-NFR-06</td>
@@ -4271,12 +4271,17 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 </tr>
 <tr>
 <td>S10 Documentation set</td>
-<td>S10-05 Pending: real screenshots for the remaining older screens (master data, financial and sales reports, settings) and a screen-by-screen walk-through of the older chapters against 2.0</td>
+<td>S10-05 Real 2.0 screenshots for the remaining older screens (customers, vendors, products, profit and loss, outstanding aging, VAT summary, sales register, company profile, document numbering, templates, fiscal and capital, roles) added to the manual (done)</td>
 <td>BR-NFR-05</td>
 </tr>
 <tr>
 <td>S10 Documentation set</td>
-<td>S10-06 Pending: detect the permission of every endpoint in the module catalogue (149 endpoints show not detected) and a check that flags manual chapters when a screen changes</td>
+<td>S10-06 Walk-through of the older chapters against 2.0 (done as an automated label audit, scripts/audit-manual-labels.mjs: 253 labels in the hand-built panels and bold UI names checked against the application text, 29 not found, all mock-up data, units or menu-path wording; one stale mock-up, the stock registry, corrected). A reviewer clicking through each older screen is still advisable</td>
+<td>BR-NFR-05</td>
+</tr>
+<tr>
+<td>S10 Documentation set</td>
+<td>S10-07 Permission detection in the module catalogue improved from 149 to 45 endpoints shown as not detected (the rest check inside helper functions); a manual-freshness check, scripts/check-manual-freshness.mjs, flags chapters whose screens or routes changed since they were reviewed (done)</td>
 <td>BR-NFR-05</td>
 </tr>
 <tr>

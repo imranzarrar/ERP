@@ -106,7 +106,7 @@ Coverage: 137 business requirements → 145 system requirements → 420 of 420 t
 | BR-NFR-02 | Atomic requests | Built | FR-NFR-02.1 | 2: NFR-004, NFR-005 | S1 |
 | BR-NFR-03 | Real-database automated tests | Built | FR-NFR-03.1 | 1: NFR-008 | S9 |
 | BR-NFR-04 | Safe releases and environments | Built | FR-NFR-04.1 | 9: REL-001, REL-002, REL-003, REL-004, REL-005, REL-006 … | S0 |
-| BR-NFR-05 | Maintainable documentation | Planned | FR-NFR-05.1 | — | S10, S10, S10, S10, S10, S10 |
+| BR-NFR-05 | Maintainable documentation | Planned | FR-NFR-05.1 | — | S10, S10, S10, S10, S10, S10, S10 |
 | BR-NFR-06 | Promotion to Live | Planned | FR-NFR-06.1 | 1: REL-009 | S20 |
 | BR-SAL-01 | Quotations convert to invoices | Built | FR-SAL-01.1 | 1: SAL-001 | SB1 |
 | BR-SAL-02 | Invoice payments, in part or in full | Built | FR-SAL-02.1 | 4: SAL-002, SAL-003, SAL-004, SAL-005 | SB1 |
@@ -614,8 +614,9 @@ None.
 | S10 Documentation set | S10-02 One technical document (platform architecture, module catalogue, requirements, design, rules, tests, sprint log, annexes) and one user manual (older modules plus the finance core), with a link check (done) | BR-NFR-05 |
 | S10 Documentation set | S10-03 Requirements, system requirements and test cases for the older modules (invoices, quotations, POS, expenses, procurement and inventory, VAT returns, ZATCA, master data, users), written as built and traced to the existing automated tests (done: baseline sprint B1, 34 requirements, 100 cases) | BR-NFR-05 |
 | S10 Documentation set | S10-04 Real 2.0 screenshots for the main older screens (sales invoices, new invoice, quotation book, expenses, recurring, purchase bills, goods receipt, stock registry, POS shifts) added to the manual (done) | BR-NFR-05 |
-| S10 Documentation set | S10-05 Pending: real screenshots for the remaining older screens (master data, financial and sales reports, settings) and a screen-by-screen walk-through of the older chapters against 2.0 | BR-NFR-05 |
-| S10 Documentation set | S10-06 Pending: detect the permission of every endpoint in the module catalogue (149 endpoints show not detected) and a check that flags manual chapters when a screen changes | BR-NFR-05 |
+| S10 Documentation set | S10-05 Real 2.0 screenshots for the remaining older screens (customers, vendors, products, profit and loss, outstanding aging, VAT summary, sales register, company profile, document numbering, templates, fiscal and capital, roles) added to the manual (done) | BR-NFR-05 |
+| S10 Documentation set | S10-06 Walk-through of the older chapters against 2.0 (done as an automated label audit, scripts/audit-manual-labels.mjs: 253 labels in the hand-built panels and bold UI names checked against the application text, 29 not found, all mock-up data, units or menu-path wording; one stale mock-up, the stock registry, corrected). A reviewer clicking through each older screen is still advisable | BR-NFR-05 |
+| S10 Documentation set | S10-07 Permission detection in the module catalogue improved from 149 to 45 endpoints shown as not detected (the rest check inside helper functions); a manual-freshness check, scripts/check-manual-freshness.mjs, flags chapters whose screens or routes changed since they were reviewed (done) | BR-NFR-05 |
 | S11 Approval rules | S11-01 Approval engine, delivered for vendor payments, vendor bills and credit notes: rules by amount band, sequential levels, requests, append-only history, My Approvals worklist | BR-JNL-10 |
 | S11 Approval rules | S11-02 Manager hierarchy (done: manager on the user form, validated) and delegation with validity dates (done: delegation card on My Approvals) as approver sources, plus recall by the submitter | BR-JNL-10 |
 | S11 Approval rules | S11-03 Company-level self-approval setting for every document type (replaces the journal-only switch) | BR-JNL-07 |

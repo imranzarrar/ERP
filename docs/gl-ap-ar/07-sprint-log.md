@@ -17,7 +17,7 @@ Sprints are numbered. Done sprints list the commits that delivered them (git, br
 | S7 | Receipts and vendor payments | Done | 2026-10-15 | Receive Payment and Pay Vendor across documents, on account, cancel; reports follow. |
 | S8 | Bank reconciliation | Done | 2026-10-15 | Reconciliation sessions per FR-BANK-01..05. |
 | S9 | Print-outs and test catalogue | Done | 2026-10-15 | Vouchers and reconciliation prints; automation-ready test cases. |
-| S10 | Documentation set | In progress | 2026-10-15 to (open) | One technical document and one user manual, generated from one source and covering every module, older and new. |
+| S10 | Documentation set | Done | 2026-10-15 to 2026-10-18 | One technical document and one user manual, generated from one source and covering every module, older and new. |
 | S11 | Approval rules | Done | 2026-10-15 to 2026-10-16 | Amount-threshold, multi-level approval for journals, bills, payments and credit notes. |
 | S12 | Period control | Planned | TBD | Restricted month, adjustment period, readiness checklist, ledger-verified month close, per-module close. |
 | S13 | Year-end close | Planned | TBD | One closing entry into retained earnings; next year opens automatically. |
@@ -157,7 +157,7 @@ Commits: `380dee3`, `e7b08cd`
 | S9-01 | Receipt/Payment voucher, Journal voucher, Reconciliation statement, RTL | BR-PRT-01 Receipt and payment voucher; BR-PRT-02 Journal voucher; BR-PRT-03 Bank reconciliation statement; BR-PRT-04 Right-to-left printing | FR-PRT-01.1, FR-PRT-02.1, FR-PRT-03.1, FR-PRT-04.1 |
 | S9-02 | Test-case catalogue and generator | BR-NFR-03 Real-database automated tests | FR-NFR-03.1 |
 
-## Sprint 10 — Documentation set (In progress)
+## Sprint 10 — Documentation set (Done)
 
 One technical document and one user manual, generated from one source and covering every module, older and new.
 
@@ -169,8 +169,9 @@ Commits: `7d03574`, `55a95cd`, `7f95b6a`, `56ee1b2`
 | S10-02 | One technical document (platform architecture, module catalogue, requirements, design, rules, tests, sprint log, annexes) and one user manual (older modules plus the finance core), with a link check (done) | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
 | S10-03 | Requirements, system requirements and test cases for the older modules (invoices, quotations, POS, expenses, procurement and inventory, VAT returns, ZATCA, master data, users), written as built and traced to the existing automated tests (done: baseline sprint B1, 34 requirements, 100 cases) | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
 | S10-04 | Real 2.0 screenshots for the main older screens (sales invoices, new invoice, quotation book, expenses, recurring, purchase bills, goods receipt, stock registry, POS shifts) added to the manual (done) | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
-| S10-05 | Pending: real screenshots for the remaining older screens (master data, financial and sales reports, settings) and a screen-by-screen walk-through of the older chapters against 2.0 | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
-| S10-06 | Pending: detect the permission of every endpoint in the module catalogue (149 endpoints show not detected) and a check that flags manual chapters when a screen changes | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
+| S10-05 | Real 2.0 screenshots for the remaining older screens (customers, vendors, products, profit and loss, outstanding aging, VAT summary, sales register, company profile, document numbering, templates, fiscal and capital, roles) added to the manual (done) | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
+| S10-06 | Walk-through of the older chapters against 2.0 (done as an automated label audit, scripts/audit-manual-labels.mjs: 253 labels in the hand-built panels and bold UI names checked against the application text, 29 not found, all mock-up data, units or menu-path wording; one stale mock-up, the stock registry, corrected). A reviewer clicking through each older screen is still advisable | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
+| S10-07 | Permission detection in the module catalogue improved from 149 to 45 endpoints shown as not detected (the rest check inside helper functions); a manual-freshness check, scripts/check-manual-freshness.mjs, flags chapters whose screens or routes changed since they were reviewed (done) | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
 
 ## Sprint 11 — Approval rules (Done)
 
@@ -370,7 +371,7 @@ Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to
 | BR-NFR-02 | Atomic requests | Built | S1 |
 | BR-NFR-03 | Real-database automated tests | Built | S9 |
 | BR-NFR-04 | Safe releases and environments | Built | S0 |
-| BR-NFR-05 | Maintainable documentation | Planned | S10, S10, S10, S10, S10, S10 |
+| BR-NFR-05 | Maintainable documentation | Planned | S10, S10, S10, S10, S10, S10, S10 |
 | BR-NFR-06 | Promotion to Live | Planned | S20 |
 | BR-SAL-01 | Quotations convert to invoices | Built | SB1 |
 | BR-SAL-02 | Invoice payments, in part or in full | Built | SB1 |

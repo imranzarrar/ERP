@@ -117,6 +117,13 @@ try { await reset(); await click('Settings & Companies'); await page.waitForTime
 for (const [grp, item, name] of [['Sales & Receivables', 'Sales Invoices', 'sales-invoices'], ['Sales & Receivables', 'New Invoice', 'new-invoice'], ['Sales & Receivables', 'Quotation Book', 'quotation-book'], ['Procurements', 'Expenses', 'expenses'], ['Procurements', 'Recurring & Accruals', 'recurring-accruals'], ['Inventory System', 'Purchase Bills', 'purchase-bills'], ['Inventory System', 'Goods Receipt (GRN)', 'goods-receipt'], ['Inventory System', 'Stock Registry', 'stock-registry'], ['Point of Sale (POS)', 'Shifts & Z-Reports', 'pos-shifts']] as const) {
   try { await reset(); await nav(grp, item); await shot('legacy-' + name, 1800); } catch (e: any) { console.log('legacy', name, e.message.slice(0, 80)); }
 }
+// more older screens: master data, reports and settings
+for (const [grp, item, name, run] of [['Trading Partners', 'Customers CRM', 'customers', false], ['Trading Partners', 'Vendors Directory', 'vendors', false], ['Product Catalog', 'Products & Pricing', 'products', false], ['Financial Reports', 'Profit & Loss', 'profit-loss', true], ['Financial Reports', 'Outstanding Aging & Balances', 'outstanding-aging', true], ['Financial Reports', 'VAT Return Summary', 'vat-summary', true], ['Sales Reports', 'Sales Register', 'sales-register', true]] as const) {
+  try { await reset(); await nav(grp, item); if (run) await page.getByText('View Report').first().click({ timeout: 2500 }).catch(() => {}); await shot('legacy-' + name, 2000); } catch (e: any) { console.log('legacy', name, e.message.slice(0, 80)); }
+}
+for (const [tab, sub, name] of [['Organization & Setup', 'Company Profile', 'company-profile'], ['Organization & Setup', 'Document Numbering', 'document-numbering'], ['Operations & Config', 'Document Templates', 'document-templates'], ['Fiscal & Capital', null, 'fiscal-capital'], ['Governance & Staff', 'Roles', 'roles']] as const) {
+  try { await reset(); await click('Settings & Companies'); await page.waitForTimeout(1200); await click(tab); await page.waitForTimeout(800); if (sub) await click(sub); await shot('legacy-settings-' + name, 1800); } catch (e: any) { console.log('legacy settings', name, e.message.slice(0, 80)); }
+}
 void pendingPay;
 await browser.close();
 await purgeCompany(companyId);

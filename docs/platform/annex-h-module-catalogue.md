@@ -47,18 +47,18 @@ Generated 2026-10-18 by `node scripts/build-module-catalogue.mjs` from the code:
 
 | Method | Path | Permission |
 |---|---|---|
-| GET | `/api/customers` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/customers` | not detected: signed-in user, or checked inside the handler (see route file) |
-| PATCH | `/api/customers/:id/toggle-active` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/vendors` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/vendors` | not detected: signed-in user, or checked inside the handler (see route file) |
-| PATCH | `/api/vendors/:id/toggle-active` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/products` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/products` | not detected: signed-in user, or checked inside the handler (see route file) |
-| PATCH | `/api/products/:id/toggle-active` | not detected: signed-in user, or checked inside the handler (see route file) |
+| GET | `/api/customers` | `customers.read` |
+| POST | `/api/customers` | `customers.update, customers.create` |
+| PATCH | `/api/customers/:id/toggle-active` | `customers.delete` |
+| GET | `/api/vendors` | `vendors.read` |
+| POST | `/api/vendors` | `vendors.update, vendors.create` |
+| PATCH | `/api/vendors/:id/toggle-active` | `vendors.delete` |
+| GET | `/api/products` | `products.read` |
+| POST | `/api/products` | `products.update, products.create` |
+| PATCH | `/api/products/:id/toggle-active` | `products.delete` |
 | POST | `/api/companies` | not detected: signed-in user, or checked inside the handler (see route file) |
 | PATCH | `/api/companies/:id/theme` | not detected: signed-in user, or checked inside the handler (see route file) |
-| PATCH | `/api/companies/:id/settings` | `companyProfile.update` |
+| PATCH | `/api/companies/:id/settings` | `companyProfile.update, documentNumbering.update` |
 | GET | `/api/companies/:id/numbering-preview` | `documentNumbering.read` |
 | GET | `/api/banks` | `banks.read` |
 | POST | `/api/banks` | `banks.create` |
@@ -66,29 +66,29 @@ Generated 2026-10-18 by `node scripts/build-module-catalogue.mjs` from the code:
 | PATCH | `/api/banks/:id/set-default` | `banks.update` |
 | PATCH | `/api/banks/:id/toggle-active` | `banks.delete` |
 | GET | `/api/tax-slabs` | `taxSlabs.read` |
-| POST | `/api/tax-slabs` | not detected: signed-in user, or checked inside the handler (see route file) |
+| POST | `/api/tax-slabs` | `taxSlabs.update, taxSlabs.create` |
 | PATCH | `/api/tax-slabs/:id/set-default` | `taxSlabs.update` |
-| GET | `/api/product-categories` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/product-categories` | not detected: signed-in user, or checked inside the handler (see route file) |
-| PATCH | `/api/product-categories/:id/toggle-active` | not detected: signed-in user, or checked inside the handler (see route file) |
+| GET | `/api/product-categories` | `categories.read` |
+| POST | `/api/product-categories` | `categories.update, categories.create` |
+| PATCH | `/api/product-categories/:id/toggle-active` | `categories.delete` |
 | GET | `/api/modifier-groups` | `modifierGroups.read` |
 | POST | `/api/modifier-groups` | not detected: signed-in user, or checked inside the handler (see route file) |
 | PATCH | `/api/modifier-groups/:id/toggle-active` | `modifierGroups.delete` |
-| GET | `/api/units-of-measure` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/units-of-measure` | not detected: signed-in user, or checked inside the handler (see route file) |
-| PATCH | `/api/units-of-measure/:id/toggle-active` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/job-titles` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/job-titles` | not detected: signed-in user, or checked inside the handler (see route file) |
-| PATCH | `/api/job-titles/:id/toggle-active` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/product-unit-conversions` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/product-unit-conversions` | not detected: signed-in user, or checked inside the handler (see route file) |
-| PATCH | `/api/product-unit-conversions/:id/toggle-active` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/warehouses` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/warehouses` | not detected: signed-in user, or checked inside the handler (see route file) |
-| PATCH | `/api/warehouses/:id/toggle-active` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/product-warehouses` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/product-warehouses` | not detected: signed-in user, or checked inside the handler (see route file) |
-| DELETE | `/api/product-warehouses/:id` | not detected: signed-in user, or checked inside the handler (see route file) |
+| GET | `/api/units-of-measure` | `units.read` |
+| POST | `/api/units-of-measure` | `units.update, units.create` |
+| PATCH | `/api/units-of-measure/:id/toggle-active` | `units.delete` |
+| GET | `/api/job-titles` | `jobTitles.read` |
+| POST | `/api/job-titles` | `jobTitles.update, jobTitles.create` |
+| PATCH | `/api/job-titles/:id/toggle-active` | `jobTitles.delete` |
+| GET | `/api/product-unit-conversions` | `products.read` |
+| POST | `/api/product-unit-conversions` | `products.update, products.create` |
+| PATCH | `/api/product-unit-conversions/:id/toggle-active` | `products.update` |
+| GET | `/api/warehouses` | `warehouses.read` |
+| POST | `/api/warehouses` | `warehouses.update, warehouses.create` |
+| PATCH | `/api/warehouses/:id/toggle-active` | `warehouses.delete` |
+| GET | `/api/product-warehouses` | `products.read` |
+| POST | `/api/product-warehouses` | `products.update` |
+| DELETE | `/api/product-warehouses/:id` | `products.delete` |
 
 ## Product import
 
@@ -102,9 +102,9 @@ Generated 2026-10-18 by `node scripts/build-module-catalogue.mjs` from the code:
 
 | Method | Path | Permission |
 |---|---|---|
-| GET | `/api/master-import/products/template` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/master-import/products/validate` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/master-import/products/commit` | not detected: signed-in user, or checked inside the handler (see route file) |
+| GET | `/api/master-import/products/template` | `products.create` |
+| POST | `/api/master-import/products/validate` | `products.create` |
+| POST | `/api/master-import/products/commit` | `products.create` |
 
 ## Branches
 
@@ -118,10 +118,10 @@ Generated 2026-10-18 by `node scripts/build-module-catalogue.mjs` from the code:
 
 | Method | Path | Permission |
 |---|---|---|
-| GET | `/api/branches` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/branches` | not detected: signed-in user, or checked inside the handler (see route file) |
-| PATCH | `/api/branches/:id/toggle-active` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/branches/backfill-unassigned` | not detected: signed-in user, or checked inside the handler (see route file) |
+| GET | `/api/branches` | `branches.read` |
+| POST | `/api/branches` | `branches.update` |
+| PATCH | `/api/branches/:id/toggle-active` | `branches.delete` |
+| POST | `/api/branches/backfill-unassigned` | `branches.update` |
 
 ## Employees and job titles
 
@@ -135,9 +135,9 @@ Generated 2026-10-18 by `node scripts/build-module-catalogue.mjs` from the code:
 
 | Method | Path | Permission |
 |---|---|---|
-| GET | `/api/employees` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/employees` | not detected: signed-in user, or checked inside the handler (see route file) |
-| PATCH | `/api/employees/:id/toggle-active` | not detected: signed-in user, or checked inside the handler (see route file) |
+| GET | `/api/employees` | `employees.read` |
+| POST | `/api/employees` | `employees.update, employees.create` |
+| PATCH | `/api/employees/:id/toggle-active` | `employees.delete` |
 
 ## Sales documents, fiscal months, recurring postings
 
@@ -151,30 +151,30 @@ Generated 2026-10-18 by `node scripts/build-module-catalogue.mjs` from the code:
 
 | Method | Path | Permission |
 |---|---|---|
-| GET | `/api/transactions/quotations` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/transactions/quotations` | not detected: signed-in user, or checked inside the handler (see route file) |
-| PUT | `/api/transactions/quotations/:id` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/transactions/quotations/:id/cancel` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/transactions/quotations/:id/convert` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/transactions/invoices` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/transactions/invoices/:id/xml` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/transactions/invoices/:id/pdf` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/transactions/invoices` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/transactions/invoices/:id/note` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/transactions/invoices/:id/paid` | not detected: signed-in user, or checked inside the handler (see route file) |
+| GET | `/api/transactions/quotations` | `quotation.read` |
+| POST | `/api/transactions/quotations` | `quotation.update, quotation.create` |
+| PUT | `/api/transactions/quotations/:id` | `quotation.update` |
+| POST | `/api/transactions/quotations/:id/cancel` | `quotation.delete` |
+| POST | `/api/transactions/quotations/:id/convert` | `invoice.create` |
+| GET | `/api/transactions/invoices` | `invoice.read` |
+| GET | `/api/transactions/invoices/:id/xml` | `invoice.read` |
+| GET | `/api/transactions/invoices/:id/pdf` | `invoice.read` |
+| POST | `/api/transactions/invoices` | `invoice.create` |
+| POST | `/api/transactions/invoices/:id/note` | `invoice.create` |
+| POST | `/api/transactions/invoices/:id/paid` | `invoice.update` |
 | POST | `/api/transactions/invoices/:id/cancel` | not detected: signed-in user, or checked inside the handler (see route file) |
 | POST | `/api/transactions/investors` | `investors.access` |
 | POST | `/api/transactions/investors/:id/investment` | `investors.access` |
 | GET | `/api/transactions/months` | not detected: signed-in user, or checked inside the handler (see route file) |
 | POST | `/api/transactions/months` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/transactions/recurring-postings` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/transactions/settle-accrual` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/transactions/recurring-templates` | not detected: signed-in user, or checked inside the handler (see route file) |
-| PUT | `/api/transactions/recurring-templates/:id` | not detected: signed-in user, or checked inside the handler (see route file) |
-| PATCH | `/api/transactions/recurring-templates/:id/toggle` | not detected: signed-in user, or checked inside the handler (see route file) |
-| DELETE | `/api/transactions/recurring-templates/:id` | not detected: signed-in user, or checked inside the handler (see route file) |
-| PUT | `/api/transactions/accruals/:id` | not detected: signed-in user, or checked inside the handler (see route file) |
-| DELETE | `/api/transactions/accruals/:id` | not detected: signed-in user, or checked inside the handler (see route file) |
+| POST | `/api/transactions/recurring-postings` | `expense.create` |
+| POST | `/api/transactions/settle-accrual` | `expense.create` |
+| POST | `/api/transactions/recurring-templates` | `expense.create` |
+| PUT | `/api/transactions/recurring-templates/:id` | `expense.update` |
+| PATCH | `/api/transactions/recurring-templates/:id/toggle` | `expense.delete` |
+| DELETE | `/api/transactions/recurring-templates/:id` | `expense.delete` |
+| PUT | `/api/transactions/accruals/:id` | `expense.update` |
+| DELETE | `/api/transactions/accruals/:id` | `expense.delete` |
 | POST | `/api/transactions/interbank-transfer` | `banks.transfer` |
 
 ## Expenses
@@ -189,11 +189,11 @@ Generated 2026-10-18 by `node scripts/build-module-catalogue.mjs` from the code:
 
 | Method | Path | Permission |
 |---|---|---|
-| GET | `/api/expenses` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/expenses` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/expenses/:id/pay` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/expenses/:id/reverse` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/expenses/:id/cancel` | not detected: signed-in user, or checked inside the handler (see route file) |
+| GET | `/api/expenses` | `expense.read` |
+| POST | `/api/expenses` | `expense.create` |
+| POST | `/api/expenses/:id/pay` | `expense.update` |
+| POST | `/api/expenses/:id/reverse` | `expense.delete` |
+| POST | `/api/expenses/:id/cancel` | `expense.delete` |
 
 ## Procurement and inventory
 
@@ -211,7 +211,7 @@ Generated 2026-10-18 by `node scripts/build-module-catalogue.mjs` from the code:
 | PUT | `/api/inventory/purchase-requisitions/:id` | `inventory.pr` |
 | PATCH | `/api/inventory/purchase-requisitions/:id/withdraw` | `inventory.pr` |
 | POST | `/api/inventory/purchase-orders` | `inventory.po` |
-| POST | `/api/inventory/goods-receipt-notes` | `inventory.grn` |
+| POST | `/api/inventory/goods-receipt-notes` | `inventory.grn, purchaseBills.create` |
 | POST | `/api/inventory/goods-receipt-notes/:id/reverse` | `inventory.grn` |
 | PATCH | `/api/inventory/purchase-requisitions/:id/status` | `inventory.approve` |
 | PATCH | `/api/inventory/purchase-orders/:id/cancel` | `inventory.po` |
@@ -244,14 +244,14 @@ Generated 2026-10-18 by `node scripts/build-module-catalogue.mjs` from the code:
 
 | Method | Path | Permission |
 |---|---|---|
-| GET | `/api/pos/shifts` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/pos/shifts` | not detected: signed-in user, or checked inside the handler (see route file) |
-| PUT | `/api/pos/shifts/:id` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/pos/held-invoices` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/pos/held-invoices` | not detected: signed-in user, or checked inside the handler (see route file) |
-| DELETE | `/api/pos/held-invoices/:id` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/pos/returnable-invoices` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/pos/returns` | not detected: signed-in user, or checked inside the handler (see route file) |
+| GET | `/api/pos/shifts` | `pos.access` |
+| POST | `/api/pos/shifts` | `pos.shifts` |
+| PUT | `/api/pos/shifts/:id` | `pos.shifts` |
+| GET | `/api/pos/held-invoices` | `pos.access` |
+| POST | `/api/pos/held-invoices` | `pos.access` |
+| DELETE | `/api/pos/held-invoices/:id` | `pos.access` |
+| GET | `/api/pos/returnable-invoices` | `pos.access` |
+| POST | `/api/pos/returns` | `pos.return, pos.access` |
 
 ## Reports and dashboard
 
@@ -280,7 +280,7 @@ Generated 2026-10-18 by `node scripts/build-module-catalogue.mjs` from the code:
 | GET | `/api/reports/purchase-register` | `reports.purchaseRegister` |
 | GET | `/api/reports/vendor-statement` | `reports.vendorStatement` |
 | GET | `/api/reports/stock-valuation` | `reports.stockValuation` |
-| GET | `/api/reports/item-profitability` | `reports.itemProfitability, reports.lowStock` |
+| GET | `/api/reports/item-profitability` | `reports.itemProfitability` |
 | GET | `/api/reports/low-stock` | `reports.lowStock` |
 | GET | `/api/reports/stock-take-variance-history` | `reports.stockTakeVarianceHistory` |
 | GET | `/api/reports/stock-movement-ledger` | `reports.stockMovementLedger` |
@@ -318,14 +318,14 @@ Generated 2026-10-18 by `node scripts/build-module-catalogue.mjs` from the code:
 
 | Method | Path | Permission |
 |---|---|---|
-| POST | `/api/zatca/submit-invoice/:invoiceId` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/zatca/company-status/:companyId` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/zatca/company-config` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/zatca/set-active-environment` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/zatca/generate-keypair-csr` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/zatca/request-compliance-csid` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/zatca/run-compliance-suite` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/zatca/request-production-csid` | not detected: signed-in user, or checked inside the handler (see route file) |
+| POST | `/api/zatca/submit-invoice/:invoiceId` | `invoice.create, invoice.update` |
+| GET | `/api/zatca/company-status/:companyId` | `file-level gate (router.use)` |
+| POST | `/api/zatca/company-config` | `file-level gate (router.use)` |
+| POST | `/api/zatca/set-active-environment` | `file-level gate (router.use)` |
+| POST | `/api/zatca/generate-keypair-csr` | `file-level gate (router.use)` |
+| POST | `/api/zatca/request-compliance-csid` | `file-level gate (router.use)` |
+| POST | `/api/zatca/run-compliance-suite` | `file-level gate (router.use)` |
+| POST | `/api/zatca/request-production-csid` | `file-level gate (router.use)` |
 
 ## Users
 
@@ -340,7 +340,7 @@ Generated 2026-10-18 by `node scripts/build-module-catalogue.mjs` from the code:
 | Method | Path | Permission |
 |---|---|---|
 | GET | `/api/users` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/users` | not detected: signed-in user, or checked inside the handler (see route file) |
+| POST | `/api/users` | `users.update, users.create` |
 | PATCH | `/api/users/me/language` | not detected: signed-in user, or checked inside the handler (see route file) |
 | PATCH | `/api/users/:id/active` | `users.delete` |
 | DELETE | `/api/users/:id` | `users.delete` |
@@ -465,8 +465,8 @@ Endpoints are declared in a non-standard way; see the route file.
 
 | Method | Path | Permission |
 |---|---|---|
-| GET | `/api/approvals/rules` | `approvalRules.read, approvalRules.create` |
-| POST | `/api/approvals/rules` | `approvalRules.create, approvalRules.update` |
+| GET | `/api/approvals/rules` | `approvalRules.read` |
+| POST | `/api/approvals/rules` | `approvalRules.create` |
 | PUT | `/api/approvals/rules/:id` | `approvalRules.update` |
 | PATCH | `/api/approvals/rules/:id/toggle-active` | `approvalRules.delete` |
 | GET | `/api/approvals/my` | `approvals.read` |
@@ -515,20 +515,20 @@ Endpoints are declared in a non-standard way; see the route file.
 
 | Method | Path | Permission |
 |---|---|---|
-| GET | `/api/ledger/journal-settings` | not detected: signed-in user, or checked inside the handler (see route file) |
+| GET | `/api/ledger/journal-settings` | `checked by a helper in the handler` |
 | PUT | `/api/ledger/journal-settings` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/ledger/journals` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/ledger/journals/entries/:id` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/ledger/manual-journals/:id` | `journals.create` |
+| GET | `/api/ledger/journals` | `checked by a helper in the handler` |
+| GET | `/api/ledger/journals/entries/:id` | `checked by a helper in the handler` |
+| GET | `/api/ledger/manual-journals/:id` | `checked by a helper in the handler` |
 | POST | `/api/ledger/manual-journals` | `journals.create` |
 | PUT | `/api/ledger/manual-journals/:id` | `journals.update` |
 | POST | `/api/ledger/manual-journals/:id/submit` | `journals.create, journals.update` |
-| POST | `/api/ledger/manual-journals/:id/approve` | not detected: signed-in user, or checked inside the handler (see route file) |
+| POST | `/api/ledger/manual-journals/:id/approve` | `journals.post` |
 | POST | `/api/ledger/manual-journals/:id/reject` | `journals.post` |
 | DELETE | `/api/ledger/manual-journals/:id` | `journals.delete` |
 | POST | `/api/ledger/manual-journals/:id/reverse` | `journals.reverse` |
-| GET | `/api/ledger/manual-journals/:id/print-data` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/ledger/journals/entries/:id/print-data` | not detected: signed-in user, or checked inside the handler (see route file) |
+| GET | `/api/ledger/manual-journals/:id/print-data` | `checked by a helper in the handler` |
+| GET | `/api/ledger/journals/entries/:id/print-data` | `checked by a helper in the handler` |
 
 ## General ledger: reports (2.0)
 
@@ -559,7 +559,7 @@ Endpoints are declared in a non-standard way; see the route file.
 | Method | Path | Permission |
 |---|---|---|
 | GET | `/api/ledger/report-definitions` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/ledger/report-definitions/:id` | `reportDefinitions.create` |
+| GET | `/api/ledger/report-definitions/:id` | not detected: signed-in user, or checked inside the handler (see route file) |
 | POST | `/api/ledger/report-definitions` | `reportDefinitions.create` |
 | PUT | `/api/ledger/report-definitions/:id` | `reportDefinitions.update` |
 | POST | `/api/ledger/report-definitions/:id/reset` | `reportDefinitions.update` |
@@ -589,7 +589,7 @@ Endpoints are declared in a non-standard way; see the route file.
 | POST | `/api/ledger/dimensions/:id/values` | `dimensions.create` |
 | PUT | `/api/ledger/dimension-values/:id` | `dimensions.update` |
 | PATCH | `/api/ledger/dimension-values/:id/toggle-active` | `dimensions.delete` |
-| GET | `/api/ledger/cost-centers` | `dimensions.create` |
+| GET | `/api/ledger/cost-centers` | not detected: signed-in user, or checked inside the handler (see route file) |
 | POST | `/api/ledger/cost-centers` | `dimensions.create` |
 | PUT | `/api/ledger/cost-centers/:id` | `dimensions.update` |
 | PATCH | `/api/ledger/cost-centers/:id/toggle-active` | `dimensions.delete` |
@@ -660,13 +660,13 @@ Endpoints are declared in a non-standard way; see the route file.
 
 | Method | Path | Permission |
 |---|---|---|
-| GET | `/api/settlements/open-items` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/settlements` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/settlements/:id` | not detected: signed-in user, or checked inside the handler (see route file) |
+| GET | `/api/settlements/open-items` | `checked by a helper in the handler` |
+| GET | `/api/settlements` | `checked by a helper in the handler` |
+| GET | `/api/settlements/:id` | `checked by a helper in the handler` |
 | POST | `/api/settlements/receipts` | not detected: signed-in user, or checked inside the handler (see route file) |
 | POST | `/api/settlements/payments` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/settlements/:id/apply` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/settlements/:id/cancel` | not detected: signed-in user, or checked inside the handler (see route file) |
+| POST | `/api/settlements/:id/apply` | `checked by a helper in the handler` |
+| POST | `/api/settlements/:id/cancel` | `checked by a helper in the handler` |
 
 ## Bank reconciliation (2.0)
 
@@ -680,19 +680,19 @@ Endpoints are declared in a non-standard way; see the route file.
 
 | Method | Path | Permission |
 |---|---|---|
-| GET | `/api/bank-reconciliations` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/bank-reconciliations/adjustment-accounts` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/bank-reconciliations` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/bank-reconciliations/:id` | not detected: signed-in user, or checked inside the handler (see route file) |
-| PATCH | `/api/bank-reconciliations/:id` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/bank-reconciliations/:id/clear` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/bank-reconciliations/:id/statement-lines` | not detected: signed-in user, or checked inside the handler (see route file) |
-| DELETE | `/api/bank-reconciliations/:id/statement-lines/:lineId` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/bank-reconciliations/:id/match` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/bank-reconciliations/:id/unmatch` | not detected: signed-in user, or checked inside the handler (see route file) |
-| GET | `/api/bank-reconciliations/:id/suggestions` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/bank-reconciliations/:id/adjustment` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/bank-reconciliations/:id/adjustments/:voucherId/reverse` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/bank-reconciliations/:id/complete` | not detected: signed-in user, or checked inside the handler (see route file) |
-| POST | `/api/bank-reconciliations/:id/reopen` | not detected: signed-in user, or checked inside the handler (see route file) |
-| DELETE | `/api/bank-reconciliations/:id` | not detected: signed-in user, or checked inside the handler (see route file) |
+| GET | `/api/bank-reconciliations` | `read` |
+| GET | `/api/bank-reconciliations/adjustment-accounts` | `adjust` |
+| POST | `/api/bank-reconciliations` | `create` |
+| GET | `/api/bank-reconciliations/:id` | `read` |
+| PATCH | `/api/bank-reconciliations/:id` | `match` |
+| POST | `/api/bank-reconciliations/:id/clear` | `match` |
+| POST | `/api/bank-reconciliations/:id/statement-lines` | `match` |
+| DELETE | `/api/bank-reconciliations/:id/statement-lines/:lineId` | `match` |
+| POST | `/api/bank-reconciliations/:id/match` | `match` |
+| POST | `/api/bank-reconciliations/:id/unmatch` | `match` |
+| GET | `/api/bank-reconciliations/:id/suggestions` | `match` |
+| POST | `/api/bank-reconciliations/:id/adjustment` | `adjust` |
+| POST | `/api/bank-reconciliations/:id/adjustments/:voucherId/reverse` | `adjust` |
+| POST | `/api/bank-reconciliations/:id/complete` | `complete` |
+| POST | `/api/bank-reconciliations/:id/reopen` | `reopen` |
+| DELETE | `/api/bank-reconciliations/:id` | `create` |
