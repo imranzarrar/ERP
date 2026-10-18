@@ -281,6 +281,7 @@
       <div class="rail-mark"><span class="glyph">W</span><b>Warraq — User Manual</b></div>
       <nav>
         <a href="#start">Before you start</a>
+        <a href="#v2-changes">What is different in 2.0</a>
         <a href="#navigate">Navigating Warraq</a>
         <div class="rail-group">Master Data</div>
         <a href="#partners">Customers &amp; Vendors</a>
@@ -329,6 +330,23 @@
           <li><b>Multi-tenant.</b> Everything you see is scoped to one <b>company</b> at a time, chosen from the company switcher at the top of the app. A Super Admin can switch between every company on the platform; a normal user only ever sees their own company's data, and the server enforces this independently of what the screen shows.</li>
           <li><b>Multi-branch.</b> Within a company, most transactional documents optionally belong to a <b>branch</b> (a physical location, e.g. "Riyadh HQ" or "Jeddah Coastal Branch"). A user restricted to one branch only sees that branch's documents; a company-wide user (or one with no branch restriction) sees everything. Branches are set up once in Configuration and referenced everywhere after.</li>
         </ul>
+      </section>
+
+      <section id="v2-changes" class="wide" style="max-width:none;">
+        <p class="section-eyebrow">Read this if you used Warraq 1.0</p>
+        <h2>What is different in 2.0 for the screens you already know</h2>
+        <p style="max-width:74ch;">Everything in this manual up to the finance-core chapters works as described, in 1.0 and in 2.0. Warraq 2.0 (the Demo) adds a general ledger behind the same screens and changes a few things you will notice on them. Nothing below applies to Live (1.0) until 2.0 is released.</p>
+        <div class="table-wrap"><table class="plan"><thead><tr><th>Where you will notice it</th><th>What is different in 2.0</th><th>Details</th></tr></thead><tbody>
+          <tr><td>Menu</td><td>Three new menu groups: <b>General Ledger Setup</b> (chart of accounts, dimensions, opening balances, posting control, approval rules), <b>Accounting Operations</b> (My Approvals, journals, receivables, payables, bank) and <b>General Ledger Reports</b>. The older groups are unchanged.</td><td><a href="#fc-1">Finance core, chapter 1</a></td></tr>
+          <tr><td>Every invoice, credit note, expense, bill, goods receipt and payment</td><td>Posts to the ledger as well, tagged with the customer or vendor. Your screens, numbering and printouts are the same.</td><td><a href="#fc-3">Receivables</a>, <a href="#fc-4">Payables</a></td></tr>
+          <tr><td>Dates on documents</td><td>Each document keeps a <b>document date</b> (what the paper says) and a <b>posting date</b> (the date the books and the period locks use). The system sets the posting date; it equals the document date unless a back-dating rule applies.</td><td><a href="#fc-2">Chapter 2, Posting control</a></td></tr>
+          <tr><td>Saving a document with an old date</td><td>A company can set a <b>lock date</b> (nothing may be posted on or before it) and a <b>back-date window</b>; beyond the window a <b>reason</b> is required. Users holding the back-date or override-lock permission can go past them, and the use is audited.</td><td><a href="#fc-2">Chapter 2</a>, <a href="#fc-9">Chapter 9</a></td></tr>
+          <tr><td>Paying a customer invoice or a vendor bill or expense</td><td>You can also use <b>Receivables › Receive Payment</b> and <b>Payables › Pay Vendor</b>: one receipt or payment across several documents, or kept on account. An invoice paid through a receipt cannot be cancelled until the receipt is cancelled.</td><td><a href="#fc-3">Chapter 3</a>, <a href="#fc-4">Chapter 4</a></td></tr>
+          <tr><td>Vendor payments, vendor bills, credit notes</td><td>If the company has an <b>approval rule</b> that matches the amount, saving sends the document for approval instead of posting it. Nothing is posted, no voucher is made and no funds move until the last approver approves. <b>My Approvals</b> shows what is waiting.</td><td><a href="#fc-4">Chapter 4.1</a></td></tr>
+          <tr><td>Customers and vendors (Master Data)</td><td>Each can have a <b>posting profile</b>: its own receivable or payable control account and default dimensions. Without one, the company default is used.</td><td><a href="#fc-2">Chapter 2</a></td></tr>
+          <tr><td>Users (Settings)</td><td>A user record has a <b>Manager</b> field, used by approval levels that say "manager of the submitter".</td><td><a href="#fc-4">Chapter 4.1</a></td></tr>
+          <tr><td>Reports</td><td>The older reports stay. New ledger reports (trial balance, income statement, balance sheet, cash flow, <i>Ledger vs Documents</i>), aging and party ledgers are added, and a bank reconciliation screen. The two sets are compared by <i>Ledger vs Documents</i>.</td><td><a href="#fc-5">Chapter 5</a>, <a href="#fc-7">7</a>, <a href="#fc-8">8</a></td></tr>
+        </tbody></table></div>
       </section>
 
       <section id="navigate" class="wide" style="max-width:none;">
@@ -472,6 +490,7 @@
           <div class="label">Where these show up later</div>
           <p style="margin:0;">A customer becomes selectable the moment it's saved here — on Quotations, Sales Invoices, and the POS terminal's customer picker. A vendor becomes selectable on Purchase Requisitions, Purchase Orders, Goods Receipt Notes, Purchase Bills, and the Expenses screen's vendor field. Nothing else needs to be configured for a new party to start transacting.</p>
         </div>
+        <div class="callout"><div class="label">Warraq 2.0</div><p style="margin:0;">In 2.0 a customer or vendor can also carry a <b>posting profile</b> (its own control account and default dimensions), and customer and vendor balances are available from the ledger as aging and party-ledger reports. See <a href="#v2-changes">What is different in 2.0</a>.</p></div>
       </section>
 
 
@@ -827,6 +846,7 @@
           <p style="margin:0;">Five checks run before an invoice is accepted: it must have <b>at least one line item</b>; every line's <b>sales price must be greater than zero</b>; a line's <b>discount can't reduce that price to zero or below</b>; discounts can be entered in decimals (e.g. 2.50), not whole numbers only; and the invoice's <b>net total must be greater than zero</b>. All five apply to Credit Notes the same way, since a Credit Note is the same underlying document type.</p>
         </div>
         <p>Every invoice also has a <b>Download PDF</b> button, separate from Print — see the "Print vs. Download PDF" callout in §Templates, POS &amp; Translations for how the two deliberately differ.</p>
+        <div class="callout"><div class="label">Warraq 2.0</div><p style="margin:0;">In 2.0 an invoice or credit note also posts to the ledger, tagged with the customer. Payments can be recorded from <b>Receivables › Receive Payment</b> (one receipt over several invoices, or on account). A credit note above an approval rule’s amount waits for approval before it is issued. A document dated in a locked period is refused. See <a href="#fc-3">Receivables</a>.</p></div>
       </section>
 
 
@@ -886,6 +906,7 @@
           <p style="margin:0;">Every active recurring template must be posted — either as a real, paid expense ("Actual") or as an accrual (a placeholder liability, settled with the real bill later) — before that fiscal month can be closed (§Fiscal Periods, Capital &amp; VAT Filing). This is deliberate: it stops a month from closing "clean" while a known recurring cost was simply forgotten.</p>
         </div>
         <p>An <b>accrual</b> posted this way sits in "Unsettled Accrual Ledger Entries" until the real invoice/bill for it arrives, at which point it's matched and settled — the accrual reverses and the real cost replaces it.</p>
+        <div class="callout"><div class="label">Warraq 2.0</div><p style="margin:0;">In 2.0 an expense also posts to the ledger, tagged with the vendor, and can be paid from <b>Payables › Pay Vendor</b> together with bills. A posting date on or before the company’s lock date, or older than its back-date window, is refused or needs a reason. See <a href="#fc-4">Payables</a>.</p></div>
       </section>
 
 
@@ -1005,6 +1026,7 @@
           </div>
         </div>
         <p class="fig-caption">Figure 26 — a manual "Adjust Stock" action exists for corrections outside the normal PR/PO/GRN/Return/Take flow</p>
+        <div class="callout"><div class="label">Warraq 2.0</div><p style="margin:0;">In 2.0 goods receipts and purchase bills post to the ledger (stock against goods received not invoiced, then the payable). A purchase bill above an approval rule’s amount waits for approval, and a bill that needs approval cannot be auto-posted at delivery. Pay bills from <b>Payables › Pay Vendor</b>. See <a href="#fc-4">Payables</a>.</p></div>
       </section>
 
 
@@ -1357,6 +1379,7 @@
           <tr><td>No per-user override</td><td>There is no individual exception layered on top of role assignment — a deliberate design choice, not a missing feature. To change what one person can do, change their role assignment.</td></tr>
           <tr><td>Admin / Super Admin bypass</td><td>An account marked <code>admin</code> or <code>super-admin</code> skips every granular permission check entirely and always sees everything for their scope.</td></tr>
         </tbody></table>
+        <div class="callout"><div class="label">Warraq 2.0</div><p style="margin:0;">In 2.0 the roles editor also holds the permissions of the finance core (approval rules, approvals, bank reconciliation, receipts, vendor payments, posting control with its back-date and override-lock rights), and a user record has a <b>Manager</b> field. See <a href="#fc-10">Roles and permissions</a>.</p></div>
       </section>
 
 
@@ -1493,6 +1516,7 @@
           <div class="label">Filing is permanent</div>
           <p style="margin:0;">"Mark as ZATCA Filed" only records that you personally filed this return on ZATCA's own government VAT portal — it does not file anything for you. But once marked, it <b>permanently locks</b> every document in that quarter from further edits — only click it once the real filing on ZATCA's portal is actually done.</p>
         </div>
+        <div class="callout"><div class="label">Warraq 2.0</div><p style="margin:0;">In 2.0, closing a month is one of several controls on posting: the company can also set a <b>lock date</b> and a <b>back-date window</b> (General Ledger Setup › Posting Control). See <a href="#fc-9">Period routine and corrections</a>.</p></div>
       </section>
 
 
