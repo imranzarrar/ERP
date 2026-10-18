@@ -377,7 +377,7 @@ Behaviour is proven by automated tests over real HTTP and real PostgreSQL, with 
 **BR-NFR-04 Safe releases and environments** — Must, Built, source Platform, sprint S0.
 Live (1.0) and Demo (2.0) are separate tracks; releases run by script with a read-the-plan database step, row-level-security and constraint verification, and a rollback path.
 
-**BR-NFR-05 Maintainable documentation** — Must, Planned, source Decision, sprint S10.
+**BR-NFR-05 Maintainable documentation** — Must, Planned, source Decision, sprint S10, S10.
 The requirements, design, test and sprint documents of the ledger core are generated from one traceable source and kept in the repository.
 
 **BR-NFR-06 Promotion to Live** — Must, Planned, source Decision, sprint S20.

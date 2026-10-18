@@ -16,8 +16,8 @@ Sprints are numbered. Done sprints list the commits that delivered them (git, br
 | S7 | Receipts and vendor payments | Done | 2026-10-15 | Receive Payment and Pay Vendor across documents, on account, cancel; reports follow. |
 | S8 | Bank reconciliation | Done | 2026-10-15 | Reconciliation sessions per FR-BANK-01..05. |
 | S9 | Print-outs and test catalogue | Done | 2026-10-15 | Vouchers and reconciliation prints; automation-ready test cases. |
-| S10 | Documentation set | In progress | 2026-10-15 | BRD, SRS, design, test strategy, manual, sprint log and traceability generated from one source. |
-| S11 | Approval rules | Done | 2026-10-15 | Amount-threshold, multi-level approval for journals, bills, payments and credit notes. |
+| S10 | Documentation set | Done | 2026-10-15 to 2026-10-18 | One technical document and one user manual, generated from one source and covering every module, older and new. |
+| S11 | Approval rules | Done | 2026-10-15 to 2026-10-16 | Amount-threshold, multi-level approval for journals, bills, payments and credit notes. |
 | S12 | Period control | Planned | TBD | Restricted month, adjustment period, readiness checklist, ledger-verified month close, per-module close. |
 | S13 | Year-end close | Planned | TBD | One closing entry into retained earnings; next year opens automatically. |
 | S14 | Tax postings | Planned | TBD | Tax-code tags on lines, VAT settlement entry, cash rounding account. |
@@ -139,17 +139,22 @@ Commits: `380dee3`, `e7b08cd`
 | S9-01 | Receipt/Payment voucher, Journal voucher, Reconciliation statement, RTL | BR-PRT-01 Receipt and payment voucher; BR-PRT-02 Journal voucher; BR-PRT-03 Bank reconciliation statement; BR-PRT-04 Right-to-left printing | FR-PRT-01.1, FR-PRT-02.1, FR-PRT-03.1, FR-PRT-04.1 |
 | S9-02 | Test-case catalogue and generator | BR-NFR-03 Real-database automated tests | FR-NFR-03.1 |
 
-## Sprint 10 — Documentation set (In progress)
+## Sprint 10 — Documentation set (Done)
 
-BRD, SRS, design, test strategy, manual, sprint log and traceability generated from one source.
+One technical document and one user manual, generated from one source and covering every module, older and new.
+
+Commits: `7d03574`, `55a95cd`, `7f95b6a`, `56ee1b2`
 
 | Item | Title | Business requirements | System requirements |
 |---|---|---|---|
 | S10-01 | Generated BRD, SRS, sprint log, traceability matrix and annexes | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
+| S10-02 | One technical document (platform architecture, module catalogue, requirements, design, rules, tests, sprint log, annexes) and one user manual (older modules plus the finance core), with a link check | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
 
 ## Sprint 11 — Approval rules (Done)
 
 Amount-threshold, multi-level approval for journals, bills, payments and credit notes.
+
+Commits: `8b56998`, `a5d8d30`, `ae39d52`, `1e51de6`, `773766c`, `8442836`, `2e47fd2`, `8dc0c3a`, `1a4fd7b`, `b532033`
 
 | Item | Title | Business requirements | System requirements |
 |---|---|---|---|
@@ -343,7 +348,7 @@ Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to
 | BR-NFR-02 | Atomic requests | Built | S1 |
 | BR-NFR-03 | Real-database automated tests | Built | S9 |
 | BR-NFR-04 | Safe releases and environments | Built | S0 |
-| BR-NFR-05 | Maintainable documentation | Planned | S10 |
+| BR-NFR-05 | Maintainable documentation | Planned | S10, S10 |
 | BR-NFR-06 | Promotion to Live | Planned | S20 |
 
 ## Roadmap (not yet built)

@@ -6,6 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execSync } from 'node:child_process';
 import { Marked } from 'marked';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -15,6 +16,7 @@ const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(
 const slug = s => String(s).toLowerCase().replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, '').replace(/[^\p{L}\p{N}]+/g, '-').replace(/^-|-$/g, '');
 const problems = [];
 const today = new Date().toISOString().slice(0, 10);
+const REV = (() => { try { const h = execSync('git rev-parse --short HEAD', { cwd: ROOT, encoding: 'utf8' }).trim(); const b = execSync('git rev-parse --abbrev-ref HEAD', { cwd: ROOT, encoding: 'utf8' }).trim(); return `${today}, branch ${b}, after commit ${h}`; } catch { return today; } })();
 
 // ---------------------------------------------------------------- markdown -> html
 // ctx: { id (chapter id), src (repo-relative source), outDir (absolute dir of the output page), linkmap, shift (heading shift), imgBase }
@@ -161,7 +163,7 @@ function overview() {
 </tbody></table></div>
 <div class="callout"><div class="label">Which version is described</div><p>The finance core is <b>Warraq 2.0</b> (branch <code>v2</code>, the Demo). Live (1.0, branch <code>master</code>) does not have it yet. Chapters say so where it matters; the <a href="#environments">Environments</a> chapter explains the two tracks.</p></div>
 <div class="callout warn"><div class="label">Reading copy, not the source</div><p>This page is generated. The requirements, system requirements, sprint log, traceability and annexes A to C are generated from <code>docs/gl-ap-ar/source/*.mjs</code> and from the code; the other chapters are hand-written Markdown under <code>docs/gl-ap-ar</code>, <code>docs/design-notes</code>, <code>docs/operations</code> and <code>docs/proposals</code>. Edit those, then run <code>npx tsx scripts/build-gl-docs.mjs</code> and <code>node scripts/build-docs-html.mjs</code>; never edit this page. The skill <code>update-docs-after-development</code> walks through it.</p></div>
-<p class="src">Built ${today}.</p>`;
+<p class="src">Version: built ${REV}.</p>`;
 }
 function linked() {
   const c = (h, b, s) => `<a class="card" href="${h}"><b>${b}</b><span>${s}</span></a>`;
@@ -243,7 +245,7 @@ ${render(intro.replace(/^\s*Version[^\n]*\n/, ''), mk('fc-intro'))}
   a = a.replace('<section id="appendix"', () => introHtml + '\n\n' + secHtml + '\n\n      <section id="appendix"');
   a = a.replace('<title>Warraq — ERP User Manual</title>', '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Warraq ERP User Manual</title>');
   if (!a.includes('id="fc-1"')) problems.push('manual: finance-core chapters were not injected');
-  a = a.replace('<div class="signoff">', '<div class="signoff"><p style="color:#c6c8ef;margin:0 0 1rem">Back to <a style="color:#fff" href="../index.html">all documentation</a> · <a style="color:#fff" href="../technical/index.html">technical documentation</a> · <a style="color:#fff" href="../zatca/zatca-onboarding-user-manual.html">ZATCA onboarding guide</a></p>');
+  a = a.replace('<div class="signoff">', '<div class="signoff"><p style="color:#c6c8ef;margin:0 0 1rem">Back to <a style="color:#fff" href="../index.html">all documentation</a> · <a style="color:#fff" href="../technical/index.html">technical documentation</a> · <a style="color:#fff" href="../zatca/zatca-onboarding-user-manual.html">ZATCA onboarding guide</a></p><p style="color:#c6c8ef;margin:0 0 1rem;font-size:.8rem">Version: built ' + REV + '.</p>');
   write(D('user-manual', 'warraq-erp-user-manual.html'), a);
 }
 
@@ -271,7 +273,7 @@ function buildHub() {
 <tr><td><code>test-cases/</code></td><td>The test-case catalogue: source, CSV, JSON, Gherkin</td></tr>
 <tr><td><code>zatca/</code>, <code>reference/</code></td><td>ZATCA guides and the blueprint</td></tr>
 <tr><td><code>archive/</code></td><td>Superseded; not current</td></tr>
-</tbody></table></div><p class="src">Built ${today}. To rebuild: <code>npx tsx scripts/build-gl-docs.mjs &amp;&amp; node scripts/build-docs-html.mjs</code>.</p>`;
+</tbody></table></div><p class="src">Version: built ${REV}. To rebuild: <code>npx tsx scripts/build-gl-docs.mjs &amp;&amp; node scripts/build-docs-html.mjs</code>.</p>`;
   write(D('index.html'), page({ title: 'Warraq ERP Documentation', rail: '<aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Documentation</div><a class="home" href="user-manual/warraq-erp-user-manual.html">User manual</a><a class="home" href="technical/index.html">Technical documentation</a></aside>', body }));
 }
 
