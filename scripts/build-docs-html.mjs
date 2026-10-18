@@ -50,12 +50,13 @@ function render(md, ctx) {
 }
 function fixHref(href, ctx) {
   if (/^(https?:|mailto:)/.test(href)) return href;
+  if (href.startsWith('#module-')) return href;
   if (href.startsWith('#')) return `#${ctx.id}--${href.slice(1)}`;
   const [file, frag] = href.split('#');
   const key = path.posix.normalize(path.posix.join(path.posix.dirname(ctx.src), file));
   if (ctx.linkmap[key]) return ctx.linkmap[key] + (frag ? `#${frag}` : '');
   const abs = path.join(ROOT, key);
-  if (fs.existsSync(abs) && fs.statSync(abs).isFile()) return path.relative(ctx.outDir, abs).split(path.sep).join('/');
+  if (fs.existsSync(abs) && fs.statSync(abs).isFile()) return path.relative(ctx.outDir, abs).split(path.sep).join('/') + (frag ? `#${frag}` : '');
   return null;
 }
 const title1 = md => (md.match(/^# (.+)$/m) || [, 'Untitled'])[1].trim();
@@ -106,10 +107,13 @@ const CH = [
   { part: 'Orientation' },
   { id: 'overview', title: 'How this documentation fits together', html: 'overview' },
   { id: 'environments', src: 'docs/operations/environments.md' },
-  { part: 'Requirements' },
+  { part: 'The whole system' },
+  { id: 'platform', src: 'docs/platform/00-platform-architecture.md' },
+  { id: 'module-catalogue', src: 'docs/platform/annex-h-module-catalogue.md' },
+  { part: 'Requirements (finance core)' },
   { id: 'brd', src: GL + '01-business-requirements-document.md' },
   { id: 'srs', src: GL + '02-software-requirements-specification.md' },
-  { part: 'Design' },
+  { part: 'Design (finance core)' },
   { id: 'solution-design', src: GL + '03-solution-design-document.md' },
   { id: 'technical-design', src: GL + '04-technical-design-document.md' },
   { id: 'accounting-rules', src: 'docs/design-notes/accounting-rules.md' },
@@ -140,9 +144,10 @@ const CH = [
 for (const c of CH) if (c.src) linkmap[c.src] = `#${c.id}`;
 
 function overview() {
-  return `<p>This is the technical documentation of Warraq ERP: what the finance core (General Ledger, Receivables, Payables, Bank) must do, how it is designed, how it is tested, how it was delivered, and how it is run. It is one document, read top to bottom or by the menu on the left. Three long tables are on their own pages and linked: the <a href="data-dictionary.html">data dictionary</a>, the <a href="traceability.html">traceability matrix</a> and the <a href="test-catalogue.html">test-case catalogue</a>.</p>
+  return `<p>This is the technical documentation of Warraq ERP as a whole: how the platform works (companies, permissions, ledger, e-invoicing), every module with its endpoints, tables, screens and tests, and, for the new finance core (General Ledger, Receivables, Payables, Bank), the requirements, design, tests and delivery history. It is one document, read top to bottom or by the menu on the left. Three long tables are on their own pages and linked: the <a href="data-dictionary.html">data dictionary</a>, the <a href="traceability.html">traceability matrix</a> and the <a href="test-catalogue.html">test-case catalogue</a>.</p>
 <div class="table-wrap"><table class="plan"><thead><tr><th>If you want to know…</th><th>Read</th></tr></thead><tbody>
-<tr><td>What the business asked for, and what is built</td><td><a href="#brd">Business requirements</a>, then <a href="#srs">System requirements</a></td></tr>
+<tr><td>How the whole system works, and what modules exist</td><td><a href="#platform">Platform architecture</a>, then the <a href="#module-catalogue">Module catalogue</a> (one sheet per module)</td></tr>
+<tr><td>What the business asked for in the finance core, and what is built</td><td><a href="#brd">Business requirements</a>, then <a href="#srs">System requirements</a></td></tr>
 <tr><td>How the system is shaped and why</td><td><a href="#solution-design">Solution design</a> (principles, decisions), then <a href="#technical-design">Technical design</a> (algorithms, tables, traps)</td></tr>
 <tr><td>The rules every document must obey (dates, periods, posting, cancellation)</td><td><a href="#accounting-rules">Accounting rules</a>, <a href="#period-rule">Period rule</a>, <a href="#date-standard">Date standard</a>, <a href="#posting-control">Posting control</a></td></tr>
 <tr><td>What a document posts to the ledger</td><td><a href="#posting-rules">Posting rules</a></td></tr>
@@ -175,7 +180,7 @@ ${c('../archive/README.md', 'Archive', 'Superseded plans, early sprint logs and 
 const subRail = `<aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Technical documentation</div><a class="home" href="index.html">← Technical documentation</a><a class="home" href="../index.html">← All documentation</a></aside>`;
 function buildTechnical() {
   const rail = ['<aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Technical documentation</div><a class="home" href="../index.html">← All documentation</a>'];
-  const body = ['<p class="eyebrow">Warraq ERP · Technical documentation</p><h1 style="font-size:2.3rem;margin:.2rem 0 1.5rem">Warraq ERP: finance core (GL, AR, AP, Bank)</h1>'];
+  const body = ['<p class="eyebrow">Warraq ERP · Technical documentation</p><h1 style="font-size:2.3rem;margin:.2rem 0 1.5rem">Warraq ERP: platform, modules and finance core</h1>'];
   let n = 0, mermaid = false;
   for (const c of CH) {
     if (c.part) { rail.push(`<div class="grp">${esc(c.part)}</div>`); continue; }
@@ -261,6 +266,7 @@ function buildHub() {
 <div class="table-wrap"><table class="plan"><thead><tr><th>Folder</th><th>What it holds</th></tr></thead><tbody>
 <tr><td><code>user-manual/</code>, <code>technical/</code></td><td>The two documents above (generated; do not edit)</td></tr>
 <tr><td><code>gl-ap-ar/</code></td><td>Sources of both: Markdown chapters, <code>source/*.mjs</code> for requirements and sprints, manual screenshots</td></tr>
+<tr><td><code>platform/</code></td><td>How the whole system works, and the generated catalogue of every module</td></tr>
 <tr><td><code>design-notes/</code>, <code>operations/</code>, <code>proposals/</code></td><td>Hand-written chapters included in the technical document</td></tr>
 <tr><td><code>test-cases/</code></td><td>The test-case catalogue: source, CSV, JSON, Gherkin</td></tr>
 <tr><td><code>zatca/</code>, <code>reference/</code></td><td>ZATCA guides and the blueprint</td></tr>

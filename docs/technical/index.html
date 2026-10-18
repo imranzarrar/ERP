@@ -28,10 +28,11 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 .filters{display:flex;flex-wrap:wrap;gap:.6rem;margin:1rem 0}.filters input,.filters select{font:inherit;padding:.4rem .6rem;border:1px solid var(--line);border-radius:8px;background:var(--raised)}
 @media (max-width:900px){.layout{grid-template-columns:1fr}.rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:1.2rem 1rem 3rem}}
 @media print{.rail{display:none}.layout{grid-template-columns:1fr}.chapter{page-break-before:always}}
-</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Technical documentation</div><a class="home" href="../index.html">← All documentation</a><div class="grp">Orientation</div><a href="#overview">1. How this documentation fits together</a><a href="#environments">2. Environments: Live (1.0) and Demo / development (2.0)</a><div class="grp">Requirements</div><a href="#brd">3. Business Requirements Document</a><a href="#srs">4. Software Requirements Specification</a><div class="grp">Design</div><a href="#solution-design">5. Solution Design Document</a><a href="#technical-design">6. Technical Design Document</a><a href="#accounting-rules">7. Accounting and reporting rules</a><a href="#period-rule">8. Period rule for cancel, reversal, return and credit</a><a href="#date-standard">9. Date fields on documents: the standard (Demo / 2.0)</a><a href="#posting-control">10. Posting control: the lock date and back-dating rules (Demo / 2.0)</a><a href="#ar-ap-bank">11. AR, AP and bank reconciliation: design against the Finance Core Blueprint (Demo / 2.0)</a><a href="#dimensions-decisions">12. GL Step 1.5: dimensions and configurable statements. CFO and architect decisions</a><a href="#approval-research">13. Sprint 11 — Approval rules: what tier-1 ERPs do, and what we should build</a><div class="grp">Quality</div><a href="#test-strategy">14. Test Strategy</a><div class="grp">Delivery</div><a href="#sprint-log">15. Sprint log and plan — GL / AR / AP 2.0</a><div class="grp">Reference</div><a href="#api">16. Annex B — API reference (GL / AR / AP routes)</a><a href="#permissions">17. Annex C — Permission modules (GL / AR / AP)</a><a href="#posting-rules">18. Annex D — Posting rules catalogue</a><a href="#developer-guide">19. Annex E — Developer guide for future ledger work</a><a href="#runbook">20. Annex F — Operations runbook (ledger core)</a><a href="#glossary">21. Annex G — Glossary</a><div class="grp">Operations and proposals</div><a href="#deployment">22. Hostinger VPS Deployment Plan</a><a href="#ha-proposal">23. High Availability Plan (for review)</a><a href="#ai-proposal">24. AI Features — Implementation Plan (for review)</a><div class="grp">Linked documents</div><a href="#linked">25. Linked pages and other documents</a></aside><main><p class="eyebrow">Warraq ERP · Technical documentation</p><h1 style="font-size:2.3rem;margin:.2rem 0 1.5rem">Warraq ERP: finance core (GL, AR, AP, Bank)</h1>
-<section class="chapter" id="overview"><p class="eyebrow">Chapter 1</p><h2>How this documentation fits together</h2><p>This is the technical documentation of Warraq ERP: what the finance core (General Ledger, Receivables, Payables, Bank) must do, how it is designed, how it is tested, how it was delivered, and how it is run. It is one document, read top to bottom or by the menu on the left. Three long tables are on their own pages and linked: the <a href="data-dictionary.html">data dictionary</a>, the <a href="traceability.html">traceability matrix</a> and the <a href="test-catalogue.html">test-case catalogue</a>.</p>
+</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Technical documentation</div><a class="home" href="../index.html">← All documentation</a><div class="grp">Orientation</div><a href="#overview">1. How this documentation fits together</a><a href="#environments">2. Environments: Live (1.0) and Demo / development (2.0)</a><div class="grp">The whole system</div><a href="#platform">3. Platform architecture: how the whole system works</a><a href="#module-catalogue">4. Annex H: Module catalogue (every module, older and new)</a><div class="grp">Requirements (finance core)</div><a href="#brd">5. Business Requirements Document</a><a href="#srs">6. Software Requirements Specification</a><div class="grp">Design (finance core)</div><a href="#solution-design">7. Solution Design Document</a><a href="#technical-design">8. Technical Design Document</a><a href="#accounting-rules">9. Accounting and reporting rules</a><a href="#period-rule">10. Period rule for cancel, reversal, return and credit</a><a href="#date-standard">11. Date fields on documents: the standard (Demo / 2.0)</a><a href="#posting-control">12. Posting control: the lock date and back-dating rules (Demo / 2.0)</a><a href="#ar-ap-bank">13. AR, AP and bank reconciliation: design against the Finance Core Blueprint (Demo / 2.0)</a><a href="#dimensions-decisions">14. GL Step 1.5: dimensions and configurable statements. CFO and architect decisions</a><a href="#approval-research">15. Sprint 11 — Approval rules: what tier-1 ERPs do, and what we should build</a><div class="grp">Quality</div><a href="#test-strategy">16. Test Strategy</a><div class="grp">Delivery</div><a href="#sprint-log">17. Sprint log and plan — GL / AR / AP 2.0</a><div class="grp">Reference</div><a href="#api">18. Annex B — API reference (GL / AR / AP routes)</a><a href="#permissions">19. Annex C — Permission modules (GL / AR / AP)</a><a href="#posting-rules">20. Annex D — Posting rules catalogue</a><a href="#developer-guide">21. Annex E — Developer guide for future ledger work</a><a href="#runbook">22. Annex F — Operations runbook (ledger core)</a><a href="#glossary">23. Annex G — Glossary</a><div class="grp">Operations and proposals</div><a href="#deployment">24. Hostinger VPS Deployment Plan</a><a href="#ha-proposal">25. High Availability Plan (for review)</a><a href="#ai-proposal">26. AI Features — Implementation Plan (for review)</a><div class="grp">Linked documents</div><a href="#linked">27. Linked pages and other documents</a></aside><main><p class="eyebrow">Warraq ERP · Technical documentation</p><h1 style="font-size:2.3rem;margin:.2rem 0 1.5rem">Warraq ERP: platform, modules and finance core</h1>
+<section class="chapter" id="overview"><p class="eyebrow">Chapter 1</p><h2>How this documentation fits together</h2><p>This is the technical documentation of Warraq ERP as a whole: how the platform works (companies, permissions, ledger, e-invoicing), every module with its endpoints, tables, screens and tests, and, for the new finance core (General Ledger, Receivables, Payables, Bank), the requirements, design, tests and delivery history. It is one document, read top to bottom or by the menu on the left. Three long tables are on their own pages and linked: the <a href="data-dictionary.html">data dictionary</a>, the <a href="traceability.html">traceability matrix</a> and the <a href="test-catalogue.html">test-case catalogue</a>.</p>
 <div class="table-wrap"><table class="plan"><thead><tr><th>If you want to know…</th><th>Read</th></tr></thead><tbody>
-<tr><td>What the business asked for, and what is built</td><td><a href="#brd">Business requirements</a>, then <a href="#srs">System requirements</a></td></tr>
+<tr><td>How the whole system works, and what modules exist</td><td><a href="#platform">Platform architecture</a>, then the <a href="#module-catalogue">Module catalogue</a> (one sheet per module)</td></tr>
+<tr><td>What the business asked for in the finance core, and what is built</td><td><a href="#brd">Business requirements</a>, then <a href="#srs">System requirements</a></td></tr>
 <tr><td>How the system is shaped and why</td><td><a href="#solution-design">Solution design</a> (principles, decisions), then <a href="#technical-design">Technical design</a> (algorithms, tables, traps)</td></tr>
 <tr><td>The rules every document must obey (dates, periods, posting, cancellation)</td><td><a href="#accounting-rules">Accounting rules</a>, <a href="#period-rule">Period rule</a>, <a href="#date-standard">Date standard</a>, <a href="#posting-control">Posting control</a></td></tr>
 <tr><td>What a document posts to the ledger</td><td><a href="#posting-rules">Posting rules</a></td></tr>
@@ -45,7 +46,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 </tbody></table></div>
 <div class="callout"><div class="label">Which version is described</div><p>The finance core is <b>Warraq 2.0</b> (branch <code>v2</code>, the Demo). Live (1.0, branch <code>master</code>) does not have it yet. Chapters say so where it matters; the <a href="#environments">Environments</a> chapter explains the two tracks.</p></div>
 <div class="callout warn"><div class="label">Reading copy, not the source</div><p>This page is generated. The requirements, system requirements, sprint log, traceability and annexes A to C are generated from <code>docs/gl-ap-ar/source/*.mjs</code> and from the code; the other chapters are hand-written Markdown under <code>docs/gl-ap-ar</code>, <code>docs/design-notes</code>, <code>docs/operations</code> and <code>docs/proposals</code>. Edit those, then run <code>npx tsx scripts/build-gl-docs.mjs</code> and <code>node scripts/build-docs-html.mjs</code>; never edit this page. The skill <code>update-docs-after-development</code> walks through it.</p></div>
-<p class="src">Built 2026-10-16.</p></section>
+<p class="src">Built 2026-10-18.</p></section>
 <section class="chapter" id="environments"><p class="eyebrow">Chapter 2</p><h2>Environments: Live (1.0) and Demo / development (2.0)</h2><p class="src">Source: <code>docs/operations/environments.md</code></p><p>Two words are used everywhere from now on:</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th></th>
@@ -140,7 +141,2093 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <li>Do not run <code>deploy/setup-rls.sh</code> for the demo: it resets the role&#39;s password, which would break Live.</li>
 </ul>
 </section>
-<section class="chapter" id="brd"><p class="eyebrow">Chapter 3</p><h2>Business Requirements Document</h2><p class="src">Source: <code>docs/gl-ap-ar/01-business-requirements-document.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+<section class="chapter" id="platform"><p class="eyebrow">Chapter 3</p><h2>Platform architecture: how the whole system works</h2><p class="src">Source: <code>docs/platform/00-platform-architecture.md</code></p><p>This chapter describes what is common to every module, older and new: how a request is scoped to a company, how permissions and row-level security work, how documents are written and reported, how e-invoicing fits in, and how changes are made safely. The list of modules, with their endpoints, tables, screens and tests, is the <a href="#module-catalogue">module catalogue</a> (annex H). The finance core (General Ledger, Receivables, Payables, Bank) is specified in the requirements and design chapters; everything below applies to it as well.</p>
+<h3 id="platform--p">1. Shape of the system</h3>
+<ul>
+<li><strong>One application, two halves.</strong> A Node/Express server (<code>server.ts</code>, routes in <code>server/routes/*.ts</code>, shared logic in <code>server/lib/</code>) and a React client (<code>src/</code>) bundled by Vite and served by the same process (port 3000 in development; 3001 for the 2.0 checkout).</li>
+<li><strong>One database.</strong> PostgreSQL through the Drizzle ORM. <code>src/db/schema.ts</code> is the single source of truth for tables; changes are applied with <code>npm run db:push</code> (there are no migration files). Two things <code>db:push</code> does not carry, and which have their own scripts: check constraints and row-level-security predicates.</li>
+<li><strong>Two tracks.</strong> Live (1.0, branch <code>master</code>) takes fixes only; the Demo (2.0, branch <code>v2</code>) takes all new development, including the finance core. See the Environments chapter.</li>
+</ul>
+<h3 id="platform--p-2">2. Multi-tenancy: every request belongs to one company</h3>
+<ul>
+<li>Every business table carries a <code>companyId</code>. The company of a request, <code>req.targetCompanyId</code>, is resolved once per request in the authentication middleware (<code>isAuthenticated</code> in <code>server.ts</code>) from the signed-in user&#39;s own company; only a super-administrator may override it explicitly.</li>
+<li>A route reads the company <strong>only</strong> from <code>req.targetCompanyId</code>, never from a query string or body. A reference to another record (a customer id on an invoice) is checked to belong to the caller&#39;s company before it is used.</li>
+<li><strong>Row-level security is the second wall.</strong> Every table has a Postgres policy, and request handlers run on a restricted database role (<code>erp_app_tenant</code>) whose connection is told the company (<code>app.company_id</code>) at the start of the request (<code>withTenantDb</code>, <code>tenantDb()</code> in <code>server/lib/tenantDb.ts</code>). A route that forgets a company filter then still cannot see another company&#39;s rows. A few platform-administration routes (companies, role templates, onboarding, sessions, ZATCA configuration) deliberately use the unrestricted connection because they act across companies; each says why in a comment.</li>
+<li><code>npm run check:isolation</code> is a static check that fails when a route uses a client-supplied foreign key without checking ownership. It is run after every change to a route file.</li>
+</ul>
+<h3 id="platform--section">3. Authentication and sessions</h3>
+<p>Sign-in creates a server-side session (<code>express-session</code>, stored in Postgres). Automated tests use the documented alternative of an <code>x-session-id</code> header. Passwords are hashed; password reset and company onboarding use emailed links. A super-administrator can list and end sessions.</p>
+<h3 id="platform--p-3">4. Permissions</h3>
+<ul>
+<li>A user holds roles; the user&#39;s permissions are the union of every role, per permission. There is no per-user override on top of roles.</li>
+<li>Permissions are defined once, in <code>src/permissionSchema.ts</code>, as modules with create / read / update / delete leaves (and a few action leaves such as approving, closing a month or transferring between banks). The same registry builds the role editor and the server checks, through <code>normalizePermissions</code>. Administrators bypass the granular checks.</li>
+<li><strong>Two separate layers.</strong> The permission says whether the person may attempt the action at all; the state of the record says whether it can be touched now (a cancelled record cannot be edited; a cleared e-invoice cannot be edited or cancelled; a converted quotation is final). A route needs both.</li>
+<li>There is no hard delete of a financial record: documents are cancelled (or reversed), master data is made inactive.</li>
+</ul>
+<h3 id="platform---2">5. How data is read and written</h3>
+<ul>
+<li><strong>Writes go through real routes.</strong> Each document type has its own endpoint that applies the business rules (numbering, totals, VAT, period rules) inside one database transaction. There is no bulk &quot;save everything&quot; endpoint, deliberately: it once overwrote posted documents with no period check.</li>
+<li><strong>The state endpoint is for browsing only.</strong> <code>GET /api/state</code> returns the recent rows (capped) so list screens load quickly. <strong>Figures are never added up from it.</strong></li>
+<li><strong>Every report, dashboard figure and list total is computed on the server</strong>, for the active company, with no row cap (<code>server/lib/financialReports.ts</code>, <code>server/routes/reports.ts</code>, the ledger report engine). A client never sends a company id for a report. This rule exists because a capped list once silently dropped a tenant&#39;s older documents from its own totals.</li>
+<li><strong>Periods.</strong> A document can be created, cancelled or reversed only while its fiscal month is open and its VAT quarter is not filed; the posting guard (<code>assertPostingAllowed</code>) adds the optional lock date and back-date window. The exact rules are in the Accounting rules, Period rule and Posting control chapters.</li>
+</ul>
+<h3 id="platform---3">6. The ledger</h3>
+<p>Documents (invoices, credit notes, expenses, goods receipts, purchase bills, returns, receipts, vendor payments, manual journals) post to a double-entry ledger through one function, <code>postJournalEntry</code>, which resolves accounts through the company&#39;s account mapping and tags lines with customer, vendor and dimensions. What each document posts is in the Posting rules annex; how it works is in the Solution and Technical design chapters. The older document-based reports and the ledger reports are kept consistent by a shared set of facts, and a consistency check compares them.</p>
+<h3 id="platform---4">7. E-invoicing (ZATCA)</h3>
+<ul>
+<li>Every invoice, credit note and debit note goes through <code>processInvoiceZatca()</code>, started <strong>after</strong> the document&#39;s own transaction commits, never awaited by the create request. Credit and debit notes are rows in the invoices table with a document type and a reference to the original; they share the company&#39;s hash chain.</li>
+<li>In order: check the company&#39;s e-invoicing switch; record a <code>SUBMITTING</code> status first (so a concurrent cancel cannot see a stale status); reserve the next hash-chain position under a lock held only while building and signing; call the ZATCA clearance or reporting API; store the final status (<code>CLEARED</code>, <code>REPORTED</code>, <code>REJECTED</code>, <code>ERROR</code>).</li>
+<li>The signed XML is stored compressed and read back only through helper functions. Sandbox, simulation and production are separate identities per company.</li>
+<li>A cleared or reported invoice cannot be cancelled; a credit note is the only compliant reversal.</li>
+<li>Changes under <code>server/lib/zatca/</code> are verified against both the real ZATCA sandbox and ZATCA&#39;s own SDK validator (the dual-gate protocol in the ZATCA QA test plan).</li>
+</ul>
+<h3 id="platform--p-4">8. Screens, language and print</h3>
+<ul>
+<li>Screens are React components (one per module, listed in the catalogue). Every user-visible string goes through a translation function with English, Arabic and Urdu text held in one translation table; the interface mirrors for right-to-left languages.</li>
+<li>Printed documents (invoices, quotations, vouchers, statements) are drawn by one document renderer from per-company templates, with Arabic and Urdu support.</li>
+</ul>
+<h3 id="platform---5">9. Making a change safely</h3>
+<ol>
+<li>Check which track the change belongs to; never release Live from the 2.0 checkout or the reverse.</li>
+<li>Schema change: edit <code>schema.ts</code>, read what <code>db:push</code> prints before accepting it, then run the check-constraint and row-level-security scripts.</li>
+<li>Route change: use the company from the request, check every foreign key, add the permission check, run <code>npm run check:isolation</code>.</li>
+<li>Numbers someone will act on come from a server-side computation.</li>
+<li>Tests are real HTTP requests against a running server plus direct database checks, with no mocks, and they build their own throw-away company. Run <code>npm run lint</code> and the affected tests; before a release run the whole suite.</li>
+<li>New screen text is translated into Arabic and Urdu.</li>
+<li>Update the documentation (the skill <code>update-docs-after-development</code>) before saying the work is done.</li>
+</ol>
+</section>
+<section class="chapter" id="module-catalogue"><p class="eyebrow">Chapter 4</p><h2>Annex H: Module catalogue (every module, older and new)</h2><p class="src">Source: <code>docs/platform/annex-h-module-catalogue.md</code></p><p>Generated 2026-10-18 by <code>node scripts/build-module-catalogue.mjs</code> from the code: endpoints and permissions from <code>server/routes</code>, tables from <code>src/db/schema.ts</code>, tests from <code>tests/</code>. The one-line description of each module and the manual link are written in that script. This is the index of <strong>what the system contains</strong>; the rules that apply to all of it are in the Platform architecture chapter, and the finance core is specified in the requirements and design chapters.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Module</th>
+<th>Mount</th>
+<th>Endpoints</th>
+<th>Tables touched</th>
+<th>Tests</th>
+</tr>
+</thead><tbody><tr>
+<td><a href="#module-masterEntities">Master data</a></td>
+<td><code>/api</code></td>
+<td>42</td>
+<td>16</td>
+<td>19</td>
+</tr>
+<tr>
+<td><a href="#module-masterImport">Product import</a></td>
+<td><code>/api</code></td>
+<td>3</td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td><a href="#module-branches">Branches</a></td>
+<td><code>/api</code></td>
+<td>4</td>
+<td>9</td>
+<td>4</td>
+</tr>
+<tr>
+<td><a href="#module-employees">Employees and job titles</a></td>
+<td><code>/api</code></td>
+<td>3</td>
+<td>3</td>
+<td>2</td>
+</tr>
+<tr>
+<td><a href="#module-transactions">Sales documents, fiscal months, recurring postings</a></td>
+<td><code>/api/transactions</code></td>
+<td>25</td>
+<td>17</td>
+<td>40</td>
+</tr>
+<tr>
+<td><a href="#module-expenses">Expenses</a></td>
+<td><code>/api/expenses</code></td>
+<td>5</td>
+<td>6</td>
+<td>20</td>
+</tr>
+<tr>
+<td><a href="#module-inventory">Procurement and inventory</a></td>
+<td><code>/api/inventory</code></td>
+<td>24</td>
+<td>22</td>
+<td>17</td>
+</tr>
+<tr>
+<td><a href="#module-pos">Point of sale</a></td>
+<td><code>/api/pos</code></td>
+<td>8</td>
+<td>8</td>
+<td>4</td>
+</tr>
+<tr>
+<td><a href="#module-reports">Reports and dashboard</a></td>
+<td><code>/api</code></td>
+<td>23</td>
+<td>0</td>
+<td>10</td>
+</tr>
+<tr>
+<td><a href="#module-taxReturns">VAT returns</a></td>
+<td><code>/api</code></td>
+<td>4</td>
+<td>1</td>
+<td>6</td>
+</tr>
+<tr>
+<td><a href="#module-zatca">ZATCA e-invoicing</a></td>
+<td><code>/api/zatca</code></td>
+<td>8</td>
+<td>3</td>
+<td>1</td>
+</tr>
+<tr>
+<td><a href="#module-users">Users</a></td>
+<td><code>/api/users</code></td>
+<td>5</td>
+<td>6</td>
+<td>9</td>
+</tr>
+<tr>
+<td><a href="#module-roles">Roles and permissions</a></td>
+<td><code>/api/roles</code></td>
+<td>3</td>
+<td>2</td>
+<td>1</td>
+</tr>
+<tr>
+<td><a href="#module-roleTemplates">Role templates</a></td>
+<td><code>/api/role-templates</code></td>
+<td>3</td>
+<td>1</td>
+<td>0</td>
+</tr>
+<tr>
+<td><a href="#module-sessions">Active sessions</a></td>
+<td><code>/api</code></td>
+<td>2</td>
+<td>3</td>
+<td>1</td>
+</tr>
+<tr>
+<td><a href="#module-companies">Companies</a></td>
+<td><code>/api/companies</code></td>
+<td>2</td>
+<td>80</td>
+<td>8</td>
+</tr>
+<tr>
+<td><a href="#module-onboarding">Company onboarding</a></td>
+<td><code>/api</code></td>
+<td>0</td>
+<td>7</td>
+<td>0</td>
+</tr>
+<tr>
+<td><a href="#module-settingsResources">Document templates and translations</a></td>
+<td><code>/api</code></td>
+<td>9</td>
+<td>3</td>
+<td>4</td>
+</tr>
+<tr>
+<td><a href="#module-systemBanner">System banner</a></td>
+<td><code>/api</code></td>
+<td>0</td>
+<td>1</td>
+<td>0</td>
+</tr>
+<tr>
+<td><a href="#module-approvals">Approval rules (2.0)</a></td>
+<td><code>/api/approvals</code></td>
+<td>11</td>
+<td>6</td>
+<td>1</td>
+</tr>
+<tr>
+<td><a href="#module-ledgerAccounts">General ledger: accounts (2.0)</a></td>
+<td><code>/api/ledger</code></td>
+<td>13</td>
+<td>6</td>
+<td>7</td>
+</tr>
+<tr>
+<td><a href="#module-ledgerJournals">General ledger: journals (2.0)</a></td>
+<td><code>/api/ledger</code></td>
+<td>14</td>
+<td>14</td>
+<td>6</td>
+</tr>
+<tr>
+<td><a href="#module-ledgerReports">General ledger: reports (2.0)</a></td>
+<td><code>/api/ledger</code></td>
+<td>3</td>
+<td>5</td>
+<td>4</td>
+</tr>
+<tr>
+<td><a href="#module-ledgerReportDefs">General ledger: report designer (2.0)</a></td>
+<td><code>/api/ledger</code></td>
+<td>10</td>
+<td>2</td>
+<td>2</td>
+</tr>
+<tr>
+<td><a href="#module-ledgerDimensions">General ledger: dimensions (2.0)</a></td>
+<td><code>/api/ledger</code></td>
+<td>16</td>
+<td>6</td>
+<td>3</td>
+</tr>
+<tr>
+<td><a href="#module-ledgerOpening">General ledger: opening balances (2.0)</a></td>
+<td><code>/api/ledger</code></td>
+<td>4</td>
+<td>4</td>
+<td>1</td>
+</tr>
+<tr>
+<td><a href="#module-ledgerPostingPolicy">General ledger: posting control (2.0)</a></td>
+<td><code>/api/ledger</code></td>
+<td>2</td>
+<td>1</td>
+<td>3</td>
+</tr>
+<tr>
+<td><a href="#module-ledgerSubledger">Receivables and payables ledgers (2.0)</a></td>
+<td><code>/api/ledger</code></td>
+<td>5</td>
+<td>0</td>
+<td>2</td>
+</tr>
+<tr>
+<td><a href="#module-settlements">Receipts and vendor payments (2.0)</a></td>
+<td><code>/api</code></td>
+<td>7</td>
+<td>0</td>
+<td>3</td>
+</tr>
+<tr>
+<td><a href="#module-bankReconciliation">Bank reconciliation (2.0)</a></td>
+<td><code>/api/bank-reconciliations</code></td>
+<td>16</td>
+<td>1</td>
+<td>1</td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--section">Master data</h3>
+<p><a id="module-masterEntities"></a>Customers, vendors, products, product categories, modifier groups, units of measure and their conversions, banks, tax slabs, job titles, and company profile, theme and numbering settings. Every document picks from these; none is ever hard-deleted, only made inactive.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/masterEntities.ts</code>, mounted at <code>/api</code></li>
+<li><strong>Screens:</strong> <code>MasterEntities.tsx</code>, <code>ModifierGroupsModule.tsx</code>, <code>QuickAddPartyButton.tsx</code>, <code>QuickAddProductModal.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#partners">partners</a>, <a href="../user-manual/warraq-erp-user-manual.html#catalog">catalog</a>, <a href="../user-manual/warraq-erp-user-manual.html#config-org">config-org</a></li>
+<li><strong>Tables touched directly:</strong> <code>bank_accounts</code>, <code>branches</code>, <code>companies</code>, <code>customers</code>, <code>job_titles</code>, <code>modifier_choices</code>, <code>modifier_groups</code>, <code>product_categories</code>, <code>product_modifier_groups</code>, <code>product_unit_conversions</code>, <code>product_warehouses</code>, <code>products_services</code>, <code>tax_slabs</code>, <code>units_of_measure</code>, <code>vendors</code>, <code>warehouses</code></li>
+<li><strong>Tests that call it:</strong> <code>accountSecurityAndCompanySetup</code>, <code>adminSettingsRoutes</code>, <code>companyDeletion</code>, <code>companyLogoDelivery</code>, <code>crossCompanyIsolation</code>, <code>documentNumbering</code>, <code>employees</code>, <code>inventoryModuleRoutes</code>, <code>ledgerPostingProfile</code>, <code>ledgerSubledger</code>, <code>modifierGroups</code>, <code>newCompanyStarterResources</code>, <code>nonTransactionalSync</code>, <code>permissionCrudModel</code>, <code>salesWarehouseRouting</code>, <code>tenantDbPhase2Rls</code>, <code>tenantDbRls</code>, <code>uomConversion</code>, <code>zatcaUnitCodes</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/customers</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/customers</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/customers/:id/toggle-active</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/vendors</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/vendors</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/vendors/:id/toggle-active</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/products</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/products</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/products/:id/toggle-active</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/companies</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/companies/:id/theme</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/companies/:id/settings</code></td>
+<td><code>companyProfile.update</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/companies/:id/numbering-preview</code></td>
+<td><code>documentNumbering.read</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/banks</code></td>
+<td><code>banks.read</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/banks</code></td>
+<td><code>banks.create</code></td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/banks/:id</code></td>
+<td><code>banks.update</code></td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/banks/:id/set-default</code></td>
+<td><code>banks.update</code></td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/banks/:id/toggle-active</code></td>
+<td><code>banks.delete</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/tax-slabs</code></td>
+<td><code>taxSlabs.read</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/tax-slabs</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/tax-slabs/:id/set-default</code></td>
+<td><code>taxSlabs.update</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/product-categories</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/product-categories</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/product-categories/:id/toggle-active</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/modifier-groups</code></td>
+<td><code>modifierGroups.read</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/modifier-groups</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/modifier-groups/:id/toggle-active</code></td>
+<td><code>modifierGroups.delete</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/units-of-measure</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/units-of-measure</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/units-of-measure/:id/toggle-active</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/job-titles</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/job-titles</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/job-titles/:id/toggle-active</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/product-unit-conversions</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/product-unit-conversions</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/product-unit-conversions/:id/toggle-active</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/warehouses</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/warehouses</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/warehouses/:id/toggle-active</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/product-warehouses</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/product-warehouses</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/product-warehouses/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--p-p">Product import</h3>
+<p><a id="module-masterImport"></a>Bulk product load from a spreadsheet: download a template, validate the file, then commit.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/masterImport.ts</code>, mounted at <code>/api</code></li>
+<li><strong>Screens:</strong> <code>ProductImportModal.tsx</code>, <code>PartyImportModal.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#catalog">catalog</a></li>
+<li><strong>Tables touched directly:</strong> none</li>
+<li><strong>Tests that call it:</strong> <code>productImport</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/master-import/products/template</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/master-import/products/validate</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/master-import/products/commit</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue---2">Branches</h3>
+<p><a id="module-branches"></a>Physical locations inside a company. Documents optionally belong to a branch; users can be restricted to branches.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/branches.ts</code>, mounted at <code>/api</code></li>
+<li><strong>Screens:</strong> <code>AdminSettings.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#config-org">config-org</a></li>
+<li><strong>Tables touched directly:</strong> <code>branches</code>, <code>expenses</code>, <code>invoices</code>, <code>purchase_bills</code>, <code>purchase_orders</code>, <code>purchase_requisitions</code>, <code>quotations</code>, <code>vouchers</code>, <code>warehouses</code></li>
+<li><strong>Tests that call it:</strong> <code>branchAutoWarehouse</code>, <code>salesWarehouseRouting</code>, <code>sessionLifecycle</code>, <code>tenantDbPhase2Rls</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/branches</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/branches</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/branches/:id/toggle-active</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/branches/backfill-unassigned</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--p">Employees and job titles</h3>
+<p><a id="module-employees"></a>Employee records and their job titles (a person is separate from a login user).</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/employees.ts</code>, mounted at <code>/api</code></li>
+<li><strong>Screens:</strong> <code>EmployeesModule.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#hr">hr</a></li>
+<li><strong>Tables touched directly:</strong> <code>branches</code>, <code>employees</code>, <code>job_titles</code></li>
+<li><strong>Tests that call it:</strong> <code>employees</code>, <code>tenantDbPhase2Rls</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/employees</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/employees</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/employees/:id/toggle-active</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--p-2">Sales documents, fiscal months, recurring postings</h3>
+<p><a id="module-transactions"></a>Quotations (convertible to invoices), tax invoices, credit notes, later payments and cancellation; fiscal month open/close; recurring expense templates, postings and accruals; interbank transfers; investor contributions. Invoices, credit notes and debit notes are submitted to ZATCA after commit. A cleared invoice can only be reversed by a credit note.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/transactions.ts</code>, mounted at <code>/api/transactions</code></li>
+<li><strong>Screens:</strong> <code>QuotationModule.tsx</code>, <code>InvoiceModule.tsx</code>, <code>InvoiceViewScreen.tsx</code>, <code>RecurringExpenses.tsx</code>, <code>AdminSettings.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#sales">sales</a>, <a href="../user-manual/warraq-erp-user-manual.html#expenses">expenses</a>, <a href="../user-manual/warraq-erp-user-manual.html#config-fiscal">config-fiscal</a></li>
+<li><strong>Tables touched directly:</strong> <code>bank_accounts</code>, <code>companies</code>, <code>customers</code>, <code>employees</code>, <code>expenses</code>, <code>fiscal_months</code>, <code>investors</code>, <code>invoice_items</code>, <code>invoices</code>, <code>products_services</code>, <code>quotation_items</code>, <code>quotations</code>, <code>recurring_expense_templates</code>, <code>recurring_postings</code>, <code>tax_slabs</code>, <code>vendors</code>, <code>vouchers</code></li>
+<li><strong>Tests that call it:</strong> <code>accrualSettlementVariance</code>, <code>adminSettingsRoutes</code>, <code>approvals</code>, <code>auditLogCoverage</code>, <code>averageSalePrice</code>, <code>balanceSheetAsAtPastDate</code>, <code>bankReconciliation</code>, <code>cancelAndBillDateRules</code>, <code>createRouteFieldAllowList</code>, <code>crossCompanyIsolation</code>, <code>documentNumbering</code>, <code>employees</code>, <code>invoicePaidRoute</code>, <code>invoiceXmlOnDemand</code>, <code>itemKindStockGating</code>, <code>ledgerPostingProfile</code>, <code>ledgerSubledger</code>, <code>modifierGroups</code>, <code>monthPnlPreview</code>, <code>multiMonthOpen</code>, <code>newCompanyStarterResources</code>, <code>noBulkSave</code>, <code>periodFuzz</code>, <code>periodStory</code>, <code>permissionCrudModel</code>, <code>posCancelPermission</code>, <code>posSaleZatcaPipeline</code>, <code>postingControl</code>, <code>recurringTemplates</code>, <code>reportsReconcileLedgerScenario</code>, <code>salesAverageUnwind</code>, <code>salesWarehouseRouting</code>, <code>settlements</code>, <code>taxReturns</code>, <code>tenantDbPhase3Rls</code>, <code>uomConversion</code>, <code>usersAdminActions</code>, <code>vendorCreditReceivable</code>, <code>zatcaUnitCodes</code>, <code>zatcaWorkflow</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/transactions/quotations</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/transactions/quotations</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/transactions/quotations/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/transactions/quotations/:id/cancel</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/transactions/quotations/:id/convert</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/transactions/invoices</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/transactions/invoices/:id/xml</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/transactions/invoices/:id/pdf</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/transactions/invoices</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/transactions/invoices/:id/note</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/transactions/invoices/:id/paid</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/transactions/invoices/:id/cancel</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/transactions/investors</code></td>
+<td><code>investors.access</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/transactions/investors/:id/investment</code></td>
+<td><code>investors.access</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/transactions/months</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/transactions/months</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/transactions/recurring-postings</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/transactions/settle-accrual</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/transactions/recurring-templates</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/transactions/recurring-templates/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/transactions/recurring-templates/:id/toggle</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/transactions/recurring-templates/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/transactions/accruals/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/transactions/accruals/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/transactions/interbank-transfer</code></td>
+<td><code>banks.transfer</code></td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--p-3">Expenses</h3>
+<p><a id="module-expenses"></a>Vendor expenses with VAT, payment at entry or later, reversal and cancellation. Posts to the ledger and creates the payment voucher through one shared path.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/expenses.ts</code>, mounted at <code>/api/expenses</code></li>
+<li><strong>Screens:</strong> <code>ExpenseModule.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#expenses">expenses</a></li>
+<li><strong>Tables touched directly:</strong> <code>bank_accounts</code>, <code>expenses</code>, <code>journal_entries</code>, <code>journal_lines</code>, <code>tax_slabs</code>, <code>vouchers</code></li>
+<li><strong>Tests that call it:</strong> <code>approvals</code>, <code>balanceSheetAsAtPastDate</code>, <code>bankReconciliation</code>, <code>cancelAndBillDateRules</code>, <code>createRouteFieldAllowList</code>, <code>crossCompanyIsolation</code>, <code>expenseCreateRoute</code>, <code>expensePayCancel</code>, <code>ledgerJournals</code>, <code>ledgerPostingProfile</code>, <code>ledgerSubledger</code>, <code>monthPnlPreview</code>, <code>noBulkSave</code>, <code>periodFuzz</code>, <code>periodStory</code>, <code>postingControl</code>, <code>reportsReconcileLedgerScenario</code>, <code>settlements</code>, <code>taxReturns</code>, <code>tenantDbPhase3Rls</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/expenses</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/expenses</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/expenses/:id/pay</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/expenses/:id/reverse</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/expenses/:id/cancel</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--p-4">Procurement and inventory</h3>
+<p><a id="module-inventory"></a>Purchase requisitions, purchase orders, goods receipt notes, purchase bills (with payment), purchase returns, vendor refunds, warehouse dispatches and receivings, stock adjustments and stock takes. Stock is kept in a ledger of movements.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/inventory.ts</code>, mounted at <code>/api/inventory</code></li>
+<li><strong>Screens:</strong> <code>InventoryModule.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#purchasing">purchasing</a>, <a href="../user-manual/warraq-erp-user-manual.html#warehouses">warehouses</a></li>
+<li><strong>Tables touched directly:</strong> <code>bank_accounts</code>, <code>companies</code>, <code>goods_receipt_note_items</code>, <code>goods_receipt_notes</code>, <code>inventory_stocks</code>, <code>physical_stock_take_items</code>, <code>physical_stock_takes</code>, <code>products_services</code>, <code>purchase_bills</code>, <code>purchase_order_items</code>, <code>purchase_orders</code>, <code>purchase_requisition_items</code>, <code>purchase_requisitions</code>, <code>purchase_return_items</code>, <code>purchase_returns</code>, <code>vendors</code>, <code>vouchers</code>, <code>warehouse_dispatch_items</code>, <code>warehouse_dispatches</code>, <code>warehouse_receiving_items</code>, <code>warehouse_receivings</code>, <code>warehouses</code></li>
+<li><strong>Tests that call it:</strong> <code>approvals</code>, <code>cancelAndBillDateRules</code>, <code>documentNumbering</code>, <code>inventoryModuleRoutes</code>, <code>itemKindStockGating</code>, <code>periodFuzz</code>, <code>periodStory</code>, <code>permissionCrudModel</code>, <code>purchaseBillsRoutes</code>, <code>purchaseReturnVatPeriod</code>, <code>purchaseReturnsAndStockTakes</code>, <code>reportsReconcileLedgerScenario</code>, <code>taxReturns</code>, <code>tenantDbPhase5Rls</code>, <code>uomConversion</code>, <code>vendorCreditReceivable</code>, <code>warehouseTransfer</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>POST</td>
+<td><code>/api/inventory/purchase-requisitions</code></td>
+<td><code>inventory.pr</code></td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/inventory/purchase-requisitions/:id</code></td>
+<td><code>inventory.pr</code></td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/inventory/purchase-requisitions/:id/withdraw</code></td>
+<td><code>inventory.pr</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/inventory/purchase-orders</code></td>
+<td><code>inventory.po</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/inventory/goods-receipt-notes</code></td>
+<td><code>inventory.grn</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/inventory/goods-receipt-notes/:id/reverse</code></td>
+<td><code>inventory.grn</code></td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/inventory/purchase-requisitions/:id/status</code></td>
+<td><code>inventory.approve</code></td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/inventory/purchase-orders/:id/cancel</code></td>
+<td><code>inventory.po</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/inventory/warehouse-dispatches</code></td>
+<td><code>warehouseDispatches.create</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/inventory/warehouse-receivings</code></td>
+<td><code>warehouseReceivings.create</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/inventory/warehouse-dispatches/:id/cancel</code></td>
+<td><code>warehouseDispatches.delete</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/inventory/stock-adjustments</code></td>
+<td><code>inventory.stock</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/inventory/purchase-bills</code></td>
+<td><code>purchaseBills.create</code></td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/inventory/purchase-bills/:id</code></td>
+<td><code>purchaseBills.update</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/inventory/vendor-refunds</code></td>
+<td><code>purchaseBills.update</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/inventory/vendor-refunds</code></td>
+<td><code>purchaseBills.read, purchaseBills.update</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/inventory/vendor-refunds/:id/cancel</code></td>
+<td><code>purchaseBills.update</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/inventory/purchase-bills/:id/pay</code></td>
+<td><code>purchaseBills.update</code></td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/inventory/purchase-bills/:id/cancel</code></td>
+<td><code>purchaseBills.delete</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/inventory/purchase-returns</code></td>
+<td><code>purchaseReturns.create</code></td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/inventory/purchase-returns/:id/cancel</code></td>
+<td><code>purchaseReturns.delete</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/inventory/stock-takes</code></td>
+<td><code>stockTakes.create</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/inventory/stock-takes/:id/finalize</code></td>
+<td><code>stockTakes.update</code></td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/inventory/stock-takes/:id/cancel</code></td>
+<td><code>stockTakes.delete</code></td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--p-5">Point of sale</h3>
+<p><a id="module-pos"></a>Cashier shifts, held (parked) sales and returns against earlier sales; sales themselves are invoices.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/pos.ts</code>, mounted at <code>/api/pos</code></li>
+<li><strong>Screens:</strong> <code>PosModule.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#pos">pos</a></li>
+<li><strong>Tables touched directly:</strong> <code>companies</code>, <code>customers</code>, <code>invoice_items</code>, <code>invoices</code>, <code>pos_held_invoices</code>, <code>pos_shifts</code>, <code>tax_slabs</code>, <code>users</code></li>
+<li><strong>Tests that call it:</strong> <code>periodFuzz</code>, <code>periodStory</code>, <code>posShiftsAndHeldInvoices</code>, <code>tenantDbPhase4Rls</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/pos/shifts</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/pos/shifts</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/pos/shifts/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/pos/held-invoices</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/pos/held-invoices</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/pos/held-invoices/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/pos/returnable-invoices</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/pos/returns</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--p-6">Reports and dashboard</h3>
+<p><a id="module-reports"></a>Every report, dashboard figure and list total is computed on the server for the active company, with no row cap: sales, purchase, stock, statements, profit and loss, trial balance, balance sheet, the consistency check. Document-based reports share one set of facts with the ledger reports.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/reports.ts</code>, mounted at <code>/api</code></li>
+<li><strong>Screens:</strong> <code>Dashboard.tsx</code>, <code>ReportViewer.tsx</code>, <code>SalesReportsModule.tsx</code>, <code>PurchaseReportsModule.tsx</code>, <code>InventoryReportsModule.tsx</code>, <code>ReportViewControls.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#fin-reports">fin-reports</a>, <a href="../user-manual/warraq-erp-user-manual.html#ops-reports">ops-reports</a></li>
+<li><strong>Tables touched directly:</strong> none</li>
+<li><strong>Tests that call it:</strong> <code>balanceSheetAsAtPastDate</code>, <code>bankReconciliation</code>, <code>ledgerJournals</code>, <code>ledgerSubledger</code>, <code>monthPnlPreview</code>, <code>periodFuzz</code>, <code>purchaseReturnVatPeriod</code>, <code>reportsReconcileLedgerScenario</code>, <code>salesAverageUnwind</code>, <code>settlements</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/reports/consistency-check</code></td>
+<td><code>reports.balanceSheet</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/month-pnl</code></td>
+<td><code>reports.balanceSheet</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/dashboard-summary</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/trial-balance</code></td>
+<td><code>reports.trialBalance</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/profit-loss</code></td>
+<td><code>reports.profitLoss</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/balance-sheet</code></td>
+<td><code>reports.balanceSheet</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/sales-register</code></td>
+<td><code>reports.salesRegister</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/item-wise-sales</code></td>
+<td><code>reports.itemWiseSales</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/customer-statement</code></td>
+<td><code>reports.customerStatement</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/quotation-conversion</code></td>
+<td><code>reports.quotationConversion</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/sales-by-staff</code></td>
+<td><code>reports.salesByStaff</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/pos-shift-summary</code></td>
+<td><code>reports.posShiftSummary</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/purchase-register</code></td>
+<td><code>reports.purchaseRegister</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/vendor-statement</code></td>
+<td><code>reports.vendorStatement</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/stock-valuation</code></td>
+<td><code>reports.stockValuation</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/item-profitability</code></td>
+<td><code>reports.itemProfitability, reports.lowStock</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/low-stock</code></td>
+<td><code>reports.lowStock</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/stock-take-variance-history</code></td>
+<td><code>reports.stockTakeVarianceHistory</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/stock-movement-ledger</code></td>
+<td><code>reports.stockMovementLedger</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/warehouse-transfer-reconciliation</code></td>
+<td><code>reports.warehouseTransferReconciliation</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/invoice-kpis</code></td>
+<td><code>invoice.read</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/quotation-kpis</code></td>
+<td><code>quotation.read</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/reports/investor-contributions</code></td>
+<td><code>investors.access</code></td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue---3">VAT returns</h3>
+<p><a id="module-taxReturns"></a>Quarterly VAT return generation and filing; a filed quarter locks the documents in it.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/taxReturns.ts</code>, mounted at <code>/api</code></li>
+<li><strong>Screens:</strong> <code>VatReturnsPanel.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#config-fiscal">config-fiscal</a></li>
+<li><strong>Tables touched directly:</strong> <code>tax_returns</code></li>
+<li><strong>Tests that call it:</strong> <code>periodFuzz</code>, <code>periodStory</code>, <code>purchaseReturnVatPeriod</code>, <code>taxReturns</code>, <code>tenantDbPhase6Rls</code>, <code>vendorCreditReceivable</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/tax-returns</code></td>
+<td><code>taxReturns.read</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/tax-returns/generate</code></td>
+<td><code>taxReturns.create</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/tax-returns/:id/delete</code></td>
+<td><code>taxReturns.delete</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/tax-returns/:id/file</code></td>
+<td><code>taxReturns.file</code></td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue---4">ZATCA e-invoicing</h3>
+<p><a id="module-zatca"></a>Per-company, per-environment (sandbox, simulation, production) onboarding: key pair and CSR, compliance and production CSIDs, and invoice submission. The signing and hash-chain pipeline lives in server/lib/zatca and is the most sensitive code in the system.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/zatca.ts</code>, mounted at <code>/api/zatca</code></li>
+<li><strong>Screens:</strong> <code>ZatcaOnboardingWizard.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#config-zatca">config-zatca</a></li>
+<li><strong>Tables touched directly:</strong> <code>companies</code>, <code>invoices</code>, <code>zatca_environment_configs</code></li>
+<li><strong>Tests that call it:</strong> <code>zatcaWorkflow</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>POST</td>
+<td><code>/api/zatca/submit-invoice/:invoiceId</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/zatca/company-status/:companyId</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/zatca/company-config</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/zatca/set-active-environment</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/zatca/generate-keypair-csr</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/zatca/request-compliance-csid</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/zatca/run-compliance-suite</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/zatca/request-production-csid</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue---5">Users</h3>
+<p><a id="module-users"></a>Login accounts and their roles, branch access and manager (used by approval rules). A delegated user can only create ordinary staff, never an administrator.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/users.ts</code>, mounted at <code>/api/users</code></li>
+<li><strong>Screens:</strong> <code>AdminSettings.tsx</code>, <code>ChangePasswordScreen.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#config-roles">config-roles</a></li>
+<li><strong>Tables touched directly:</strong> <code>branches</code>, <code>employees</code>, <code>roles</code>, <code>user_branches</code>, <code>user_roles</code>, <code>users</code></li>
+<li><strong>Tests that call it:</strong> <code>accountSecurityAndCompanySetup</code>, <code>approvals</code>, <code>employees</code>, <code>nonTransactionalSync</code>, <code>passwordReset</code>, <code>permissionCrudModel</code>, <code>staffDirectoryScoping</code>, <code>tenantDbPhase6Rls</code>, <code>usersAdminActions</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/users</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/users</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/users/me/language</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/users/:id/active</code></td>
+<td><code>users.delete</code></td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/users/:id</code></td>
+<td><code>users.delete</code></td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--p-7">Roles and permissions</h3>
+<p><a id="module-roles"></a>Roles hold create / read / update / delete (and a few action) permissions per module; a user holds the union of their roles.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/roles.ts</code>, mounted at <code>/api/roles</code></li>
+<li><strong>Screens:</strong> <code>AdminSettings.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#config-roles">config-roles</a></li>
+<li><strong>Tables touched directly:</strong> <code>roles</code>, <code>user_roles</code></li>
+<li><strong>Tests that call it:</strong> <code>tenantDbPhase6Rls</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/roles</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/roles</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/roles/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--p-8">Role templates</h3>
+<p><a id="module-roleTemplates"></a>Platform-wide starting roles a company can copy.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/roleTemplates.ts</code>, mounted at <code>/api/role-templates</code></li>
+<li><strong>Screens:</strong> <code>AdminSettings.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#config-roles">config-roles</a></li>
+<li><strong>Tables touched directly:</strong> <code>role_templates</code></li>
+<li><strong>Tests that call it:</strong> none by path (covered through related tests or by lib code)</li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/role-templates</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/role-templates</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/role-templates/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue---6">Active sessions</h3>
+<p><a id="module-sessions"></a>List and end signed-in sessions (super-admin).</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/sessions.ts</code>, mounted at <code>/api</code></li>
+<li><strong>Screens:</strong> <code>AdminSettings.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#config-roles">config-roles</a></li>
+<li><strong>Tables touched directly:</strong> <code>companies</code>, <code>user_sessions</code>, <code>users</code></li>
+<li><strong>Tests that call it:</strong> <code>sessionLifecycle</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/admin/sessions</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/admin/sessions/:sid</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--p-9">Companies</h3>
+<p><a id="module-companies"></a>Company registration status and removal (platform administration).</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/companies.ts</code>, mounted at <code>/api/companies</code></li>
+<li><strong>Screens:</strong> <code>AdminSettings.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#config-org">config-org</a></li>
+<li><strong>Tables touched directly:</strong> <code>account_dimension_rules</code>, <code>audit_logs</code>, <code>bank_accounts</code>, <code>branches</code>, <code>companies</code>, <code>company_accounts</code>, <code>company_onboarding_requests</code>, <code>cost_centers</code>, <code>customers</code>, <code>deleted_company_log</code>, <code>dimension_combination_entries</code>, <code>dimension_combinations</code>, <code>dimension_types</code>, <code>dimension_values</code>, <code>document_counters</code>, <code>document_templates</code>, <code>employees</code>, <code>expense_category_accounts</code>, <code>expense_items</code>, <code>expenses</code>, <code>fiscal_months</code>, <code>gl_group_mappings</code>, <code>goods_receipt_note_items</code>, <code>goods_receipt_notes</code>, <code>inventory_stocks</code>, <code>investors</code>, <code>invoice_items</code>, <code>invoices</code>, <code>job_titles</code>, <code>journal_entries</code>, <code>journal_lines</code>, <code>manual_journal_events</code>, <code>manual_journal_lines</code>, <code>manual_journals</code>, <code>modifier_choices</code>, <code>modifier_groups</code>, <code>opening_balance_runs</code>, <code>password_reset_tokens</code>, <code>physical_stock_take_items</code>, <code>physical_stock_takes</code>, <code>pos_held_invoices</code>, <code>pos_shifts</code>, <code>posting_policies</code>, <code>product_categories</code>, <code>product_modifier_groups</code>, <code>product_unit_conversions</code>, <code>product_warehouses</code>, <code>products_services</code>, <code>purchase_bills</code>, <code>purchase_order_items</code>, <code>purchase_orders</code>, <code>purchase_requisition_items</code>, <code>purchase_requisitions</code>, <code>purchase_return_items</code>, <code>purchase_returns</code>, <code>quotation_items</code>, <code>quotations</code>, <code>recurring_expense_templates</code>, <code>recurring_postings</code>, <code>report_columns</code>, <code>report_definitions</code>, <code>report_row_selectors</code>, <code>report_rows</code>, <code>roles</code>, <code>stock_ledger_transactions</code>, <code>tax_returns</code>, <code>tax_slabs</code>, <code>units_of_measure</code>, <code>user_branches</code>, <code>user_roles</code>, <code>users</code>, <code>vendors</code>, <code>vouchers</code>, <code>warehouse_dispatch_items</code>, <code>warehouse_dispatches</code>, <code>warehouse_receiving_items</code>, <code>warehouse_receivings</code>, <code>warehouses</code>, <code>zatca_chain_state</code>, <code>zatca_environment_configs</code></li>
+<li><strong>Tests that call it:</strong> <code>accountSecurityAndCompanySetup</code>, <code>adminSettingsRoutes</code>, <code>companyDeletion</code>, <code>companyLogoDelivery</code>, <code>documentNumbering</code>, <code>newCompanyStarterResources</code>, <code>nonTransactionalSync</code>, <code>permissionCrudModel</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>PATCH</td>
+<td><code>/api/companies/:id/registration-status</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/companies/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--p-10">Company onboarding</h3>
+<p><a id="module-onboarding"></a>Self-service company sign-up with email confirmation and administrator approval.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/onboarding.ts</code>, mounted at <code>/api</code></li>
+<li><strong>Screens:</strong> <code>CompanyOnboardingScreen.tsx</code>, <code>ConfirmOnboardingEmailScreen.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#config-org">config-org</a></li>
+<li><strong>Tables touched directly:</strong> <code>companies</code>, <code>company_onboarding_requests</code>, <code>password_reset_tokens</code>, <code>role_templates</code>, <code>roles</code>, <code>user_roles</code>, <code>users</code></li>
+<li><strong>Tests that call it:</strong> none by path (covered through related tests or by lib code)</li>
+</ul>
+<p>Endpoints are declared in a non-standard way; see the route file.</p>
+<h3 id="module-catalogue--p-11">Document templates and translations</h3>
+<p><a id="module-settingsResources"></a>Print layouts for every document and the English / Arabic / Urdu translation table.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/settingsResources.ts</code>, mounted at <code>/api</code></li>
+<li><strong>Screens:</strong> <code>AdminSettings.tsx</code>, <code>DocumentRenderer.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#config-ops">config-ops</a></li>
+<li><strong>Tables touched directly:</strong> <code>companies</code>, <code>document_templates</code>, <code>translations</code></li>
+<li><strong>Tests that call it:</strong> <code>newCompanyStarterResources</code>, <code>permissionCrudModel</code>, <code>settingsResources</code>, <code>tenantDbPhase6Rls</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/templates</code></td>
+<td><code>templates.read</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/templates</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/templates/:id</code></td>
+<td><code>templates.update</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/templates/:id/copy</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/templates/:id</code></td>
+<td><code>templates.delete</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/translations</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/translations</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/translations/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/translations/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue---7">System banner</h3>
+<p><a id="module-systemBanner"></a>A platform notice shown to all users.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/systemBanner.ts</code>, mounted at <code>/api</code></li>
+<li><strong>Screens:</strong> <code>SystemBanner.tsx</code></li>
+<li><strong>User manual:</strong> not covered</li>
+<li><strong>Tables touched directly:</strong> <code>system_banner</code></li>
+<li><strong>Tests that call it:</strong> none by path (covered through related tests or by lib code)</li>
+</ul>
+<p>Endpoints are declared in a non-standard way; see the route file.</p>
+<h3 id="module-catalogue--pp">Approval rules (2.0)</h3>
+<p><a id="module-approvals"></a>Amount-threshold, multi-level approval for vendor payments, vendor bills, credit notes and manual journals, with delegation. Detailed in the finance-core chapters.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/approvals.ts</code>, mounted at <code>/api/approvals</code> (finance core: also in the API reference and permissions annexes)</li>
+<li><strong>Screens:</strong> <code>ledger/ApprovalScreens.tsx</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#fc-intro">fc-intro</a></li>
+<li><strong>Tables touched directly:</strong> <code>approval_delegations</code>, <code>approval_requests</code>, <code>approval_rule_levels</code>, <code>approval_rules</code>, <code>roles</code>, <code>users</code></li>
+<li><strong>Tests that call it:</strong> <code>approvals</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/approvals/rules</code></td>
+<td><code>approvalRules.read, approvalRules.create</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/approvals/rules</code></td>
+<td><code>approvalRules.create, approvalRules.update</code></td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/approvals/rules/:id</code></td>
+<td><code>approvalRules.update</code></td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/approvals/rules/:id/toggle-active</code></td>
+<td><code>approvalRules.delete</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/approvals/my</code></td>
+<td><code>approvals.read</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/approvals/requests/:id</code></td>
+<td><code>approvals.read</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/approvals/requests/:id/decide</code></td>
+<td><code>approvals.read</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/approvals/requests/:id/recall</code></td>
+<td><code>approvals.read</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/approvals/delegations</code></td>
+<td><code>approvals.read</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/approvals/delegations</code></td>
+<td><code>approvals.read</code></td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/approvals/delegations/:id/end</code></td>
+<td><code>approvals.read</code></td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue---8">General ledger: accounts (2.0)</h3>
+<p><a id="module-ledgerAccounts"></a>Company chart of accounts and account mapping.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/ledgerAccounts.ts</code>, mounted at <code>/api/ledger</code> (finance core: also in the API reference and permissions annexes)</li>
+<li><strong>Screens:</strong> <code>ledger/</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#fc-2">fc-2</a></li>
+<li><strong>Tables touched directly:</strong> <code>bank_accounts</code>, <code>company_accounts</code>, <code>customers</code>, <code>expense_category_accounts</code>, <code>system_accounts</code>, <code>vendors</code></li>
+<li><strong>Tests that call it:</strong> <code>ledgerAccounts</code>, <code>ledgerDimensions</code>, <code>ledgerJournals</code>, <code>ledgerPostingProfile</code>, <code>ledgerReportEngine</code>, <code>ledgerSubledger</code>, <code>postingControl</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/ledger/accounts</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/accounts</code></td>
+<td><code>chartOfAccounts.create</code></td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/ledger/accounts/:id</code></td>
+<td><code>chartOfAccounts.update</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/control-accounts</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/party-profile</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/ledger/accounts/:id/toggle-active</code></td>
+<td><code>chartOfAccounts.delete</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/accounts/export</code></td>
+<td><code>chartOfAccounts.export</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/accounts/import/template</code></td>
+<td><code>chartOfAccounts.import</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/accounts/import/validate</code></td>
+<td><code>chartOfAccounts.import</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/accounts/import/commit</code></td>
+<td><code>chartOfAccounts.import</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/mapping</code></td>
+<td><code>accountMapping.read</code></td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/ledger/mapping/role</code></td>
+<td><code>accountMapping.update</code></td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/ledger/mapping/category</code></td>
+<td><code>accountMapping.update</code></td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue---9">General ledger: journals (2.0)</h3>
+<p><a id="module-ledgerJournals"></a>Manual journals with approval and reversal; the posting engine.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/ledgerJournals.ts</code>, mounted at <code>/api/ledger</code> (finance core: also in the API reference and permissions annexes)</li>
+<li><strong>Screens:</strong> <code>ledger/</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#fc-6">fc-6</a></li>
+<li><strong>Tables touched directly:</strong> <code>approval_requests</code>, <code>branches</code>, <code>companies</code>, <code>company_accounts</code>, <code>expenses</code>, <code>invoices</code>, <code>journal_entries</code>, <code>journal_lines</code>, <code>manual_journal_events</code>, <code>manual_journal_lines</code>, <code>manual_journals</code>, <code>purchase_bills</code>, <code>users</code>, <code>vouchers</code></li>
+<li><strong>Tests that call it:</strong> <code>approvals</code>, <code>ledgerDimensions</code>, <code>ledgerJournals</code>, <code>ledgerPostingProfile</code>, <code>postingControl</code>, <code>settlements</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/ledger/journal-settings</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/ledger/journal-settings</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/journals</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/journals/entries/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/manual-journals/:id</code></td>
+<td><code>journals.create</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/manual-journals</code></td>
+<td><code>journals.create</code></td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/ledger/manual-journals/:id</code></td>
+<td><code>journals.update</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/manual-journals/:id/submit</code></td>
+<td><code>journals.create, journals.update</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/manual-journals/:id/approve</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/manual-journals/:id/reject</code></td>
+<td><code>journals.post</code></td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/ledger/manual-journals/:id</code></td>
+<td><code>journals.delete</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/manual-journals/:id/reverse</code></td>
+<td><code>journals.reverse</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/manual-journals/:id/print-data</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/journals/entries/:id/print-data</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--p-12">General ledger: reports (2.0)</h3>
+<p><a id="module-ledgerReports"></a>Trial balance, income statement, balance sheet, cash flow, ledger-versus-documents.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/ledgerReports.ts</code>, mounted at <code>/api/ledger</code> (finance core: also in the API reference and permissions annexes)</li>
+<li><strong>Screens:</strong> <code>ledger/</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#fc-7">fc-7</a></li>
+<li><strong>Tables touched directly:</strong> <code>company_accounts</code>, <code>expenses</code>, <code>invoices</code>, <code>manual_journals</code>, <code>purchase_bills</code></li>
+<li><strong>Tests that call it:</strong> <code>bankReconciliation</code>, <code>ledgerDimensions</code>, <code>ledgerJournals</code>, <code>ledgerReportEngine</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/ledger/reports/general-ledger</code></td>
+<td><code>reports.generalLedger</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/reports/general-ledger/export</code></td>
+<td><code>reports.generalLedger</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/reports/ledger-vs-documents</code></td>
+<td><code>reports.ledgerReconciliation</code></td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--p-13">General ledger: report designer (2.0)</h3>
+<p><a id="module-ledgerReportDefs"></a>Configurable statement definitions.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/ledgerReportDefs.ts</code>, mounted at <code>/api/ledger</code> (finance core: also in the API reference and permissions annexes)</li>
+<li><strong>Screens:</strong> <code>ledger/</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#fc-7">fc-7</a></li>
+<li><strong>Tables touched directly:</strong> <code>companies</code>, <code>report_definitions</code></li>
+<li><strong>Tests that call it:</strong> <code>ledgerJournals</code>, <code>ledgerReportEngine</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/ledger/report-definitions</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/report-definitions/:id</code></td>
+<td><code>reportDefinitions.create</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/report-definitions</code></td>
+<td><code>reportDefinitions.create</code></td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/ledger/report-definitions/:id</code></td>
+<td><code>reportDefinitions.update</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/report-definitions/:id/reset</code></td>
+<td><code>reportDefinitions.update</code></td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/ledger/report-definitions/:id/set-default</code></td>
+<td><code>reportDefinitions.update</code></td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/ledger/report-definitions/:id/toggle-active</code></td>
+<td><code>reportDefinitions.delete</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/report-definitions/preview</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/report-definitions/:id/run</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/report-definitions/:id/export</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue---10">General ledger: dimensions (2.0)</h3>
+<p><a id="module-ledgerDimensions"></a>Analytical dimensions (branch, department, custom) on ledger lines.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/ledgerDimensions.ts</code>, mounted at <code>/api/ledger</code> (finance core: also in the API reference and permissions annexes)</li>
+<li><strong>Screens:</strong> <code>ledger/</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#fc-2">fc-2</a></li>
+<li><strong>Tables touched directly:</strong> <code>account_dimension_rules</code>, <code>branches</code>, <code>company_accounts</code>, <code>cost_centers</code>, <code>dimension_types</code>, <code>dimension_values</code></li>
+<li><strong>Tests that call it:</strong> <code>ledgerDimensions</code>, <code>ledgerPostingProfile</code>, <code>ledgerReportEngine</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/ledger/dimensions</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/dimensions</code></td>
+<td><code>dimensions.create</code></td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/ledger/dimensions/:id</code></td>
+<td><code>dimensions.update</code></td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/ledger/dimensions/:id/toggle-active</code></td>
+<td><code>dimensions.delete</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/dimensions/:id/values</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/dimensions/:id/values</code></td>
+<td><code>dimensions.create</code></td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/ledger/dimension-values/:id</code></td>
+<td><code>dimensions.update</code></td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/ledger/dimension-values/:id/toggle-active</code></td>
+<td><code>dimensions.delete</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/cost-centers</code></td>
+<td><code>dimensions.create</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/cost-centers</code></td>
+<td><code>dimensions.create</code></td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/ledger/cost-centers/:id</code></td>
+<td><code>dimensions.update</code></td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/ledger/cost-centers/:id/toggle-active</code></td>
+<td><code>dimensions.delete</code></td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/dimension-options</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/dimension-rules</code></td>
+<td><code>accountDimensionRules.read, accountDimensionRules.update</code></td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/ledger/dimension-rules</code></td>
+<td><code>accountDimensionRules.update</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/dimension-rules/bulk</code></td>
+<td><code>accountDimensionRules.update</code></td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--p-14">General ledger: opening balances (2.0)</h3>
+<p><a id="module-ledgerOpening"></a>Opening balance entry.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/ledgerOpening.ts</code>, mounted at <code>/api/ledger</code> (finance core: also in the API reference and permissions annexes)</li>
+<li><strong>Screens:</strong> <code>ledger/</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#fc-2">fc-2</a></li>
+<li><strong>Tables touched directly:</strong> <code>bank_accounts</code>, <code>company_accounts</code>, <code>opening_balance_runs</code>, <code>users</code></li>
+<li><strong>Tests that call it:</strong> <code>ledgerJournals</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/ledger/opening-balances</code></td>
+<td><code>openingBalances.read, openingBalances.post</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/opening-balances/preview</code></td>
+<td><code>openingBalances.preview, openingBalances.post</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/opening-balances/post</code></td>
+<td><code>openingBalances.post</code></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/ledger/opening-balances/:id/reverse</code></td>
+<td><code>openingBalances.post</code></td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--p-15">General ledger: posting control (2.0)</h3>
+<p><a id="module-ledgerPostingPolicy"></a>Lock date and back-date window.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/ledgerPostingPolicy.ts</code>, mounted at <code>/api/ledger</code> (finance core: also in the API reference and permissions annexes)</li>
+<li><strong>Screens:</strong> <code>ledger/</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#fc-2">fc-2</a></li>
+<li><strong>Tables touched directly:</strong> <code>posting_policies</code></li>
+<li><strong>Tests that call it:</strong> <code>approvals</code>, <code>postingControl</code>, <code>settlements</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/ledger/posting-policy</code></td>
+<td><code>postingControl.backDate, postingControl.overrideLock</code></td>
+</tr>
+<tr>
+<td>PUT</td>
+<td><code>/api/ledger/posting-policy</code></td>
+<td><code>postingControl.update</code></td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--p-16">Receivables and payables ledgers (2.0)</h3>
+<p><a id="module-ledgerSubledger"></a>Aging and party ledgers from party-tagged ledger lines.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/ledgerSubledger.ts</code>, mounted at <code>/api/ledger</code> (finance core: also in the API reference and permissions annexes)</li>
+<li><strong>Screens:</strong> <code>ledger/</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#fc-5">fc-5</a></li>
+<li><strong>Tables touched directly:</strong> none</li>
+<li><strong>Tests that call it:</strong> <code>ledgerSubledger</code>, <code>settlements</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/ledger/subledger/:kind/balances</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/subledger/:kind/ledger</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/subledger/:kind/aging</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/subledger/:kind/aging/export</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/ledger/subledger/:kind/ledger/export</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue--p-p-2">Receipts and vendor payments (2.0)</h3>
+<p><a id="module-settlements"></a>Receive Payment and Pay Vendor across documents, on account, cancel.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/settlements.ts</code>, mounted at <code>/api</code> (finance core: also in the API reference and permissions annexes)</li>
+<li><strong>Screens:</strong> <code>ledger/</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#fc-3">fc-3</a>, <a href="../user-manual/warraq-erp-user-manual.html#fc-4">fc-4</a></li>
+<li><strong>Tables touched directly:</strong> none</li>
+<li><strong>Tests that call it:</strong> <code>approvals</code>, <code>bankReconciliation</code>, <code>settlements</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/settlements/open-items</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/settlements</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/settlements/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/settlements/receipts</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/settlements/payments</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/settlements/:id/apply</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/settlements/:id/cancel</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+</tbody></table></div>
+<h3 id="module-catalogue---11">Bank reconciliation (2.0)</h3>
+<p><a id="module-bankReconciliation"></a>Reconciliation sessions per bank.</p>
+<ul>
+<li><strong>Route file:</strong> <code>server/routes/bankReconciliation.ts</code>, mounted at <code>/api/bank-reconciliations</code> (finance core: also in the API reference and permissions annexes)</li>
+<li><strong>Screens:</strong> <code>ledger/</code></li>
+<li><strong>User manual:</strong> <a href="../user-manual/warraq-erp-user-manual.html#fc-8">fc-8</a></li>
+<li><strong>Tables touched directly:</strong> <code>company_accounts</code></li>
+<li><strong>Tests that call it:</strong> <code>bankReconciliation</code></li>
+</ul>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Method</th>
+<th>Path</th>
+<th>Permission</th>
+</tr>
+</thead><tbody><tr>
+<td>GET</td>
+<td><code>/api/bank-reconciliations</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/bank-reconciliations/adjustment-accounts</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/bank-reconciliations</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/bank-reconciliations/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>PATCH</td>
+<td><code>/api/bank-reconciliations/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/bank-reconciliations/:id/clear</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/bank-reconciliations/:id/statement-lines</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/bank-reconciliations/:id/statement-lines/:lineId</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/bank-reconciliations/:id/match</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/bank-reconciliations/:id/unmatch</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/api/bank-reconciliations/:id/suggestions</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/bank-reconciliations/:id/adjustment</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/bank-reconciliations/:id/adjustments/:voucherId/reverse</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/bank-reconciliations/:id/complete</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/api/bank-reconciliations/:id/reopen</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+<tr>
+<td>DELETE</td>
+<td><code>/api/bank-reconciliations/:id</code></td>
+<td>not detected: signed-in user, or checked inside the handler (see route file)</td>
+</tr>
+</tbody></table></div>
+</section>
+<section class="chapter" id="brd"><p class="eyebrow">Chapter 5</p><h2>Business Requirements Document</h2><p class="src">Source: <code>docs/gl-ap-ar/01-business-requirements-document.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
 </div>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th></th>
@@ -637,7 +2724,7 @@ The Demo release is promoted to the Live system in a controlled release, with da
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="srs"><p class="eyebrow">Chapter 4</p><h2>Software Requirements Specification</h2><p class="src">Source: <code>docs/gl-ap-ar/02-software-requirements-specification.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+<section class="chapter" id="srs"><p class="eyebrow">Chapter 6</p><h2>Software Requirements Specification</h2><p class="src">Source: <code>docs/gl-ap-ar/02-software-requirements-specification.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
 </div>
 <p>Version 1.0 / 2026-10-15. Satisfies the BRD (01). Each system requirement (FR) states what the system shall do, where it is implemented, and which test cases prove it (case ids resolve in <code>docs/test-cases/</code>).</p>
 <h3 id="srs--section">1. System overview</h3>
@@ -1614,7 +3701,7 @@ The Demo release is promoted to the Live system in a controlled release, with da
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="solution-design"><p class="eyebrow">Chapter 5</p><h2>Solution Design Document</h2><p class="src">Source: <code>docs/gl-ap-ar/03-solution-design-document.md</code></p><p>Version 1.0 / 2026-10-15. Realises the BRD (01) and SRS (02). The detailed mechanics (algorithms, tables, routes) are in the Technical Design (04); this document explains <strong>how the solution is shaped and why</strong>.</p>
+<section class="chapter" id="solution-design"><p class="eyebrow">Chapter 7</p><h2>Solution Design Document</h2><p class="src">Source: <code>docs/gl-ap-ar/03-solution-design-document.md</code></p><p>Version 1.0 / 2026-10-15. Realises the BRD (01) and SRS (02). The detailed mechanics (algorithms, tables, routes) are in the Technical Design (04); this document explains <strong>how the solution is shaped and why</strong>.</p>
 <h3 id="solution-design--p-p-pp">1. Design principles (apply to every future feature)</h3>
 <ol>
 <li><strong>One place money is recorded.</strong> Every module is a <em>source</em>: it decides when and how much, then hands the posting engine a balanced set of lines. AR, AP, bank, trial balance, P&amp;L, balance sheet are queries over the same rows (Blueprint core idea).</li>
@@ -1865,7 +3952,7 @@ Full column-level detail: annex A.</li>
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="technical-design"><p class="eyebrow">Chapter 6</p><h2>Technical Design Document</h2><p class="src">Source: <code>docs/gl-ap-ar/04-technical-design-document.md</code></p><p>Version 1.0 / 2026-10-15. Audience: developers. Companion to the Solution Design (03); data model in annex A, routes in annex B, permissions in annex C. Paths are relative to the repository root.</p>
+<section class="chapter" id="technical-design"><p class="eyebrow">Chapter 8</p><h2>Technical Design Document</h2><p class="src">Source: <code>docs/gl-ap-ar/04-technical-design-document.md</code></p><p>Version 1.0 / 2026-10-15. Audience: developers. Companion to the Solution Design (03); data model in annex A, routes in annex B, permissions in annex C. Paths are relative to the repository root.</p>
 <h3 id="technical-design--section">1. Technology</h3>
 <p>React 19 + Vite client, Node/Express API (<code>tsx server.ts</code> in development, esbuild bundle in production), PostgreSQL + drizzle-orm, vitest (real HTTP + real Postgres), ExcelJS (exports), Playwright (PDF), PM2 + Nginx on the VPS. Schema is pushed with <code>npm run db:push</code> (no migration files) — see section 14.</p>
 <h3 id="technical-design--p">2. Module map</h3>
@@ -2015,7 +4102,7 @@ Full column-level detail: annex A.</li>
 <li>Blueprint requirement ids in older code comments (<code>FR-AR-01 / FR-AP-03</code> for allocation) are off by one; the correct ones are FR-AR-02 and FR-AP-04 (see BRD section 9).</li>
 </ul>
 </section>
-<section class="chapter" id="accounting-rules"><p class="eyebrow">Chapter 7</p><h2>Accounting and reporting rules</h2><p class="src">Source: <code>docs/design-notes/accounting-rules.md</code></p><p>These are the rules the system must obey. Every report is derived from the documents by these rules; <code>GET /api/reports/consistency-check</code>
+<section class="chapter" id="accounting-rules"><p class="eyebrow">Chapter 9</p><h2>Accounting and reporting rules</h2><p class="src">Source: <code>docs/design-notes/accounting-rules.md</code></p><p>These are the rules the system must obey. Every report is derived from the documents by these rules; <code>GET /api/reports/consistency-check</code>
 (<code>server/lib/consistencyCheck.ts</code>) tests them for any company at any time. <strong>When a figure ever disagrees with another, find which rule is
 violated and fix the rule&#39;s enforcement — never adjust the one figure.</strong></p>
 <h3 id="accounting-rules--section">A. Dates</h3>
@@ -2063,7 +4150,7 @@ returns/reversals in their own periods).</li>
 <p>R1 the books balance · R2 every balance ties to its register (bank, receivables, payables, inventory, VAT, profit) · R3 stock register =
 quantity on hand · R4 locked periods never move · R5 the books balance at every earlier month end · R6 the journal agrees with the documents.</p>
 </section>
-<section class="chapter" id="period-rule"><p class="eyebrow">Chapter 8</p><h2>Period rule for cancel, reversal, return and credit</h2><p class="src">Source: <code>docs/design-notes/reporting-rules.md</code></p><ol>
+<section class="chapter" id="period-rule"><p class="eyebrow">Chapter 10</p><h2>Period rule for cancel, reversal, return and credit</h2><p class="src">Source: <code>docs/design-notes/reporting-rules.md</code></p><ol>
 <li>A document can be cancelled, reversed or returned only while its own fiscal month is open and its VAT quarter is not filed. Otherwise the
 action is refused. While the period is open, treating the cancelled document as void in that period is correct, because nothing closed changes.</li>
 <li>A closed month or a filed VAT quarter is never touched and never corrected afterwards.</li>
@@ -2077,7 +4164,7 @@ closed, filed period; each must be refused or leave the period unchanged, and th
 <p>Considered and not adopted: a <code>cancelledAt</code> column, retroactive VAT correction of a closed quarter.</p>
 <p>Ledger-based statements: the existing document-based reports stay the figures of record. Ledger-based statements (General Ledger Step 1.5, <code>docs/design-notes/gl-step1-5-decisions.md</code>) run beside them and are cut over one at a time, as the Finance Core Blueprint&#39;s rollout step 4 prescribes, only after the two agree on every company.</p>
 </section>
-<section class="chapter" id="date-standard"><p class="eyebrow">Chapter 9</p><h2>Date fields on documents: the standard (Demo / 2.0)</h2><p class="src">Source: <code>docs/design-notes/date-fields-standard.md</code></p><p>Decided with the user (2026-10-15): every document table has the same core dates, named the same way, with the tier-1 ERP meaning (SAP, Oracle, Dynamics).
+<section class="chapter" id="date-standard"><p class="eyebrow">Chapter 11</p><h2>Date fields on documents: the standard (Demo / 2.0)</h2><p class="src">Source: <code>docs/design-notes/date-fields-standard.md</code></p><p>Decided with the user (2026-10-15): every document table has the same core dates, named the same way, with the tier-1 ERP meaning (SAP, Oracle, Dynamics).
 This file is the rule every new table follows and the map of what each existing table has.</p>
 <h3 id="date-standard--section">Naming</h3>
 <ul>
@@ -2205,7 +4292,7 @@ Report DTO rows keep a display field called <code>date</code>; table columns and
 <code>TYPE date USING</code>, then the new columns are added and back-filled (<code>posting_date = doc_date</code>), so no row is lost and drizzle-kit never sees a drop. Tables that had a
 timestamp in <code>date</code> and no <code>created_at</code> get <code>created_at</code> back-filled from it, so ordering inside a day is not lost.</p>
 </section>
-<section class="chapter" id="posting-control"><p class="eyebrow">Chapter 10</p><h2>Posting control: the lock date and back-dating rules (Demo / 2.0)</h2><p class="src">Source: <code>docs/design-notes/posting-control.md</code></p><p>Built 2026-10-15 after the question &quot;what is the rule for back-dating, and what do tier-1 ERPs do&quot;. Tier-1 systems (SAP posting periods, Oracle GL calendar, Dynamics ledger calendar)
+<section class="chapter" id="posting-control"><p class="eyebrow">Chapter 12</p><h2>Posting control: the lock date and back-dating rules (Demo / 2.0)</h2><p class="src">Source: <code>docs/design-notes/posting-control.md</code></p><p>Built 2026-10-15 after the question &quot;what is the rule for back-dating, and what do tier-1 ERPs do&quot;. Tier-1 systems (SAP posting periods, Oracle GL calendar, Dynamics ledger calendar)
 do not count &quot;days back&quot;; they control back-dating with <strong>period status, authorisation and audit</strong>. This is that, on top of what the system already had (open / closed fiscal
 month, VAT quarter freeze, ZATCA no-edit rule).</p>
 <h3 id="posting-control--p">The rules, in the order they are checked (<code>server/lib/postingGuard.ts</code>, one function for every route)</h3>
@@ -2235,7 +4322,7 @@ finalisation, inter-bank transfers, investor contributions, opening balances (po
 <p><code>tests/postingControl.test.ts</code> (8): policy permissions and validation, no policy = no change, the window and its override with audit, the same rule on expenses and journals, the lock date including the cancellation of an old invoice, the reason
 rule from draft to approval, and a posting date apart from the document date.</p>
 </section>
-<section class="chapter" id="ar-ap-bank"><p class="eyebrow">Chapter 11</p><h2>AR, AP and bank reconciliation: design against the Finance Core Blueprint (Demo / 2.0)</h2><p class="src">Source: <code>docs/design-notes/ar-ap-bank-design.md</code> · <span class="pill">Decision record: written before building, with an as-built section</span></p><p>Written 2026-10-15 before building (architecture-first). Sources: <code>docs/reference/Finance-Core-Blueprint.pdf</code> (FR-AR-01..03, FR-AP-01..04, FR-BANK-01..05, data model pages 21-28),
+<section class="chapter" id="ar-ap-bank"><p class="eyebrow">Chapter 13</p><h2>AR, AP and bank reconciliation: design against the Finance Core Blueprint (Demo / 2.0)</h2><p class="src">Source: <code>docs/design-notes/ar-ap-bank-design.md</code> · <span class="pill">Decision record: written before building, with an as-built section</span></p><p>Written 2026-10-15 before building (architecture-first). Sources: <code>docs/reference/Finance-Core-Blueprint.pdf</code> (FR-AR-01..03, FR-AP-01..04, FR-BANK-01..05, data model pages 21-28),
 <code>docs/design-notes/gl-step1-5-decisions.md</code> (posting profiles, control accounts), the code as it stands.</p>
 <h3 id="ar-ap-bank--section">What the code already has</h3>
 <ul>
@@ -2313,7 +4400,7 @@ E. the automation-ready test-case catalogue</p>
 </li>
 </ul>
 </section>
-<section class="chapter" id="dimensions-decisions"><p class="eyebrow">Chapter 12</p><h2>GL Step 1.5: dimensions and configurable statements. CFO and architect decisions</h2><p class="src">Source: <code>docs/design-notes/gl-step1-5-decisions.md</code> · <span class="pill">Decision record: written before building</span></p><p>Status: decided 2026-10-14, before any of this is built. Sources: <code>docs/reference/Finance-Core-Blueprint.pdf</code> (FR-DIM, FR-RPT-CFG, FR-RPT-GL, ERD, posting contract, rollout),
+<section class="chapter" id="dimensions-decisions"><p class="eyebrow">Chapter 14</p><h2>GL Step 1.5: dimensions and configurable statements. CFO and architect decisions</h2><p class="src">Source: <code>docs/design-notes/gl-step1-5-decisions.md</code> · <span class="pill">Decision record: written before building</span></p><p>Status: decided 2026-10-14, before any of this is built. Sources: <code>docs/reference/Finance-Core-Blueprint.pdf</code> (FR-DIM, FR-RPT-CFG, FR-RPT-GL, ERD, posting contract, rollout),
 <code>docs/design-notes/accounting-rules.md</code>, <code>docs/design-notes/reporting-rules.md</code>, <code>docs/archive/gl-step1-plan.md</code>, <code>docs/archive/sprint-log-gl-step1.md</code>, the project memory, and what the code does today.
 The earlier &quot;statement layout designer&quot; mock is superseded where it differs from the Blueprint (names and column model); its formatting, selector and safety ideas are kept.</p>
 <h3 id="dimensions-decisions--section">What the documents already decided (and I must follow)</h3>
@@ -2430,7 +4517,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li>Order: dimension framework core (in progress) -&gt; posting context and master defaults (slice 1b) -&gt; report engine -&gt; AR -&gt; AP. Product-category revenue/COGS splitting needs line-level product context and is part of slice 1b only for accounts the documents already know (customer, vendor, bank, branch, tax slab); per-category revenue lines follow with AR.</li>
 </ol>
 </section>
-<section class="chapter" id="approval-research"><p class="eyebrow">Chapter 13</p><h2>Sprint 11 — Approval rules: what tier-1 ERPs do, and what we should build</h2><p class="src">Source: <code>docs/design-notes/approval-rules-tier1-research.md</code> · <span class="pill">Decision record: Sprint 11 research and owner decisions</span></p><p>Written 2026-10-15 for BR-JNL-10 (Blueprint FR-APR-01..06). Based on the documented behaviour of SAP S/4HANA, Oracle Fusion / NetSuite, Microsoft Dynamics 365 Finance and Odoo as I know them; not re-verified against current vendor documentation, so confirm details before quoting them externally.</p>
+<section class="chapter" id="approval-research"><p class="eyebrow">Chapter 15</p><h2>Sprint 11 — Approval rules: what tier-1 ERPs do, and what we should build</h2><p class="src">Source: <code>docs/design-notes/approval-rules-tier1-research.md</code> · <span class="pill">Decision record: Sprint 11 research and owner decisions</span></p><p>Written 2026-10-15 for BR-JNL-10 (Blueprint FR-APR-01..06). Based on the documented behaviour of SAP S/4HANA, Oracle Fusion / NetSuite, Microsoft Dynamics 365 Finance and Odoo as I know them; not re-verified against current vendor documentation, so confirm details before quoting them externally.</p>
 <h3 id="approval-research--p">1. How the four compare</h3>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Aspect</th>
@@ -2594,7 +4681,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li><strong>Back-dating, lock-date override and reopening a reconciliation remain authority rights</strong>, not workflow.</li>
 </ol>
 </section>
-<section class="chapter" id="test-strategy"><p class="eyebrow">Chapter 14</p><h2>Test Strategy</h2><p class="src">Source: <code>docs/gl-ap-ar/05-test-strategy.md</code></p><p>Version 1.0 / 2026-10-15. The complete case list is the catalogue in <code>docs/test-cases/</code> (CSV, JSON, Gherkin); each case is traced to a system requirement and a business requirement in the traceability matrix (08).</p>
+<section class="chapter" id="test-strategy"><p class="eyebrow">Chapter 16</p><h2>Test Strategy</h2><p class="src">Source: <code>docs/gl-ap-ar/05-test-strategy.md</code></p><p>Version 1.0 / 2026-10-15. The complete case list is the catalogue in <code>docs/test-cases/</code> (CSV, JSON, Gherkin); each case is traced to a system requirement and a business requirement in the traceability matrix (08).</p>
 <h3 id="test-strategy--section">1. Objectives</h3>
 <ol>
 <li>Prove every business requirement with at least one repeatable test; none is &quot;verified by looking&quot;.</li>
@@ -2720,7 +4807,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="sprint-log"><p class="eyebrow">Chapter 15</p><h2>Sprint log and plan — GL / AR / AP 2.0</h2><p class="src">Source: <code>docs/gl-ap-ar/07-sprint-log.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+<section class="chapter" id="sprint-log"><p class="eyebrow">Chapter 17</p><h2>Sprint log and plan — GL / AR / AP 2.0</h2><p class="src">Source: <code>docs/gl-ap-ar/07-sprint-log.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
 </div>
 <p>Sprints are numbered. Done sprints list the commits that delivered them (git, branch <code>v2</code>); planned sprints list the BRD items they will deliver. Forward mapping (BR → sprint) and back mapping (sprint item → BR) are both here and in the traceability matrix (08). The first ten sprints were delivered in one continuous build, 2026-10-14 → 2026-10-15.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -4014,7 +6101,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="api"><p class="eyebrow">Chapter 16</p><h2>Annex B — API reference (GL / AR / AP routes)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-b-api-reference.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+<section class="chapter" id="api"><p class="eyebrow">Chapter 18</p><h2>Annex B — API reference (GL / AR / AP routes)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-b-api-reference.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
 </div>
 <p>Parsed from <code>server/routes/*.ts</code>. &quot;Permission&quot; lists the <code>hasPermission</code> keys found in the handler. All routes run in the tenant transaction (<code>withTenantDb</code>) and are scoped to the session company.</p>
 <h3 id="api--section">ledgerAccounts.ts</h3>
@@ -4767,7 +6854,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="permissions"><p class="eyebrow">Chapter 17</p><h2>Annex C — Permission modules (GL / AR / AP)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-c-permissions-matrix.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+<section class="chapter" id="permissions"><p class="eyebrow">Chapter 19</p><h2>Annex C — Permission modules (GL / AR / AP)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-c-permissions-matrix.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
 </div>
 <p>Source of truth: <code>src/permissionSchema.ts</code>. A user&#39;s rights are the union of all assigned roles; administrators hold every right. Delete means cancel or deactivate, never erase.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -5264,7 +7351,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="posting-rules"><p class="eyebrow">Chapter 18</p><h2>Annex D — Posting rules catalogue</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-d-posting-rules.md</code></p><p>What every source document posts (Dr = debit, Cr = credit). Roles are resolved by the posting engine to the company&#39;s account (customer/vendor control account, bank&#39;s own account, expense-category account when mapped). Every entry also carries the dimension tags and the customer/vendor tag its accounts require. A reversal (cancel, credit note, return, receipt cancel) mirrors the original lines, tags and parties on the reversal date.</p>
+<section class="chapter" id="posting-rules"><p class="eyebrow">Chapter 20</p><h2>Annex D — Posting rules catalogue</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-d-posting-rules.md</code></p><p>What every source document posts (Dr = debit, Cr = credit). Roles are resolved by the posting engine to the company&#39;s account (customer/vendor control account, bank&#39;s own account, expense-category account when mapped). Every entry also carries the dimension tags and the customer/vendor tag its accounts require. A reversal (cancel, credit note, return, receipt cancel) mirrors the original lines, tags and parties on the reversal date.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Source</th>
 <th>Voucher</th>
@@ -5399,7 +7486,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li>A cancelled customer receipt is cash <strong>out</strong>; a cancelled vendor payment is cash <strong>in</strong> (<code>reversalIsCashOut</code>).</li>
 </ul>
 </section>
-<section class="chapter" id="developer-guide"><p class="eyebrow">Chapter 19</p><h2>Annex E — Developer guide for future ledger work</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-e-developer-guide.md</code></p><p>Read the Solution Design (03) principles first. This page is the practical checklist.</p>
+<section class="chapter" id="developer-guide"><p class="eyebrow">Chapter 21</p><h2>Annex E — Developer guide for future ledger work</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-e-developer-guide.md</code></p><p>Read the Solution Design (03) principles first. This page is the practical checklist.</p>
 <h3 id="developer-guide--p">Add a new source document that posts</h3>
 <ol>
 <li>Do not pick accounts. Call <code>postJournalEntry</code> with <code>referenceType</code>, <code>referenceId</code>, role lines, and a <code>context</code> (or let <code>partyOfDocument</code> read the party). Add the document type to <code>partyOfDocument</code> (<code>postingContext.ts</code>) and to the party back-fill (<code>scripts/backfill-party-tags.ts</code>) if it touches a customer/vendor.</li>
@@ -5431,7 +7518,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li>Run a Live release script from the 2.0 checkout, or merge v2 into master.</li>
 </ul>
 </section>
-<section class="chapter" id="runbook"><p class="eyebrow">Chapter 20</p><h2>Annex F — Operations runbook (ledger core)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-f-operations-runbook.md</code></p><h3 id="runbook--section">Tracks</h3>
+<section class="chapter" id="runbook"><p class="eyebrow">Chapter 22</p><h2>Annex F — Operations runbook (ledger core)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-f-operations-runbook.md</code></p><h3 id="runbook--section">Tracks</h3>
 <p>Live: branch <code>master</code>, folder <code>E:\ERP</code>, production warraq.compbrain.io, fixes only. Demo / 2.0: branch <code>v2</code>, folder <code>E:\ERP-2.0</code>, local port 3001 / database <code>erp_v2</code>, VPS <code>~/apps/erp-demo</code> port 4000 (127.0.0.1 only; reach it through an SSH tunnel). See <code>docs/operations/environments.md</code>.</p>
 <h3 id="runbook--p">Demo release (VPS, as the demo OS user)</h3>
 <pre class="code"><code>cd ~/apps/erp-demo
@@ -5452,7 +7539,7 @@ bash deploy/release-demo.sh</code></pre>
 <li>&quot;Cannot post a date&quot;: posting guard message names the rule (month, VAT quarter, lock date, window, reason).</li>
 </ul>
 </section>
-<section class="chapter" id="glossary"><p class="eyebrow">Chapter 21</p><h2>Annex G — Glossary</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-g-glossary.md</code></p><div class="table-wrap"><table class="plan"><thead><tr>
+<section class="chapter" id="glossary"><p class="eyebrow">Chapter 23</p><h2>Annex G — Glossary</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-g-glossary.md</code></p><div class="table-wrap"><table class="plan"><thead><tr>
 <th>Term</th>
 <th>Meaning</th>
 </tr>
@@ -5554,7 +7641,7 @@ bash deploy/release-demo.sh</code></pre>
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="deployment"><p class="eyebrow">Chapter 22</p><h2>Hostinger VPS Deployment Plan</h2><p class="src">Source: <code>docs/operations/deployment-plan.md</code></p><p><strong>Status: LIVE.</strong> The app is running in production at <code>https://warraq.compbrain.io</code> (Nginx + Let&#39;s Encrypt SSL, PM2 2-instance cluster, Postgres on the same box). Load the <code>hostinger-deploy</code> skill before touching any of this — it has the full guardrails plus a real incident (PM2 startup registered under the wrong OS user) worth reading before touching PM2 lifecycle commands.</p>
+<section class="chapter" id="deployment"><p class="eyebrow">Chapter 24</p><h2>Hostinger VPS Deployment Plan</h2><p class="src">Source: <code>docs/operations/deployment-plan.md</code></p><p><strong>Status: LIVE.</strong> The app is running in production at <code>https://warraq.compbrain.io</code> (Nginx + Let&#39;s Encrypt SSL, PM2 2-instance cluster, Postgres on the same box). Load the <code>hostinger-deploy</code> skill before touching any of this — it has the full guardrails plus a real incident (PM2 startup registered under the wrong OS user) worth reading before touching PM2 lifecycle commands.</p>
 <h3 id="deployment--section">Decisions already locked in (confirmed with the user)</h3>
 <ul>
 <li><strong>Target</strong>: Hostinger VPS, 2 vCPU / 8GB RAM, Ubuntu LTS.</li>
@@ -5684,7 +7771,7 @@ bash deploy/maintenance-mode.sh off      # resume normal traffic
 bash deploy/maintenance-mode.sh status   # check which state it's in</code></pre>
 <p>It just creates/removes a sentinel file (<code>deploy/MAINTENANCE_ON</code>, gitignored) that the Nginx snippet checks, then runs <code>nginx -t</code> before reloading — never touches PM2 or Postgres. To keep your own access while maintenance is on, uncomment and edit the bypass-IP line in <code>erp-maintenance.conf</code> and reload.</p>
 </section>
-<section class="chapter" id="ha-proposal"><p class="eyebrow">Chapter 23</p><h2>High Availability Plan (for review)</h2><p class="src">Source: <code>docs/proposals/high-availability-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-22 in response to Hostinger&#39;s notice
+<section class="chapter" id="ha-proposal"><p class="eyebrow">Chapter 25</p><h2>High Availability Plan (for review)</h2><p class="src">Source: <code>docs/proposals/high-availability-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-22 in response to Hostinger&#39;s notice
 that VPS maintenance downtime is the customer&#39;s own responsibility — Hostinger is not
 obligated to provide HA for a single VPS, and won&#39;t.</p>
 <h3 id="ha-proposal--section">1. Where we actually stand today</h3>
@@ -5827,7 +7914,7 @@ to fund Tier 2 sooner.</li>
 <p>I haven&#39;t provisioned anything or touched the production server for this — tell me which
 tier to build and I&#39;ll start with the standby setup and the replication config.</p>
 </section>
-<section class="chapter" id="ai-proposal"><p class="eyebrow">Chapter 24</p><h2>AI Features — Implementation Plan (for review)</h2><p class="src">Source: <code>docs/proposals/ai-feature-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-20 against the current codebase.
+<section class="chapter" id="ai-proposal"><p class="eyebrow">Chapter 26</p><h2>AI Features — Implementation Plan (for review)</h2><p class="src">Source: <code>docs/proposals/ai-feature-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-20 against the current codebase.
 Focus, as requested: <strong>(1) reporting / data processing, (2) easier data entry and validation, (3) scenarios that can be configured, not hard-coded.</strong>
 Worked scenarios: ZATCA rejection analysis, sales trends, WhatsApp message → quotation.</p>
 <hr>
@@ -6162,7 +8249,7 @@ Output is a short list of &quot;fix these N things&quot; with a one-click jump t
 <li><strong>Data retention:</strong> how long to keep WhatsApp messages/bill images and AI audit logs.</li>
 </ol>
 </section>
-<section class="chapter" id="linked"><p class="eyebrow">Chapter 25</p><h2>Linked pages and other documents</h2><div class="cards">
+<section class="chapter" id="linked"><p class="eyebrow">Chapter 27</p><h2>Linked pages and other documents</h2><div class="cards">
 <a class="card" href="data-dictionary.html"><b>Data dictionary</b><span>Every table and column of the finance core, generated from the schema (annex A).</span></a>
 <a class="card" href="traceability.html"><b>Traceability matrix</b><span>Blueprint to business requirement to system requirement to test case to sprint.</span></a>
 <a class="card" href="test-catalogue.html"><b>Test-case catalogue</b><span>Every test case with its steps, filterable. Also as CSV, JSON and Gherkin in docs/test-cases.</span></a>

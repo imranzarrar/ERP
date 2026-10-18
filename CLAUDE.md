@@ -29,7 +29,7 @@ One concept, one name, on every table: snake_case in the database, the same word
 
 ## Documentation (GL / AR / AP 2.0)
 
-Documentation: open `docs/index.html`. It leads to two documents, the **technical documentation** (`docs/technical/index.html`: requirements, design, rules, tests, sprint log, annexes) and the **user manual** (`docs/user-manual/warraq-erp-user-manual.html`), both generated from sources: the finance-core set in `docs/gl-ap-ar/` (start at its `README.md`), `docs/design-notes/`, `docs/operations/`, `docs/proposals/`, `docs/test-cases/` and the hand-built part of the manual in `docs/user-manual/source/`. Superseded material is in `docs/archive/`. **After any development on it, follow the skill `.claude/skills/update-docs-after-development/SKILL.md` before saying the work is done.**
+Documentation: open `docs/index.html`. It leads to two documents, the **technical documentation** (`docs/technical/index.html`: requirements, design, rules, tests, sprint log, annexes) and the **user manual** (`docs/user-manual/warraq-erp-user-manual.html`), both generated from sources: `docs/platform/` (how the whole system works, plus a generated sheet for every module), the finance-core set in `docs/gl-ap-ar/` (start at its `README.md`), `docs/design-notes/`, `docs/operations/`, `docs/proposals/`, `docs/test-cases/` and the hand-built part of the manual in `docs/user-manual/source/`. Superseded material is in `docs/archive/`. **After any development on it, follow the skill `.claude/skills/update-docs-after-development/SKILL.md` before saying the work is done.**
 
 ## Architecture
 
