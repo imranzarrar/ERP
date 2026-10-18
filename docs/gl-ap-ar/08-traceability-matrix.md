@@ -106,7 +106,7 @@ Coverage: 100 business requirements → 108 system requirements → 308 of 308 t
 | BR-NFR-02 | Atomic requests | Built | FR-NFR-02.1 | 2: NFR-004, NFR-005 | S1 |
 | BR-NFR-03 | Real-database automated tests | Built | FR-NFR-03.1 | 1: NFR-008 | S9 |
 | BR-NFR-04 | Safe releases and environments | Built | FR-NFR-04.1 | 9: REL-001, REL-002, REL-003, REL-004, REL-005, REL-006 … | S0 |
-| BR-NFR-05 | Maintainable documentation | Planned | FR-NFR-05.1 | — | S10, S10 |
+| BR-NFR-05 | Maintainable documentation | Planned | FR-NFR-05.1 | — | S10, S10, S10, S10, S10 |
 | BR-NFR-06 | Promotion to Live | Planned | FR-NFR-06.1 | 1: REL-009 | S20 |
 
 ## 2. Backward: test case → system requirement → business requirement
@@ -452,7 +452,10 @@ None.
 | S9 Print-outs and test catalogue | S9-01 Receipt/Payment voucher, Journal voucher, Reconciliation statement, RTL | BR-PRT-01, BR-PRT-02, BR-PRT-03, BR-PRT-04 |
 | S9 Print-outs and test catalogue | S9-02 Test-case catalogue and generator | BR-NFR-03 |
 | S10 Documentation set | S10-01 Generated BRD, SRS, sprint log, traceability matrix and annexes | BR-NFR-05 |
-| S10 Documentation set | S10-02 One technical document (platform architecture, module catalogue, requirements, design, rules, tests, sprint log, annexes) and one user manual (older modules plus the finance core), with a link check | BR-NFR-05 |
+| S10 Documentation set | S10-02 One technical document (platform architecture, module catalogue, requirements, design, rules, tests, sprint log, annexes) and one user manual (older modules plus the finance core), with a link check (done) | BR-NFR-05 |
+| S10 Documentation set | S10-03 Pending: requirements, system requirements and test cases for the older modules (invoices, quotations, POS, expenses, procurement and inventory, VAT returns, ZATCA, users), so they are traced like the finance core | BR-NFR-05 |
+| S10 Documentation set | S10-04 Pending: real screenshots for the older chapters of the user manual and a walk-through of each older screen in 2.0 | BR-NFR-05 |
+| S10 Documentation set | S10-05 Pending: detect the permission of every endpoint in the module catalogue (149 endpoints show not detected) and a check that flags manual chapters when a screen changes | BR-NFR-05 |
 | S11 Approval rules | S11-01 Approval engine, delivered for vendor payments, vendor bills and credit notes: rules by amount band, sequential levels, requests, append-only history, My Approvals worklist | BR-JNL-10 |
 | S11 Approval rules | S11-02 Manager hierarchy (done: manager on the user form, validated) and delegation with validity dates (done: delegation card on My Approvals) as approver sources, plus recall by the submitter | BR-JNL-10 |
 | S11 Approval rules | S11-03 Company-level self-approval setting for every document type (replaces the journal-only switch) | BR-JNL-07 |

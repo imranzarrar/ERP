@@ -46,7 +46,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 </tbody></table></div>
 <div class="callout"><div class="label">Which version is described</div><p>The finance core is <b>Warraq 2.0</b> (branch <code>v2</code>, the Demo). Live (1.0, branch <code>master</code>) does not have it yet. Chapters say so where it matters; the <a href="#environments">Environments</a> chapter explains the two tracks.</p></div>
 <div class="callout warn"><div class="label">Reading copy, not the source</div><p>This page is generated. The requirements, system requirements, sprint log, traceability and annexes A to C are generated from <code>docs/gl-ap-ar/source/*.mjs</code> and from the code; the other chapters are hand-written Markdown under <code>docs/gl-ap-ar</code>, <code>docs/design-notes</code>, <code>docs/operations</code> and <code>docs/proposals</code>. Edit those, then run <code>npx tsx scripts/build-gl-docs.mjs</code> and <code>node scripts/build-docs-html.mjs</code>; never edit this page. The skill <code>update-docs-after-development</code> walks through it.</p></div>
-<p class="src">Version: built 2026-10-18, branch v2, after commit 56ee1b2.</p></section>
+<p class="src">Version: built 2026-10-18, branch v2, after commit 17ce4e9.</p></section>
 <section class="chapter" id="environments"><p class="eyebrow">Chapter 2</p><h2>Environments: Live (1.0) and Demo / development (2.0)</h2><p class="src">Source: <code>docs/operations/environments.md</code></p><p>Two words are used everywhere from now on:</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th></th>
@@ -2527,7 +2527,7 @@ Every request is one database transaction: a failure anywhere leaves nothing hal
 Behaviour is proven by automated tests over real HTTP and real PostgreSQL, with no mocks; every new feature ships with tests.</p>
 <p><strong>BR-NFR-04 Safe releases and environments</strong> — Must, Built, source Platform, sprint S0.
 Live (1.0) and Demo (2.0) are separate tracks; releases run by script with a read-the-plan database step, row-level-security and constraint verification, and a rollback path.</p>
-<p><strong>BR-NFR-05 Maintainable documentation</strong> — Must, Planned, source Decision, sprint S10, S10.
+<p><strong>BR-NFR-05 Maintainable documentation</strong> — Must, Planned, source Decision, sprint S10, S10, S10, S10, S10.
 The requirements, design, test and sprint documents of the ledger core are generated from one traceable source and kept in the repository.</p>
 <p><strong>BR-NFR-06 Promotion to Live</strong> — Must, Planned, source Decision, sprint S20.
 The Demo release is promoted to the Live system in a controlled release, with data migration, back-fill and verification on a copy of production first.</p>
@@ -3636,7 +3636,7 @@ The Demo release is promoted to the Live system in a controlled release, with da
 <td>BR-NFR-05</td>
 <td>The BRD, SRS, sprint log and traceability matrix shall be generated from docs/gl-ap-ar/source and validated.</td>
 <td>scripts/build-gl-docs.mjs</td>
-<td>(target: sprint 10,10)</td>
+<td>(target: sprint 10,10,10,10,10)</td>
 </tr>
 <tr>
 <td>FR-NFR-06.1</td>
@@ -4890,8 +4890,8 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <tr>
 <td>S10</td>
 <td>Documentation set</td>
-<td>Done</td>
-<td>2026-10-15 to 2026-10-18</td>
+<td>In progress</td>
+<td>2026-10-15 to (open)</td>
 <td>One technical document and one user manual, generated from one source and covering every module, older and new.</td>
 </tr>
 <tr>
@@ -5191,7 +5191,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-NFR-03.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-4">Sprint 10 — Documentation set (Done)</h3>
+<h3 id="sprint-log--p-p-6">Sprint 10 — Documentation set (In progress)</h3>
 <p>One technical document and one user manual, generated from one source and covering every module, older and new.</p>
 <p>Commits: <code>7d03574</code>, <code>55a95cd</code>, <code>7f95b6a</code>, <code>56ee1b2</code></p>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -5208,7 +5208,25 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 <tr>
 <td>S10-02</td>
-<td>One technical document (platform architecture, module catalogue, requirements, design, rules, tests, sprint log, annexes) and one user manual (older modules plus the finance core), with a link check</td>
+<td>One technical document (platform architecture, module catalogue, requirements, design, rules, tests, sprint log, annexes) and one user manual (older modules plus the finance core), with a link check (done)</td>
+<td>BR-NFR-05 Maintainable documentation</td>
+<td>FR-NFR-05.1</td>
+</tr>
+<tr>
+<td>S10-03</td>
+<td>Pending: requirements, system requirements and test cases for the older modules (invoices, quotations, POS, expenses, procurement and inventory, VAT returns, ZATCA, users), so they are traced like the finance core</td>
+<td>BR-NFR-05 Maintainable documentation</td>
+<td>FR-NFR-05.1</td>
+</tr>
+<tr>
+<td>S10-04</td>
+<td>Pending: real screenshots for the older chapters of the user manual and a walk-through of each older screen in 2.0</td>
+<td>BR-NFR-05 Maintainable documentation</td>
+<td>FR-NFR-05.1</td>
+</tr>
+<tr>
+<td>S10-05</td>
+<td>Pending: detect the permission of every endpoint in the module catalogue (149 endpoints show not detected) and a check that flags manual chapters when a screen changes</td>
 <td>BR-NFR-05 Maintainable documentation</td>
 <td>FR-NFR-05.1</td>
 </tr>
@@ -5280,7 +5298,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-PER-11.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-6">Sprint 13 — Year-end close (Planned)</h3>
+<h3 id="sprint-log--p-p-7">Sprint 13 — Year-end close (Planned)</h3>
 <p>One closing entry into retained earnings; next year opens automatically.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -5316,7 +5334,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-TAX-01.1, FR-TAX-03.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-7">Sprint 15 — Cost allocation (Planned)</h3>
+<h3 id="sprint-log--p-p-8">Sprint 15 — Cost allocation (Planned)</h3>
 <p>Allocation run and branch P&amp;L subtotals.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -5337,7 +5355,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-DIM-08.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-8">Sprint 16 — Dimensions on documents (Planned)</h3>
+<h3 id="sprint-log--p-p-9">Sprint 16 — Dimensions on documents (Planned)</h3>
 <p>Collect dimensions on invoice, expense and bill forms; enforce Required.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -5352,7 +5370,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-DIM-06.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-9">Sprint 17 — Receivables enhancements (Planned)</h3>
+<h3 id="sprint-log--p-p-10">Sprint 17 — Receivables enhancements (Planned)</h3>
 <p>Credit note application, statement printing, reminders.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -6047,7 +6065,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>BR-NFR-05</td>
 <td>Maintainable documentation</td>
 <td>Planned</td>
-<td>S10, S10</td>
+<td>S10, S10, S10, S10, S10</td>
 </tr>
 <tr>
 <td>BR-NFR-06</td>
@@ -6056,7 +6074,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>S20</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-5">Roadmap (not yet built)</h3>
+<h3 id="sprint-log--p-4">Roadmap (not yet built)</h3>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Sprint</th>
 <th>Name</th>
