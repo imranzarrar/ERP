@@ -29,6 +29,14 @@ export const MODULES = [
   { id: 'I18N', name: 'Arabic / Urdu and right-to-left', ref: 'ux-translation skill' },
   { id: 'NFR', name: 'Performance, concurrency and resilience', ref: 'erp_saas_scale_priority' },
   { id: 'REL', name: 'Release and data migration', ref: 'deploy/release-demo.sh; deploy/release.sh' },
+  { id: "SAL", name: "Sales documents (quotations, invoices, credit notes)", ref: "Warraq 1.0 baseline (as built); BR-SAL" },
+  { id: "EXP", name: "Expenses and recurring postings", ref: "Warraq 1.0 baseline (as built); BR-EXP" },
+  { id: "PUR", name: "Procurement and inventory", ref: "Warraq 1.0 baseline (as built); BR-PUR" },
+  { id: "POS", name: "Point of sale", ref: "Warraq 1.0 baseline (as built); BR-POS" },
+  { id: "ZAT", name: "ZATCA e-invoicing", ref: "Warraq 1.0 baseline (as built); BR-ZAT" },
+  { id: "VAT", name: "VAT returns and period locks", ref: "Warraq 1.0 baseline (as built); BR-VAT" },
+  { id: "MST", name: "Master data, numbering and imports", ref: "Warraq 1.0 baseline (as built); BR-MST" },
+  { id: "ORG", name: "Tenancy, users and company administration", ref: "Warraq 1.0 baseline (as built); BR-ORG" },
 ];
 
 const T = {};
@@ -402,6 +410,131 @@ add('REL', [
   ['Live (master) never receives v2 changes', 'Regression', 'P1', 'Both branches', 'Compare release scripts and schema', 'No v2-only table or column in master', 'DB', 'Manual'],
 ]);
 
+// ---- modules built before the finance core (1.0 baseline)
+add("SAL", [
+  ["Converting an accepted quotation into an invoice dated in a filed VAT quarter is refused","Negative","P1","A filed VAT quarter and an accepted quotation","The quotation is converted with an invoice date inside the filed quarter","Refused; no invoice is created","API+DB","tests/taxReturns.test.ts"],
+  ["A partial payment leaves the invoice Partially Paid; a second payment posts a second voucher","Functional","P1","An unpaid invoice","Two partial payments are recorded","Two receipt vouchers, status Partially Paid then correct remaining balance","API+DB","tests/invoicePaidRoute.test.ts"],
+  ["A payment above the remaining balance, zero, or negative is refused","Negative","P1","An invoice with a balance","Payments of more than the balance, 0 and -5 are attempted","Each refused; nothing posted","API+DB","tests/invoicePaidRoute.test.ts"],
+  ["A cancelled invoice, a fully paid invoice and a credit note cannot be paid","Negative","P1","A cancelled invoice, a paid invoice and a credit note","Payment is attempted on each","Each refused","API+DB","tests/invoicePaidRoute.test.ts"],
+  ["A user without the create right cannot record a payment, and another company's invoice cannot be paid","Security","P1","A read-only user; an invoice of another company","A payment is attempted","Refused; the invoice is untouched","API+DB","tests/invoicePaidRoute.test.ts"],
+  ["Cancelling a paid invoice in the open month posts a reversal voucher and keeps the receipt","Functional","P1","A paid invoice in the open month","The invoice is cancelled","A reversal voucher exists; the original receipt voucher is kept","API+DB","tests/invoicePaidRoute.test.ts"],
+  ["Cancelling an invoice dated in a filed VAT quarter is refused","Negative","P1","A filed quarter and an invoice in it","Cancel is attempted","Refused","API+DB","tests/taxReturns.test.ts"],
+  ["A second credit note against the same invoice is refused","Negative","P1","An invoice with a credit note","A second credit note is raised","Refused","API+DB","tests/zatcaWorkflow.test.ts"],
+  ["A credit note against a paid invoice reverses its receipt voucher","Functional","P1","A paid invoice","A credit note is raised","The receipt is reversed by a reversal voucher","API+DB","tests/zatcaWorkflow.test.ts"],
+  ["A credit note against an unpaid invoice does not touch vouchers","Functional","P2","An unpaid invoice","A credit note is raised","No voucher is created or reversed","API+DB","tests/zatcaWorkflow.test.ts"],
+  ["An invoice accepts an active sales associate of its own company","Functional","P2","An active sales employee","An invoice names them","Saved with the associate","API+DB","tests/employees.test.ts"],
+  ["An associate of another company or a deactivated associate is refused","Negative","P2","An employee of another company; a deactivated employee","An invoice names each","Refused","API+DB","tests/employees.test.ts"],
+]);
+
+add("EXP", [
+  ["A partial payment posts a payment voucher and updates the status; the remainder settles it","Functional","P1","An unpaid expense","A partial then the final payment is recorded","Two vouchers; status Partially Paid then Paid","API+DB","tests/expensePayCancel.test.ts"],
+  ["Overpaying, paying a paid expense or paying a cancelled expense is refused","Negative","P1","An expense with a balance, a paid one and a cancelled one","Payments are attempted","Each refused","API+DB","tests/expensePayCancel.test.ts"],
+  ["An expense of another company is not found","Security","P1","An expense in company B","Company A pays it","Not found","API+DB","tests/expensePayCancel.test.ts"],
+  ["Cancelling a paid expense posts a reversal voucher","Functional","P1","A paid expense","It is cancelled","A reversal voucher exists","API+DB","tests/expensePayCancel.test.ts"],
+  ["A second cancel and a cancel by a user without the right are refused","Negative","P1","A cancelled expense; a user without cancel right","Cancel is attempted","Refused","API+DB","tests/expensePayCancel.test.ts"],
+  ["Cancelling an expense dated in a filed VAT quarter is refused","Negative","P1","A filed quarter and an expense in it","Cancel is attempted","Refused","API+DB","tests/taxReturns.test.ts"],
+  ["A template can be created, updated and toggled; an invalid amount is refused","Functional","P2","A company","A template is created, edited, toggled and given a bad amount","Saved or refused as appropriate","API+DB","tests/recurringTemplates.test.ts"],
+  ["Deleting a template deactivates it; deleting an accrual cancels it and its linked posting","Functional","P2","A template and an accrual","Each is deleted","Rows remain, inactive or cancelled","API+DB","tests/recurringTemplates.test.ts"],
+  ["Updating or deleting an unknown template or accrual returns not found","Negative","P3","An unknown id","Update and delete are called","Not found","API+DB","tests/recurringTemplates.test.ts"],
+]);
+
+add("PUR", [
+  ["Bill totals come from the goods receipt, not from the client","Functional","P1","A goods receipt","A bill is created with different client totals","The stored totals are the server-computed ones","API+DB","tests/purchaseBillsRoutes.test.ts"],
+  ["A receipt cannot be billed twice, and a reversed receipt cannot be billed","Negative","P1","A billed receipt and a reversed receipt","A bill is created for each","Refused","API+DB","tests/purchaseBillsRoutes.test.ts"],
+  ["Receipts of two vendors cannot be on one bill","Negative","P1","Receipts of two vendors","One bill is created","Refused","API+DB","tests/purchaseBillsRoutes.test.ts"],
+  ["A caller without the purchase-bill create right is refused","Security","P1","A user without the right","A bill is created","Refused","API+DB","tests/purchaseBillsRoutes.test.ts"],
+  ["A partial payment then the final payment reaches Paid; overpaying is refused","Functional","P1","An unpaid bill","Two payments and an overpayment are attempted","Paid after the second; overpayment refused","API+DB","tests/purchaseBillsRoutes.test.ts"],
+  ["Cancelling an unpaid bill releases its receipt; a bill with a payment cannot be cancelled","Functional","P1","An unpaid bill and a part-paid bill","Each is cancelled","First releases the receipt; second refused","API+DB","tests/purchaseBillsRoutes.test.ts"],
+  ["Cancelling a bill dated in a filed VAT quarter is refused","Negative","P1","A filed quarter and a bill in it","Cancel is attempted","Refused","API+DB","tests/taxReturns.test.ts"],
+  ["A return decrements stock and cannot exceed the received or remaining quantity","Boundary","P1","A received quantity and an earlier partial return","Returns above the remainder are attempted","Refused; stock unchanged","API+DB","tests/purchaseReturnsAndStockTakes.test.ts"],
+  ["A return against a reversed receipt is refused; cancelling a return reverses the stock decrement once","Functional","P1","A reversed receipt; a return","A return is created; a return is cancelled twice","First refused; stock restored once, second cancel refused","API+DB","tests/purchaseReturnsAndStockTakes.test.ts"],
+  ["A return is refused while the current VAT quarter is filed","Negative","P1","A filed quarter","A return is created","Refused","API+DB","tests/taxReturns.test.ts"],
+  ["A stock take snapshots the system quantity and computes the variance server-side","Functional","P1","A product with stock","A stock take is created","The snapshot and variance are server values","API+DB","tests/purchaseReturnsAndStockTakes.test.ts"],
+  ["Finalising posts the counted quantity as the new stock level, once","Functional","P1","A draft stock take","It is finalised twice","Stock equals the count; the second is refused","API+DB","tests/purchaseReturnsAndStockTakes.test.ts"],
+  ["A draft can be cancelled without touching stock; a completed one cannot","Functional","P2","A draft and a completed stock take","Cancel is attempted on each","Draft cancelled; completed refused","API+DB","tests/purchaseReturnsAndStockTakes.test.ts"],
+  ["A dispatch deducts the source; a receiving adds only the quantity received","Functional","P1","Stock in a source warehouse","A dispatch and a receiving with a smaller quantity are made","Source reduced; destination increased by the received quantity","API+DB","tests/warehouseTransfer.test.ts"],
+  ["Two simultaneous receivings of one dispatch: exactly one succeeds","Boundary","P1","A dispatched transfer","Two receivings are sent at once","One succeeds, one refused","API+DB","tests/warehouseTransfer.test.ts"],
+  ["A dispatch with not enough stock is refused and writes nothing","Negative","P1","A low-stock warehouse","A larger dispatch is created","Refused; nothing written","API+DB","tests/warehouseTransfer.test.ts"],
+  ["Cancelling an in-transit dispatch restores the source; a received one cannot be cancelled","Functional","P1","An in-transit and a received dispatch","Cancel is attempted","First restores stock; second refused","API+DB","tests/warehouseTransfer.test.ts"],
+  ["Branch-restricted users, and warehouses of another company, are refused","Security","P1","A user without access to a branch; a warehouse of another company","A dispatch or receiving is created","Refused","API+DB","tests/warehouseTransfer.test.ts"],
+]);
+
+add("POS", [
+  ["A shift opens, lists and closes within its own company","Functional","P1","A cashier","A shift is opened, listed and closed","Persisted for the company with cash figures","API+DB","tests/posShiftsAndHeldInvoices.test.ts"],
+  ["Opening or closing a shift without the right, or closing another company's shift, is refused","Security","P1","A user without the right; another company","Open and close are attempted","Refused","API+DB","tests/posShiftsAndHeldInvoices.test.ts"],
+  ["A sale can be held, listed for its company and resumed (deleted)","Functional","P2","A sale in progress","It is held, listed and resumed","Persisted then removed; other companies see none","API+DB","tests/posShiftsAndHeldInvoices.test.ts"],
+  ["Listing or resuming without the access right, or another company's held sale, is refused","Security","P1","A user without the right; another company","List and delete are attempted","Refused","API+DB","tests/posShiftsAndHeldInvoices.test.ts"],
+  ["A POS sale creates an invoice and receipt voucher and reaches the ZATCA pipeline","Integration","P1","A company with e-invoicing on","A POS sale is completed","The invoice and voucher exist and the standard pipeline is reached","API+DB","tests/posSaleZatcaPipeline.test.ts"],
+  ["Cancelling a POS-sold invoice needs the POS cancel right, and that right does not cancel ordinary invoices","Security","P1","Roles with only invoice delete and with only POS cancel","Each tries to cancel a POS-sold and an ordinary invoice","Only POS cancel cancels the POS-sold one; only invoice delete cancels the ordinary one","API+DB","tests/posCancelPermission.test.ts"],
+]);
+
+add("ZAT", [
+  ["With the switch off an invoice is DISABLED and no gateway call is made","Functional","P1","A company with e-invoicing off","An invoice is created","Status DISABLED; a basic QR exists; the hash chain is untouched","API+DB","tests/zatcaWorkflow.test.ts"],
+  ["Turning the switch on lets the same invoice pass the DISABLED gate","Functional","P1","The same company, switch on","An invoice is created","It proceeds to submission","API+DB","tests/zatcaWorkflow.test.ts"],
+  ["Cancelling a CLEARED invoice is refused","Negative","P1","A cleared invoice","Cancel is attempted","Refused","API+DB","tests/zatcaWorkflow.test.ts"],
+  ["Cancelling while SUBMITTING is refused","Negative","P1","An invoice mid-submission","Cancel is attempted","Refused","API+DB","tests/zatcaWorkflow.test.ts"],
+  ["An invoice that never reached ZATCA can be cancelled","Functional","P1","A NOT_SUBMITTED invoice","Cancel is attempted","Cancelled","API+DB","tests/zatcaWorkflow.test.ts"],
+  ["A cancelled invoice never reserves a chain position or moves to SUBMITTING; a live invoice is not blocked","Boundary","P1","A cancelled invoice and a live invoice","Submission is attempted for each","The cancelled one is refused; the live one proceeds","API+DB","tests/invoiceZatcaCancelRace.test.ts"],
+  ["A new company and environment starts at genesis, independent of other chains","Functional","P1","A company with a Sandbox chain","A Simulation invoice is created","It starts at genesis","API+DB","tests/zatcaWorkflow.test.ts"],
+  ["Resubmitting the chain tip keeps its position; resubmitting a superseded invoice mints a fresh one","Functional","P1","A tip and a superseded invoice","Each is resubmitted","Same position for the tip; new position for the other","API+DB","tests/zatcaWorkflow.test.ts"],
+  ["Cancelling the tip that never reached ZATCA rolls the chain back; a superseded one does not","Functional","P1","A tip and an earlier invoice","Each is cancelled","Chain rolled back only for the tip","API+DB","tests/zatcaWorkflow.test.ts"],
+  ["A cleared invoice cannot be resubmitted and the issue time survives a resubmission","Negative","P1","A cleared invoice and a rebuilt one","Resubmission is attempted","Refused for cleared; issue time unchanged for the other","API+DB","tests/zatcaWorkflow.test.ts"],
+  ["Encrypted keys round-trip, differ on each encryption, and reject tampering","Security","P1","A PEM key","It is encrypted, decrypted and tampered with","Round-trips; tampered value rejected","API+DB","tests/zatcaKeyEncryption.test.ts"],
+  ["A missing or invalid secret gives a clear error","Negative","P1","No secret, or a wrong-length secret","Encryption is attempted","A clear error","API+DB","tests/zatcaKeyEncryption.test.ts"],
+  ["Compressed XML round-trips byte for byte, including Arabic text","Functional","P1","A signed document with Arabic","It is stored and read back","Identical bytes; smaller storage","API+DB","tests/xmlStorage.test.ts"],
+  ["Lists carry only a has-XML flag; the XML comes from its own endpoint","Functional","P2","Invoices with XML","The state and list endpoints are called","No XML in lists; the XML endpoint returns it","API+DB","tests/invoiceXmlOnDemand.test.ts"],
+  ["Another tenant cannot read a document's XML","Security","P1","An invoice of company B","Company A requests its XML","Not found","API+DB","tests/invoiceXmlOnDemand.test.ts"],
+]);
+
+add("VAT", [
+  ["Generation produces the hand-computed figures and equals the VAT summary report","Functional","P1","Known invoices, a credit note, an expense and a bill","A return is generated","Sales, output VAT, purchases and input VAT match; the report shows the same","API+DB","tests/taxReturns.test.ts"],
+  ["A generated return can be deleted and regenerated; a duplicate is refused","Functional","P2","A generated return","It is deleted, regenerated, then generated twice","Fresh return; duplicate refused","API+DB","tests/taxReturns.test.ts"],
+  ["Generation and filing are refused while an invoice is pending ZATCA","Negative","P1","A pending invoice in the quarter","Generate and file are attempted","Refused; allowed once the invoice resolves","API+DB","tests/taxReturns.test.ts"],
+  ["A later quarter cannot be filed before an earlier one","Negative","P1","Q1 and Q3 generated, Q2 never","Q3 is filed","Refused until Q2 is generated and filed","API+DB","tests/taxReturns.test.ts"],
+  ["A filed return cannot be deleted or filed again","Negative","P1","A filed return","Delete and file are attempted","Both refused","API+DB","tests/taxReturns.test.ts"],
+  ["A new invoice, credit note, expense or purchase bill dated in a filed quarter is refused","Negative","P1","A filed quarter","Each document is created","Each refused","API+DB","tests/taxReturns.test.ts"],
+  ["Quotations, requisitions, orders and stock takes in a filed quarter are still accepted","Functional","P2","A filed quarter","Each is created","Each accepted","API+DB","tests/taxReturns.test.ts"],
+  ["A generated return freezes its quarter until it is deleted","Functional","P1","A generated return","A document is added to the quarter, then the return is deleted","Refused, then accepted","API+DB","tests/taxReturns.test.ts"],
+  ["A read-only role can list but not generate; a create role can generate but not file or delete","Security","P1","Roles with read, and with create+read","Generate, file and delete are attempted","403 where the right is missing","API+DB","tests/taxReturns.test.ts"],
+  ["One company cannot list, generate over, delete or file another company's returns","Security","P1","Two companies","Company A acts on company B returns","Refused","API+DB","tests/taxReturns.test.ts"],
+]);
+
+add("MST", [
+  ["Concurrent requests receive distinct sequential numbers","Boundary","P1","A document type","Many documents are created at once","No duplicates and no gaps","API+DB","tests/documentNumbering.test.ts"],
+  ["Numbers bucket by the document date and continue from the legacy counter","Functional","P1","A legacy counter at 1005","Documents are dated in two periods","Periods never mix; numbering continues from the legacy value","API+DB","tests/documentNumbering.test.ts"],
+  ["Changing the policy needs the right and cannot smuggle an e-invoicing change","Security","P1","A user without the right; a payload with an extra field","The policy is updated","Refused; the extra field ignored","API+DB","tests/documentNumbering.test.ts"],
+  ["Validation reports missing names, bad VAT numbers and unknown buyer types without writing","Functional","P2","A mixed file","It is validated","Errors listed; nothing written","API+DB","tests/partyImport.test.ts"],
+  ["A second upload with the same VAT updates the record; a new VAT sharing a phone is a conflict","Functional","P2","An existing party","Files with the same VAT and with a new VAT and same phone are uploaded","Update; conflict","API+DB","tests/partyImport.test.ts"],
+  ["Duplicate VAT in one file, files over the row cap, and users without the right are refused","Negative","P2","Such files and users","They are uploaded","Refused or flagged","API+DB","tests/partyImport.test.ts"],
+  ["Validation writes nothing; commit creates valid rows and skips invalid ones","Functional","P2","A mixed file","It is validated then committed","Only valid rows are created, with SKUs","API+DB","tests/productImport.test.ts"],
+  ["A second upload with the same barcode updates the product","Functional","P2","An existing barcode","It is uploaded again","Updated, not duplicated; the same barcode twice in one file errors","API+DB","tests/productImport.test.ts"],
+  ["A user without the create right is refused and nothing is written","Security","P1","A user without the right","Validate and commit are attempted","Refused","API+DB","tests/productImport.test.ts"],
+  ["The delete right alone controls the active toggle","Security","P1","Roles with and without delete","The toggle is called","Blocked without delete; allowed with it","API+DB","tests/permissionCrudModel.test.ts"],
+  ["Create does not grant editing of an existing row and update does not grant creation","Security","P1","A create-only and an update-only role","Each tries the other action","Refused","API+DB","tests/permissionCrudModel.test.ts"],
+  ["An inactive record cannot be edited, even with the update right","Negative","P1","A deactivated customer","It is edited","Refused","API+DB","tests/permissionCrudModel.test.ts"],
+]);
+
+add("ORG", [
+  ["A super-administrator switches company and it persists; a non-administrator cannot switch","Security","P1","A super-administrator and a staff user","A switch is requested","Persisted for the first; refused for the second","API+DB","tests/companyScoping.test.ts"],
+  ["Every business array of the state is scoped to the active company","Security","P1","Two companies with data","The state is read","Only the active company's rows","API+DB","tests/companyScoping.test.ts"],
+  ["Company A cannot overwrite company B's customer, invoice, quotation or expense","Security","P1","Rows of company B","Company A saves by id","Refused","API+DB","tests/crossCompanyIsolation.test.ts"],
+  ["Reports show only the company's own figures","Security","P1","Two companies","Trial balance, P&L, balance sheet and dashboard are read","Each shows only its own amounts; no company selected is refused","API+DB","tests/financialReportsScoping.test.ts"],
+  ["A busy tenant cannot push a small tenant's own documents out of its lists","Boundary","P1","One tenant with many recent invoices","The small tenant reads its state","Its own invoices are all present","API+DB","tests/apiStateGlobalCapIsolation.test.ts"],
+  ["A user can be deactivated and reactivated within the company, not across companies and not for the own session","Security","P1","Two companies and an admin","Toggle is called","Allowed in company; refused otherwise","API+DB","tests/usersAdminActions.test.ts"],
+  ["Roles of another company are dropped and reported","Security","P1","A role of another company","It is assigned","Dropped; droppedRoles reports it","API+DB","tests/usersAdminActions.test.ts"],
+  ["A delegated creator is forced to the staff role","Security","P1","A user with only the create-user right","They create an admin account","The account is a staff account","API+DB","tests/permissionCrudModel.test.ts"],
+  ["Short passwords, passwords with no digit and passwords with no letter are refused","Negative","P2","A new account","Weak passwords are submitted","Each refused","API+DB","tests/accountSecurityAndCompanySetup.test.ts"],
+  ["Employee numbers are zero-padded, sequential and unique","Functional","P2","A new company","Employees are added","0001, 0002...; duplicates refused","API+DB","tests/employees.test.ts"],
+  ["A duplicate active job title and a deactivated title are refused","Negative","P2","An existing title; a deactivated title","A title is added and an employee onboarded","Refused","API+DB","tests/employees.test.ts"],
+  ["A new account needs an active employee once the company has employees","Functional","P2","A company with employees","An account is created without, with an inactive and with a valid employee","Refused, refused, accepted","API+DB","tests/employees.test.ts"],
+  ["A session carries user and company and expires","Functional","P1","A signed-in session","It is used before and after expiry","Works before; refused after","API+DB","tests/sessionLifecycle.test.ts"],
+  ["Only a super-administrator can list sessions","Security","P1","Staff, company admin and super-admin","Sessions are listed","Refused for the first two; allowed for the third","API+DB","tests/sessionLifecycle.test.ts"],
+  ["The bulk-save endpoint does not exist and a posted invoice sent to it is unchanged","Security","P1","A posted invoice","It is posted to the old bulk-save route","Not served; the invoice is unchanged","API+DB","tests/noBulkSave.test.ts"],
+  ["An invoice or expense create request naming an id is refused","Security","P1","An existing document id","A create request names it","Refused; nothing changed","API+DB","tests/noBulkSave.test.ts"],
+  ["A contribution creates a receipt voucher and accumulates","Functional","P2","An investor","Two contributions are recorded","Two vouchers; capital contributed is the sum","API+DB","tests/usersAdminActions.test.ts"],
+  ["A non-positive amount, an inactive bank or another company's investor is refused","Negative","P2","Invalid inputs","A contribution is recorded","Refused","API+DB","tests/usersAdminActions.test.ts"],
+]);
+
 export const CASES = [];
 for (const m of MODULES) {
   (T[m.id] || []).forEach((row, i) => {
@@ -409,3 +542,4 @@ for (const m of MODULES) {
     CASES.push({ id: `${m.id}-${String(i + 1).padStart(3, '0')}`, module: m.name, moduleId: m.id, ref: m.ref, title, type, priority, given, when, then, layer, automation });
   });
 }
+

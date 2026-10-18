@@ -1,6 +1,6 @@
 # Test-case catalogue (generated)
 
-**308 cases** across 20 modules, written so a tool can run them. Generated from `catalogue-source.mjs` by `node scripts/build-test-catalogue.mjs`; edit the source, never these files.
+**408 cases** across 28 modules, written so a tool can run them. Generated from `catalogue-source.mjs` by `node scripts/build-test-catalogue.mjs`; edit the source, never these files.
 
 | Files | Use |
 |---|---|
@@ -32,7 +32,15 @@
 | I18N | Arabic / Urdu and right-to-left | 7 | 2 | 0 | 2 | 5 |
 | NFR | Performance, concurrency and resilience | 9 | 5 | 2 | 6 | 1 |
 | REL | Release and data migration | 9 | 7 | 2 | 0 | 7 |
-| | **Total** | **308** | **201** | **213** | **60** | **35** |
+| SAL | Sales documents (quotations, invoices, credit notes) | 12 | 9 | 12 | 0 | 0 |
+| EXP | Expenses and recurring postings | 9 | 6 | 9 | 0 | 0 |
+| PUR | Procurement and inventory | 18 | 17 | 18 | 0 | 0 |
+| POS | Point of sale | 6 | 5 | 6 | 0 | 0 |
+| ZAT | ZATCA e-invoicing | 15 | 14 | 15 | 0 | 0 |
+| VAT | VAT returns and period locks | 10 | 8 | 10 | 0 | 0 |
+| MST | Master data, numbering and imports | 12 | 7 | 12 | 0 | 0 |
+| ORG | Tenancy, users and company administration | 18 | 12 | 18 | 0 | 0 |
+| | **Total** | **408** | **279** | **313** | **60** | **35** |
 
 * **Automated**: mapped to the existing vitest file in `tests/` that exercises it, against a real server and real Postgres (no mocks). `--check` fails if the named file does not exist. The mapping is by area, so read it as "covered by that file", not "every Then clause is asserted": when you tighten a case or automate a Candidate, put its ID in the `it(...)` title so a run traces back to the catalogue.
 * **Candidate**: can be automated exactly as written, as an API test (same style as `tests/settlements.test.ts`) or a DB assertion.

@@ -28,8 +28,8 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 .filters{display:flex;flex-wrap:wrap;gap:.6rem;margin:1rem 0}.filters input,.filters select{font:inherit;padding:.4rem .6rem;border:1px solid var(--line);border-radius:8px;background:var(--raised)}
 @media (max-width:900px){.layout{grid-template-columns:1fr}.rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:1.2rem 1rem 3rem}}
 @media print{.rail{display:none}.layout{grid-template-columns:1fr}.chapter{page-break-before:always}}
-</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Technical documentation</div><a class="home" href="../index.html">← All documentation</a><div class="grp">Orientation</div><a href="#overview">1. How this documentation fits together</a><a href="#environments">2. Environments: Live (1.0) and Demo / development (2.0)</a><div class="grp">The whole system</div><a href="#platform">3. Platform architecture: how the whole system works</a><a href="#module-catalogue">4. Annex H: Module catalogue (every module, older and new)</a><div class="grp">Requirements (finance core)</div><a href="#brd">5. Business Requirements Document</a><a href="#srs">6. Software Requirements Specification</a><div class="grp">Design (finance core)</div><a href="#solution-design">7. Solution Design Document</a><a href="#technical-design">8. Technical Design Document</a><a href="#accounting-rules">9. Accounting and reporting rules</a><a href="#period-rule">10. Period rule for cancel, reversal, return and credit</a><a href="#date-standard">11. Date fields on documents: the standard (Demo / 2.0)</a><a href="#posting-control">12. Posting control: the lock date and back-dating rules (Demo / 2.0)</a><a href="#ar-ap-bank">13. AR, AP and bank reconciliation: design against the Finance Core Blueprint (Demo / 2.0)</a><a href="#dimensions-decisions">14. GL Step 1.5: dimensions and configurable statements. CFO and architect decisions</a><a href="#approval-research">15. Sprint 11 — Approval rules: what tier-1 ERPs do, and what we should build</a><div class="grp">Quality</div><a href="#test-strategy">16. Test Strategy</a><div class="grp">Delivery</div><a href="#sprint-log">17. Sprint log and plan — GL / AR / AP 2.0</a><div class="grp">Reference</div><a href="#api">18. Annex B — API reference (GL / AR / AP routes)</a><a href="#permissions">19. Annex C — Permission modules (GL / AR / AP)</a><a href="#posting-rules">20. Annex D — Posting rules catalogue</a><a href="#developer-guide">21. Annex E — Developer guide for future ledger work</a><a href="#runbook">22. Annex F — Operations runbook (ledger core)</a><a href="#glossary">23. Annex G — Glossary</a><div class="grp">Operations and proposals</div><a href="#deployment">24. Hostinger VPS Deployment Plan</a><a href="#ha-proposal">25. High Availability Plan (for review)</a><a href="#ai-proposal">26. AI Features — Implementation Plan (for review)</a><div class="grp">Linked documents</div><a href="#linked">27. Linked pages and other documents</a></aside><main><p class="eyebrow">Warraq ERP · Technical documentation</p><h1 style="font-size:2.3rem;margin:.2rem 0 1.5rem">Warraq ERP: platform, modules and finance core</h1>
-<section class="chapter" id="overview"><p class="eyebrow">Chapter 1</p><h2>How this documentation fits together</h2><p>This is the technical documentation of Warraq ERP as a whole: how the platform works (companies, permissions, ledger, e-invoicing), every module with its endpoints, tables, screens and tests, and, for the new finance core (General Ledger, Receivables, Payables, Bank), the requirements, design, tests and delivery history. It is one document, read top to bottom or by the menu on the left. Three long tables are on their own pages and linked: the <a href="data-dictionary.html">data dictionary</a>, the <a href="traceability.html">traceability matrix</a> and the <a href="test-catalogue.html">test-case catalogue</a>.</p>
+</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Technical documentation</div><a class="home" href="../index.html">← All documentation</a><div class="grp">Orientation</div><a href="#overview">1. How this documentation fits together</a><a href="#environments">2. Environments: Live (1.0) and Demo / development (2.0)</a><div class="grp">The whole system</div><a href="#platform">3. Platform architecture: how the whole system works</a><a href="#module-catalogue">4. Annex H: Module catalogue (every module, older and new)</a><div class="grp">Requirements</div><a href="#brd">5. Business Requirements Document</a><a href="#srs">6. Software Requirements Specification</a><div class="grp">Design</div><a href="#solution-design">7. Solution Design Document</a><a href="#technical-design">8. Technical Design Document</a><a href="#accounting-rules">9. Accounting and reporting rules</a><a href="#period-rule">10. Period rule for cancel, reversal, return and credit</a><a href="#date-standard">11. Date fields on documents: the standard (Demo / 2.0)</a><a href="#posting-control">12. Posting control: the lock date and back-dating rules (Demo / 2.0)</a><a href="#ar-ap-bank">13. AR, AP and bank reconciliation: design against the Finance Core Blueprint (Demo / 2.0)</a><a href="#dimensions-decisions">14. GL Step 1.5: dimensions and configurable statements. CFO and architect decisions</a><a href="#approval-research">15. Sprint 11 — Approval rules: what tier-1 ERPs do, and what we should build</a><div class="grp">Quality</div><a href="#test-strategy">16. Test Strategy</a><div class="grp">Delivery</div><a href="#sprint-log">17. Sprint log and plan — GL / AR / AP 2.0</a><div class="grp">Reference</div><a href="#api">18. Annex B — API reference (GL / AR / AP routes)</a><a href="#permissions">19. Annex C — Permission modules (GL / AR / AP)</a><a href="#posting-rules">20. Annex D — Posting rules catalogue</a><a href="#developer-guide">21. Annex E — Developer guide for future ledger work</a><a href="#runbook">22. Annex F — Operations runbook (ledger core)</a><a href="#glossary">23. Annex G — Glossary</a><div class="grp">Operations and proposals</div><a href="#deployment">24. Hostinger VPS Deployment Plan</a><a href="#ha-proposal">25. High Availability Plan (for review)</a><a href="#ai-proposal">26. AI Features — Implementation Plan (for review)</a><div class="grp">Linked documents</div><a href="#linked">27. Linked pages and other documents</a></aside><main><p class="eyebrow">Warraq ERP · Technical documentation</p><h1 style="font-size:2.3rem;margin:.2rem 0 1.5rem">Warraq ERP: platform, modules and finance core</h1>
+<section class="chapter" id="overview"><p class="eyebrow">Chapter 1</p><h2>How this documentation fits together</h2><p>This is the technical documentation of Warraq ERP as a whole: how the platform works (companies, permissions, ledger, e-invoicing), every module with its endpoints, tables, screens and tests, and the requirements, design, tests and delivery history. The requirements and tests of the older modules (sales, expenses, procurement, POS, ZATCA, VAT, master data, users) were written as built from the code and its automated tests; those of the finance core (General Ledger, Receivables, Payables, Bank) were written before it was built. It is one document, read top to bottom or by the menu on the left. Three long tables are on their own pages and linked: the <a href="data-dictionary.html">data dictionary</a>, the <a href="traceability.html">traceability matrix</a> and the <a href="test-catalogue.html">test-case catalogue</a>.</p>
 <div class="table-wrap"><table class="plan"><thead><tr><th>If you want to know…</th><th>Read</th></tr></thead><tbody>
 <tr><td>How the whole system works, and what modules exist</td><td><a href="#platform">Platform architecture</a>, then the <a href="#module-catalogue">Module catalogue</a> (one sheet per module)</td></tr>
 <tr><td>What the business asked for in the finance core, and what is built</td><td><a href="#brd">Business requirements</a>, then <a href="#srs">System requirements</a></td></tr>
@@ -46,7 +46,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 </tbody></table></div>
 <div class="callout"><div class="label">Which version is described</div><p>The finance core is <b>Warraq 2.0</b> (branch <code>v2</code>, the Demo). Live (1.0, branch <code>master</code>) does not have it yet. Chapters say so where it matters; the <a href="#environments">Environments</a> chapter explains the two tracks.</p></div>
 <div class="callout warn"><div class="label">Reading copy, not the source</div><p>This page is generated. The requirements, system requirements, sprint log, traceability and annexes A to C are generated from <code>docs/gl-ap-ar/source/*.mjs</code> and from the code; the other chapters are hand-written Markdown under <code>docs/gl-ap-ar</code>, <code>docs/design-notes</code>, <code>docs/operations</code> and <code>docs/proposals</code>. Edit those, then run <code>npx tsx scripts/build-gl-docs.mjs</code> and <code>node scripts/build-docs-html.mjs</code>; never edit this page. The skill <code>update-docs-after-development</code> walks through it.</p></div>
-<p class="src">Version: built 2026-10-18, branch v2, after commit 17ce4e9.</p></section>
+<p class="src">Version: built 2026-10-18, branch v2, after commit a7d2da8.</p></section>
 <section class="chapter" id="environments"><p class="eyebrow">Chapter 2</p><h2>Environments: Live (1.0) and Demo / development (2.0)</h2><p class="src">Source: <code>docs/operations/environments.md</code></p><p>Two words are used everywhere from now on:</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th></th>
@@ -2268,7 +2268,7 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <li>The solution serves thousands of concurrent users across many companies, safely isolated.</li>
 </ol>
 <h3 id="brd--p-2">4. Scope</h3>
-<p><strong>In scope:</strong> 100 business requirements in 14 areas (section 6). 77 are built, 5 partly built, 18 planned.</p>
+<p><strong>In scope:</strong> 134 business requirements in 22 areas (section 6). 111 are built, 5 partly built, 18 planned.</p>
 <p><strong>Out of scope (this programme):</strong></p>
 <ul>
 <li>Fixed assets and depreciation (classes, CWIP, methods, runs, disposal, transfer, documents) (FR-FA-01..10) — A later phase; the ledger and dimensions are designed not to block it.</li>
@@ -2531,7 +2531,83 @@ Live (1.0) and Demo (2.0) are separate tracks; releases run by script with a rea
 The requirements, design, test and sprint documents of the ledger core are generated from one traceable source and kept in the repository.</p>
 <p><strong>BR-NFR-06 Promotion to Live</strong> — Must, Planned, source Decision, sprint S20.
 The Demo release is promoted to the Live system in a controlled release, with data migration, back-fill and verification on a copy of production first.</p>
-<h3 id="brd--p-7">7. Constraints and assumptions</h3>
+<h4 id="brd---9">SAL — Sales documents (quotations, invoices, credit notes)</h4>
+<p><strong>BR-SAL-01 Quotations convert to invoices</strong> — Must, Built, source Platform, sprint SB1.
+A quotation can be created, edited, cancelled and converted into a tax invoice. A converted quotation is final. The conversion is an ordinary invoice and follows every invoice rule (numbering, period locks, e-invoicing).</p>
+<p><strong>BR-SAL-02 Invoice payments, in part or in full</strong> — Must, Built, source Platform, sprint SB1.
+An invoice can be paid in several payments. Each payment is its own receipt voucher. A payment is limited to the remaining balance; a zero or negative amount, a cancelled invoice, an already paid invoice and a credit note cannot be paid. Only a user with the create right can record a payment, and only in the invoice&#39;s own company.</p>
+<p><strong>BR-SAL-03 Cancelling an invoice</strong> — Must, Built, source Platform, sprint SB1.
+An invoice can be cancelled in an open period; the receipt voucher of a paid invoice is reversed by a reversal voucher, never deleted. An invoice dated in a filed VAT quarter cannot be cancelled; a ZATCA-cleared invoice cannot be cancelled (see BR-ZAT-02).</p>
+<p><strong>BR-SAL-04 Credit notes</strong> — Must, Built, source Platform, sprint SB1.
+A credit note reverses an invoice. Only one credit note can be raised against an invoice. When the original was paid, the credit note reverses its receipt; when unpaid, no voucher is touched. Credit notes follow the approval rules when one matches.</p>
+<p><strong>BR-SAL-05 Sales associate on an invoice</strong> — Should, Built, source Platform, sprint SB1.
+An invoice can name the employee who sold it. The employee must belong to the same company and be active; the field is optional.</p>
+<h4 id="brd--p-p-p-2">EXP — Expenses and recurring postings</h4>
+<p><strong>BR-EXP-01 Expense payments, in part or in full</strong> — Must, Built, source Platform, sprint SB1.
+An expense can be paid in several payments, each its own payment voucher, never above the remaining balance. Paid or cancelled expenses cannot be paid, and another company&#39;s expense is never found.</p>
+<p><strong>BR-EXP-02 Cancelling an expense</strong> — Must, Built, source Platform, sprint SB1.
+An expense can be cancelled once, by a user with the cancel right. A paid expense is cancelled with a reversal voucher. An expense dated in a filed VAT quarter cannot be cancelled.</p>
+<p><strong>BR-EXP-03 Recurring templates and accruals</strong> — Should, Built, source Platform, sprint SB1.
+A company keeps recurring expense templates (create, edit, switch off) and accrual entries (edit, cancel). Amounts must be valid; nothing is hard-deleted: a template is deactivated and an accrual cancelled, together with its linked recurring posting.</p>
+<h4 id="brd--p-p-5">PUR — Procurement and inventory</h4>
+<p><strong>BR-PUR-01 Purchase bills from goods receipts</strong> — Must, Built, source Platform, sprint SB1.
+A purchase bill is raised from goods receipt notes of one vendor. Its totals are computed on the server from the receipts, a receipt can be billed only once, a reversed receipt cannot be billed, and only a user with the create right can bill. A bill that matches an approval rule waits for approval.</p>
+<p><strong>BR-PUR-02 Purchase bill payment and cancellation</strong> — Must, Built, source Platform, sprint SB1.
+A bill can be paid in part and then in full, never above the balance. An unpaid bill can be cancelled, which releases its receipts for re-billing; a bill with a payment cannot be cancelled. A bill dated in a filed VAT quarter cannot be cancelled.</p>
+<p><strong>BR-PUR-03 Purchase returns</strong> — Must, Built, source Platform, sprint SB1.
+Goods can be returned to a vendor against a receipt: never more than was received or than remains after earlier returns, never against a reversed receipt. A return reduces stock and can be cancelled once (restoring stock). A return cannot be created while the current VAT quarter is filed.</p>
+<p><strong>BR-PUR-04 Physical stock takes</strong> — Must, Built, source Platform, sprint SB1.
+A stock take snapshots the system quantity on the server and computes the variance. Finalising posts the counted quantity as the stock level, once. A draft can be cancelled; a completed one cannot.</p>
+<p><strong>BR-PUR-05 Warehouse transfers</strong> — Must, Built, source Platform, sprint SB1.
+Stock moves between warehouses by a dispatch and a receiving. Dispatch deducts the source, receiving adds the quantity actually received, once even under concurrent requests. A dispatch still in transit can be cancelled to restore stock. Branch-restricted users act only on their own warehouses, and cross-company warehouses are refused.</p>
+<h4 id="brd--p-p-6">POS — Point of sale</h4>
+<p><strong>BR-POS-01 Cashier shifts</strong> — Must, Built, source Platform, sprint SB1.
+A cashier opens and closes a shift, recording actual and expected cash. Shifts are listed and closed only within their own company; opening and closing need the shift right and using the terminal needs the access right.</p>
+<p><strong>BR-POS-02 Held sales</strong> — Should, Built, source Platform, sprint SB1.
+A sale in progress can be held and later resumed. Held sales are visible only within their company and need the terminal access right.</p>
+<p><strong>BR-POS-03 POS sales are invoices</strong> — Must, Built, source Compliance, sprint SB1.
+A POS sale is an ordinary tax invoice and goes through the same e-invoicing pipeline; a POS cancel needs its own permission.</p>
+<h4 id="brd---10">ZAT — ZATCA e-invoicing</h4>
+<p><strong>BR-ZAT-01 E-invoicing is a per-company switch</strong> — Must, Built, source Compliance, sprint SB1.
+E-invoicing is off for a company until its onboarding enables it. With it off, an invoice lands as DISABLED with a real basic QR code and never touches the ZATCA gateway or the hash chain; with it on, the same invoice proceeds.</p>
+<p><strong>BR-ZAT-02 Cancellation of e-invoiced documents</strong> — Must, Built, source Compliance, sprint SB1.
+An invoice that reached ZATCA (cleared or reported) or is being submitted cannot be cancelled; a credit note is the only reversal. An invoice that never reached ZATCA can be cancelled.</p>
+<p><strong>BR-ZAT-03 Hash-chain integrity</strong> — Must, Built, source Compliance, sprint SB1.
+Every document of a company and environment sits on one hash chain that starts at genesis for each new company and environment. Resubmitting the tip reuses its position; resubmitting an earlier document after a later one mints a fresh position; cancelling the tip that never reached ZATCA gives its position back; a cleared document cannot be resubmitted; the issue time is locked once set.</p>
+<p><strong>BR-ZAT-04 Safe storage of keys and signed documents</strong> — Must, Built, source Compliance, sprint SB1.
+ZATCA private keys are encrypted at rest (authenticated encryption, random IV, tamper detection, clear error when the secret is missing or wrong). The signed XML is stored compressed, losslessly, and is served on demand, never in list payloads, and never to another tenant.</p>
+<h4 id="brd--p-7">VAT — VAT returns and period locks</h4>
+<p><strong>BR-VAT-01 VAT return figures</strong> — Must, Built, source Compliance, sprint SB1.
+A quarterly VAT return is generated from the documents: sales, output VAT, purchases and input VAT, with credit notes netted. The return and the VAT summary report show the same numbers. A generated return can be deleted and regenerated, and a duplicate for the same quarter is refused.</p>
+<p><strong>BR-VAT-02 Filing rules</strong> — Must, Built, source Compliance, sprint SB1.
+A return cannot be generated or filed while an invoice in its quarter has not completed e-invoicing. Quarters must be filed in order; a filed return is permanently locked.</p>
+<p><strong>BR-VAT-03 A filed quarter locks its documents</strong> — Must, Built, source Compliance, sprint SB1.
+Once a quarter is filed (and while a generated return freezes it), no invoice, credit note, expense or purchase bill can be created in it, and none can be cancelled or converted into it. Quotations, requisitions, orders and stock takes are not locked.</p>
+<p><strong>BR-VAT-04 VAT return rights and isolation</strong> — Must, Built, source Compliance, sprint SB1.
+Reading, generating, filing and deleting a return are separate rights, and a company can never see or touch another company&#39;s returns.</p>
+<h4 id="brd--p-8">MST — Master data, numbering and imports</h4>
+<p><strong>BR-MST-01 Document numbering</strong> — Must, Built, source Platform, sprint SB1.
+Every document type has its own numbering in the PREFIX-1001 style, issued sequentially with no duplicates or gaps even under concurrent requests, per document period, continuing from the legacy counter. Changing the policy needs the right and cannot change e-invoicing settings.</p>
+<p><strong>BR-MST-02 Customer and vendor import</strong> — Should, Built, source Platform, sprint SB1.
+Customers and vendors can be loaded from a spreadsheet: a template, validation before saving (a business customer needs a valid VAT number and full address), update of an existing record matched by VAT number or phone, conflict detection, a row cap and the create right.</p>
+<p><strong>BR-MST-03 Product import</strong> — Should, Built, source Platform, sprint SB1.
+Products can be loaded from a spreadsheet: template, validation without writing, categories resolved by name in the company, real SKUs assigned, an existing barcode updates instead of duplicating, a row cap and the create right.</p>
+<p><strong>BR-MST-04 Master data rights and retirement</strong> — Must, Built, source Platform, sprint SB1.
+Master data uses create, read, update and delete rights, where delete means making a record inactive. Create does not allow editing an existing row and update does not allow creating one; an inactive record cannot be edited. Cancel sets a flag without changing the status and works once.</p>
+<h4 id="brd--p-9">ORG — Tenancy, users and company administration</h4>
+<p><strong>BR-ORG-01 Every request belongs to one company</strong> — Must, Built, source Platform, sprint SB1.
+Data returned and written is always for the company of the request: a user sees their own company; only a super-administrator can switch company, and the choice persists in the session. A company can never overwrite another company&#39;s customer, invoice, quotation or expense, and reports and dashboards are computed per company.</p>
+<p><strong>BR-ORG-02 User accounts</strong> — Must, Built, source Platform, sprint SB1.
+Administrators can deactivate and reactivate users of their own company (never their own session), assign roles of the same company only, and a delegated user creating accounts can only create ordinary staff. Passwords need at least six characters with a letter and a digit.</p>
+<p><strong>BR-ORG-03 Employees and job titles</strong> — Should, Built, source Platform, sprint SB1.
+Employees have a job title, an employee number issued in sequence (width and start configurable) and an optional branch. Duplicate active titles and numbers are refused, a deactivated title cannot be used, and a new login account must link to an active employee once the company has employees.</p>
+<p><strong>BR-ORG-04 Sessions and sign-in</strong> — Must, Built, source Platform, sprint SB1.
+A session records the user and company at sign-in, expires, and is extended once past half of its lifetime. Only a super-administrator can list sessions across companies.</p>
+<p><strong>BR-ORG-05 No bulk save of documents</strong> — Must, Built, source Platform, sprint SB1.
+There is no endpoint that overwrites posted documents in bulk. A document is written only through its own route, and a request naming an existing id cannot take over another document&#39;s lines.</p>
+<p><strong>BR-ORG-06 Capital contributions</strong> — Should, Built, source Platform, sprint SB1.
+An investor&#39;s capital contribution can be recorded: it creates a receipt voucher and adds to capital contributed, accumulating across contributions. Amounts must be positive, banks active and investors in the company.</p>
+<h3 id="brd--p-10">7. Constraints and assumptions</h3>
 <ul>
 <li>Single company currency (SAR); multi-currency and intercompany are out of scope.</li>
 <li>Live (1.0) is changed by fixes only; all development is on the 2.0 track and reaches Live only by an explicit promotion (BR-NFR-06).</li>
@@ -2539,13 +2615,13 @@ The Demo release is promoted to the Live system in a controlled release, with da
 <li>ZATCA e-invoicing code is not altered by this programme.</li>
 <li>Document dates, posting guard and permission model are platform standards that every later feature must follow.</li>
 </ul>
-<h3 id="brd---9">8. Success criteria</h3>
+<h3 id="brd---11">8. Success criteria</h3>
 <ul>
 <li>Ledger-vs-Documents agrees to the cent for every company; the consistency check shows no error-level failure.</li>
 <li>Every built requirement has automated test coverage traced in the matrix (08).</li>
 <li>A new company can complete the user-manual flow (06) without developer help.</li>
 </ul>
-<h3 id="brd--p-8">9. Blueprint coverage</h3>
+<h3 id="brd--p-11">9. Blueprint coverage</h3>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Blueprint requirement</th>
 <th>Business requirement(s)</th>
@@ -3646,14 +3722,324 @@ The Demo release is promoted to the Live system in a controlled release, with da
 <td>REL-009</td>
 </tr>
 </tbody></table></div>
-<h3 id="srs---9">4. Interfaces</h3>
+<h4 id="srs---9">SAL — Sales documents (quotations, invoices, credit notes)</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>FR</th>
+<th>BR</th>
+<th>The system shall</th>
+<th>Implemented in</th>
+<th>Test cases</th>
+</tr>
+</thead><tbody><tr>
+<td>FR-SAL-01.1</td>
+<td>BR-SAL-01</td>
+<td>The system shall convert an accepted quotation into an invoice through the normal invoice rules, refusing it when the invoice date falls in a filed VAT quarter.</td>
+<td>server/routes/transactions.ts (quotations)</td>
+<td>SAL-001</td>
+</tr>
+<tr>
+<td>FR-SAL-02.1</td>
+<td>BR-SAL-02</td>
+<td>The system shall record each payment of an invoice as a separate receipt voucher, set Partially Paid or Paid from the balance, and refuse amounts above the balance, zero, negative, and payments of cancelled, paid or credit-note documents.</td>
+<td>server/routes/transactions.ts (POST /invoices/:id/paid)</td>
+<td>SAL-002, SAL-003, SAL-004, SAL-005</td>
+</tr>
+<tr>
+<td>FR-SAL-03.1</td>
+<td>BR-SAL-03</td>
+<td>The system shall cancel an invoice by writing a reversal voucher for any payment, and refuse cancellation in a filed quarter.</td>
+<td>server/routes/transactions.ts (POST /invoices/:id/cancel)</td>
+<td>SAL-006, SAL-007</td>
+</tr>
+<tr>
+<td>FR-SAL-04.1</td>
+<td>BR-SAL-04</td>
+<td>The system shall issue one credit note per invoice and reverse the receipt voucher of a paid original.</td>
+<td>server/routes/transactions.ts (POST /invoices/:id/note)</td>
+<td>SAL-008, SAL-009, SAL-010</td>
+</tr>
+<tr>
+<td>FR-SAL-05.1</td>
+<td>BR-SAL-05</td>
+<td>The system shall accept an optional sales associate that is active and in the invoice&#39;s company, and refuse others.</td>
+<td>server/routes/transactions.ts</td>
+<td>SAL-011, SAL-012</td>
+</tr>
+</tbody></table></div>
+<h4 id="srs--p-p-p-2">EXP — Expenses and recurring postings</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>FR</th>
+<th>BR</th>
+<th>The system shall</th>
+<th>Implemented in</th>
+<th>Test cases</th>
+</tr>
+</thead><tbody><tr>
+<td>FR-EXP-01.1</td>
+<td>BR-EXP-01</td>
+<td>The system shall post a payment voucher per payment of an expense, settle the remainder to Paid, and refuse overpayment and payment of paid or cancelled expenses.</td>
+<td>server/routes/expenses.ts (POST /:id/pay)</td>
+<td>EXP-001, EXP-002, EXP-003</td>
+</tr>
+<tr>
+<td>FR-EXP-02.1</td>
+<td>BR-EXP-02</td>
+<td>The system shall cancel an expense with a reversal voucher for payments, only once, only with the right, and not in a filed quarter.</td>
+<td>server/routes/expenses.ts (POST /:id/cancel)</td>
+<td>EXP-004, EXP-005, EXP-006</td>
+</tr>
+<tr>
+<td>FR-EXP-03.1</td>
+<td>BR-EXP-03</td>
+<td>The system shall maintain recurring templates and accruals, refuse invalid amounts, and retire them by deactivation or cancellation.</td>
+<td>server/routes/transactions.ts (recurring-templates, accruals)</td>
+<td>EXP-007, EXP-008, EXP-009</td>
+</tr>
+</tbody></table></div>
+<h4 id="srs--p-p-4">PUR — Procurement and inventory</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>FR</th>
+<th>BR</th>
+<th>The system shall</th>
+<th>Implemented in</th>
+<th>Test cases</th>
+</tr>
+</thead><tbody><tr>
+<td>FR-PUR-01.1</td>
+<td>BR-PUR-01</td>
+<td>The system shall compute bill totals from the referenced receipts, refuse double billing, reversed receipts, mixed vendors and callers without the right.</td>
+<td>server/routes/inventory.ts (POST /purchase-bills)</td>
+<td>PUR-001, PUR-002, PUR-003, PUR-004</td>
+</tr>
+<tr>
+<td>FR-PUR-02.1</td>
+<td>BR-PUR-02</td>
+<td>The system shall post payments against a bill up to the balance and cancel only unpaid bills, releasing their receipts.</td>
+<td>server/routes/inventory.ts (pay, cancel)</td>
+<td>PUR-005, PUR-006, PUR-007</td>
+</tr>
+<tr>
+<td>FR-PUR-03.1</td>
+<td>BR-PUR-03</td>
+<td>The system shall limit returns to the remaining received quantity, move stock, allow one cancellation, and refuse returns in a filed quarter.</td>
+<td>server/routes/inventory.ts (purchase-returns)</td>
+<td>PUR-008, PUR-009, PUR-010</td>
+</tr>
+<tr>
+<td>FR-PUR-04.1</td>
+<td>BR-PUR-04</td>
+<td>The system shall snapshot quantities server-side, post counted quantities on finalisation once, and cancel only drafts.</td>
+<td>server/routes/inventory.ts (stock-takes)</td>
+<td>PUR-011, PUR-012, PUR-013</td>
+</tr>
+<tr>
+<td>FR-PUR-05.1</td>
+<td>BR-PUR-05</td>
+<td>The system shall move stock by dispatch and receiving, accept one receiving per dispatch, enforce warehouse branch access and company ownership, and number dispatches uniquely.</td>
+<td>server/routes/inventory.ts (warehouse-dispatches, warehouse-receivings)</td>
+<td>PUR-014, PUR-015, PUR-016, PUR-017, PUR-018</td>
+</tr>
+</tbody></table></div>
+<h4 id="srs--p-p-5">POS — Point of sale</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>FR</th>
+<th>BR</th>
+<th>The system shall</th>
+<th>Implemented in</th>
+<th>Test cases</th>
+</tr>
+</thead><tbody><tr>
+<td>FR-POS-01.1</td>
+<td>BR-POS-01</td>
+<td>The system shall open and close shifts per company with the right permissions.</td>
+<td>server/routes/pos.ts (shifts)</td>
+<td>POS-001, POS-002</td>
+</tr>
+<tr>
+<td>FR-POS-02.1</td>
+<td>BR-POS-02</td>
+<td>The system shall hold, list and delete held sales per company.</td>
+<td>server/routes/pos.ts (held-invoices)</td>
+<td>POS-003, POS-004</td>
+</tr>
+<tr>
+<td>FR-POS-03.1</td>
+<td>BR-POS-03</td>
+<td>The system shall submit a POS sale through the normal invoice pipeline and gate POS cancellation by permission.</td>
+<td>server/routes/pos.ts; server/lib/zatca/processInvoice.ts</td>
+<td>POS-005, POS-006</td>
+</tr>
+</tbody></table></div>
+<h4 id="srs---10">ZAT — ZATCA e-invoicing</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>FR</th>
+<th>BR</th>
+<th>The system shall</th>
+<th>Implemented in</th>
+<th>Test cases</th>
+</tr>
+</thead><tbody><tr>
+<td>FR-ZAT-01.1</td>
+<td>BR-ZAT-01</td>
+<td>The system shall stop at DISABLED before any network call when the company switch is off, and proceed when it is on.</td>
+<td>server/lib/zatca/processInvoice.ts</td>
+<td>ZAT-001, ZAT-002</td>
+</tr>
+<tr>
+<td>FR-ZAT-02.1</td>
+<td>BR-ZAT-02</td>
+<td>The system shall refuse cancellation in CLEARED, REPORTED and SUBMITTING states and allow it for NOT_SUBMITTED.</td>
+<td>server/routes/transactions.ts (cancel)</td>
+<td>ZAT-003, ZAT-004, ZAT-005, ZAT-006</td>
+</tr>
+<tr>
+<td>FR-ZAT-03.1</td>
+<td>BR-ZAT-03</td>
+<td>The system shall reserve chain positions under a lock, keep chains independent per company and environment, and keep the issue time stable across resubmission.</td>
+<td>server/lib/zatca/hashChain.ts; processInvoice.ts</td>
+<td>ZAT-007, ZAT-008, ZAT-009, ZAT-010</td>
+</tr>
+<tr>
+<td>FR-ZAT-04.1</td>
+<td>BR-ZAT-04</td>
+<td>The system shall encrypt keys with AES-GCM, store XML compressed with a format tag, and expose it only by an authenticated, company-scoped request.</td>
+<td>server/lib/zatca/crypto.ts; xmlStorage.ts</td>
+<td>ZAT-011, ZAT-012, ZAT-013, ZAT-014, ZAT-015</td>
+</tr>
+</tbody></table></div>
+<h4 id="srs--p-5">VAT — VAT returns and period locks</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>FR</th>
+<th>BR</th>
+<th>The system shall</th>
+<th>Implemented in</th>
+<th>Test cases</th>
+</tr>
+</thead><tbody><tr>
+<td>FR-VAT-01.1</td>
+<td>BR-VAT-01</td>
+<td>The system shall compute return figures from one function shared with the report, and refuse a duplicate generation.</td>
+<td>server/routes/taxReturns.ts; server/lib/vatReturn.ts</td>
+<td>VAT-001, VAT-002</td>
+</tr>
+<tr>
+<td>FR-VAT-02.1</td>
+<td>BR-VAT-02</td>
+<td>The system shall check e-invoicing completeness at generation and again at filing, and enforce quarter order.</td>
+<td>server/routes/taxReturns.ts</td>
+<td>VAT-003, VAT-004, VAT-005</td>
+</tr>
+<tr>
+<td>FR-VAT-03.1</td>
+<td>BR-VAT-03</td>
+<td>The system shall refuse VAT-touching documents dated in a filed or frozen quarter and leave non-VAT documents alone.</td>
+<td>server/lib/postingGuard.ts; server/lib/vatReturn.ts</td>
+<td>VAT-006, VAT-007, VAT-008</td>
+</tr>
+<tr>
+<td>FR-VAT-04.1</td>
+<td>BR-VAT-04</td>
+<td>The system shall gate each return action by its own permission and scope every query by company.</td>
+<td>server/routes/taxReturns.ts</td>
+<td>VAT-009, VAT-010</td>
+</tr>
+</tbody></table></div>
+<h4 id="srs--p-6">MST — Master data, numbering and imports</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>FR</th>
+<th>BR</th>
+<th>The system shall</th>
+<th>Implemented in</th>
+<th>Test cases</th>
+</tr>
+</thead><tbody><tr>
+<td>FR-MST-01.1</td>
+<td>BR-MST-01</td>
+<td>The system shall issue numbers through one shared counter per type and period, safely under concurrency.</td>
+<td>server/lib/documentNumbering.ts</td>
+<td>MST-001, MST-002, MST-003</td>
+</tr>
+<tr>
+<td>FR-MST-02.1</td>
+<td>BR-MST-02</td>
+<td>The system shall validate every row, write only valid rows the user keeps, update by VAT or phone and report conflicts.</td>
+<td>server/routes/masterImport.ts; src/components/PartyImportModal.tsx</td>
+<td>MST-004, MST-005, MST-006</td>
+</tr>
+<tr>
+<td>FR-MST-03.1</td>
+<td>BR-MST-03</td>
+<td>The system shall validate then commit product rows, resolving categories in the company and updating by barcode.</td>
+<td>server/routes/masterImport.ts; src/components/ProductImportModal.tsx</td>
+<td>MST-007, MST-008, MST-009</td>
+</tr>
+<tr>
+<td>FR-MST-04.1</td>
+<td>BR-MST-04</td>
+<td>The system shall check the right that matches the action on existing or new rows and refuse edits of inactive records.</td>
+<td>server/routes/masterEntities.ts; src/permissionSchema.ts</td>
+<td>MST-010, MST-011, MST-012</td>
+</tr>
+</tbody></table></div>
+<h4 id="srs--p-7">ORG — Tenancy, users and company administration</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>FR</th>
+<th>BR</th>
+<th>The system shall</th>
+<th>Implemented in</th>
+<th>Test cases</th>
+</tr>
+</thead><tbody><tr>
+<td>FR-ORG-01.1</td>
+<td>BR-ORG-01</td>
+<td>The system shall scope every request by the company resolved at authentication and refuse writes to rows of another company.</td>
+<td>server.ts (isAuthenticated); server/lib/authz.ts</td>
+<td>ORG-001, ORG-002, ORG-003, ORG-004, ORG-005</td>
+</tr>
+<tr>
+<td>FR-ORG-02.1</td>
+<td>BR-ORG-02</td>
+<td>The system shall limit user administration to the company, drop roles of another company, force the staff role for delegated creators and enforce the password rules.</td>
+<td>server/routes/users.ts</td>
+<td>ORG-006, ORG-007, ORG-008, ORG-009</td>
+</tr>
+<tr>
+<td>FR-ORG-03.1</td>
+<td>BR-ORG-03</td>
+<td>The system shall issue employee numbers sequentially, enforce unique numbers and titles, and require an employee link for new accounts once employees exist.</td>
+<td>server/routes/employees.ts</td>
+<td>ORG-010, ORG-011, ORG-012</td>
+</tr>
+<tr>
+<td>FR-ORG-04.1</td>
+<td>BR-ORG-04</td>
+<td>The system shall expire sessions, extend them on activity and restrict listing to super-administrators.</td>
+<td>server.ts; server/routes/sessions.ts</td>
+<td>ORG-013, ORG-014</td>
+</tr>
+<tr>
+<td>FR-ORG-05.1</td>
+<td>BR-ORG-05</td>
+<td>The system shall not serve a bulk-save route and shall refuse create requests that name ids.</td>
+<td>server/routes/transactions.ts; server.ts</td>
+<td>ORG-015, ORG-016</td>
+</tr>
+<tr>
+<td>FR-ORG-06.1</td>
+<td>BR-ORG-06</td>
+<td>The system shall record contributions with a receipt voucher and refuse invalid amounts, banks and investors.</td>
+<td>server/routes/transactions.ts (investors)</td>
+<td>ORG-017, ORG-018</td>
+</tr>
+</tbody></table></div>
+<h3 id="srs---11">4. Interfaces</h3>
 <ul>
 <li>HTTP/JSON API: see annex B (generated from the route files).</li>
 <li>Permissions: annex C. Data model: annex A.</li>
 <li>Files: Excel (chart, reports, aging, ledger), CSV (bank statement import).</li>
 <li>Print: browser print through <code>DocumentRenderer</code> (A4, right-to-left for Arabic/Urdu).</li>
 </ul>
-<h3 id="srs---10">5. Non-functional requirements</h3>
+<h3 id="srs---12">5. Non-functional requirements</h3>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Id</th>
 <th>Requirement</th>
@@ -4818,6 +5204,13 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <th>Goal</th>
 </tr>
 </thead><tbody><tr>
+<td>SB1</td>
+<td>Warraq 1.0 baseline</td>
+<td>Done</td>
+<td>before 2026-10-14 (documented 2026-10-18)</td>
+<td>The modules that existed before the finance core, written up as built: requirements, system requirements and test cases traced to the existing automated tests.</td>
+</tr>
+<tr>
 <td>S0</td>
 <td>Platform and environments</td>
 <td>Done</td>
@@ -4965,6 +5358,63 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to Live.</td>
 </tr>
 </tbody></table></div>
+<h3 id="sprint-log--p">Sprint B1 — Warraq 1.0 baseline (Done)</h3>
+<p>The modules that existed before the finance core, written up as built: requirements, system requirements and test cases traced to the existing automated tests.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Item</th>
+<th>Title</th>
+<th>Business requirements</th>
+<th>System requirements</th>
+</tr>
+</thead><tbody><tr>
+<td>SB1-01</td>
+<td>Sales documents (quotations, invoices, credit notes): as-built requirements, system requirements and test cases</td>
+<td>BR-SAL-01 Quotations convert to invoices; BR-SAL-02 Invoice payments, in part or in full; BR-SAL-03 Cancelling an invoice; BR-SAL-04 Credit notes; BR-SAL-05 Sales associate on an invoice</td>
+<td>FR-SAL-01.1, FR-SAL-02.1, FR-SAL-03.1, FR-SAL-04.1, FR-SAL-05.1</td>
+</tr>
+<tr>
+<td>SB1-02</td>
+<td>Expenses and recurring postings: as-built requirements, system requirements and test cases</td>
+<td>BR-EXP-01 Expense payments, in part or in full; BR-EXP-02 Cancelling an expense; BR-EXP-03 Recurring templates and accruals</td>
+<td>FR-EXP-01.1, FR-EXP-02.1, FR-EXP-03.1</td>
+</tr>
+<tr>
+<td>SB1-03</td>
+<td>Procurement and inventory: as-built requirements, system requirements and test cases</td>
+<td>BR-PUR-01 Purchase bills from goods receipts; BR-PUR-02 Purchase bill payment and cancellation; BR-PUR-03 Purchase returns; BR-PUR-04 Physical stock takes; BR-PUR-05 Warehouse transfers</td>
+<td>FR-PUR-01.1, FR-PUR-02.1, FR-PUR-03.1, FR-PUR-04.1, FR-PUR-05.1</td>
+</tr>
+<tr>
+<td>SB1-04</td>
+<td>Point of sale: as-built requirements, system requirements and test cases</td>
+<td>BR-POS-01 Cashier shifts; BR-POS-02 Held sales; BR-POS-03 POS sales are invoices</td>
+<td>FR-POS-01.1, FR-POS-02.1, FR-POS-03.1</td>
+</tr>
+<tr>
+<td>SB1-05</td>
+<td>ZATCA e-invoicing: as-built requirements, system requirements and test cases</td>
+<td>BR-ZAT-01 E-invoicing is a per-company switch; BR-ZAT-02 Cancellation of e-invoiced documents; BR-ZAT-03 Hash-chain integrity; BR-ZAT-04 Safe storage of keys and signed documents</td>
+<td>FR-ZAT-01.1, FR-ZAT-02.1, FR-ZAT-03.1, FR-ZAT-04.1</td>
+</tr>
+<tr>
+<td>SB1-06</td>
+<td>VAT returns and period locks: as-built requirements, system requirements and test cases</td>
+<td>BR-VAT-01 VAT return figures; BR-VAT-02 Filing rules; BR-VAT-03 A filed quarter locks its documents; BR-VAT-04 VAT return rights and isolation</td>
+<td>FR-VAT-01.1, FR-VAT-02.1, FR-VAT-03.1, FR-VAT-04.1</td>
+</tr>
+<tr>
+<td>SB1-07</td>
+<td>Master data, numbering and imports: as-built requirements, system requirements and test cases</td>
+<td>BR-MST-01 Document numbering; BR-MST-02 Customer and vendor import; BR-MST-03 Product import; BR-MST-04 Master data rights and retirement</td>
+<td>FR-MST-01.1, FR-MST-02.1, FR-MST-03.1, FR-MST-04.1</td>
+</tr>
+<tr>
+<td>SB1-08</td>
+<td>Tenancy, users and company administration: as-built requirements, system requirements and test cases</td>
+<td>BR-ORG-01 Every request belongs to one company; BR-ORG-02 User accounts; BR-ORG-03 Employees and job titles; BR-ORG-04 Sessions and sign-in; BR-ORG-05 No bulk save of documents; BR-ORG-06 Capital contributions</td>
+<td>FR-ORG-01.1, FR-ORG-02.1, FR-ORG-03.1, FR-ORG-04.1, FR-ORG-05.1, FR-ORG-06.1</td>
+</tr>
+</tbody></table></div>
 <h3 id="sprint-log--p-p">Sprint 0 — Platform and environments (Done)</h3>
 <p>Run Live (1.0) and Demo (2.0) side by side with safe release scripts.</p>
 <p>Commits: <code>69cd4af</code>, <code>400faaa</code>, <code>4d798d6</code>, <code>d718a9b</code></p>
@@ -4981,7 +5431,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-NFR-04.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p">Sprint 1 — General Ledger foundation (Done)</h3>
+<h3 id="sprint-log--p-2">Sprint 1 — General Ledger foundation (Done)</h3>
 <p>Company chart of accounts, account mapping, manual journals with approval, ledger reports, opening balances.</p>
 <p>Commits: <code>a12e907</code>, <code>c1456c3</code>, <code>0f1779a</code>, <code>7abc00d</code>, <code>5d2ca07</code>, <code>4a06512</code></p>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -5071,7 +5521,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-AR-02.1, FR-AP-04.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-2">Sprint 4 — Document date standard (Done)</h3>
+<h3 id="sprint-log--p-3">Sprint 4 — Document date standard (Done)</h3>
 <p>doc_date and posting_date on every document; one naming standard.</p>
 <p>Commits: <code>b11c341</code>, <code>c7ca513</code>, <code>6cd2f51</code></p>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -5147,7 +5597,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-AR-08.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-3">Sprint 8 — Bank reconciliation (Done)</h3>
+<h3 id="sprint-log--p-4">Sprint 8 — Bank reconciliation (Done)</h3>
 <p>Reconciliation sessions per FR-BANK-01..05.</p>
 <p>Commits: <code>0a6f07d</code></p>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -5214,7 +5664,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 <tr>
 <td>S10-03</td>
-<td>Pending: requirements, system requirements and test cases for the older modules (invoices, quotations, POS, expenses, procurement and inventory, VAT returns, ZATCA, users), so they are traced like the finance core</td>
+<td>Requirements, system requirements and test cases for the older modules (invoices, quotations, POS, expenses, procurement and inventory, VAT returns, ZATCA, master data, users), written as built and traced to the existing automated tests (done: baseline sprint B1, 34 requirements, 100 cases)</td>
 <td>BR-NFR-05 Maintainable documentation</td>
 <td>FR-NFR-05.1</td>
 </tr>
@@ -6073,8 +6523,212 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>Planned</td>
 <td>S20</td>
 </tr>
+<tr>
+<td>BR-SAL-01</td>
+<td>Quotations convert to invoices</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-SAL-02</td>
+<td>Invoice payments, in part or in full</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-SAL-03</td>
+<td>Cancelling an invoice</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-SAL-04</td>
+<td>Credit notes</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-SAL-05</td>
+<td>Sales associate on an invoice</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-EXP-01</td>
+<td>Expense payments, in part or in full</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-EXP-02</td>
+<td>Cancelling an expense</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-EXP-03</td>
+<td>Recurring templates and accruals</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-PUR-01</td>
+<td>Purchase bills from goods receipts</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-PUR-02</td>
+<td>Purchase bill payment and cancellation</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-PUR-03</td>
+<td>Purchase returns</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-PUR-04</td>
+<td>Physical stock takes</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-PUR-05</td>
+<td>Warehouse transfers</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-POS-01</td>
+<td>Cashier shifts</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-POS-02</td>
+<td>Held sales</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-POS-03</td>
+<td>POS sales are invoices</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-ZAT-01</td>
+<td>E-invoicing is a per-company switch</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-ZAT-02</td>
+<td>Cancellation of e-invoiced documents</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-ZAT-03</td>
+<td>Hash-chain integrity</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-ZAT-04</td>
+<td>Safe storage of keys and signed documents</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-VAT-01</td>
+<td>VAT return figures</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-VAT-02</td>
+<td>Filing rules</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-VAT-03</td>
+<td>A filed quarter locks its documents</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-VAT-04</td>
+<td>VAT return rights and isolation</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-MST-01</td>
+<td>Document numbering</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-MST-02</td>
+<td>Customer and vendor import</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-MST-03</td>
+<td>Product import</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-MST-04</td>
+<td>Master data rights and retirement</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-ORG-01</td>
+<td>Every request belongs to one company</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-ORG-02</td>
+<td>User accounts</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-ORG-03</td>
+<td>Employees and job titles</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-ORG-04</td>
+<td>Sessions and sign-in</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-ORG-05</td>
+<td>No bulk save of documents</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
+<tr>
+<td>BR-ORG-06</td>
+<td>Capital contributions</td>
+<td>Built</td>
+<td>SB1</td>
+</tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-4">Roadmap (not yet built)</h3>
+<h3 id="sprint-log--p-5">Roadmap (not yet built)</h3>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Sprint</th>
 <th>Name</th>

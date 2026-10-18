@@ -112,10 +112,10 @@ const CH = [
   { part: 'The whole system' },
   { id: 'platform', src: 'docs/platform/00-platform-architecture.md' },
   { id: 'module-catalogue', src: 'docs/platform/annex-h-module-catalogue.md' },
-  { part: 'Requirements (finance core)' },
+  { part: 'Requirements' },
   { id: 'brd', src: GL + '01-business-requirements-document.md' },
   { id: 'srs', src: GL + '02-software-requirements-specification.md' },
-  { part: 'Design (finance core)' },
+  { part: 'Design' },
   { id: 'solution-design', src: GL + '03-solution-design-document.md' },
   { id: 'technical-design', src: GL + '04-technical-design-document.md' },
   { id: 'accounting-rules', src: 'docs/design-notes/accounting-rules.md' },
@@ -146,7 +146,7 @@ const CH = [
 for (const c of CH) if (c.src) linkmap[c.src] = `#${c.id}`;
 
 function overview() {
-  return `<p>This is the technical documentation of Warraq ERP as a whole: how the platform works (companies, permissions, ledger, e-invoicing), every module with its endpoints, tables, screens and tests, and, for the new finance core (General Ledger, Receivables, Payables, Bank), the requirements, design, tests and delivery history. It is one document, read top to bottom or by the menu on the left. Three long tables are on their own pages and linked: the <a href="data-dictionary.html">data dictionary</a>, the <a href="traceability.html">traceability matrix</a> and the <a href="test-catalogue.html">test-case catalogue</a>.</p>
+  return `<p>This is the technical documentation of Warraq ERP as a whole: how the platform works (companies, permissions, ledger, e-invoicing), every module with its endpoints, tables, screens and tests, and the requirements, design, tests and delivery history. The requirements and tests of the older modules (sales, expenses, procurement, POS, ZATCA, VAT, master data, users) were written as built from the code and its automated tests; those of the finance core (General Ledger, Receivables, Payables, Bank) were written before it was built. It is one document, read top to bottom or by the menu on the left. Three long tables are on their own pages and linked: the <a href="data-dictionary.html">data dictionary</a>, the <a href="traceability.html">traceability matrix</a> and the <a href="test-catalogue.html">test-case catalogue</a>.</p>
 <div class="table-wrap"><table class="plan"><thead><tr><th>If you want to know…</th><th>Read</th></tr></thead><tbody>
 <tr><td>How the whole system works, and what modules exist</td><td><a href="#platform">Platform architecture</a>, then the <a href="#module-catalogue">Module catalogue</a> (one sheet per module)</td></tr>
 <tr><td>What the business asked for in the finance core, and what is built</td><td><a href="#brd">Business requirements</a>, then <a href="#srs">System requirements</a></td></tr>

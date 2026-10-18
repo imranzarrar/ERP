@@ -29,7 +29,7 @@ Before 2.0 the system computed every report from documents (invoices, expenses, 
 
 ## 4. Scope
 
-**In scope:** 100 business requirements in 14 areas (section 6). 77 are built, 5 partly built, 18 planned.
+**In scope:** 134 business requirements in 22 areas (section 6). 111 are built, 5 partly built, 18 planned.
 
 **Out of scope (this programme):**
 * Fixed assets and depreciation (classes, CWIP, methods, runs, disposal, transfer, documents) (FR-FA-01..10) — A later phase; the ledger and dimensions are designed not to block it.
@@ -382,6 +382,124 @@ The requirements, design, test and sprint documents of the ledger core are gener
 
 **BR-NFR-06 Promotion to Live** — Must, Planned, source Decision, sprint S20.
 The Demo release is promoted to the Live system in a controlled release, with data migration, back-fill and verification on a copy of production first.
+
+### SAL — Sales documents (quotations, invoices, credit notes)
+
+**BR-SAL-01 Quotations convert to invoices** — Must, Built, source Platform, sprint SB1.
+A quotation can be created, edited, cancelled and converted into a tax invoice. A converted quotation is final. The conversion is an ordinary invoice and follows every invoice rule (numbering, period locks, e-invoicing).
+
+**BR-SAL-02 Invoice payments, in part or in full** — Must, Built, source Platform, sprint SB1.
+An invoice can be paid in several payments. Each payment is its own receipt voucher. A payment is limited to the remaining balance; a zero or negative amount, a cancelled invoice, an already paid invoice and a credit note cannot be paid. Only a user with the create right can record a payment, and only in the invoice's own company.
+
+**BR-SAL-03 Cancelling an invoice** — Must, Built, source Platform, sprint SB1.
+An invoice can be cancelled in an open period; the receipt voucher of a paid invoice is reversed by a reversal voucher, never deleted. An invoice dated in a filed VAT quarter cannot be cancelled; a ZATCA-cleared invoice cannot be cancelled (see BR-ZAT-02).
+
+**BR-SAL-04 Credit notes** — Must, Built, source Platform, sprint SB1.
+A credit note reverses an invoice. Only one credit note can be raised against an invoice. When the original was paid, the credit note reverses its receipt; when unpaid, no voucher is touched. Credit notes follow the approval rules when one matches.
+
+**BR-SAL-05 Sales associate on an invoice** — Should, Built, source Platform, sprint SB1.
+An invoice can name the employee who sold it. The employee must belong to the same company and be active; the field is optional.
+
+### EXP — Expenses and recurring postings
+
+**BR-EXP-01 Expense payments, in part or in full** — Must, Built, source Platform, sprint SB1.
+An expense can be paid in several payments, each its own payment voucher, never above the remaining balance. Paid or cancelled expenses cannot be paid, and another company's expense is never found.
+
+**BR-EXP-02 Cancelling an expense** — Must, Built, source Platform, sprint SB1.
+An expense can be cancelled once, by a user with the cancel right. A paid expense is cancelled with a reversal voucher. An expense dated in a filed VAT quarter cannot be cancelled.
+
+**BR-EXP-03 Recurring templates and accruals** — Should, Built, source Platform, sprint SB1.
+A company keeps recurring expense templates (create, edit, switch off) and accrual entries (edit, cancel). Amounts must be valid; nothing is hard-deleted: a template is deactivated and an accrual cancelled, together with its linked recurring posting.
+
+### PUR — Procurement and inventory
+
+**BR-PUR-01 Purchase bills from goods receipts** — Must, Built, source Platform, sprint SB1.
+A purchase bill is raised from goods receipt notes of one vendor. Its totals are computed on the server from the receipts, a receipt can be billed only once, a reversed receipt cannot be billed, and only a user with the create right can bill. A bill that matches an approval rule waits for approval.
+
+**BR-PUR-02 Purchase bill payment and cancellation** — Must, Built, source Platform, sprint SB1.
+A bill can be paid in part and then in full, never above the balance. An unpaid bill can be cancelled, which releases its receipts for re-billing; a bill with a payment cannot be cancelled. A bill dated in a filed VAT quarter cannot be cancelled.
+
+**BR-PUR-03 Purchase returns** — Must, Built, source Platform, sprint SB1.
+Goods can be returned to a vendor against a receipt: never more than was received or than remains after earlier returns, never against a reversed receipt. A return reduces stock and can be cancelled once (restoring stock). A return cannot be created while the current VAT quarter is filed.
+
+**BR-PUR-04 Physical stock takes** — Must, Built, source Platform, sprint SB1.
+A stock take snapshots the system quantity on the server and computes the variance. Finalising posts the counted quantity as the stock level, once. A draft can be cancelled; a completed one cannot.
+
+**BR-PUR-05 Warehouse transfers** — Must, Built, source Platform, sprint SB1.
+Stock moves between warehouses by a dispatch and a receiving. Dispatch deducts the source, receiving adds the quantity actually received, once even under concurrent requests. A dispatch still in transit can be cancelled to restore stock. Branch-restricted users act only on their own warehouses, and cross-company warehouses are refused.
+
+### POS — Point of sale
+
+**BR-POS-01 Cashier shifts** — Must, Built, source Platform, sprint SB1.
+A cashier opens and closes a shift, recording actual and expected cash. Shifts are listed and closed only within their own company; opening and closing need the shift right and using the terminal needs the access right.
+
+**BR-POS-02 Held sales** — Should, Built, source Platform, sprint SB1.
+A sale in progress can be held and later resumed. Held sales are visible only within their company and need the terminal access right.
+
+**BR-POS-03 POS sales are invoices** — Must, Built, source Compliance, sprint SB1.
+A POS sale is an ordinary tax invoice and goes through the same e-invoicing pipeline; a POS cancel needs its own permission.
+
+### ZAT — ZATCA e-invoicing
+
+**BR-ZAT-01 E-invoicing is a per-company switch** — Must, Built, source Compliance, sprint SB1.
+E-invoicing is off for a company until its onboarding enables it. With it off, an invoice lands as DISABLED with a real basic QR code and never touches the ZATCA gateway or the hash chain; with it on, the same invoice proceeds.
+
+**BR-ZAT-02 Cancellation of e-invoiced documents** — Must, Built, source Compliance, sprint SB1.
+An invoice that reached ZATCA (cleared or reported) or is being submitted cannot be cancelled; a credit note is the only reversal. An invoice that never reached ZATCA can be cancelled.
+
+**BR-ZAT-03 Hash-chain integrity** — Must, Built, source Compliance, sprint SB1.
+Every document of a company and environment sits on one hash chain that starts at genesis for each new company and environment. Resubmitting the tip reuses its position; resubmitting an earlier document after a later one mints a fresh position; cancelling the tip that never reached ZATCA gives its position back; a cleared document cannot be resubmitted; the issue time is locked once set.
+
+**BR-ZAT-04 Safe storage of keys and signed documents** — Must, Built, source Compliance, sprint SB1.
+ZATCA private keys are encrypted at rest (authenticated encryption, random IV, tamper detection, clear error when the secret is missing or wrong). The signed XML is stored compressed, losslessly, and is served on demand, never in list payloads, and never to another tenant.
+
+### VAT — VAT returns and period locks
+
+**BR-VAT-01 VAT return figures** — Must, Built, source Compliance, sprint SB1.
+A quarterly VAT return is generated from the documents: sales, output VAT, purchases and input VAT, with credit notes netted. The return and the VAT summary report show the same numbers. A generated return can be deleted and regenerated, and a duplicate for the same quarter is refused.
+
+**BR-VAT-02 Filing rules** — Must, Built, source Compliance, sprint SB1.
+A return cannot be generated or filed while an invoice in its quarter has not completed e-invoicing. Quarters must be filed in order; a filed return is permanently locked.
+
+**BR-VAT-03 A filed quarter locks its documents** — Must, Built, source Compliance, sprint SB1.
+Once a quarter is filed (and while a generated return freezes it), no invoice, credit note, expense or purchase bill can be created in it, and none can be cancelled or converted into it. Quotations, requisitions, orders and stock takes are not locked.
+
+**BR-VAT-04 VAT return rights and isolation** — Must, Built, source Compliance, sprint SB1.
+Reading, generating, filing and deleting a return are separate rights, and a company can never see or touch another company's returns.
+
+### MST — Master data, numbering and imports
+
+**BR-MST-01 Document numbering** — Must, Built, source Platform, sprint SB1.
+Every document type has its own numbering in the PREFIX-1001 style, issued sequentially with no duplicates or gaps even under concurrent requests, per document period, continuing from the legacy counter. Changing the policy needs the right and cannot change e-invoicing settings.
+
+**BR-MST-02 Customer and vendor import** — Should, Built, source Platform, sprint SB1.
+Customers and vendors can be loaded from a spreadsheet: a template, validation before saving (a business customer needs a valid VAT number and full address), update of an existing record matched by VAT number or phone, conflict detection, a row cap and the create right.
+
+**BR-MST-03 Product import** — Should, Built, source Platform, sprint SB1.
+Products can be loaded from a spreadsheet: template, validation without writing, categories resolved by name in the company, real SKUs assigned, an existing barcode updates instead of duplicating, a row cap and the create right.
+
+**BR-MST-04 Master data rights and retirement** — Must, Built, source Platform, sprint SB1.
+Master data uses create, read, update and delete rights, where delete means making a record inactive. Create does not allow editing an existing row and update does not allow creating one; an inactive record cannot be edited. Cancel sets a flag without changing the status and works once.
+
+### ORG — Tenancy, users and company administration
+
+**BR-ORG-01 Every request belongs to one company** — Must, Built, source Platform, sprint SB1.
+Data returned and written is always for the company of the request: a user sees their own company; only a super-administrator can switch company, and the choice persists in the session. A company can never overwrite another company's customer, invoice, quotation or expense, and reports and dashboards are computed per company.
+
+**BR-ORG-02 User accounts** — Must, Built, source Platform, sprint SB1.
+Administrators can deactivate and reactivate users of their own company (never their own session), assign roles of the same company only, and a delegated user creating accounts can only create ordinary staff. Passwords need at least six characters with a letter and a digit.
+
+**BR-ORG-03 Employees and job titles** — Should, Built, source Platform, sprint SB1.
+Employees have a job title, an employee number issued in sequence (width and start configurable) and an optional branch. Duplicate active titles and numbers are refused, a deactivated title cannot be used, and a new login account must link to an active employee once the company has employees.
+
+**BR-ORG-04 Sessions and sign-in** — Must, Built, source Platform, sprint SB1.
+A session records the user and company at sign-in, expires, and is extended once past half of its lifetime. Only a super-administrator can list sessions across companies.
+
+**BR-ORG-05 No bulk save of documents** — Must, Built, source Platform, sprint SB1.
+There is no endpoint that overwrites posted documents in bulk. A document is written only through its own route, and a request naming an existing id cannot take over another document's lines.
+
+**BR-ORG-06 Capital contributions** — Should, Built, source Platform, sprint SB1.
+An investor's capital contribution can be recorded: it creates a receipt voucher and adds to capital contributed, accumulating across contributions. Amounts must be positive, banks active and investors in the company.
 
 ## 7. Constraints and assumptions
 

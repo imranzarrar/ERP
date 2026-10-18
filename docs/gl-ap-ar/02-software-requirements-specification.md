@@ -200,6 +200,80 @@ A multi-tenant web application (React client, Node/Express API, PostgreSQL with 
 | FR-NFR-05.1 | BR-NFR-05 | The BRD, SRS, sprint log and traceability matrix shall be generated from docs/gl-ap-ar/source and validated. | scripts/build-gl-docs.mjs | (target: sprint 10,10,10,10,10) |
 | FR-NFR-06.1 | BR-NFR-06 | Live promotion shall run on a scrubbed copy of production first (Sprint 20). | planned | REL-009 |
 
+### SAL — Sales documents (quotations, invoices, credit notes)
+
+| FR | BR | The system shall | Implemented in | Test cases |
+|---|---|---|---|---|
+| FR-SAL-01.1 | BR-SAL-01 | The system shall convert an accepted quotation into an invoice through the normal invoice rules, refusing it when the invoice date falls in a filed VAT quarter. | server/routes/transactions.ts (quotations) | SAL-001 |
+| FR-SAL-02.1 | BR-SAL-02 | The system shall record each payment of an invoice as a separate receipt voucher, set Partially Paid or Paid from the balance, and refuse amounts above the balance, zero, negative, and payments of cancelled, paid or credit-note documents. | server/routes/transactions.ts (POST /invoices/:id/paid) | SAL-002, SAL-003, SAL-004, SAL-005 |
+| FR-SAL-03.1 | BR-SAL-03 | The system shall cancel an invoice by writing a reversal voucher for any payment, and refuse cancellation in a filed quarter. | server/routes/transactions.ts (POST /invoices/:id/cancel) | SAL-006, SAL-007 |
+| FR-SAL-04.1 | BR-SAL-04 | The system shall issue one credit note per invoice and reverse the receipt voucher of a paid original. | server/routes/transactions.ts (POST /invoices/:id/note) | SAL-008, SAL-009, SAL-010 |
+| FR-SAL-05.1 | BR-SAL-05 | The system shall accept an optional sales associate that is active and in the invoice's company, and refuse others. | server/routes/transactions.ts | SAL-011, SAL-012 |
+
+### EXP — Expenses and recurring postings
+
+| FR | BR | The system shall | Implemented in | Test cases |
+|---|---|---|---|---|
+| FR-EXP-01.1 | BR-EXP-01 | The system shall post a payment voucher per payment of an expense, settle the remainder to Paid, and refuse overpayment and payment of paid or cancelled expenses. | server/routes/expenses.ts (POST /:id/pay) | EXP-001, EXP-002, EXP-003 |
+| FR-EXP-02.1 | BR-EXP-02 | The system shall cancel an expense with a reversal voucher for payments, only once, only with the right, and not in a filed quarter. | server/routes/expenses.ts (POST /:id/cancel) | EXP-004, EXP-005, EXP-006 |
+| FR-EXP-03.1 | BR-EXP-03 | The system shall maintain recurring templates and accruals, refuse invalid amounts, and retire them by deactivation or cancellation. | server/routes/transactions.ts (recurring-templates, accruals) | EXP-007, EXP-008, EXP-009 |
+
+### PUR — Procurement and inventory
+
+| FR | BR | The system shall | Implemented in | Test cases |
+|---|---|---|---|---|
+| FR-PUR-01.1 | BR-PUR-01 | The system shall compute bill totals from the referenced receipts, refuse double billing, reversed receipts, mixed vendors and callers without the right. | server/routes/inventory.ts (POST /purchase-bills) | PUR-001, PUR-002, PUR-003, PUR-004 |
+| FR-PUR-02.1 | BR-PUR-02 | The system shall post payments against a bill up to the balance and cancel only unpaid bills, releasing their receipts. | server/routes/inventory.ts (pay, cancel) | PUR-005, PUR-006, PUR-007 |
+| FR-PUR-03.1 | BR-PUR-03 | The system shall limit returns to the remaining received quantity, move stock, allow one cancellation, and refuse returns in a filed quarter. | server/routes/inventory.ts (purchase-returns) | PUR-008, PUR-009, PUR-010 |
+| FR-PUR-04.1 | BR-PUR-04 | The system shall snapshot quantities server-side, post counted quantities on finalisation once, and cancel only drafts. | server/routes/inventory.ts (stock-takes) | PUR-011, PUR-012, PUR-013 |
+| FR-PUR-05.1 | BR-PUR-05 | The system shall move stock by dispatch and receiving, accept one receiving per dispatch, enforce warehouse branch access and company ownership, and number dispatches uniquely. | server/routes/inventory.ts (warehouse-dispatches, warehouse-receivings) | PUR-014, PUR-015, PUR-016, PUR-017, PUR-018 |
+
+### POS — Point of sale
+
+| FR | BR | The system shall | Implemented in | Test cases |
+|---|---|---|---|---|
+| FR-POS-01.1 | BR-POS-01 | The system shall open and close shifts per company with the right permissions. | server/routes/pos.ts (shifts) | POS-001, POS-002 |
+| FR-POS-02.1 | BR-POS-02 | The system shall hold, list and delete held sales per company. | server/routes/pos.ts (held-invoices) | POS-003, POS-004 |
+| FR-POS-03.1 | BR-POS-03 | The system shall submit a POS sale through the normal invoice pipeline and gate POS cancellation by permission. | server/routes/pos.ts; server/lib/zatca/processInvoice.ts | POS-005, POS-006 |
+
+### ZAT — ZATCA e-invoicing
+
+| FR | BR | The system shall | Implemented in | Test cases |
+|---|---|---|---|---|
+| FR-ZAT-01.1 | BR-ZAT-01 | The system shall stop at DISABLED before any network call when the company switch is off, and proceed when it is on. | server/lib/zatca/processInvoice.ts | ZAT-001, ZAT-002 |
+| FR-ZAT-02.1 | BR-ZAT-02 | The system shall refuse cancellation in CLEARED, REPORTED and SUBMITTING states and allow it for NOT_SUBMITTED. | server/routes/transactions.ts (cancel) | ZAT-003, ZAT-004, ZAT-005, ZAT-006 |
+| FR-ZAT-03.1 | BR-ZAT-03 | The system shall reserve chain positions under a lock, keep chains independent per company and environment, and keep the issue time stable across resubmission. | server/lib/zatca/hashChain.ts; processInvoice.ts | ZAT-007, ZAT-008, ZAT-009, ZAT-010 |
+| FR-ZAT-04.1 | BR-ZAT-04 | The system shall encrypt keys with AES-GCM, store XML compressed with a format tag, and expose it only by an authenticated, company-scoped request. | server/lib/zatca/crypto.ts; xmlStorage.ts | ZAT-011, ZAT-012, ZAT-013, ZAT-014, ZAT-015 |
+
+### VAT — VAT returns and period locks
+
+| FR | BR | The system shall | Implemented in | Test cases |
+|---|---|---|---|---|
+| FR-VAT-01.1 | BR-VAT-01 | The system shall compute return figures from one function shared with the report, and refuse a duplicate generation. | server/routes/taxReturns.ts; server/lib/vatReturn.ts | VAT-001, VAT-002 |
+| FR-VAT-02.1 | BR-VAT-02 | The system shall check e-invoicing completeness at generation and again at filing, and enforce quarter order. | server/routes/taxReturns.ts | VAT-003, VAT-004, VAT-005 |
+| FR-VAT-03.1 | BR-VAT-03 | The system shall refuse VAT-touching documents dated in a filed or frozen quarter and leave non-VAT documents alone. | server/lib/postingGuard.ts; server/lib/vatReturn.ts | VAT-006, VAT-007, VAT-008 |
+| FR-VAT-04.1 | BR-VAT-04 | The system shall gate each return action by its own permission and scope every query by company. | server/routes/taxReturns.ts | VAT-009, VAT-010 |
+
+### MST — Master data, numbering and imports
+
+| FR | BR | The system shall | Implemented in | Test cases |
+|---|---|---|---|---|
+| FR-MST-01.1 | BR-MST-01 | The system shall issue numbers through one shared counter per type and period, safely under concurrency. | server/lib/documentNumbering.ts | MST-001, MST-002, MST-003 |
+| FR-MST-02.1 | BR-MST-02 | The system shall validate every row, write only valid rows the user keeps, update by VAT or phone and report conflicts. | server/routes/masterImport.ts; src/components/PartyImportModal.tsx | MST-004, MST-005, MST-006 |
+| FR-MST-03.1 | BR-MST-03 | The system shall validate then commit product rows, resolving categories in the company and updating by barcode. | server/routes/masterImport.ts; src/components/ProductImportModal.tsx | MST-007, MST-008, MST-009 |
+| FR-MST-04.1 | BR-MST-04 | The system shall check the right that matches the action on existing or new rows and refuse edits of inactive records. | server/routes/masterEntities.ts; src/permissionSchema.ts | MST-010, MST-011, MST-012 |
+
+### ORG — Tenancy, users and company administration
+
+| FR | BR | The system shall | Implemented in | Test cases |
+|---|---|---|---|---|
+| FR-ORG-01.1 | BR-ORG-01 | The system shall scope every request by the company resolved at authentication and refuse writes to rows of another company. | server.ts (isAuthenticated); server/lib/authz.ts | ORG-001, ORG-002, ORG-003, ORG-004, ORG-005 |
+| FR-ORG-02.1 | BR-ORG-02 | The system shall limit user administration to the company, drop roles of another company, force the staff role for delegated creators and enforce the password rules. | server/routes/users.ts | ORG-006, ORG-007, ORG-008, ORG-009 |
+| FR-ORG-03.1 | BR-ORG-03 | The system shall issue employee numbers sequentially, enforce unique numbers and titles, and require an employee link for new accounts once employees exist. | server/routes/employees.ts | ORG-010, ORG-011, ORG-012 |
+| FR-ORG-04.1 | BR-ORG-04 | The system shall expire sessions, extend them on activity and restrict listing to super-administrators. | server.ts; server/routes/sessions.ts | ORG-013, ORG-014 |
+| FR-ORG-05.1 | BR-ORG-05 | The system shall not serve a bulk-save route and shall refuse create requests that name ids. | server/routes/transactions.ts; server.ts | ORG-015, ORG-016 |
+| FR-ORG-06.1 | BR-ORG-06 | The system shall record contributions with a receipt voucher and refuse invalid amounts, banks and investors. | server/routes/transactions.ts (investors) | ORG-017, ORG-018 |
+
 ## 4. Interfaces
 
 * HTTP/JSON API: see annex B (generated from the route files).

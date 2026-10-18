@@ -6,6 +6,7 @@ Sprints are numbered. Done sprints list the commits that delivered them (git, br
 
 | Sprint | Name | Status | Dates | Goal |
 |---|---|---|---|---|
+| SB1 | Warraq 1.0 baseline | Done | before 2026-10-14 (documented 2026-10-18) | The modules that existed before the finance core, written up as built: requirements, system requirements and test cases traced to the existing automated tests. |
 | S0 | Platform and environments | Done | 2026-10-14 | Run Live (1.0) and Demo (2.0) side by side with safe release scripts. |
 | S1 | General Ledger foundation | Done | 2026-10-14 | Company chart of accounts, account mapping, manual journals with approval, ledger reports, opening balances. |
 | S2 | Dimensions and report engine | Done | 2026-10-14 | Analytical dimensions and one configurable engine for every statement. |
@@ -27,6 +28,21 @@ Sprints are numbered. Done sprints list the commits that delivered them (git, br
 | S18 | Payables enhancements | Planned | TBD | Payment approval and payment runs. |
 | S19 | Reporting cut-over and printing | Planned | TBD | Printed statements; retire document-based statements after agreement. |
 | S20 | Hardening and Live promotion | Planned | TBD | Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to Live. |
+
+## Sprint B1 — Warraq 1.0 baseline (Done)
+
+The modules that existed before the finance core, written up as built: requirements, system requirements and test cases traced to the existing automated tests.
+
+| Item | Title | Business requirements | System requirements |
+|---|---|---|---|
+| SB1-01 | Sales documents (quotations, invoices, credit notes): as-built requirements, system requirements and test cases | BR-SAL-01 Quotations convert to invoices; BR-SAL-02 Invoice payments, in part or in full; BR-SAL-03 Cancelling an invoice; BR-SAL-04 Credit notes; BR-SAL-05 Sales associate on an invoice | FR-SAL-01.1, FR-SAL-02.1, FR-SAL-03.1, FR-SAL-04.1, FR-SAL-05.1 |
+| SB1-02 | Expenses and recurring postings: as-built requirements, system requirements and test cases | BR-EXP-01 Expense payments, in part or in full; BR-EXP-02 Cancelling an expense; BR-EXP-03 Recurring templates and accruals | FR-EXP-01.1, FR-EXP-02.1, FR-EXP-03.1 |
+| SB1-03 | Procurement and inventory: as-built requirements, system requirements and test cases | BR-PUR-01 Purchase bills from goods receipts; BR-PUR-02 Purchase bill payment and cancellation; BR-PUR-03 Purchase returns; BR-PUR-04 Physical stock takes; BR-PUR-05 Warehouse transfers | FR-PUR-01.1, FR-PUR-02.1, FR-PUR-03.1, FR-PUR-04.1, FR-PUR-05.1 |
+| SB1-04 | Point of sale: as-built requirements, system requirements and test cases | BR-POS-01 Cashier shifts; BR-POS-02 Held sales; BR-POS-03 POS sales are invoices | FR-POS-01.1, FR-POS-02.1, FR-POS-03.1 |
+| SB1-05 | ZATCA e-invoicing: as-built requirements, system requirements and test cases | BR-ZAT-01 E-invoicing is a per-company switch; BR-ZAT-02 Cancellation of e-invoiced documents; BR-ZAT-03 Hash-chain integrity; BR-ZAT-04 Safe storage of keys and signed documents | FR-ZAT-01.1, FR-ZAT-02.1, FR-ZAT-03.1, FR-ZAT-04.1 |
+| SB1-06 | VAT returns and period locks: as-built requirements, system requirements and test cases | BR-VAT-01 VAT return figures; BR-VAT-02 Filing rules; BR-VAT-03 A filed quarter locks its documents; BR-VAT-04 VAT return rights and isolation | FR-VAT-01.1, FR-VAT-02.1, FR-VAT-03.1, FR-VAT-04.1 |
+| SB1-07 | Master data, numbering and imports: as-built requirements, system requirements and test cases | BR-MST-01 Document numbering; BR-MST-02 Customer and vendor import; BR-MST-03 Product import; BR-MST-04 Master data rights and retirement | FR-MST-01.1, FR-MST-02.1, FR-MST-03.1, FR-MST-04.1 |
+| SB1-08 | Tenancy, users and company administration: as-built requirements, system requirements and test cases | BR-ORG-01 Every request belongs to one company; BR-ORG-02 User accounts; BR-ORG-03 Employees and job titles; BR-ORG-04 Sessions and sign-in; BR-ORG-05 No bulk save of documents; BR-ORG-06 Capital contributions | FR-ORG-01.1, FR-ORG-02.1, FR-ORG-03.1, FR-ORG-04.1, FR-ORG-05.1, FR-ORG-06.1 |
 
 ## Sprint 0 — Platform and environments (Done)
 
@@ -149,7 +165,7 @@ Commits: `7d03574`, `55a95cd`, `7f95b6a`, `56ee1b2`
 |---|---|---|---|
 | S10-01 | Generated BRD, SRS, sprint log, traceability matrix and annexes | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
 | S10-02 | One technical document (platform architecture, module catalogue, requirements, design, rules, tests, sprint log, annexes) and one user manual (older modules plus the finance core), with a link check (done) | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
-| S10-03 | Pending: requirements, system requirements and test cases for the older modules (invoices, quotations, POS, expenses, procurement and inventory, VAT returns, ZATCA, users), so they are traced like the finance core | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
+| S10-03 | Requirements, system requirements and test cases for the older modules (invoices, quotations, POS, expenses, procurement and inventory, VAT returns, ZATCA, master data, users), written as built and traced to the existing automated tests (done: baseline sprint B1, 34 requirements, 100 cases) | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
 | S10-04 | Pending: real screenshots for the older chapters of the user manual and a walk-through of each older screen in 2.0 | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
 | S10-05 | Pending: detect the permission of every endpoint in the module catalogue (149 endpoints show not detected) and a check that flags manual chapters when a screen changes | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
 
@@ -353,6 +369,40 @@ Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to
 | BR-NFR-04 | Safe releases and environments | Built | S0 |
 | BR-NFR-05 | Maintainable documentation | Planned | S10, S10, S10, S10, S10 |
 | BR-NFR-06 | Promotion to Live | Planned | S20 |
+| BR-SAL-01 | Quotations convert to invoices | Built | SB1 |
+| BR-SAL-02 | Invoice payments, in part or in full | Built | SB1 |
+| BR-SAL-03 | Cancelling an invoice | Built | SB1 |
+| BR-SAL-04 | Credit notes | Built | SB1 |
+| BR-SAL-05 | Sales associate on an invoice | Built | SB1 |
+| BR-EXP-01 | Expense payments, in part or in full | Built | SB1 |
+| BR-EXP-02 | Cancelling an expense | Built | SB1 |
+| BR-EXP-03 | Recurring templates and accruals | Built | SB1 |
+| BR-PUR-01 | Purchase bills from goods receipts | Built | SB1 |
+| BR-PUR-02 | Purchase bill payment and cancellation | Built | SB1 |
+| BR-PUR-03 | Purchase returns | Built | SB1 |
+| BR-PUR-04 | Physical stock takes | Built | SB1 |
+| BR-PUR-05 | Warehouse transfers | Built | SB1 |
+| BR-POS-01 | Cashier shifts | Built | SB1 |
+| BR-POS-02 | Held sales | Built | SB1 |
+| BR-POS-03 | POS sales are invoices | Built | SB1 |
+| BR-ZAT-01 | E-invoicing is a per-company switch | Built | SB1 |
+| BR-ZAT-02 | Cancellation of e-invoiced documents | Built | SB1 |
+| BR-ZAT-03 | Hash-chain integrity | Built | SB1 |
+| BR-ZAT-04 | Safe storage of keys and signed documents | Built | SB1 |
+| BR-VAT-01 | VAT return figures | Built | SB1 |
+| BR-VAT-02 | Filing rules | Built | SB1 |
+| BR-VAT-03 | A filed quarter locks its documents | Built | SB1 |
+| BR-VAT-04 | VAT return rights and isolation | Built | SB1 |
+| BR-MST-01 | Document numbering | Built | SB1 |
+| BR-MST-02 | Customer and vendor import | Built | SB1 |
+| BR-MST-03 | Product import | Built | SB1 |
+| BR-MST-04 | Master data rights and retirement | Built | SB1 |
+| BR-ORG-01 | Every request belongs to one company | Built | SB1 |
+| BR-ORG-02 | User accounts | Built | SB1 |
+| BR-ORG-03 | Employees and job titles | Built | SB1 |
+| BR-ORG-04 | Sessions and sign-in | Built | SB1 |
+| BR-ORG-05 | No bulk save of documents | Built | SB1 |
+| BR-ORG-06 | Capital contributions | Built | SB1 |
 
 ## Roadmap (not yet built)
 

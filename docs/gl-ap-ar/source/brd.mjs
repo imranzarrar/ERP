@@ -21,6 +21,14 @@ export const AREAS = [
   { id: 'SEC', name: 'Security, permissions and audit' },
   { id: 'LOC', name: 'Localisation' },
   { id: 'NFR', name: 'Platform and quality' },
+  { id: "SAL", name: "Sales documents (quotations, invoices, credit notes)" },
+  { id: "EXP", name: "Expenses and recurring postings" },
+  { id: "PUR", name: "Procurement and inventory" },
+  { id: "POS", name: "Point of sale" },
+  { id: "ZAT", name: "ZATCA e-invoicing" },
+  { id: "VAT", name: "VAT returns and period locks" },
+  { id: "MST", name: "Master data, numbering and imports" },
+  { id: "ORG", name: "Tenancy, users and company administration" },
 ];
 
 const R = [];
@@ -166,6 +174,65 @@ add('NFR', [
   ['Safe releases and environments', 'Live (1.0) and Demo (2.0) are separate tracks; releases run by script with a read-the-plan database step, row-level-security and constraint verification, and a rollback path.', 'Platform', 'Must', 'Built', []],
   ['Maintainable documentation', 'The requirements, design, test and sprint documents of the ledger core are generated from one traceable source and kept in the repository.', 'Decision', 'Must', 'Planned', []],
   ['Promotion to Live', 'The Demo release is promoted to the Live system in a controlled release, with data migration, back-fill and verification on a copy of production first.', 'Decision', 'Must', 'Planned', []],
+]);
+
+// ---- Modules built before the finance core (Warraq 1.0 baseline), written as-built from the code and its tests
+add("SAL", [
+  ["Quotations convert to invoices","A quotation can be created, edited, cancelled and converted into a tax invoice. A converted quotation is final. The conversion is an ordinary invoice and follows every invoice rule (numbering, period locks, e-invoicing).","Platform","Must","Built",[]],
+  ["Invoice payments, in part or in full","An invoice can be paid in several payments. Each payment is its own receipt voucher. A payment is limited to the remaining balance; a zero or negative amount, a cancelled invoice, an already paid invoice and a credit note cannot be paid. Only a user with the create right can record a payment, and only in the invoice's own company.","Platform","Must","Built",[]],
+  ["Cancelling an invoice","An invoice can be cancelled in an open period; the receipt voucher of a paid invoice is reversed by a reversal voucher, never deleted. An invoice dated in a filed VAT quarter cannot be cancelled; a ZATCA-cleared invoice cannot be cancelled (see BR-ZAT-02).","Platform","Must","Built",[]],
+  ["Credit notes","A credit note reverses an invoice. Only one credit note can be raised against an invoice. When the original was paid, the credit note reverses its receipt; when unpaid, no voucher is touched. Credit notes follow the approval rules when one matches.","Platform","Must","Built",[]],
+  ["Sales associate on an invoice","An invoice can name the employee who sold it. The employee must belong to the same company and be active; the field is optional.","Platform","Should","Built",[]],
+]);
+
+add("EXP", [
+  ["Expense payments, in part or in full","An expense can be paid in several payments, each its own payment voucher, never above the remaining balance. Paid or cancelled expenses cannot be paid, and another company's expense is never found.","Platform","Must","Built",[]],
+  ["Cancelling an expense","An expense can be cancelled once, by a user with the cancel right. A paid expense is cancelled with a reversal voucher. An expense dated in a filed VAT quarter cannot be cancelled.","Platform","Must","Built",[]],
+  ["Recurring templates and accruals","A company keeps recurring expense templates (create, edit, switch off) and accrual entries (edit, cancel). Amounts must be valid; nothing is hard-deleted: a template is deactivated and an accrual cancelled, together with its linked recurring posting.","Platform","Should","Built",[]],
+]);
+
+add("PUR", [
+  ["Purchase bills from goods receipts","A purchase bill is raised from goods receipt notes of one vendor. Its totals are computed on the server from the receipts, a receipt can be billed only once, a reversed receipt cannot be billed, and only a user with the create right can bill. A bill that matches an approval rule waits for approval.","Platform","Must","Built",[]],
+  ["Purchase bill payment and cancellation","A bill can be paid in part and then in full, never above the balance. An unpaid bill can be cancelled, which releases its receipts for re-billing; a bill with a payment cannot be cancelled. A bill dated in a filed VAT quarter cannot be cancelled.","Platform","Must","Built",[]],
+  ["Purchase returns","Goods can be returned to a vendor against a receipt: never more than was received or than remains after earlier returns, never against a reversed receipt. A return reduces stock and can be cancelled once (restoring stock). A return cannot be created while the current VAT quarter is filed.","Platform","Must","Built",[]],
+  ["Physical stock takes","A stock take snapshots the system quantity on the server and computes the variance. Finalising posts the counted quantity as the stock level, once. A draft can be cancelled; a completed one cannot.","Platform","Must","Built",[]],
+  ["Warehouse transfers","Stock moves between warehouses by a dispatch and a receiving. Dispatch deducts the source, receiving adds the quantity actually received, once even under concurrent requests. A dispatch still in transit can be cancelled to restore stock. Branch-restricted users act only on their own warehouses, and cross-company warehouses are refused.","Platform","Must","Built",[]],
+]);
+
+add("POS", [
+  ["Cashier shifts","A cashier opens and closes a shift, recording actual and expected cash. Shifts are listed and closed only within their own company; opening and closing need the shift right and using the terminal needs the access right.","Platform","Must","Built",[]],
+  ["Held sales","A sale in progress can be held and later resumed. Held sales are visible only within their company and need the terminal access right.","Platform","Should","Built",[]],
+  ["POS sales are invoices","A POS sale is an ordinary tax invoice and goes through the same e-invoicing pipeline; a POS cancel needs its own permission.","Compliance","Must","Built",[]],
+]);
+
+add("ZAT", [
+  ["E-invoicing is a per-company switch","E-invoicing is off for a company until its onboarding enables it. With it off, an invoice lands as DISABLED with a real basic QR code and never touches the ZATCA gateway or the hash chain; with it on, the same invoice proceeds.","Compliance","Must","Built",[]],
+  ["Cancellation of e-invoiced documents","An invoice that reached ZATCA (cleared or reported) or is being submitted cannot be cancelled; a credit note is the only reversal. An invoice that never reached ZATCA can be cancelled.","Compliance","Must","Built",[]],
+  ["Hash-chain integrity","Every document of a company and environment sits on one hash chain that starts at genesis for each new company and environment. Resubmitting the tip reuses its position; resubmitting an earlier document after a later one mints a fresh position; cancelling the tip that never reached ZATCA gives its position back; a cleared document cannot be resubmitted; the issue time is locked once set.","Compliance","Must","Built",[]],
+  ["Safe storage of keys and signed documents","ZATCA private keys are encrypted at rest (authenticated encryption, random IV, tamper detection, clear error when the secret is missing or wrong). The signed XML is stored compressed, losslessly, and is served on demand, never in list payloads, and never to another tenant.","Compliance","Must","Built",[]],
+]);
+
+add("VAT", [
+  ["VAT return figures","A quarterly VAT return is generated from the documents: sales, output VAT, purchases and input VAT, with credit notes netted. The return and the VAT summary report show the same numbers. A generated return can be deleted and regenerated, and a duplicate for the same quarter is refused.","Compliance","Must","Built",[]],
+  ["Filing rules","A return cannot be generated or filed while an invoice in its quarter has not completed e-invoicing. Quarters must be filed in order; a filed return is permanently locked.","Compliance","Must","Built",[]],
+  ["A filed quarter locks its documents","Once a quarter is filed (and while a generated return freezes it), no invoice, credit note, expense or purchase bill can be created in it, and none can be cancelled or converted into it. Quotations, requisitions, orders and stock takes are not locked.","Compliance","Must","Built",[]],
+  ["VAT return rights and isolation","Reading, generating, filing and deleting a return are separate rights, and a company can never see or touch another company's returns.","Compliance","Must","Built",[]],
+]);
+
+add("MST", [
+  ["Document numbering","Every document type has its own numbering in the PREFIX-1001 style, issued sequentially with no duplicates or gaps even under concurrent requests, per document period, continuing from the legacy counter. Changing the policy needs the right and cannot change e-invoicing settings.","Platform","Must","Built",[]],
+  ["Customer and vendor import","Customers and vendors can be loaded from a spreadsheet: a template, validation before saving (a business customer needs a valid VAT number and full address), update of an existing record matched by VAT number or phone, conflict detection, a row cap and the create right.","Platform","Should","Built",[]],
+  ["Product import","Products can be loaded from a spreadsheet: template, validation without writing, categories resolved by name in the company, real SKUs assigned, an existing barcode updates instead of duplicating, a row cap and the create right.","Platform","Should","Built",[]],
+  ["Master data rights and retirement","Master data uses create, read, update and delete rights, where delete means making a record inactive. Create does not allow editing an existing row and update does not allow creating one; an inactive record cannot be edited. Cancel sets a flag without changing the status and works once.","Platform","Must","Built",[]],
+]);
+
+add("ORG", [
+  ["Every request belongs to one company","Data returned and written is always for the company of the request: a user sees their own company; only a super-administrator can switch company, and the choice persists in the session. A company can never overwrite another company's customer, invoice, quotation or expense, and reports and dashboards are computed per company.","Platform","Must","Built",[]],
+  ["User accounts","Administrators can deactivate and reactivate users of their own company (never their own session), assign roles of the same company only, and a delegated user creating accounts can only create ordinary staff. Passwords need at least six characters with a letter and a digit.","Platform","Must","Built",[]],
+  ["Employees and job titles","Employees have a job title, an employee number issued in sequence (width and start configurable) and an optional branch. Duplicate active titles and numbers are refused, a deactivated title cannot be used, and a new login account must link to an active employee once the company has employees.","Platform","Should","Built",[]],
+  ["Sessions and sign-in","A session records the user and company at sign-in, expires, and is extended once past half of its lifetime. Only a super-administrator can list sessions across companies.","Platform","Must","Built",[]],
+  ["No bulk save of documents","There is no endpoint that overwrites posted documents in bulk. A document is written only through its own route, and a request naming an existing id cannot take over another document's lines.","Platform","Must","Built",[]],
+  ["Capital contributions","An investor's capital contribution can be recorded: it creates a receipt voucher and adds to capital contributed, accumulating across contributions. Amounts must be positive, banks active and investors in the company.","Platform","Should","Built",[]],
 ]);
 
 export const BRS = R;
