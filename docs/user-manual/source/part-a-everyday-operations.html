@@ -335,7 +335,7 @@
       <section id="v2-changes" class="wide" style="max-width:none;">
         <p class="section-eyebrow">Read this if you used Warraq 1.0</p>
         <h2>What is different in 2.0 for the screens you already know</h2>
-        <p style="max-width:74ch;">Everything in this manual up to the finance-core chapters works as described, in 1.0 and in 2.0. Warraq 2.0 (the Demo) adds a general ledger behind the same screens and changes a few things you will notice on them. Nothing below applies to Live (1.0) until 2.0 is released.</p>
+        <p style="max-width:74ch;">Everything in this manual up to the finance-core chapters works as described, in 1.0 and in 2.0. Warraq 2.0 (the Demo) adds a general ledger behind the same screens and changes a few things you will notice on them. Nothing below applies to Live (1.0) until 2.0 is released. The older chapters show their screens as reproductions; each also has a real 2.0 screenshot where the screen changed or where a 2.0 note applies.</p>
         <div class="table-wrap"><table class="plan"><thead><tr><th>Where you will notice it</th><th>What is different in 2.0</th><th>Details</th></tr></thead><tbody>
           <tr><td>Menu</td><td>Three new menu groups: <b>General Ledger Setup</b> (chart of accounts, dimensions, opening balances, posting control, approval rules), <b>Accounting Operations</b> (My Approvals, journals, receivables, payables, bank) and <b>General Ledger Reports</b>. The older groups are unchanged.</td><td><a href="#fc-1">Finance core, chapter 1</a></td></tr>
           <tr><td>Every invoice, credit note, expense, bill, goods receipt and payment</td><td>Posts to the ledger as well, tagged with the customer or vendor. Your screens, numbering and printouts are the same.</td><td><a href="#fc-3">Receivables</a>, <a href="#fc-4">Payables</a></td></tr>
@@ -733,6 +733,7 @@
           <div class="label">Branch-scoped, always</div>
           <p style="margin:0;">Every shift, held sale, and POS sale is attributed to the branch the cashier is working under. A cashier restricted to "Jeddah Coastal Branch" never sees Riyadh's held carts or shift history, even by direct link.</p>
         </div>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/46-legacy-pos-shifts.png" alt="Warraq 2.0: Shifts and Z-Reports (no shifts yet for the demonstration company)" loading="lazy"><figcaption>Warraq 2.0: Shifts and Z-Reports (no shifts yet for the demonstration company)</figcaption></figure></div>
       </section>
 
 
@@ -846,6 +847,9 @@
           <p style="margin:0;">Five checks run before an invoice is accepted: it must have <b>at least one line item</b>; every line's <b>sales price must be greater than zero</b>; a line's <b>discount can't reduce that price to zero or below</b>; discounts can be entered in decimals (e.g. 2.50), not whole numbers only; and the invoice's <b>net total must be greater than zero</b>. All five apply to Credit Notes the same way, since a Credit Note is the same underlying document type.</p>
         </div>
         <p>Every invoice also has a <b>Download PDF</b> button, separate from Print — see the "Print vs. Download PDF" callout in §Templates, POS &amp; Translations for how the two deliberately differ.</p>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/38-legacy-sales-invoices.png" alt="Warraq 2.0: Sales Invoices, with ZATCA status and payment status per invoice" loading="lazy"><figcaption>Warraq 2.0: Sales Invoices, with ZATCA status and payment status per invoice</figcaption></figure></div>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/39-legacy-new-invoice.png" alt="Warraq 2.0: New Invoice" loading="lazy"><figcaption>Warraq 2.0: New Invoice</figcaption></figure></div>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/40-legacy-quotation-book.png" alt="Warraq 2.0: Quotation Book" loading="lazy"><figcaption>Warraq 2.0: Quotation Book</figcaption></figure></div>
         <div class="callout"><div class="label">Warraq 2.0</div><p style="margin:0;">In 2.0 an invoice or credit note also posts to the ledger, tagged with the customer. Payments can be recorded from <b>Receivables › Receive Payment</b> (one receipt over several invoices, or on account). A credit note above an approval rule’s amount waits for approval before it is issued. A document dated in a locked period is refused. See <a href="#fc-3">Receivables</a>.</p></div>
       </section>
 
@@ -906,6 +910,8 @@
           <p style="margin:0;">Every active recurring template must be posted — either as a real, paid expense ("Actual") or as an accrual (a placeholder liability, settled with the real bill later) — before that fiscal month can be closed (§Fiscal Periods, Capital &amp; VAT Filing). This is deliberate: it stops a month from closing "clean" while a known recurring cost was simply forgotten.</p>
         </div>
         <p>An <b>accrual</b> posted this way sits in "Unsettled Accrual Ledger Entries" until the real invoice/bill for it arrives, at which point it's matched and settled — the accrual reverses and the real cost replaces it.</p>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/41-legacy-expenses.png" alt="Warraq 2.0: Expenses" loading="lazy"><figcaption>Warraq 2.0: Expenses</figcaption></figure></div>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/42-legacy-recurring-accruals.png" alt="Warraq 2.0: Recurring and Accruals" loading="lazy"><figcaption>Warraq 2.0: Recurring and Accruals</figcaption></figure></div>
         <div class="callout"><div class="label">Warraq 2.0</div><p style="margin:0;">In 2.0 an expense also posts to the ledger, tagged with the vendor, and can be paid from <b>Payables › Pay Vendor</b> together with bills. A posting date on or before the company’s lock date, or older than its back-date window, is refused or needs a reason. See <a href="#fc-4">Payables</a>.</p></div>
       </section>
 
@@ -1026,6 +1032,9 @@
           </div>
         </div>
         <p class="fig-caption">Figure 26 — a manual "Adjust Stock" action exists for corrections outside the normal PR/PO/GRN/Return/Take flow</p>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/43-legacy-purchase-bills.png" alt="Warraq 2.0: Purchase Bills" loading="lazy"><figcaption>Warraq 2.0: Purchase Bills</figcaption></figure></div>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/44-legacy-goods-receipt.png" alt="Warraq 2.0: Goods Receipt (GRN)" loading="lazy"><figcaption>Warraq 2.0: Goods Receipt (GRN)</figcaption></figure></div>
+        <div class="fc"><figure class="shot"><img src="../gl-ap-ar/user-manual/screens/45-legacy-stock-registry.png" alt="Warraq 2.0: Stock Registry (empty for the demonstration company)" loading="lazy"><figcaption>Warraq 2.0: Stock Registry (empty for the demonstration company)</figcaption></figure></div>
         <div class="callout"><div class="label">Warraq 2.0</div><p style="margin:0;">In 2.0 goods receipts and purchase bills post to the ledger (stock against goods received not invoiced, then the payable). A purchase bill above an approval rule’s amount waits for approval, and a bill that needs approval cannot be auto-posted at delivery. Pay bills from <b>Payables › Pay Vendor</b>. See <a href="#fc-4">Payables</a>.</p></div>
       </section>
 

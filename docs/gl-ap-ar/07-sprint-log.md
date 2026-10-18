@@ -43,6 +43,8 @@ The modules that existed before the finance core, written up as built: requireme
 | SB1-06 | VAT returns and period locks: as-built requirements, system requirements and test cases | BR-VAT-01 VAT return figures; BR-VAT-02 Filing rules; BR-VAT-03 A filed quarter locks its documents; BR-VAT-04 VAT return rights and isolation | FR-VAT-01.1, FR-VAT-02.1, FR-VAT-03.1, FR-VAT-04.1 |
 | SB1-07 | Master data, numbering and imports: as-built requirements, system requirements and test cases | BR-MST-01 Document numbering; BR-MST-02 Customer and vendor import; BR-MST-03 Product import; BR-MST-04 Master data rights and retirement | FR-MST-01.1, FR-MST-02.1, FR-MST-03.1, FR-MST-04.1 |
 | SB1-08 | Tenancy, users and company administration: as-built requirements, system requirements and test cases | BR-ORG-01 Every request belongs to one company; BR-ORG-02 User accounts; BR-ORG-03 Employees and job titles; BR-ORG-04 Sessions and sign-in; BR-ORG-05 No bulk save of documents; BR-ORG-06 Capital contributions | FR-ORG-01.1, FR-ORG-02.1, FR-ORG-03.1, FR-ORG-04.1, FR-ORG-05.1, FR-ORG-06.1 |
+| SB1-09 | Reports and dashboard (documents): as-built requirements, system requirements and test cases | BR-REP-01 Server-side, paged and exact reports; BR-REP-02 Reports agree with the documents and with each other | FR-REP-01.1, FR-REP-02.1 |
+| SB1-10 | Document templates and translations: as-built requirements, system requirements and test cases | BR-CFG-01 Print templates and translations | FR-CFG-01.1 |
 
 ## Sprint 0 — Platform and environments (Done)
 
@@ -166,8 +168,9 @@ Commits: `7d03574`, `55a95cd`, `7f95b6a`, `56ee1b2`
 | S10-01 | Generated BRD, SRS, sprint log, traceability matrix and annexes | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
 | S10-02 | One technical document (platform architecture, module catalogue, requirements, design, rules, tests, sprint log, annexes) and one user manual (older modules plus the finance core), with a link check (done) | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
 | S10-03 | Requirements, system requirements and test cases for the older modules (invoices, quotations, POS, expenses, procurement and inventory, VAT returns, ZATCA, master data, users), written as built and traced to the existing automated tests (done: baseline sprint B1, 34 requirements, 100 cases) | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
-| S10-04 | Pending: real screenshots for the older chapters of the user manual and a walk-through of each older screen in 2.0 | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
-| S10-05 | Pending: detect the permission of every endpoint in the module catalogue (149 endpoints show not detected) and a check that flags manual chapters when a screen changes | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
+| S10-04 | Real 2.0 screenshots for the main older screens (sales invoices, new invoice, quotation book, expenses, recurring, purchase bills, goods receipt, stock registry, POS shifts) added to the manual (done) | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
+| S10-05 | Pending: real screenshots for the remaining older screens (master data, financial and sales reports, settings) and a screen-by-screen walk-through of the older chapters against 2.0 | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
+| S10-06 | Pending: detect the permission of every endpoint in the module catalogue (149 endpoints show not detected) and a check that flags manual chapters when a screen changes | BR-NFR-05 Maintainable documentation | FR-NFR-05.1 |
 
 ## Sprint 11 — Approval rules (Done)
 
@@ -367,7 +370,7 @@ Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to
 | BR-NFR-02 | Atomic requests | Built | S1 |
 | BR-NFR-03 | Real-database automated tests | Built | S9 |
 | BR-NFR-04 | Safe releases and environments | Built | S0 |
-| BR-NFR-05 | Maintainable documentation | Planned | S10, S10, S10, S10, S10 |
+| BR-NFR-05 | Maintainable documentation | Planned | S10, S10, S10, S10, S10, S10 |
 | BR-NFR-06 | Promotion to Live | Planned | S20 |
 | BR-SAL-01 | Quotations convert to invoices | Built | SB1 |
 | BR-SAL-02 | Invoice payments, in part or in full | Built | SB1 |
@@ -403,6 +406,9 @@ Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to
 | BR-ORG-04 | Sessions and sign-in | Built | SB1 |
 | BR-ORG-05 | No bulk save of documents | Built | SB1 |
 | BR-ORG-06 | Capital contributions | Built | SB1 |
+| BR-REP-01 | Server-side, paged and exact reports | Built | SB1 |
+| BR-REP-02 | Reports agree with the documents and with each other | Built | SB1 |
+| BR-CFG-01 | Print templates and translations | Built | SB1 |
 
 ## Roadmap (not yet built)
 

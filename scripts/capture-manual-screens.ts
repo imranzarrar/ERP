@@ -113,6 +113,10 @@ await nav(null, 'My Approvals'); await shot('my-approvals');
 try { await page.locator('tbody tr').last().click(); await page.waitForTimeout(1200); await shot('approval-request'); } catch (e: any) { console.log('approval request', e.message.slice(0, 100)); }
 // the Manager field on a user record (used by 'manager of the submitter' approval levels)
 try { await reset(); await click('Settings & Companies'); await page.waitForTimeout(1500); await click('Governance & Staff').catch(() => {}); await page.waitForTimeout(800); await click('Staff Permissions'); await page.waitForTimeout(1500); await page.waitForTimeout(1000); await page.getByText('Manager (used by approval rules)').first().scrollIntoViewIfNeeded(); await shot('user-manager-field'); await closeOverlays(); } catch (e: any) { console.log('user manager field', e.message.slice(0, 100)); }
+// the older (1.0) modules as they look in 2.0: real screens for the manual's first part
+for (const [grp, item, name] of [['Sales & Receivables', 'Sales Invoices', 'sales-invoices'], ['Sales & Receivables', 'New Invoice', 'new-invoice'], ['Sales & Receivables', 'Quotation Book', 'quotation-book'], ['Procurements', 'Expenses', 'expenses'], ['Procurements', 'Recurring & Accruals', 'recurring-accruals'], ['Inventory System', 'Purchase Bills', 'purchase-bills'], ['Inventory System', 'Goods Receipt (GRN)', 'goods-receipt'], ['Inventory System', 'Stock Registry', 'stock-registry'], ['Point of Sale (POS)', 'Shifts & Z-Reports', 'pos-shifts']] as const) {
+  try { await reset(); await nav(grp, item); await shot('legacy-' + name, 1800); } catch (e: any) { console.log('legacy', name, e.message.slice(0, 80)); }
+}
 void pendingPay;
 await browser.close();
 await purgeCompany(companyId);

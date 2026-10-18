@@ -29,6 +29,8 @@ export const AREAS = [
   { id: "VAT", name: "VAT returns and period locks" },
   { id: "MST", name: "Master data, numbering and imports" },
   { id: "ORG", name: "Tenancy, users and company administration" },
+  { id: "REP", name: "Reports and dashboard (documents)" },
+  { id: "CFG", name: "Document templates and translations" },
 ];
 
 const R = [];
@@ -233,6 +235,15 @@ add("ORG", [
   ["Sessions and sign-in","A session records the user and company at sign-in, expires, and is extended once past half of its lifetime. Only a super-administrator can list sessions across companies.","Platform","Must","Built",[]],
   ["No bulk save of documents","There is no endpoint that overwrites posted documents in bulk. A document is written only through its own route, and a request naming an existing id cannot take over another document's lines.","Platform","Must","Built",[]],
   ["Capital contributions","An investor's capital contribution can be recorded: it creates a receipt voucher and adds to capital contributed, accumulating across contributions. Amounts must be positive, banks active and investors in the company.","Platform","Should","Built",[]],
+]);
+
+add("REP", [
+  ["Server-side, paged and exact reports","Every register, statement and report is computed on the server for the active company. Long lists are paged in the database with the full count and totals over every row, with a no-paging path for print and export. An end date includes its whole last day, an invalid date is refused, a branch-restricted user never sees other branches, and a user without the report right is refused.","Platform","Must","Built",[]],
+  ["Reports agree with the documents and with each other","Profit and loss, cash flow, balance sheet, trial balance, VAT summary, KPI cards, outstanding balances, the dashboard, the stock register and the ledger itself all reconcile to the source documents on a real book of invoices, credit notes, expenses and bills. Refunded money is not counted as collected and credited invoices are not pending.","Platform","Must","Built",[]],
+]);
+
+add("CFG", [
+  ["Print templates and translations","Each company has its own print templates (create, edit options and layout, activate one per language, delete); only an administrator manages them and no template can be changed across companies. Translations are one shared table managed only by a super-administrator, per key.","Platform","Should","Built",[]],
 ]);
 
 export const BRS = R;

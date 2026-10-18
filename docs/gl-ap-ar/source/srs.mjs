@@ -161,4 +161,7 @@ export const SRS = {
   "BR-ORG-04": { fr: [["The system shall expire sessions, extend them on activity and restrict listing to super-administrators.", "server.ts; server/routes/sessions.ts"]], tests: ["ORG-013","ORG-014"] },
   "BR-ORG-05": { fr: [["The system shall not serve a bulk-save route and shall refuse create requests that name ids.", "server/routes/transactions.ts; server.ts"]], tests: ["ORG-015","ORG-016"] },
   "BR-ORG-06": { fr: [["The system shall record contributions with a receipt voucher and refuse invalid amounts, banks and investors.", "server/routes/transactions.ts (investors)"]], tests: ["ORG-017","ORG-018"] },
+  "BR-REP-01": { fr: [["The system shall page in SQL with totals over all rows, include the end date's last instant, clamp page numbers, scope by branch access and require the report permission.", "server/routes/reports.ts; server/lib/financialReports.ts"]], tests: ["REP-001","REP-002","REP-003","REP-004"] },
+  "BR-REP-02": { fr: [["The system shall derive every report from the same document facts so that each figure reconciles to its source documents.", "server/lib/financialReports.ts; server/routes/reports.ts"]], tests: ["REP-005","REP-006","REP-007","REP-008","REP-009"] },
+  "BR-CFG-01": { fr: [["The system shall scope templates to the company, keep one active template per company and language, and restrict translation edits to super-administrators.", "server/routes/settingsResources.ts"]], tests: ["CFG-001","CFG-002","CFG-003"] },
 };

@@ -197,7 +197,7 @@ A multi-tenant web application (React client, Node/Express API, PostgreSQL with 
 | FR-NFR-02.1 | BR-NFR-02 | Each request shall run in one tenant transaction that rolls back on error. | tenantDb.ts | NFR-004, NFR-005 |
 | FR-NFR-03.1 | BR-NFR-03 | Behaviour shall be covered by vitest files over real HTTP and Postgres. | tests/ | NFR-008 |
 | FR-NFR-04.1 | BR-NFR-04 | Release scripts shall run the date migration, pre-push keys, db:push review, RLS, constraints, seed, back-fill and translations. | deploy/release-demo.sh; deploy/release.sh | REL-001, REL-002, REL-003, REL-004, REL-005, REL-006, REL-007, REL-008, REL-009 |
-| FR-NFR-05.1 | BR-NFR-05 | The BRD, SRS, sprint log and traceability matrix shall be generated from docs/gl-ap-ar/source and validated. | scripts/build-gl-docs.mjs | (target: sprint 10,10,10,10,10) |
+| FR-NFR-05.1 | BR-NFR-05 | The BRD, SRS, sprint log and traceability matrix shall be generated from docs/gl-ap-ar/source and validated. | scripts/build-gl-docs.mjs | (target: sprint 10,10,10,10,10,10) |
 | FR-NFR-06.1 | BR-NFR-06 | Live promotion shall run on a scrubbed copy of production first (Sprint 20). | planned | REL-009 |
 
 ### SAL — Sales documents (quotations, invoices, credit notes)
@@ -273,6 +273,19 @@ A multi-tenant web application (React client, Node/Express API, PostgreSQL with 
 | FR-ORG-04.1 | BR-ORG-04 | The system shall expire sessions, extend them on activity and restrict listing to super-administrators. | server.ts; server/routes/sessions.ts | ORG-013, ORG-014 |
 | FR-ORG-05.1 | BR-ORG-05 | The system shall not serve a bulk-save route and shall refuse create requests that name ids. | server/routes/transactions.ts; server.ts | ORG-015, ORG-016 |
 | FR-ORG-06.1 | BR-ORG-06 | The system shall record contributions with a receipt voucher and refuse invalid amounts, banks and investors. | server/routes/transactions.ts (investors) | ORG-017, ORG-018 |
+
+### REP — Reports and dashboard (documents)
+
+| FR | BR | The system shall | Implemented in | Test cases |
+|---|---|---|---|---|
+| FR-REP-01.1 | BR-REP-01 | The system shall page in SQL with totals over all rows, include the end date's last instant, clamp page numbers, scope by branch access and require the report permission. | server/routes/reports.ts; server/lib/financialReports.ts | REP-001, REP-002, REP-003, REP-004 |
+| FR-REP-02.1 | BR-REP-02 | The system shall derive every report from the same document facts so that each figure reconciles to its source documents. | server/lib/financialReports.ts; server/routes/reports.ts | REP-005, REP-006, REP-007, REP-008, REP-009 |
+
+### CFG — Document templates and translations
+
+| FR | BR | The system shall | Implemented in | Test cases |
+|---|---|---|---|---|
+| FR-CFG-01.1 | BR-CFG-01 | The system shall scope templates to the company, keep one active template per company and language, and restrict translation edits to super-administrators. | server/routes/settingsResources.ts | CFG-001, CFG-002, CFG-003 |
 
 ## 4. Interfaces
 

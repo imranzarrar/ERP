@@ -37,6 +37,8 @@ export const MODULES = [
   { id: "VAT", name: "VAT returns and period locks", ref: "Warraq 1.0 baseline (as built); BR-VAT" },
   { id: "MST", name: "Master data, numbering and imports", ref: "Warraq 1.0 baseline (as built); BR-MST" },
   { id: "ORG", name: "Tenancy, users and company administration", ref: "Warraq 1.0 baseline (as built); BR-ORG" },
+  { id: "REP", name: "Reports and dashboard (documents)", ref: "Warraq 1.0 baseline (as built); BR-REP" },
+  { id: "CFG", name: "Document templates and translations", ref: "Warraq 1.0 baseline (as built); BR-CFG" },
 ];
 
 const T = {};
@@ -533,6 +535,24 @@ add("ORG", [
   ["An invoice or expense create request naming an id is refused","Security","P1","An existing document id","A create request names it","Refused; nothing changed","API+DB","tests/noBulkSave.test.ts"],
   ["A contribution creates a receipt voucher and accumulates","Functional","P2","An investor","Two contributions are recorded","Two vouchers; capital contributed is the sum","API+DB","tests/usersAdminActions.test.ts"],
   ["A non-positive amount, an inactive bank or another company's investor is refused","Negative","P2","Invalid inputs","A contribution is recorded","Refused","API+DB","tests/usersAdminActions.test.ts"],
+]);
+
+add("REP", [
+  ["Only the requested page comes back, with the full count and totals over all rows","Functional","P1","25 invoices","Page 1 of a register is requested","One page of rows; totals cover all 25","API+DB","tests/reportsViewAndPagination.test.ts"],
+  ["The end date includes its last instant and invalid dates are refused","Boundary","P1","Documents on, before and after the end date","A register is run","Last-day documents included; next day excluded; invalid date refused","API+DB","tests/reportsViewAndPagination.test.ts"],
+  ["A branch-restricted user sees only their branch and cannot widen it","Security","P1","A user restricted to branch A","Branch B is requested","Nothing from branch B","API+DB","tests/reportsViewAndPagination.test.ts"],
+  ["A caller without the report permission is refused, paged or not","Security","P1","A user without the right","A report is requested","Refused","API+DB","tests/reportsViewAndPagination.test.ts"],
+  ["Profit and loss excludes VAT, nets credits and cancellations, and takes cost of sales from the ledger","Functional","P1","A real book of documents","The profit and loss report is run","Figures match the hand-computed values","API+DB","tests/reportsReconcileLedgerScenario.test.ts"],
+  ["The balance sheet balances and the trial balance debits equal credits for any period","Functional","P1","A real book","Both are run for the whole period and a later period","Balanced; every line reconciles to a document","API+DB","tests/reportsReconcileLedgerScenario.test.ts"],
+  ["KPI cards, outstanding report and dashboard count only genuinely unpaid and collected money","Regression","P1","Refunded and credited invoices","The cards and dashboard are read","Refunds are not collected; credited invoices are not pending","API+DB","tests/reportsReconcileLedgerScenario.test.ts"],
+  ["Every register, statement and the ledger agree with the documents; all report routes answer","Integration","P1","A real book","Every report route is called","None errors; each agrees with the documents","API+DB","tests/reportsReconcileLedgerScenario.test.ts"],
+  ["The VAT summary nets output against input VAT and equals the filed-return computation","Functional","P1","Sales and purchases","The VAT summary is read","Equals the balance sheet VAT lines and the return","API+DB","tests/reportsReconcileLedgerScenario.test.ts"],
+]);
+
+add("CFG", [
+  ["A template is created and listed only for its own company; a non-admin or a nameless template is refused","Security","P2","Two companies","Templates are created and listed","Scoped to each company; refused for non-admin","API+DB","tests/settingsResources.test.ts"],
+  ["Activating a template deactivates its siblings of the same company and language","Functional","P2","Two templates","One is activated","The other becomes inactive","API+DB","tests/settingsResources.test.ts"],
+  ["A company admin who is not a super-administrator cannot edit translations; a super-administrator can, per key","Security","P2","A company admin and a super-admin","A translation key is created and edited","Refused for the first; saved for the second","API+DB","tests/settingsResources.test.ts"],
 ]);
 
 export const CASES = [];

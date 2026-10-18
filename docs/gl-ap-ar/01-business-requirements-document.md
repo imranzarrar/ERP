@@ -29,7 +29,7 @@ Before 2.0 the system computed every report from documents (invoices, expenses, 
 
 ## 4. Scope
 
-**In scope:** 134 business requirements in 22 areas (section 6). 111 are built, 5 partly built, 18 planned.
+**In scope:** 137 business requirements in 24 areas (section 6). 114 are built, 5 partly built, 18 planned.
 
 **Out of scope (this programme):**
 * Fixed assets and depreciation (classes, CWIP, methods, runs, disposal, transfer, documents) (FR-FA-01..10) — A later phase; the ledger and dimensions are designed not to block it.
@@ -377,7 +377,7 @@ Behaviour is proven by automated tests over real HTTP and real PostgreSQL, with 
 **BR-NFR-04 Safe releases and environments** — Must, Built, source Platform, sprint S0.
 Live (1.0) and Demo (2.0) are separate tracks; releases run by script with a read-the-plan database step, row-level-security and constraint verification, and a rollback path.
 
-**BR-NFR-05 Maintainable documentation** — Must, Planned, source Decision, sprint S10, S10, S10, S10, S10.
+**BR-NFR-05 Maintainable documentation** — Must, Planned, source Decision, sprint S10, S10, S10, S10, S10, S10.
 The requirements, design, test and sprint documents of the ledger core are generated from one traceable source and kept in the repository.
 
 **BR-NFR-06 Promotion to Live** — Must, Planned, source Decision, sprint S20.
@@ -500,6 +500,19 @@ There is no endpoint that overwrites posted documents in bulk. A document is wri
 
 **BR-ORG-06 Capital contributions** — Should, Built, source Platform, sprint SB1.
 An investor's capital contribution can be recorded: it creates a receipt voucher and adds to capital contributed, accumulating across contributions. Amounts must be positive, banks active and investors in the company.
+
+### REP — Reports and dashboard (documents)
+
+**BR-REP-01 Server-side, paged and exact reports** — Must, Built, source Platform, sprint SB1.
+Every register, statement and report is computed on the server for the active company. Long lists are paged in the database with the full count and totals over every row, with a no-paging path for print and export. An end date includes its whole last day, an invalid date is refused, a branch-restricted user never sees other branches, and a user without the report right is refused.
+
+**BR-REP-02 Reports agree with the documents and with each other** — Must, Built, source Platform, sprint SB1.
+Profit and loss, cash flow, balance sheet, trial balance, VAT summary, KPI cards, outstanding balances, the dashboard, the stock register and the ledger itself all reconcile to the source documents on a real book of invoices, credit notes, expenses and bills. Refunded money is not counted as collected and credited invoices are not pending.
+
+### CFG — Document templates and translations
+
+**BR-CFG-01 Print templates and translations** — Should, Built, source Platform, sprint SB1.
+Each company has its own print templates (create, edit options and layout, activate one per language, delete); only an administrator manages them and no template can be changed across companies. Translations are one shared table managed only by a super-administrator, per key.
 
 ## 7. Constraints and assumptions
 
