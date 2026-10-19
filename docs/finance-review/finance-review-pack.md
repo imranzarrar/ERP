@@ -479,15 +479,72 @@ All figures are computed on the server for the active company. A closed period's
 
 **Review questions (section 9).** 9.1 Are these the statements you need? 9.2 Do you require statutory formats (balance sheet and income statement layouts) and comparatives with prior years? 9.3 Is running ledger and document reports side by side until cut-over acceptable, and when should one be retired?
 
-## 10. VAT as it works today
+## 10. Tax: the agreed direction, the layered structure, and what exists today
 
-* A company keeps **tax slabs** (name, percentage, exemption reason code for zero-rated or exempt). A document has a header slab; an invoice line can have its own, falling back to the header.
-* Tax is computed per line, rounded per line, and summed. Prices are tax-exclusive; an expense amount is tax-inclusive and split.
-* **Output VAT** posts to *VAT output* and **input VAT** to *VAT input*. Zero-rated and exempt lines create **no** VAT line, and the ledger cannot tell them apart (documents and the e-invoice can).
-* A **VAT return** is generated per quarter from documents (sales, output tax, purchases, input tax, with credit notes netted and purchase returns in the period of the return) and filed in order; filing locks the quarter (section 7.6). Filing does **not** yet post a settlement entry.
-* Non-recoverable VAT, reverse charge, withholding, excise, import VAT and customs duty are **not** handled (section 13).
+### 10.1 The agreed direction (owner, 19 October 2026)
 
-**Review questions (section 10).** 10.1 Is one VAT output and one VAT input account acceptable until the tax design is built? 10.2 What is your view of the proposed tax-code and tax-profile design (section 14)?
+Tax is **not** a percentage typed on a document. It is a **layered structure built on tax profiles**:
+
+* a **tax profile** is attached to every customer, vendor, item and company;
+* the **system determines** the tax treatment and the accounts from those profiles and the type of transaction (domestic sale, retail sale, export, domestic purchase, import of goods, import of services);
+* the data entry operator selects **neither the tax nor any account**: an operator creating an invoice for an import must see the system decide what to post and where;
+* the structure must be **flexible enough for every scenario** (retail, trading, imports, manufacturing, real estate) and follow the best financial standards (recoverability, reverse charge, withholding, effective-dated rates, settlement).
+
+This direction is agreed. The **detailed design** below is a proposal for your review; the open decisions are in section 14.
+
+### 10.2 The layered structure (target design, not yet built)
+
+```mermaid
+flowchart TD
+  T["Transaction<br/>type and date"] --> R
+  P1["Party tax profile<br/>residency, registration,<br/>exemptions, withholding"] --> R
+  P2["Item tax class<br/>standard, zero-rated, exempt,<br/>excise, duty rate, recoverability"] --> R
+  P3["Company tax profile<br/>registrations, recovery method,<br/>rounding, price basis"] --> R
+  R{"Determination rules<br/>most specific rule wins<br/>no rule = error, never zero"} --> C
+  C["Tax code<br/>one or more components<br/>with dated rates"] --> A
+  A["Accounts by component<br/>output, recoverable input,<br/>non-recoverable to cost,<br/>reverse charge, authority payable"] --> L
+  L["Ledger lines tagged<br/>code, component, direction,<br/>recoverable amount, return box"] --> O
+  O["VAT return, registers,<br/>settlement entry at filing"]
+  OV["Authorised override<br/>with a reason, audited"] -.-> R
+```
+
+| Layer | What it holds | Why it exists |
+|---|---|---|
+| Profiles | Facts about the party, the item and the company | Treatment follows facts, not typing |
+| Determination rules | Ordered rules from transaction type, party class, item class, place and date to a tax code | One decision point; refuses a line it cannot decide |
+| Tax code | The treatment: supply nature (standard, zero-rated, exempt, out of scope), components, e-invoice category | The unit everything else hangs from |
+| Components and rates | VAT, import VAT, reverse-charge VAT, withholding, excise, customs duty, each with effective-dated rates | Rate changes never rewrite history |
+| Accounts by component | Where each component posts, including the non-recoverable share that goes to cost | Accounts are looked up, never typed |
+| Ledger tags | Code, component, direction, recoverable amount, return box on every tax line | The return and registers are queries over the ledger |
+| Settlement | Output against input into the authority payable at filing | Filing is an accounting event |
+
+### 10.3 What the operator does and what the system decides
+
+| Scenario | Operator action | System decision (target) |
+|---|---|---|
+| Sale to a domestic business customer | Chooses the customer and items | Standard-rated code, 15% output VAT on its own account |
+| Retail sale, tax-inclusive price | Scans items | Tax extracted per line, rounded per line; total equals the shelf price |
+| Export to a foreign customer | Chooses the customer and items | Zero-rated code with its reason code; no tax amount; still a taxable supply for recovery |
+| Domestic purchase | Chooses the vendor and items | Recoverable input VAT on its own account; a non-recoverable category adds the tax to the cost |
+| Purchase of goods from a foreign vendor | Chooses the vendor and items | Treated as an **import of goods**: duty from the item's tariff rate, import VAT on customs value plus duty, one payable per payee (supplier, forwarder, customs), foreign currency |
+| Service from a foreign vendor | Chooses the vendor and the service | **Reverse charge** (self-assessed output and input) and **withholding** by service class, payable net |
+| Filing a quarter | Files the return | Settlement entry netting output and input into the authority payable |
+
+### 10.4 Where we are today (as built): an interim state, not the target
+
+* A company keeps **tax slabs** (name, percentage, exemption reason). A document has a header slab; an invoice line can have its own. Tax is computed per line and rounded per line.
+* Output VAT posts to **one** account (VAT output) and input VAT to **one** account (VAT input), whatever the rate. **This is the interim behaviour, not the agreed design.**
+* There are no profiles and no determination: the slab is chosen by the user. Zero-rated and exempt lines create no VAT line, so the ledger cannot tell them apart.
+* A VAT return is generated per quarter **from documents** and filed in order; filing locks the quarter. No settlement entry is posted.
+* Non-recoverable VAT, reverse charge, withholding, excise, import VAT, customs duty and foreign currency do not exist yet.
+
+The full analysis (tier-1 comparison, scenarios, gap table, traceability to requirements and tests) is in the design note *Taxation and tax profiles* in the technical documentation.
+
+### 10.5 What remains to be agreed
+
+The direction in 10.1 is agreed. These details are not, and your advice is what we need: which tax components must be supported first; how import VAT is treated (paid at customs and recovered, or deferred where the law allows); whether recovery needs apportionment; tax-inclusive or tax-exclusive pricing by company, price list or item; who may override a determined tax; the return box definitions and who supplies them; whether to design for other GCC jurisdictions from the start.
+
+**Review questions (section 10).** 10.1 Is the layered structure in 10.2 the right shape for your clients? 10.2 Which tax components do your clients need first? 10.3 Which of the 10.3 scenarios are most common for them? 10.4 Is the interim behaviour in 10.4 acceptable for the Demo while the structure is built?
 
 ## 11. Inventory and cost of sales as built
 
@@ -512,7 +569,7 @@ All figures are computed on the server for the active company. A closed period's
 |---|---|
 | Multi-currency and exchange differences | Not built (currency is a label only) |
 | Several ledgers or books (IFRS, local, tax), intercompany, consolidation | Not built |
-| Tax engine (codes, determination, recovery, reverse charge, withholding, import VAT, excise); VAT settlement entry | Designed, not built |
+| Layered tax structure on tax profiles (agreed direction): tax codes, determination from profiles, recovery, reverse charge, withholding, import VAT, excise, VAT settlement entry | Direction agreed; detailed design written; **not built** (today: interim single VAT output and input accounts) |
 | Account sub-classification, posting controls on accounts, chart templates, effective dating | Proposed |
 | Year-end close and retained earnings carry-forward; per-module period status; adjustment periods | Planned |
 | Payment terms, early-payment discounts, dunning, credit limits, write-offs, bad-debt provision, payment runs | Not built |
@@ -527,7 +584,7 @@ All figures are computed on the server for the active company. A closed period's
 
 These are for your reaction; each is a document in the technical documentation.
 
-* **Taxation and tax profiles:** tax codes with components and dated rates; profiles on parties, items and the company; automatic determination; recoverable and non-recoverable tax; reverse charge; withholding; import; settlement entry.
+* **Taxation and tax profiles** (direction agreed, detailed design for your review): tax codes with components and dated rates; profiles on parties, items and the company; automatic determination; recoverable and non-recoverable tax; reverse charge; withholding; import; settlement entry. See section 10.
 * **Chart of accounts benchmark:** compares the chart with SAP, Oracle, Dynamics and NetSuite and proposes account attributes, templates and chart views.
 * **A domain-neutral core:** the primitives (typed references, quantities, accounting events, recognition schedules, currencies and ledgers, dimension capabilities) that would let retail, trading, manufacturing, real estate and other domains be added later without redesign.
 * **Agreed decisions register** with a professional review of every agreed entry.
@@ -566,8 +623,10 @@ Please return this table. *A* = accept, *C* = change (say what), *Q* = question.
 | 9.1 | Statements provided | | |
 | 9.2 | Statutory formats and comparatives | | |
 | 9.3 | Ledger and document reports side by side, and the cut-over | | |
-| 10.1 | One VAT output and one VAT input account for now | | |
-| 10.2 | Proposed tax design | | |
+| 10.1 | The layered structure (profiles, determination, tax code, components, accounts, tags, settlement) is the right shape | | |
+| 10.2 | Tax components needed first | | |
+| 10.3 | Most common tax scenarios for your clients | | |
+| 10.4 | The interim single VAT output and input accounts are acceptable for the Demo meanwhile | | |
 | 12.1 | Permission model | | |
 | 12.2 | Segregation of duties | | |
 | 12.3 | Retention and anonymisation | | |

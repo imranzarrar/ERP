@@ -38,6 +38,7 @@ Status: **Built** (in the code), **Planned** (agreed, in the sprint plan), **Sta
 | AG-16 | One shared query layer (`resolvedLines`) applies the dimension filter to the ledger, journal listing and every report | Architect decision 5 | Built |
 | AG-17 | Cost allocation runs redistribute shared cost by fixed or revenue percentage, net zero, into an allocated-overhead account, with contribution margin and fully loaded subtotals | BR-DIM-07, BR-DIM-08 | Planned (Sprint 15); widening to any dimension type proposed, not yet agreed |
 | AG-18 | **The GL core is domain-neutral and flexible**: its structure must be able to carry the scenarios of any domain (retail, trading, manufacturing including order costing, real estate, contracting, services, fund accounting) **if and when asked**, without redesign. Domain modules are built only on request and use the core's general primitives; the core holds no domain-specific tables. Analysis is not a request to build. Owner-stated 2026-10-19 | Owner | Standing; structural readiness reviewed in `domain-neutral-core` |
+| AG-19 | **Tax is a layered structure built on tax profiles.** Tax profiles are attached to customers, vendors, items and the company; the system determines the tax treatment and the accounts from the profiles and the transaction type; the data entry operator selects neither the tax nor any account; the structure is flexible for every scenario (retail, trading, imports, manufacturing, real estate) and follows the best financial standards. Owner-stated 2026-10-19. The **direction** is agreed; the detailed design (`taxation-analysis`) is a proposal awaiting the decisions in its section 10. Today's single VAT output and input accounts are an interim state | Owner | Direction agreed (Standing); design Planned (Sprints 14 to 14f); interim behaviour Built |
 
 ## C. Reports
 
@@ -105,7 +106,7 @@ Status: **Built** (in the code), **Planned** (agreed, in the sprint plan), **Sta
 
 | Proposal | Where | Needs from the owner |
 |---|---|---|
-| Tax engine: tax codes, profiles, determination, recovery, reverse charge, withholding, imports, Sprints 14 to 14f | `taxation-analysis` and the sprint plan | The nine decisions in its section 10 |
+| Tax engine **details** (the direction is agreed, AG-19): tax codes, profiles, determination rules, recovery, reverse charge, withholding, imports, Sprints 14 to 14f | `taxation-analysis` and the sprint plan | The nine decisions in its section 10 |
 | Account master enrichment, chart templates, chart views, effective dating | `coa-tier1-benchmark` sections 7.1, 7.2 | Order, business models, statutory standard |
 | Dimension framework capabilities (roles, attributes, lifecycle, valid combinations, balancing, break-down reports) and budgeting on dimension combinations | `coa-tier1-benchmark` sections 7.3, 7.4 | Whether to build, and the order |
 | Foreign currency and parallel ledgers | `coa-tier1-benchmark` section 7.5 | Whether they are in the programme, before the above are frozen |

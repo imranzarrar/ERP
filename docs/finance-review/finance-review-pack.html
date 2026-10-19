@@ -28,7 +28,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 .filters{display:flex;flex-wrap:wrap;gap:.6rem;margin:1rem 0}.filters input,.filters select{font:inherit;padding:.4rem .6rem;border:1px solid var(--line);border-radius:8px;background:var(--raised)}
 @media (max-width:900px){.layout{grid-template-columns:1fr}.rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:1.2rem 1rem 3rem}}
 @media print{.rail{display:none}.layout{grid-template-columns:1fr}.chapter{page-break-before:always}}
-</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Finance review pack</div><a class="home" href="../index.html">← All documentation</a><a href="#rev--p">0. How to use this pack</a><a href="#rev--p-2">1. The system on one page</a><a href="#rev--p-3">2. Vocabulary used in this pack</a><a href="#rev---3">3. The chart of accounts</a><a href="#rev---7">4. Dimensions</a><a href="#rev--p-8">5. The posting engine</a><a href="#rev--p-9">6. What each document posts</a><a href="#rev--p-10">7. Process flows end to end</a><a href="#rev--p-p-4">8. Month-end worked example (one small company)</a><a href="#rev--p-p-5">9. Reports and how they are produced</a><a href="#rev---15">10. VAT as it works today</a><a href="#rev---16">11. Inventory and cost of sales as built</a><a href="#rev--pp-3">12. Security, approvals and audit</a><a href="#rev--p-12">13. What is not built (stated plainly)</a><a href="#rev--p-p-6">14. Design proposals already written (not agreed, nothing built)</a><a href="#rev---17">15. Review form</a><a href="#rev--pp-p">Appendix A: voucher types</a><a href="#rev--pp-4">Appendix B: facts and sources</a></aside><main><section class="chapter"><p class="eyebrow">Review pack for a finance professional · built 2026-10-19</p><h1 style="font-size:2.1rem;margin:.2rem 0 1rem">Warraq ERP finance core: how the General Ledger, Receivables, Payables and Expenses work</h1><p class="src">Source: <code>docs/finance-review/finance-review-pack.md</code></p><p><strong>Review pack for a finance professional.</strong> Version of 19 October 2026. Describes Warraq 2.0 (the Demo). Live (1.0) does not have the ledger yet.</p>
+</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Finance review pack</div><a class="home" href="../index.html">← All documentation</a><a href="#rev--p">0. How to use this pack</a><a href="#rev--p-2">1. The system on one page</a><a href="#rev--p-3">2. Vocabulary used in this pack</a><a href="#rev---3">3. The chart of accounts</a><a href="#rev---7">4. Dimensions</a><a href="#rev--p-8">5. The posting engine</a><a href="#rev--p-9">6. What each document posts</a><a href="#rev--p-10">7. Process flows end to end</a><a href="#rev--p-p-4">8. Month-end worked example (one small company)</a><a href="#rev--p-p-5">9. Reports and how they are produced</a><a href="#rev---15">10. Tax: the agreed direction, the layered structure, and what exists today</a><a href="#rev---20">11. Inventory and cost of sales as built</a><a href="#rev--pp-3">12. Security, approvals and audit</a><a href="#rev--p-13">13. What is not built (stated plainly)</a><a href="#rev--p-p-6">14. Design proposals already written (not agreed, nothing built)</a><a href="#rev---21">15. Review form</a><a href="#rev--pp-p">Appendix A: voucher types</a><a href="#rev--pp-4">Appendix B: facts and sources</a></aside><main><section class="chapter"><p class="eyebrow">Review pack for a finance professional · built 2026-10-19</p><h1 style="font-size:2.1rem;margin:.2rem 0 1rem">Warraq ERP finance core: how the General Ledger, Receivables, Payables and Expenses work</h1><p class="src">Source: <code>docs/finance-review/finance-review-pack.md</code></p><p><strong>Review pack for a finance professional.</strong> Version of 19 October 2026. Describes Warraq 2.0 (the Demo). Live (1.0) does not have the ledger yet.</p>
 <h2 id="rev--p">0. How to use this pack</h2>
 <p><strong>Purpose.</strong> This document explains, in accounting terms, how the system is structured, how each business document turns into ledger entries, how periods and controls work, and what is not yet built. It is written so that an accountant can judge whether the design is sound <strong>before</strong> further development. Nothing in it is built on an assumption you have not seen.</p>
 <p><strong>What we ask of you.</strong></p>
@@ -967,16 +967,124 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 </tbody></table></div>
 <p>All figures are computed on the server for the active company. A closed period&#39;s figures cannot change because a report definition changed: definitions affect presentation only.</p>
 <p><strong>Review questions (section 9).</strong> 9.1 Are these the statements you need? 9.2 Do you require statutory formats (balance sheet and income statement layouts) and comparatives with prior years? 9.3 Is running ledger and document reports side by side until cut-over acceptable, and when should one be retired?</p>
-<h2 id="rev---15">10. VAT as it works today</h2>
+<h2 id="rev---15">10. Tax: the agreed direction, the layered structure, and what exists today</h2>
+<h3 id="rev---16">10.1 The agreed direction (owner, 19 October 2026)</h3>
+<p>Tax is <strong>not</strong> a percentage typed on a document. It is a <strong>layered structure built on tax profiles</strong>:</p>
 <ul>
-<li>A company keeps <strong>tax slabs</strong> (name, percentage, exemption reason code for zero-rated or exempt). A document has a header slab; an invoice line can have its own, falling back to the header.</li>
-<li>Tax is computed per line, rounded per line, and summed. Prices are tax-exclusive; an expense amount is tax-inclusive and split.</li>
-<li><strong>Output VAT</strong> posts to <em>VAT output</em> and <strong>input VAT</strong> to <em>VAT input</em>. Zero-rated and exempt lines create <strong>no</strong> VAT line, and the ledger cannot tell them apart (documents and the e-invoice can).</li>
-<li>A <strong>VAT return</strong> is generated per quarter from documents (sales, output tax, purchases, input tax, with credit notes netted and purchase returns in the period of the return) and filed in order; filing locks the quarter (section 7.6). Filing does <strong>not</strong> yet post a settlement entry.</li>
-<li>Non-recoverable VAT, reverse charge, withholding, excise, import VAT and customs duty are <strong>not</strong> handled (section 13).</li>
+<li>a <strong>tax profile</strong> is attached to every customer, vendor, item and company;</li>
+<li>the <strong>system determines</strong> the tax treatment and the accounts from those profiles and the type of transaction (domestic sale, retail sale, export, domestic purchase, import of goods, import of services);</li>
+<li>the data entry operator selects <strong>neither the tax nor any account</strong>: an operator creating an invoice for an import must see the system decide what to post and where;</li>
+<li>the structure must be <strong>flexible enough for every scenario</strong> (retail, trading, imports, manufacturing, real estate) and follow the best financial standards (recoverability, reverse charge, withholding, effective-dated rates, settlement).</li>
 </ul>
-<p><strong>Review questions (section 10).</strong> 10.1 Is one VAT output and one VAT input account acceptable until the tax design is built? 10.2 What is your view of the proposed tax-code and tax-profile design (section 14)?</p>
-<h2 id="rev---16">11. Inventory and cost of sales as built</h2>
+<p>This direction is agreed. The <strong>detailed design</strong> below is a proposal for your review; the open decisions are in section 14.</p>
+<h3 id="rev---17">10.2 The layered structure (target design, not yet built)</h3>
+<pre class="mermaid">flowchart TD
+  T[&quot;Transaction&lt;br/&gt;type and date&quot;] --&gt; R
+  P1[&quot;Party tax profile&lt;br/&gt;residency, registration,&lt;br/&gt;exemptions, withholding&quot;] --&gt; R
+  P2[&quot;Item tax class&lt;br/&gt;standard, zero-rated, exempt,&lt;br/&gt;excise, duty rate, recoverability&quot;] --&gt; R
+  P3[&quot;Company tax profile&lt;br/&gt;registrations, recovery method,&lt;br/&gt;rounding, price basis&quot;] --&gt; R
+  R{&quot;Determination rules&lt;br/&gt;most specific rule wins&lt;br/&gt;no rule = error, never zero&quot;} --&gt; C
+  C[&quot;Tax code&lt;br/&gt;one or more components&lt;br/&gt;with dated rates&quot;] --&gt; A
+  A[&quot;Accounts by component&lt;br/&gt;output, recoverable input,&lt;br/&gt;non-recoverable to cost,&lt;br/&gt;reverse charge, authority payable&quot;] --&gt; L
+  L[&quot;Ledger lines tagged&lt;br/&gt;code, component, direction,&lt;br/&gt;recoverable amount, return box&quot;] --&gt; O
+  O[&quot;VAT return, registers,&lt;br/&gt;settlement entry at filing&quot;]
+  OV[&quot;Authorised override&lt;br/&gt;with a reason, audited&quot;] -.-&gt; R</pre>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Layer</th>
+<th>What it holds</th>
+<th>Why it exists</th>
+</tr>
+</thead><tbody><tr>
+<td>Profiles</td>
+<td>Facts about the party, the item and the company</td>
+<td>Treatment follows facts, not typing</td>
+</tr>
+<tr>
+<td>Determination rules</td>
+<td>Ordered rules from transaction type, party class, item class, place and date to a tax code</td>
+<td>One decision point; refuses a line it cannot decide</td>
+</tr>
+<tr>
+<td>Tax code</td>
+<td>The treatment: supply nature (standard, zero-rated, exempt, out of scope), components, e-invoice category</td>
+<td>The unit everything else hangs from</td>
+</tr>
+<tr>
+<td>Components and rates</td>
+<td>VAT, import VAT, reverse-charge VAT, withholding, excise, customs duty, each with effective-dated rates</td>
+<td>Rate changes never rewrite history</td>
+</tr>
+<tr>
+<td>Accounts by component</td>
+<td>Where each component posts, including the non-recoverable share that goes to cost</td>
+<td>Accounts are looked up, never typed</td>
+</tr>
+<tr>
+<td>Ledger tags</td>
+<td>Code, component, direction, recoverable amount, return box on every tax line</td>
+<td>The return and registers are queries over the ledger</td>
+</tr>
+<tr>
+<td>Settlement</td>
+<td>Output against input into the authority payable at filing</td>
+<td>Filing is an accounting event</td>
+</tr>
+</tbody></table></div>
+<h3 id="rev--p-12">10.3 What the operator does and what the system decides</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Scenario</th>
+<th>Operator action</th>
+<th>System decision (target)</th>
+</tr>
+</thead><tbody><tr>
+<td>Sale to a domestic business customer</td>
+<td>Chooses the customer and items</td>
+<td>Standard-rated code, 15% output VAT on its own account</td>
+</tr>
+<tr>
+<td>Retail sale, tax-inclusive price</td>
+<td>Scans items</td>
+<td>Tax extracted per line, rounded per line; total equals the shelf price</td>
+</tr>
+<tr>
+<td>Export to a foreign customer</td>
+<td>Chooses the customer and items</td>
+<td>Zero-rated code with its reason code; no tax amount; still a taxable supply for recovery</td>
+</tr>
+<tr>
+<td>Domestic purchase</td>
+<td>Chooses the vendor and items</td>
+<td>Recoverable input VAT on its own account; a non-recoverable category adds the tax to the cost</td>
+</tr>
+<tr>
+<td>Purchase of goods from a foreign vendor</td>
+<td>Chooses the vendor and items</td>
+<td>Treated as an <strong>import of goods</strong>: duty from the item&#39;s tariff rate, import VAT on customs value plus duty, one payable per payee (supplier, forwarder, customs), foreign currency</td>
+</tr>
+<tr>
+<td>Service from a foreign vendor</td>
+<td>Chooses the vendor and the service</td>
+<td><strong>Reverse charge</strong> (self-assessed output and input) and <strong>withholding</strong> by service class, payable net</td>
+</tr>
+<tr>
+<td>Filing a quarter</td>
+<td>Files the return</td>
+<td>Settlement entry netting output and input into the authority payable</td>
+</tr>
+</tbody></table></div>
+<h3 id="rev---18">10.4 Where we are today (as built): an interim state, not the target</h3>
+<ul>
+<li>A company keeps <strong>tax slabs</strong> (name, percentage, exemption reason). A document has a header slab; an invoice line can have its own. Tax is computed per line and rounded per line.</li>
+<li>Output VAT posts to <strong>one</strong> account (VAT output) and input VAT to <strong>one</strong> account (VAT input), whatever the rate. <strong>This is the interim behaviour, not the agreed design.</strong></li>
+<li>There are no profiles and no determination: the slab is chosen by the user. Zero-rated and exempt lines create no VAT line, so the ledger cannot tell them apart.</li>
+<li>A VAT return is generated per quarter <strong>from documents</strong> and filed in order; filing locks the quarter. No settlement entry is posted.</li>
+<li>Non-recoverable VAT, reverse charge, withholding, excise, import VAT, customs duty and foreign currency do not exist yet.</li>
+</ul>
+<p>The full analysis (tier-1 comparison, scenarios, gap table, traceability to requirements and tests) is in the design note <em>Taxation and tax profiles</em> in the technical documentation.</p>
+<h3 id="rev---19">10.5 What remains to be agreed</h3>
+<p>The direction in 10.1 is agreed. These details are not, and your advice is what we need: which tax components must be supported first; how import VAT is treated (paid at customs and recovered, or deferred where the law allows); whether recovery needs apportionment; tax-inclusive or tax-exclusive pricing by company, price list or item; who may override a determined tax; the return box definitions and who supplies them; whether to design for other GCC jurisdictions from the start.</p>
+<p><strong>Review questions (section 10).</strong> 10.1 Is the layered structure in 10.2 the right shape for your clients? 10.2 Which tax components do your clients need first? 10.3 Which of the 10.3 scenarios are most common for them? 10.4 Is the interim behaviour in 10.4 acceptable for the Demo while the structure is built?</p>
+<h2 id="rev---20">11. Inventory and cost of sales as built</h2>
 <ul>
 <li>Stock is held by warehouse in a stock ledger with every movement; the ledger holds one <strong>inventory</strong> control account; a consistency check compares the two.</li>
 <li><strong>Costing is average cost.</strong> The cost of goods sold is posted when a stock item is invoiced, at the average cost at that time. A purchase return reverses at cost; goods receipts add at cost.</li>
@@ -992,7 +1100,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 <li><strong>Segregation of duties:</strong> the maker-checker for journals and approval rules for payments, bills and credit notes; conflict rules between roles are not built.</li>
 </ul>
 <p><strong>Review questions (section 12).</strong> 12.1 Is the permission model fine-grained enough? 12.2 Do you require segregation-of-duties conflict rules (for example create vendor and change its bank account)? 12.3 What retention and anonymisation policy do you recommend for personal data?</p>
-<h2 id="rev--p-12">13. What is not built (stated plainly)</h2>
+<h2 id="rev--p-13">13. What is not built (stated plainly)</h2>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Area</th>
 <th>State</th>
@@ -1006,8 +1114,8 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 <td>Not built</td>
 </tr>
 <tr>
-<td>Tax engine (codes, determination, recovery, reverse charge, withholding, import VAT, excise); VAT settlement entry</td>
-<td>Designed, not built</td>
+<td>Layered tax structure on tax profiles (agreed direction): tax codes, determination from profiles, recovery, reverse charge, withholding, import VAT, excise, VAT settlement entry</td>
+<td>Direction agreed; detailed design written; <strong>not built</strong> (today: interim single VAT output and input accounts)</td>
 </tr>
 <tr>
 <td>Account sub-classification, posting controls on accounts, chart templates, effective dating</td>
@@ -1049,13 +1157,13 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 <h2 id="rev--p-p-6">14. Design proposals already written (not agreed, nothing built)</h2>
 <p>These are for your reaction; each is a document in the technical documentation.</p>
 <ul>
-<li><strong>Taxation and tax profiles:</strong> tax codes with components and dated rates; profiles on parties, items and the company; automatic determination; recoverable and non-recoverable tax; reverse charge; withholding; import; settlement entry.</li>
+<li><strong>Taxation and tax profiles</strong> (direction agreed, detailed design for your review): tax codes with components and dated rates; profiles on parties, items and the company; automatic determination; recoverable and non-recoverable tax; reverse charge; withholding; import; settlement entry. See section 10.</li>
 <li><strong>Chart of accounts benchmark:</strong> compares the chart with SAP, Oracle, Dynamics and NetSuite and proposes account attributes, templates and chart views.</li>
 <li><strong>A domain-neutral core:</strong> the primitives (typed references, quantities, accounting events, recognition schedules, currencies and ledgers, dimension capabilities) that would let retail, trading, manufacturing, real estate and other domains be added later without redesign.</li>
 <li><strong>Agreed decisions register</strong> with a professional review of every agreed entry.</li>
 </ul>
 <p><strong>Questions for you on direction.</strong> 14.1 Which of the gaps in section 13 would you rank as most important for your clients? 14.2 Which accounting standards or statutory formats must the design satisfy first? 14.3 Are there entries in section 6 you would change before we build anything more?</p>
-<h2 id="rev---17">15. Review form</h2>
+<h2 id="rev---21">15. Review form</h2>
 <p>Please return this table. <em>A</em> = accept, <em>C</em> = change (say what), <em>Q</em> = question.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>#</th>
@@ -1221,13 +1329,25 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 </tr>
 <tr>
 <td>10.1</td>
-<td>One VAT output and one VAT input account for now</td>
+<td>The layered structure (profiles, determination, tax code, components, accounts, tags, settlement) is the right shape</td>
 <td></td>
 <td></td>
 </tr>
 <tr>
 <td>10.2</td>
-<td>Proposed tax design</td>
+<td>Tax components needed first</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>10.3</td>
+<td>Most common tax scenarios for your clients</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>10.4</td>
+<td>The interim single VAT output and input accounts are acceptable for the Demo meanwhile</td>
 <td></td>
 <td></td>
 </tr>
