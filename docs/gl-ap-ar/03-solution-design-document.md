@@ -135,7 +135,7 @@ stateDiagram-v2
 stateDiagram-v2
   [*] --> Draft
   Draft --> Pending: submit (balanced, period ok)
-  Pending --> Posted: approve (other person; period re-checked)
+  Pending --> Posted: approve (other person, period re-checked)
   Pending --> Draft: reject (reason)
   Draft --> Discarded
   Posted --> Posted: reverse = new reversing draft, same path

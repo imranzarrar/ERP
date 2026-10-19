@@ -86,7 +86,7 @@ main{padding:2rem 2.4rem 4rem;min-width:0}
 table.plan{width:100%;border-collapse:collapse;font-size:.84rem}table.plan th{text-align:left;font:700 .66rem var(--font-display);letter-spacing:.05em;text-transform:uppercase;color:#fff;background:var(--primary-dark);padding:.6rem .8rem;white-space:nowrap}
 table.plan td{padding:.55rem .8rem;border-top:1px solid var(--line);vertical-align:top}table.plan tr:nth-child(even) td{background:#fbfaff}
 pre.code{background:#0f172a;color:#e2e8f0;padding:1rem 1.2rem;border-radius:12px;overflow:auto;font:.8rem/1.55 var(--font-mono)}pre.code code{background:none;border:0;padding:0;color:inherit}
-pre.mermaid{background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:1rem;overflow:auto;text-align:center}
+pre.mermaid,.diagram{background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:1rem;overflow:auto;text-align:center}
 .callout{background:var(--raised);border:1px solid var(--line);border-left:4px solid var(--primary);border-radius:0 14px 14px 0;padding:.9rem 1.2rem;margin:1.2rem 0}.callout .label{font:700 .68rem var(--font-display);letter-spacing:.08em;text-transform:uppercase;color:var(--primary);margin-bottom:.3rem}.callout p:last-child{margin-bottom:0}
 .callout.warn{border-left-color:var(--warn)}.callout.warn .label{color:#92400e}
 figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 28px -14px rgba(30,27,75,.35)}figure.shot figcaption{font-size:.76rem;color:var(--ink-soft);margin-top:.35rem}
@@ -299,6 +299,29 @@ function buildReview() {
   write(D('finance-review', 'finance-review-pack.html'), page({ title: 'Warraq ERP Finance Review Pack', rail, body, mermaid: !!ctx.mermaid }));
 }
 
+// ---------------------------------------------------------------- diagrams: rendered once, here, into static SVG (no runtime library in the published pages)
+async function staticMermaid(files) {
+  let chromium;
+  try { ({ chromium } = await import('playwright')); } catch { console.log('Playwright is not available: diagrams stay dynamic (they need the mermaid script at view time).'); return; }
+  const browser = await chromium.launch({ channel: process.env.PW_CHANNEL || 'chrome', args: ['--no-sandbox'] }).catch(() => null);
+  if (!browser) { console.log('Chrome is not available: diagrams stay dynamic.'); return; }
+  const pg = await browser.newPage({ viewport: { width: 1300, height: 900 } });
+  for (const f of files) {
+    let html = fs.readFileSync(f, 'utf8');
+    if (!html.includes('<pre class="mermaid">')) continue;
+    await pg.goto('file:///' + f.replace(/\\/g, '/'));
+    await pg.waitForFunction(() => [...document.querySelectorAll('pre.mermaid')].every(p => p.querySelector('svg')), null, { timeout: 45000 }).catch(() => {});
+    const out = await pg.evaluate(() => [...document.querySelectorAll('pre.mermaid')].map(p => ({ html: p.innerHTML, svg: !!p.querySelector('svg'), text: p.textContent.slice(0, 80) })));
+    out.forEach((o, i) => { if (!o.svg || /Syntax error in text/.test(o.html)) problems.push(`${path.relative(ROOT, f)}: diagram ${i + 1} does not render (${o.text.replace(/\s+/g, ' ')})`); });
+    if (out.some(o => !o.svg || /Syntax error in text/.test(o.html))) continue;
+    let i = 0;
+    html = html.replace(/<pre class="mermaid">[\s\S]*?<\/pre>/g, () => `<div class="diagram">${out[i++].html}</div>`);
+    html = html.replace(MERMAID, '');
+    fs.writeFileSync(f, html);
+  }
+  await browser.close();
+}
+
 const written = [];
 function write(f, s) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, s); written.push(f); }
 
@@ -315,6 +338,7 @@ function check(f) {
 }
 
 buildTechnical(); buildManual(); buildHub(); buildReview();
+await staticMermaid(written.filter(f => /technical[\\/]index|finance-review/.test(f)));
 for (const f of written) check(f);
 console.log('Written:', written.map(f => path.relative(ROOT, f)).join(', '));
 if (problems.length) { console.log(`\n${problems.length} problem(s):`); for (const p of [...new Set(problems)].slice(0, 80)) console.log(' -', p); process.exit(1); }
