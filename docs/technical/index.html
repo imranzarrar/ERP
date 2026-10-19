@@ -46,7 +46,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 </tbody></table></div>
 <div class="callout"><div class="label">Which version is described</div><p>The finance core is <b>Warraq 2.0</b> (branch <code>v2</code>, the Demo). Live (1.0, branch <code>master</code>) does not have it yet. Chapters say so where it matters; the <a href="#environments">Environments</a> chapter explains the two tracks.</p></div>
 <div class="callout warn"><div class="label">Reading copy, not the source</div><p>This page is generated. The requirements, system requirements, sprint log, traceability and annexes A to C are generated from <code>docs/gl-ap-ar/source/*.mjs</code> and from the code; the other chapters are hand-written Markdown under <code>docs/gl-ap-ar</code>, <code>docs/design-notes</code>, <code>docs/operations</code> and <code>docs/proposals</code>. Edit those, then run <code>npx tsx scripts/build-gl-docs.mjs</code> and <code>node scripts/build-docs-html.mjs</code>; never edit this page. The skill <code>update-docs-after-development</code> walks through it.</p></div>
-<p class="src">Version: built 2026-10-19, branch v2, after commit 98d9bcc.</p></section>
+<p class="src">Version: built 2026-10-19, branch v2, after commit 12385bd.</p></section>
 <section class="chapter" id="environments"><p class="eyebrow">Chapter 2</p><h2>Environments: Live (1.0) and Demo / development (2.0)</h2><p class="src">Source: <code>docs/operations/environments.md</code></p><p>Two words are used everywhere from now on:</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th></th>
@@ -5431,6 +5431,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </ol>
 </section>
 <section class="chapter" id="coa-benchmark"><p class="eyebrow">Chapter 16</p><h2>Chart of accounts: benchmark against tier-1 ERPs and fit to retail, trading, manufacturing, profit-centre, budgeting and project costing</h2><p class="src">Source: <code>docs/design-notes/coa-tier1-benchmark.md</code> · <span class="pill">Benchmark and proposal for decision: nothing built</span></p><p>Written 2026-10-19 at the owner&#39;s request, after the owner observed that the finance core looked like &quot;simple forms making entries&quot;. This is an analysis with a gap register and a target architecture for decision. Nothing is built or registered in the requirement set yet (section 9 proposes the entries).</p>
+<p><strong>Correction on 2026-10-19 (owner):</strong> an earlier version of this note proposed separate profit centre and project objects. That contradicted the agreed design, in which dimensions are unlimited and flexible and serve budgeting, costing, control and profit and loss. Sections 4, 6, 7.3, 7.4 and 9 were rewritten so that every management-accounting need is met by <strong>capabilities of the dimension framework</strong>, not by new hard-coded modules.</p>
 <p><strong>Confidence.</strong> Our side (sections 2 and 5) was read from the code and the requirement register today. The tier-1 side is general product knowledge of SAP S/4HANA, Oracle Fusion General Ledger, Microsoft Dynamics 365 Finance and NetSuite, plus the documentation pages already checked for the tax analysis; account-attribute lists were <strong>not</strong> re-verified against current vendor documentation in this session and should be confirmed per vendor before a feature is copied from them.</p>
 <h3 id="coa-benchmark--section">1. What a chart of accounts is for, in a tier-1 system</h3>
 <p>A tier-1 chart is not a list of ledger accounts. It is the <strong>classification and control backbone</strong> of the whole finance system:</p>
@@ -5646,7 +5647,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>9</td>
 <td>Profit centre accounting</td>
 <td>Profit centre on every line, balanced books and balance sheet per profit centre, inter-unit clearing</td>
-<td>Branch or department tags; <strong>no profit centre object, no balance per profit centre, no inter-unit clearing</strong>; allocation planned only</td>
+<td>The <strong>dimension framework</strong> gives tags, hierarchy, rules per account and filters in every report. Missing in the framework: a balancing role, inter-unit clearing, break-down by value, per-value balance sheet</td>
 <td><strong>Partial</strong></td>
 <td>M</td>
 </tr>
@@ -5654,7 +5655,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>10</td>
 <td>Cost objects</td>
 <td>Cost centres, internal orders, projects with WBS, production orders</td>
-<td>Department dimension (cost centre); custom dimension types can imitate a project but with no master data, status, dates, budget, customer or billing</td>
+<td>Any dimension type can serve as a cost object (cost centre is the department type). Missing in the framework: value attributes, lifecycle (status, validity dates), valid-combination rules; the allocation engine is planned for branch and cost centre only</td>
 <td><strong>Partial</strong></td>
 <td>M</td>
 </tr>
@@ -5670,7 +5671,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>12</td>
 <td>Budgeting</td>
 <td>Budget versions by account × dimensions × period; checks at posting or at commitment; variance reporting</td>
-<td>Absent; the Blueprint does not mention it</td>
+<td>Absent; the Blueprint does not mention it. The framework fits it: budget lines can key on the existing dimension combination, and the report engine already has variance columns</td>
 <td><strong>Absent</strong></td>
 <td>M</td>
 </tr>
@@ -5678,8 +5679,8 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>13</td>
 <td>Project accounting</td>
 <td>Project master, tasks or WBS, cost collection, billing, WIP, revenue recognition, retention</td>
-<td>Absent</td>
-<td><strong>Absent</strong></td>
+<td>A project can be a dimension type today (tag only). Missing: value attributes and lifecycle (framework), billing, work in progress, recognition and retention processes</td>
+<td><strong>Partial</strong></td>
 <td>H</td>
 </tr>
 <tr>
@@ -5771,7 +5772,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td></td>
 </tr>
 </tbody></table></div>
-<p><strong>Reading the result.</strong> The mechanics (control accounts, tags, rules per account, designer) are sound. The gaps that are expensive later are <strong>currency (6), several books (7), profit centre as a real object (9), project accounting (13), manufacturing accounts (15), intercompany (19)</strong>. The cheap ones (classification, groups, templates, localisation, governance) should be done together as one enrichment of the account master.</p>
+<p><strong>Reading the result.</strong> The mechanics (control accounts, tags, rules per account, unlimited dimensions, designer) are sound. The gaps that are expensive later are <strong>currency (6), several books (7), manufacturing accounts (15), intercompany (19)</strong>, and the missing management-accounting capabilities of the dimension framework (9, 10, 12, 13). The cheap ones (classification, groups, templates, localisation, governance) should be done together as one enrichment of the account master.</p>
 <h3 id="coa-benchmark---4">5. Fit to business models</h3>
 <p>For each model: what the chart and dimensions must provide, what we provide, and the gap.</p>
 <h4 id="coa-benchmark---5">5.1 Retail</h4>
@@ -5876,17 +5877,17 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 <h4 id="coa-benchmark--p-2">5.4 Profit-centre accounting</h4>
-<p>Tier-1 pattern: every line carries a profit centre (and, in SAP, a segment); balance sheet and profit and loss can be produced per profit centre; transfers between profit centres clear through <strong>inter-profit-centre accounts</strong>; shared costs are allocated by rule. Ours: a branch or department tag and an allocation run in the plan. <strong>Missing:</strong> the profit centre as a master object with hierarchy and responsible person, the <strong>balancing</strong> rule that makes each profit centre&#39;s books balance, inter-unit clearing accounts, per-profit-centre balance sheet, transfer pricing.</p>
+<p>Tier-1 pattern: every line carries a profit centre (and, in SAP, a segment); balance sheet and profit and loss can be produced per profit centre; transfers between profit centres clear through <strong>inter-profit-centre accounts</strong>; shared costs are allocated by rule. Ours: a profit centre is simply a dimension type (branch or any custom type) with tags, hierarchy and report filters, and an allocation run is planned. <strong>Missing in the dimension framework</strong> (section 7.3): a balancing role, inter-unit clearing, value attributes (manager, status), break-down reports per value, allocation over any type.</p>
 <h4 id="coa-benchmark---7">5.5 Budgeting</h4>
-<p>Tier-1 pattern: budget versions (original, revised, forecast) by account (or account group) × dimensions × period; control at posting or at purchase commitment (warn or stop); commitments from requisitions and orders; variance reports (actual versus budget versus prior year). Ours: nothing. The dimension and period models are good enough to carry it, but account-group classification (item 1 and 3) and a commitment concept do not exist.</p>
+<p>Tier-1 pattern: budget versions (original, revised, forecast) by account (or account group) × dimensions × period; control at posting or at purchase commitment (warn or stop); commitments from requisitions and orders; variance reports (actual versus budget versus prior year). Ours: nothing built, but the dimension combination and the report engine&#39;s variance columns are the right base: a budget line keys on an account (or group) and a dimension combination, and budget becomes a value basis of the designer (section 7.4). Account classification (items 1 and 3) and a commitment concept are the missing prerequisites.</p>
 <h4 id="coa-benchmark--p-3">5.6 Project-level costing</h4>
-<p>Tier-1 pattern: a <strong>project master</strong> (customer, dates, manager, status, contract value, budget) with tasks or WBS; costs collected from purchases, expenses, timesheets, inventory issues; billing (fixed price, milestone, time and material); work in progress and revenue recognition (percentage of completion, completed contract); retention; project profitability. Ours: a custom dimension type can tag lines with a project name, nothing else. <strong>Missing:</strong> project master and lifecycle, cost collection rules, billing, WIP and recognition accounts, retention accounts, budget, profitability report.</p>
+<p>Tier-1 pattern: a project master (customer, dates, manager, status, contract value, budget) with tasks or WBS; costs collected from purchases, expenses, timesheets, inventory issues; billing (fixed price, milestone, time and material); work in progress and revenue recognition (percentage of completion, completed contract); retention; project profitability. Ours: a custom dimension type can tag lines with a project, which is the right key. <strong>Missing:</strong> value attributes and lifecycle on dimension values, dimensions on documents (Sprint 16), and the processes (billing, work in progress, recognition, retention), which are documents and runs keyed by the project value, not a separate ledger.</p>
 <h3 id="coa-benchmark---8">6. Findings</h3>
 <p><strong>Structurally sound (keep):</strong> company-owned chart with hierarchy; control accounts and per-party control accounts; typed subledger tags; dimensions with rules per account and default tags; the report designer; usage locks.</p>
 <p><strong>Thin, in order of how much future development they block:</strong></p>
 <ol>
 <li><strong>Account master has too few attributes.</strong> With five types and a control flag only, nothing can be classified for cash flow, statutory lines, current versus non-current, nature versus function, tax category, currency or blocked status. Every later feature (tax, currency, cash-flow statement, budgeting by account group) will want these. <em>Low retrofit cost now, high if each feature adds its own.</em></li>
-<li><strong>No profit centre, project or budget object.</strong> Dimensions are tags without master data, balancing, status or budget; these three are the core of management accounting.</li>
+<li><strong>The dimension framework lacks the capabilities that make a dimension useful for management accounting.</strong> Dimensions are already unlimited and flexible (any number of types, hierarchical values, rules per account, filters in reports). What a type cannot yet do: carry attributes and a lifecycle, be a balancing unit, validate combinations with other types, break a report down by its values, be a basis of allocation beyond branch and cost centre, or key a budget. These are additions to the framework, not new modules (section 7.3).</li>
 <li><strong>One chart, one ledger, one currency.</strong> Foreign currency and several books are structural and must be decided before more documents are built on single-currency assumptions.</li>
 <li><strong>No account groups and no industry templates.</strong> Every company starts from the same generic chart; a retailer, a trader and a manufacturer need different starting structures and different automatic accounts.</li>
 <li><strong>Role-based account lookup is flat.</strong> One account per role per company. Tier-1 systems determine accounts by role <strong>and</strong> by item or product class, party class, branch and transaction type (SAP account determination, Oracle subledger accounting rules). This is the same point as the tax analysis: the document should name what and who, and rules find the accounts.</li>
@@ -5940,20 +5941,84 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li><strong>Chart templates</strong> per industry (retail, trading, manufacturing, services and projects) with their automatic accounts and dimension rules, reviewed by an accountant; a company picks one at creation and can adopt a template later by merge.</li>
 <li><strong>Chart views</strong>: statutory (local standard and IFRS), management, group. A view is a mapping from accounts to the view&#39;s lines, so one ledger serves several statements; true parallel ledgers are a later decision (7.5).</li>
 </ul>
-<h4 id="coa-benchmark---11">7.3 Management accounting objects</h4>
+<h4 id="coa-benchmark--p-5">7.3 Management accounting through the dimension framework (no separate modules)</h4>
+<p><strong>Principle, as agreed and confirmed against the code:</strong> dimensions are unlimited and configurable. A company can define any number of dimension types; a ledger line carries one tag per type through a dimension combination; values form hierarchies; rules per account make a type required, optional or not allowed; every report row and column can filter by any type. Profit centre, cost centre, project, product line, region and channel are all <strong>dimension types</strong>, not special modules. Nothing in section 7 may add a hard-coded &quot;profit centre module&quot; or &quot;project module&quot; ledger.</p>
+<p>The benchmark gap is therefore narrower and more precise than &quot;no profit centre object&quot;: today a dimension type has <strong>tags, hierarchy and rules, and nothing else</strong>. The capabilities below are added to the framework itself, so that any type can use them.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>#</th>
+<th>Capability added to the dimension framework</th>
+<th>What it gives</th>
+<th>Typical use</th>
+</tr>
+</thead><tbody><tr>
+<td>1</td>
+<td><strong>Type roles</strong> (flags on the type): balancing, cost object, statistical driver</td>
+<td>Tells the engine how to treat the type</td>
+<td>Profit centre = balancing; project and cost centre = cost object; headcount or floor area = statistical driver</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>Value attributes</strong>: configurable fields per type (text, number, date, status, link to customer, employee or branch)</td>
+<td>A dimension value becomes real master data</td>
+<td>Project: customer, dates, manager, contract value. Profit centre: manager, responsible branch</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>Value lifecycle</strong>: status and validity dates; posting refused outside them</td>
+<td>Closing a project or cost centre is enforced</td>
+<td>Project completed, cost centre retired</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Valid-combination rules between types</strong>: requires, implies, default derivation</td>
+<td>Keeps combinations meaningful</td>
+<td>A project belongs to one profit centre, so choosing the project sets it</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Balancing</strong>: for a balancing type, each journal entry nets to zero per value; the engine adds inter-unit clearing lines when it does not; balance sheet and profit and loss per value</td>
+<td>Profit centre accounting without a separate ledger</td>
+<td>Store or division books that balance, with transfers cleared through an inter-unit account</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>Break-down reports</strong>: a column or row per value of a chosen type, rolled up through the hierarchy, drill to the ledger</td>
+<td>Profit and loss, balance sheet or cost report by any dimension in one run, no hand-built columns</td>
+<td>Profit and loss per branch, per project, per product line</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>Allocation engine over any type</strong>: a rule moves cost from source values and accounts to destination values by a basis (fixed percentage, revenue, a statistical driver, another column), net zero</td>
+<td>Overhead absorption and cost distribution</td>
+<td>Head office cost to branches; shared service cost to projects</td>
+</tr>
+<tr>
+<td>8</td>
+<td><strong>Dimensions on every document</strong> (Sprint 16) with Required rules enforced</td>
+<td>Costing from sales, purchases and expenses without a journal</td>
+<td>A purchase bill requires a project on construction material accounts</td>
+</tr>
+<tr>
+<td>9</td>
+<td><strong>Rules per account do the project accounting work</strong>: work in progress, unbilled revenue, deferred revenue and retention accounts mark the project type as required</td>
+<td>A project&#39;s balances are queries over the ledger, not a second ledger</td>
+<td>Project profitability, work in progress per project</td>
+</tr>
+</tbody></table></div>
+<p>Project <strong>billing</strong> (fixed price, milestone, time and material) and <strong>revenue recognition</strong> (percentage of completion, completed contract) are processes: documents and runs keyed by the project dimension value, posting through the normal engine. They are built after items 2, 3 and 8, and need the accounting-rules layer (the same as for tax). They are not a separate project ledger.</p>
+<h4 id="coa-benchmark---11">7.4 Budgeting on the same framework</h4>
 <ul>
-<li><strong>Profit centre</strong> (hierarchical master with manager, status, dates), a first-class dimension type with a <strong>balancing option</strong>, inter-profit-centre clearing accounts, allocation rules (Sprint 15), and per-profit-centre statements.</li>
-<li><strong>Cost centre</strong> stays the department dimension, with owner and budget.</li>
-<li><strong>Project</strong> master (customer, dates, manager, status, contract value, budget, WBS tasks) as a dimension type with its own lifecycle; cost collection from purchases, expenses, stock issues; billing and revenue recognition accounts (WIP, contract assets and liabilities, retention).</li>
-<li><strong>Valid-combination rules</strong> between dimensions (for example a project belongs to one profit centre) on top of the existing rules per account.</li>
+<li><strong>Budget version</strong> (original, revised, forecast) with lines of: account or account group × <strong>dimension combination</strong> (any subset of the company&#39;s types, stored in the existing combination structure) × fiscal period × amount, with an optional quantity.</li>
+<li><strong>Controls</strong>: a company chooses which dimension types a control applies to (for example department plus account group, or project plus all cost accounts), and the mode (report only, warn, stop), at posting, requisition and order.</li>
+<li><strong>Commitments</strong>: open requisitions and orders carry the same dimension combination and count against the budget until invoiced.</li>
+<li><strong>Reporting</strong>: budget is a <strong>value basis</strong> of the report designer (columns today are period basis × value basis × dimension filter, with variance and percent columns already built), so budget versus actual versus prior year works for any dimension without new report code.</li>
+<li><strong>Consequence</strong>: there is no limit on dimensions for budgeting, costing or control; the limit is only what the company configures.</li>
 </ul>
-<h4 id="coa-benchmark---12">7.4 Budgeting</h4>
-<p>Budget versions by account or account group × dimension combination × fiscal period; checks at posting, requisition and order (warn or stop, per company and per account group); commitments from open requisitions and orders; budget versus actual versus prior-year reports through the report designer.</p>
-<h4 id="coa-benchmark---13">7.5 Foundations to decide first</h4>
+<h4 id="coa-benchmark---12">7.5 Foundations to decide first</h4>
 <p>Foreign currency (account currency, rates, revaluation) and parallel ledgers are not features to add to the chart later; they change what an amount is. They must be decided (even if built later) before profit centre, project and budget design is frozen.</p>
-<h4 id="coa-benchmark---14">7.6 Account determination</h4>
+<h4 id="coa-benchmark---13">7.6 Account determination</h4>
 <p>Documents name party, item, branch and transaction type; <strong>determination rules</strong> (the same mechanism as the tax design) return the accounts, so revenue, discount, return, cost of sales, inventory, variance and clearing accounts follow the item class and the profile rather than one account per role.</p>
-<h3 id="coa-benchmark--p-5">8. How the pieces fit with the tax design</h3>
+<h3 id="coa-benchmark--p-6">8. How the pieces fit with the tax design</h3>
 <p>The tax design (Sprints 14 to 14f) needs exactly the account attributes in 7.1 (tax category, currency, posting control) and the determination mechanism in 7.6. They should be one engine, one sprint line, not two.</p>
 <h3 id="coa-benchmark--p-p-p">9. Proposed requirements, tests and sprints (not yet registered)</h3>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -5978,7 +6043,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 <tr>
 <td>BR-COA-12</td>
-<td>Chart views and mapping to statutory statements (local standard, IFRS), cash-flow statement from classes</td>
+<td>Chart views and mapping to statutory statements (local standard, IFRS); cash-flow statement from classes</td>
 <td>After the above</td>
 </tr>
 <tr>
@@ -5988,23 +6053,43 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 <tr>
 <td>BR-DIM-09</td>
-<td>Profit centre master with hierarchy, balancing, inter-unit clearing, statements per profit centre</td>
-<td>Management accounting</td>
+<td>Dimension type roles (balancing, cost object, statistical driver)</td>
+<td>Dimension framework</td>
 </tr>
 <tr>
 <td>BR-DIM-10</td>
-<td>Project master with lifecycle, WBS, cost collection, billing, WIP and recognition, retention, profitability</td>
-<td>Management accounting</td>
+<td>Dimension value attributes and lifecycle (status, validity dates, posting refused outside them)</td>
+<td>Dimension framework</td>
 </tr>
 <tr>
 <td>BR-DIM-11</td>
-<td>Valid-combination rules between dimensions</td>
-<td>Management accounting</td>
+<td>Valid-combination rules between types, with default derivation</td>
+<td>Dimension framework</td>
+</tr>
+<tr>
+<td>BR-DIM-12</td>
+<td>Balancing: per-value balanced entries, inter-unit clearing, balance sheet and profit and loss per value</td>
+<td>Dimension framework</td>
+</tr>
+<tr>
+<td>BR-DIM-13</td>
+<td>Break-down reports by any dimension type, with roll-up and drill</td>
+<td>Dimension framework</td>
+</tr>
+<tr>
+<td>BR-DIM-07 (widen)</td>
+<td>Allocation engine over any dimension type and basis, including statistical drivers (was branch and cost centre only)</td>
+<td>Cost allocation (Sprint 15)</td>
 </tr>
 <tr>
 <td>BR-BUD-01..04</td>
-<td>Budget versions, control at posting and commitment, commitments, budget versus actual</td>
+<td>Budget versions on account × dimension combination × period; controls by chosen types; commitments; budget as a report value basis</td>
 <td>Budgeting</td>
+</tr>
+<tr>
+<td>BR-PRJ-01..04</td>
+<td>Project billing, work in progress, revenue recognition, retention as processes keyed by the project dimension</td>
+<td>After BR-DIM-10, Sprint 16 and the accounting-rules layer</td>
 </tr>
 <tr>
 <td>BR-ACC-01</td>
@@ -6023,17 +6108,17 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 <p>Each needs system requirements and test cases written before it is built; none is registered until the owner agrees the direction.</p>
-<h3 id="coa-benchmark---15">10. Decisions needed from the owner</h3>
+<h3 id="coa-benchmark---14">10. Decisions needed from the owner</h3>
 <ol>
-<li><strong>Order</strong>: account-master enrichment and templates first (cheap, unblocks tax, currency and budgeting), then profit centre, project and budget, or the other way round?</li>
-<li><strong>Multi-currency and parallel ledgers</strong>: in the programme, and before the management-accounting objects are frozen?</li>
+<li><strong>Order</strong>: account-master enrichment and templates first (cheap, unblocks tax, currency and budgeting), then the dimension-framework capabilities (roles, attributes, balancing, break-down reports, allocation over any type) and budgeting, or the other way round?</li>
+<li><strong>Multi-currency and parallel ledgers</strong>: in the programme, and before the dimension-framework capabilities are frozen?</li>
 <li><strong>Which business models are real customers&#39; needs now</strong>: retail, trading, manufacturing, projects? The templates and the first accounts follow that.</li>
-<li><strong>Profit centre versus branch</strong>: is a branch a profit centre, or are profit centres a separate hierarchy across branches?</li>
+<li><strong>Profit centre versus branch</strong>: is the branch dimension type the balancing (profit-centre) type, or is profit centre a separate dimension type across branches? Either is possible in the framework; the answer sets the default company setup.</li>
 <li><strong>Project costing depth</strong>: cost collection and profitability only, or billing and revenue recognition (percentage of completion) as well?</li>
 <li><strong>Budget control</strong>: report only, warn, or stop at posting and at purchase commitment?</li>
 <li><strong>Statutory view</strong>: which standard (local, IFRS, both) must the chart map to, and who signs off the template charts?</li>
 </ol>
-<h3 id="coa-benchmark---16">11. Sources and confidence</h3>
+<h3 id="coa-benchmark---15">11. Sources and confidence</h3>
 <ul>
 <li>Our code and requirement register as of 2026-10-19: <code>server/lib/chartOfAccounts.ts</code>, <code>src/db/schema.ts</code> (<code>company_accounts</code>, <code>account_dimension_rules</code>, <code>dimension_*</code>), <code>docs/gl-ap-ar/source/brd.mjs</code> (areas COA, DIM, PER, RPT, and the out-of-scope list).</li>
 <li>Finance Core Blueprint (<code>docs/reference</code>): FR-COA, FR-DIM, FR-LC, FR-WIP, FR-FA.</li>
