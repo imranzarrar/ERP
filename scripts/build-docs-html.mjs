@@ -108,6 +108,7 @@ const linkmap = Object.fromEntries(Object.entries(SUB).map(([h, s]) => [s, h]));
 const CH = [
   { part: 'Orientation' },
   { id: 'overview', title: 'How this documentation fits together', html: 'overview' },
+  { id: 'finance-review', src: 'docs/finance-review/finance-review-pack.md', tag: 'Review pack for a finance professional (also available as a standalone page)' },
   { id: 'environments', src: 'docs/operations/environments.md' },
   { part: 'The whole system' },
   { id: 'platform', src: 'docs/platform/00-platform-architecture.md' },
@@ -262,6 +263,10 @@ function buildHub() {
 <a class="card" href="user-manual/warraq-erp-user-manual.html"><b>User manual</b><span>For people who use Warraq: every screen step by step. Everyday operations (point of sale, invoices, purchasing, reports, set-up) and the finance core (ledger, receivables, payables, bank, approvals).</span></a>
 <a class="card" href="technical/index.html"><b>Technical documentation</b><span>For analysts, developers and testers: requirements, design, rules, tests, sprint log, API, data, operations. One document with three linked tables.</span></a>
 </div>
+<h3 style="margin-top:2.4rem">For a finance professional</h3>
+<div class="cards">
+<a class="card" href="finance-review/finance-review-pack.html"><b>Finance review pack</b><span>How the general ledger, receivables, payables and expenses work, with diagrams, worked examples and a review form. Written for an accountant to confirm or change before more is built.</span></a>
+</div>
 <h3 style="margin-top:2.4rem">Related</h3>
 <div class="cards">
 <a class="card" href="zatca/zatca-onboarding-user-manual.html"><b>ZATCA onboarding guide</b><span>Setting a company up for e-invoicing, step by step.</span></a>
@@ -282,6 +287,18 @@ function buildHub() {
   write(D('index.html'), page({ title: 'Warraq ERP Documentation', rail: '<aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Documentation</div><a class="home" href="user-manual/warraq-erp-user-manual.html">User manual</a><a class="home" href="technical/index.html">Technical documentation</a></aside>', body }));
 }
 
+// ---------------------------------------------------------------- finance review pack: one standalone page (and a chapter of the technical document)
+function buildReview() {
+  const src = 'docs/finance-review/finance-review-pack.md';
+  const md = read(path.join(ROOT, src));
+  const ctx = { id: 'rev', src, outDir: D('finance-review'), linkmap: {}, shift: 0 };
+  const html = render(stripH1(md), ctx);
+  const heads = [...html.matchAll(/<h2 id="([^"]+)">([^<]+)<\/h2>/g)];
+  const rail = `<aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Finance review pack</div><a class="home" href="../index.html">← All documentation</a>${heads.map(h => `<a href="#${h[1]}">${h[2]}</a>`).join('')}</aside>`;
+  const body = `<section class="chapter"><p class="eyebrow">Review pack for a finance professional · built ${today}</p><h1 style="font-size:2.1rem;margin:.2rem 0 1rem">${esc(title1(md))}</h1><p class="src">Source: <code>${src}</code></p>${html}</section>`;
+  write(D('finance-review', 'finance-review-pack.html'), page({ title: 'Warraq ERP Finance Review Pack', rail, body, mermaid: !!ctx.mermaid }));
+}
+
 const written = [];
 function write(f, s) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, s); written.push(f); }
 
@@ -297,7 +314,7 @@ function check(f) {
   }
 }
 
-buildTechnical(); buildManual(); buildHub();
+buildTechnical(); buildManual(); buildHub(); buildReview();
 for (const f of written) check(f);
 console.log('Written:', written.map(f => path.relative(ROOT, f)).join(', '));
 if (problems.length) { console.log(`\n${problems.length} problem(s):`); for (const p of [...new Set(problems)].slice(0, 80)) console.log(' -', p); process.exit(1); }

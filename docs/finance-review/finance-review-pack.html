@@ -1,0 +1,1296 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Warraq ERP Finance Review Pack</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"><style>
+:root{--primary:#4f46e5;--primary-dark:#1e1b4b;--primary-soft:#f5f3ff;--primary-line:#ddd6fe;--ink:#1a1c23;--ink-soft:#565b6b;--paper:#f6f5fb;--raised:#fff;--line:#e2e1ee;--good:#059669;--warn:#d97706;--font-display:"Space Grotesk","Segoe UI",system-ui,sans-serif;--font-body:"Inter","Segoe UI",system-ui,sans-serif;--font-mono:"JetBrains Mono",Consolas,ui-monospace,monospace}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.62 var(--font-body)}
+a{color:var(--primary)}h1,h2,h3,h4{font-family:var(--font-display);color:var(--primary-dark);letter-spacing:-.01em;text-wrap:balance}
+code{font-family:var(--font-mono);font-size:.85em;background:var(--primary-soft);border:1px solid var(--primary-line);padding:.05em .4em;border-radius:4px;color:#312e81}
+.layout{display:grid;grid-template-columns:290px minmax(0,1fr);max-width:1500px;margin:0 auto}
+.rail{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;padding:1.2rem 1rem 2rem;border-right:1px solid var(--line);background:var(--raised);font-size:.84rem}
+.rail .mark{font:700 1rem var(--font-display);color:var(--primary-dark);margin-bottom:.2rem}.rail .sub{color:var(--ink-soft);font-size:.74rem;margin-bottom:1rem}
+.rail .grp{font:700 .66rem var(--font-display);letter-spacing:.08em;text-transform:uppercase;color:var(--primary);margin:1.1rem 0 .3rem}
+.rail a{display:block;padding:.28rem .55rem;border-radius:7px;color:var(--ink);text-decoration:none}.rail a:hover{background:var(--primary-soft)}.rail a.active{background:var(--primary);color:#fff}
+.rail a.home{font-weight:600}
+main{padding:2rem 2.4rem 4rem;min-width:0}
+.chapter{max-width:1040px;margin:0 0 3.5rem;scroll-margin-top:1rem}
+.chapter>h2{font-size:1.7rem;margin:0 0 .3rem;padding-top:1.6rem;position:relative}.chapter>h2::before{content:"";position:absolute;top:0;left:0;width:46px;height:4px;border-radius:4px;background:linear-gradient(90deg,#4f46e5,#818cf8)}
+.eyebrow{font:600 .72rem var(--font-mono);color:var(--primary);margin:0 0 .4rem}.src{font-size:.74rem;color:var(--ink-soft);margin:0 0 1.2rem}
+.chapter h3{font-size:1.2rem;margin:2rem 0 .6rem}.chapter h4{font-size:1rem;margin:1.4rem 0 .5rem;color:#312e81}.chapter h5,.chapter h6{font-size:.92rem;margin:1.1rem 0 .4rem}
+.table-wrap{overflow-x:auto;margin:1rem 0 1.6rem;border:1px solid var(--line);border-radius:12px;background:var(--raised)}
+table.plan{width:100%;border-collapse:collapse;font-size:.84rem}table.plan th{text-align:left;font:700 .66rem var(--font-display);letter-spacing:.05em;text-transform:uppercase;color:#fff;background:var(--primary-dark);padding:.6rem .8rem;white-space:nowrap}
+table.plan td{padding:.55rem .8rem;border-top:1px solid var(--line);vertical-align:top}table.plan tr:nth-child(even) td{background:#fbfaff}
+pre.code{background:#0f172a;color:#e2e8f0;padding:1rem 1.2rem;border-radius:12px;overflow:auto;font:.8rem/1.55 var(--font-mono)}pre.code code{background:none;border:0;padding:0;color:inherit}
+pre.mermaid{background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:1rem;overflow:auto;text-align:center}
+.callout{background:var(--raised);border:1px solid var(--line);border-left:4px solid var(--primary);border-radius:0 14px 14px 0;padding:.9rem 1.2rem;margin:1.2rem 0}.callout .label{font:700 .68rem var(--font-display);letter-spacing:.08em;text-transform:uppercase;color:var(--primary);margin-bottom:.3rem}.callout p:last-child{margin-bottom:0}
+.callout.warn{border-left-color:var(--warn)}.callout.warn .label{color:#92400e}
+figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 28px -14px rgba(30,27,75,.35)}figure.shot figcaption{font-size:.76rem;color:var(--ink-soft);margin-top:.35rem}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin:1.2rem 0}.card{background:var(--raised);border:1px solid var(--line);border-radius:14px;padding:1.1rem 1.25rem;text-decoration:none;color:var(--ink);display:block}.card:hover{border-color:var(--primary)}.card b{font:700 1rem var(--font-display);color:var(--primary-dark);display:block;margin-bottom:.25rem}.card span{font-size:.84rem;color:var(--ink-soft)}
+.pill{display:inline-block;font:600 .68rem var(--font-mono);padding:.1rem .5rem;border-radius:99px;background:var(--primary-soft);color:#3730a3;border:1px solid var(--primary-line)}
+.filters{display:flex;flex-wrap:wrap;gap:.6rem;margin:1rem 0}.filters input,.filters select{font:inherit;padding:.4rem .6rem;border:1px solid var(--line);border-radius:8px;background:var(--raised)}
+@media (max-width:900px){.layout{grid-template-columns:1fr}.rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:1.2rem 1rem 3rem}}
+@media print{.rail{display:none}.layout{grid-template-columns:1fr}.chapter{page-break-before:always}}
+</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Finance review pack</div><a class="home" href="../index.html">← All documentation</a><a href="#rev--p">0. How to use this pack</a><a href="#rev--p-2">1. The system on one page</a><a href="#rev--p-3">2. Vocabulary used in this pack</a><a href="#rev---3">3. The chart of accounts</a><a href="#rev---7">4. Dimensions</a><a href="#rev--p-8">5. The posting engine</a><a href="#rev--p-9">6. What each document posts</a><a href="#rev--p-10">7. Process flows end to end</a><a href="#rev--p-p-4">8. Month-end worked example (one small company)</a><a href="#rev--p-p-5">9. Reports and how they are produced</a><a href="#rev---15">10. VAT as it works today</a><a href="#rev---16">11. Inventory and cost of sales as built</a><a href="#rev--pp-3">12. Security, approvals and audit</a><a href="#rev--p-12">13. What is not built (stated plainly)</a><a href="#rev--p-p-6">14. Design proposals already written (not agreed, nothing built)</a><a href="#rev---17">15. Review form</a><a href="#rev--pp-p">Appendix A: voucher types</a><a href="#rev--pp-4">Appendix B: facts and sources</a></aside><main><section class="chapter"><p class="eyebrow">Review pack for a finance professional · built 2026-10-19</p><h1 style="font-size:2.1rem;margin:.2rem 0 1rem">Warraq ERP finance core: how the General Ledger, Receivables, Payables and Expenses work</h1><p class="src">Source: <code>docs/finance-review/finance-review-pack.md</code></p><p><strong>Review pack for a finance professional.</strong> Version of 19 October 2026. Describes Warraq 2.0 (the Demo). Live (1.0) does not have the ledger yet.</p>
+<h2 id="rev--p">0. How to use this pack</h2>
+<p><strong>Purpose.</strong> This document explains, in accounting terms, how the system is structured, how each business document turns into ledger entries, how periods and controls work, and what is not yet built. It is written so that an accountant can judge whether the design is sound <strong>before</strong> further development. Nothing in it is built on an assumption you have not seen.</p>
+<p><strong>What we ask of you.</strong></p>
+<ol>
+<li>Read sections 1 to 5 (structure and mechanism), then the process chapters 6 to 10.</li>
+<li>At the end of each section there is a short list of <strong>review questions</strong>. Mark each one <em>Accept</em>, <em>Change</em> or <em>Question</em>, with a comment. Section 15 collects all of them in one table you can return.</li>
+<li>Section 13 lists what is <strong>not</strong> built and section 14 the changes already proposed. Please say which matter most for the businesses you advise (retail, trading, manufacturing, real estate, services).</li>
+</ol>
+<p><strong>Conventions.</strong> <em>Dr</em> is debit, <em>Cr</em> is credit. Amounts are in Saudi riyals. Account codes are from the standard starter chart; every company can change them. &quot;As built&quot; means the code does this today; &quot;proposed&quot; means it is a design for discussion and does nothing yet.</p>
+<p><strong>What this pack covers.</strong> The general ledger (chart of accounts, dimensions, posting, periods, journals, reports), receivables (customers, invoices, credit notes, receipts), payables (vendors, purchase bills, goods receipts, returns, payments), expenses (including recurring and accrued), cash and bank (including reconciliation), approvals, and the VAT as it is handled today. It does not cover point-of-sale hardware, e-invoicing mechanics (ZATCA) or payroll.</p>
+<h2 id="rev--p-2">1. The system on one page</h2>
+<h3 id="rev--section">1.1 The idea</h3>
+<p>Every business event is entered <strong>once</strong>, as a <em>document</em> (an invoice, a bill, an expense, a receipt, a journal). The document is stored for operational use (lists, printing, e-invoicing) <strong>and</strong> posted to a single double-entry ledger. All financial reports are queries over that ledger. There is one posting mechanism, and it applies the same controls to every document.</p>
+<pre class="mermaid">flowchart TD
+  subgraph IN[&quot;1. Business documents (entered once)&quot;]
+    D1[&quot;Sales: invoice, credit note, POS&quot;]
+    D2[&quot;Purchases: expense, bill, goods receipt, return&quot;]
+    D3[&quot;Cash: receipt, payment, transfer, bank charge&quot;]
+    D4[&quot;Manual journal, opening balances&quot;]
+  end
+  IN --&gt; AP{&quot;Approval rule&lt;br/&gt;matches?&quot;}
+  AP --&gt;|yes| H[&quot;Held until approved&lt;br/&gt;posts nothing&quot;]
+  H --&gt; E
+  AP --&gt;|no| E[&quot;2. Posting engine&lt;br/&gt;finds accounts, party and&lt;br/&gt;dimension tags, checks balance&quot;]
+  S[&quot;Set-up: chart of accounts, role mapping,&lt;br/&gt;customer and vendor profiles, dimensions&quot;] --&gt; E
+  E --&gt; G{&quot;3. Posting guard&lt;br/&gt;period, lock date,&lt;br/&gt;back-date, VAT quarter&quot;}
+  G --&gt;|refused| X[&quot;Rejected with a reason&lt;br/&gt;nothing is written&quot;]
+  G --&gt;|allowed| L[&quot;4. Ledger&lt;br/&gt;journal entry and lines&lt;br/&gt;(plus a voucher when cash moves)&quot;]
+  L --&gt; O1[&quot;Trial balance and&lt;br/&gt;financial statements&quot;]
+  L --&gt; O2[&quot;Aging, customer and&lt;br/&gt;vendor ledgers&quot;]
+  L --&gt; O3[&quot;Cash, bank and&lt;br/&gt;reconciliation&quot;]</pre>
+<h3 id="rev--p-p">1.2 Principles (what the design guarantees)</h3>
+<ol>
+<li><strong>One ledger, one engine.</strong> Every report is a query over posted lines; there is no second calculation.</li>
+<li><strong>A document names <em>who and what</em>, never accounts.</strong> The engine finds the accounts (section 3 and 5).</li>
+<li><strong>Every entry balances</strong> (debits equal credits) and is refused otherwise.</li>
+<li><strong>Posted entries are never edited or deleted.</strong> A correction is a reversing entry.</li>
+<li><strong>Control accounts</strong> (receivables, payables, inventory, banks, VAT) can be posted only by their own documents, so their balance is always the sum of their subledger.</li>
+<li><strong>One guard for dates.</strong> Every posting passes the same period and control check.</li>
+<li><strong>Dimensions</strong> (branch, department, anything the company defines) tag every line for analysis and never change an account balance.</li>
+<li><strong>Every cash movement is a voucher</strong> and also an entry, so cash reports and the ledger agree.</li>
+<li><strong>Approval holds, never half-posts.</strong> A document waiting for approval has posted nothing.</li>
+<li><strong>Full audit trail.</strong> Who did what and when is recorded; nothing is physically deleted.</li>
+</ol>
+<h3 id="rev---2">1.3 The lifecycle of a document</h3>
+<pre class="mermaid">stateDiagram-v2
+  [*] --&gt; Entered
+  Entered --&gt; WaitingApproval: a rule matches
+  WaitingApproval --&gt; Rejected: approver rejects
+  WaitingApproval --&gt; Posted: last level approves
+  Entered --&gt; Posted: no rule matches, guard passes
+  Posted --&gt; Reversed: cancel, credit note, return or reverse
+  Rejected --&gt; [*]
+  Reversed --&gt; [*]</pre>
+<p>A document that reaches the ledger is <em>Posted</em>. The only way back is a <strong>reversing entry</strong> dated within the rules of the period (section 9).</p>
+<p><strong>Review questions (section 1).</strong> 1.1 Are the ten principles the ones you would require of a ledger? 1.2 Is anything missing that an auditor would expect?</p>
+<h2 id="rev--p-3">2. Vocabulary used in this pack</h2>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Term</th>
+<th>Meaning</th>
+</tr>
+</thead><tbody><tr>
+<td>Document</td>
+<td>A business record (invoice, bill, expense, receipt, journal). Has a <strong>document date</strong> and a <strong>posting date</strong></td>
+</tr>
+<tr>
+<td>Voucher</td>
+<td>The cash side of a document: Receipt, Payment, Reversal, Transfer. Every cash movement has one</td>
+</tr>
+<tr>
+<td>Entry and line</td>
+<td>A balanced set of debit and credit lines in the ledger. A document can raise more than one entry (for example the invoice and its cost of sales)</td>
+</tr>
+<tr>
+<td>Role</td>
+<td>A purpose such as <em>Accounts receivable</em> or <em>Sales revenue</em>. Documents post to roles; the company maps each role to one account</td>
+</tr>
+<tr>
+<td>Control account</td>
+<td>An account that only its own subledger may post to (receivables, payables, inventory, banks, VAT, goods received not invoiced)</td>
+</tr>
+<tr>
+<td>Tag</td>
+<td>Extra facts on a line: customer, vendor, dimensions</td>
+</tr>
+<tr>
+<td>Dimension</td>
+<td>An analytical type (Branch, Department, or any the company adds) with values; a line can carry one value of each type</td>
+</tr>
+<tr>
+<td>Allocation</td>
+<td>The application of a receipt or payment to specific documents; the remainder is &quot;on account&quot;</td>
+</tr>
+<tr>
+<td>Posting guard</td>
+<td>The check every dated posting passes (open month, lock date, back-date window, VAT quarter, permissions)</td>
+</tr>
+<tr>
+<td>GRNI</td>
+<td>Goods received not invoiced: the clearing account between a goods receipt and its bill</td>
+</tr>
+</tbody></table></div>
+<h2 id="rev---3">3. The chart of accounts</h2>
+<h3 id="rev---4">3.1 Structure</h3>
+<ul>
+<li><strong>Owned by each company.</strong> Every company has its own chart; it is created automatically from a standard starter chart and may be changed.</li>
+<li><strong>Account record:</strong> code (unique in the company), English name, Arabic name, <strong>type</strong> (Asset, Liability, Equity, Revenue, Expense), parent, heading flag, active flag.</li>
+<li><strong>Hierarchy:</strong> up to four levels; a parent must be a heading of the same type; no loops. <strong>Headings</strong> total their children and take no postings.</li>
+<li><strong>Account types</strong> are exactly the five above. Sub-classification (current, non-current, cash-flow class) is <em>not</em> held on the account today (see section 13).</li>
+<li><strong>Rules:</strong> an account&#39;s type cannot change once it has postings; an account cannot be deactivated while it has a balance, a role, a bank, or active children.</li>
+<li><strong>Import and export</strong> to Excel, with a preview before anything is saved.</li>
+</ul>
+<h3 id="rev--p-4">3.2 Posting roles</h3>
+<p>Documents do not choose accounts. They post to one of <strong>16 roles</strong>; the company&#39;s mapping decides the account. Re-pointing a role changes <strong>future</strong> postings only; history stays where it was posted.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Role</th>
+<th>Meaning</th>
+<th>Starter account</th>
+<th>Posted by</th>
+</tr>
+</thead><tbody><tr>
+<td>BANK</td>
+<td>Cash and bank (each bank or cash account gets its own account automatically)</td>
+<td>1010 and 1020 onwards</td>
+<td>receipts, payments, transfers, bank charges</td>
+</tr>
+<tr>
+<td>AR</td>
+<td>Accounts receivable (control account, customer tag)</td>
+<td>1100</td>
+<td>invoices, credit notes, receipts</td>
+</tr>
+<tr>
+<td>INVENTORY</td>
+<td>Stock at cost (control account)</td>
+<td>1200</td>
+<td>goods receipts, cost of sales, returns, stock adjustments</td>
+</tr>
+<tr>
+<td>VAT_INPUT</td>
+<td>Recoverable input VAT (control)</td>
+<td>1300</td>
+<td>expenses, bills, returns</td>
+</tr>
+<tr>
+<td>VENDOR_CREDIT_RECEIVABLE</td>
+<td>Amounts owed back by vendors after returns of paid goods (control)</td>
+<td>1350</td>
+<td>purchase returns, vendor refunds</td>
+</tr>
+<tr>
+<td>FIXED_ASSETS</td>
+<td>Fixed assets at cost</td>
+<td>1400</td>
+<td>expenses classified as assets</td>
+</tr>
+<tr>
+<td>AP</td>
+<td>Accounts payable (control account, vendor tag)</td>
+<td>2010</td>
+<td>expenses, bills, payments</td>
+</tr>
+<tr>
+<td>GR_IR_CLEARING</td>
+<td>Goods received not invoiced (control)</td>
+<td>2050</td>
+<td>goods receipts, bills, returns</td>
+</tr>
+<tr>
+<td>VAT_OUTPUT</td>
+<td>VAT collected (control)</td>
+<td>2100</td>
+<td>invoices, credit notes</td>
+</tr>
+<tr>
+<td>VAT_PAYABLE_TO_AUTHORITY</td>
+<td>Net VAT due to the authority (control)</td>
+<td>2150</td>
+<td>(reserved for the VAT settlement)</td>
+</tr>
+<tr>
+<td>PAID_IN_CAPITAL</td>
+<td>Owner capital</td>
+<td>3010</td>
+<td>investor contributions</td>
+</tr>
+<tr>
+<td>RETAINED_EARNINGS</td>
+<td>Accumulated profit</td>
+<td>3100</td>
+<td>(reserved for year-end close)</td>
+</tr>
+<tr>
+<td>SALES_REVENUE</td>
+<td>Revenue net of discounts</td>
+<td>4010</td>
+<td>invoices</td>
+</tr>
+<tr>
+<td>COGS</td>
+<td>Cost of goods sold</td>
+<td>5010</td>
+<td>invoices with stock items, stock adjustments</td>
+</tr>
+<tr>
+<td>DIRECT_OPEX</td>
+<td>Default operating expense</td>
+<td>6010</td>
+<td>expenses without a mapped category</td>
+</tr>
+<tr>
+<td>ROUNDING_ADJUSTMENT</td>
+<td>Cash rounding</td>
+<td>7900</td>
+<td>(reserved)</td>
+</tr>
+</tbody></table></div>
+<p><strong>Expense categories</strong> (the fixed list on the expense screen) are mapped to accounts: Admin Expenses 6010, Staff Salaries 6100, Office Purchases 6200, Repair and Maintenance 6300, Government Expenses 6400, Other Expenses 6500. The mapping can be changed per company.</p>
+<h3 id="rev---5">3.3 Control accounts</h3>
+<p>A control account has a <strong>subledger type</strong> (customer, vendor, inventory, bank, tax or clearing). Only documents of that subledger can post to it; <strong>manual journals and opening sheets refuse it.</strong> Several control accounts of one type are allowed (for example trade receivables and staff receivables), and a customer or vendor can name its own control account on its record. Each receivable or payable line carries a customer or vendor <strong>tag</strong>, which is what makes aging and statements exact: a consistency check proves that the control account equals the sum of its parties.</p>
+<h3 id="rev---6">3.4 The starter chart</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Code</th>
+<th>Account</th>
+<th>Type</th>
+<th>Role</th>
+</tr>
+</thead><tbody><tr>
+<td>1000</td>
+<td>Assets</td>
+<td>Asset (heading)</td>
+<td></td>
+</tr>
+<tr>
+<td>1010</td>
+<td>Cash and Bank (unallocated)</td>
+<td>Asset</td>
+<td>BANK</td>
+</tr>
+<tr>
+<td>1100</td>
+<td>Accounts Receivable</td>
+<td>Asset</td>
+<td>AR</td>
+</tr>
+<tr>
+<td>1200</td>
+<td>Inventory</td>
+<td>Asset</td>
+<td>INVENTORY</td>
+</tr>
+<tr>
+<td>1300</td>
+<td>VAT Input (Recoverable)</td>
+<td>Asset</td>
+<td>VAT_INPUT</td>
+</tr>
+<tr>
+<td>1350</td>
+<td>Vendor Credit Receivable</td>
+<td>Asset</td>
+<td>VENDOR_CREDIT_RECEIVABLE</td>
+</tr>
+<tr>
+<td>1400</td>
+<td>Fixed Assets</td>
+<td>Asset</td>
+<td>FIXED_ASSETS</td>
+</tr>
+<tr>
+<td>1450</td>
+<td>Accumulated Depreciation</td>
+<td>Asset</td>
+<td></td>
+</tr>
+<tr>
+<td>2000</td>
+<td>Liabilities</td>
+<td>Liability (heading)</td>
+<td></td>
+</tr>
+<tr>
+<td>2010</td>
+<td>Accounts Payable</td>
+<td>Liability</td>
+<td>AP</td>
+</tr>
+<tr>
+<td>2050</td>
+<td>Goods Received Not Invoiced</td>
+<td>Liability</td>
+<td>GR_IR_CLEARING</td>
+</tr>
+<tr>
+<td>2100</td>
+<td>VAT Output (Payable)</td>
+<td>Liability</td>
+<td>VAT_OUTPUT</td>
+</tr>
+<tr>
+<td>2150</td>
+<td>VAT Payable to Authority</td>
+<td>Liability</td>
+<td>VAT_PAYABLE_TO_AUTHORITY</td>
+</tr>
+<tr>
+<td>2200</td>
+<td>Accrued Expenses</td>
+<td>Liability</td>
+<td></td>
+</tr>
+<tr>
+<td>2300</td>
+<td>Zakat Payable</td>
+<td>Liability</td>
+<td></td>
+</tr>
+<tr>
+<td>3000</td>
+<td>Equity</td>
+<td>Equity (heading)</td>
+<td></td>
+</tr>
+<tr>
+<td>3010</td>
+<td>Owner Capital</td>
+<td>Equity</td>
+<td>PAID_IN_CAPITAL</td>
+</tr>
+<tr>
+<td>3100</td>
+<td>Retained Earnings</td>
+<td>Equity</td>
+<td>RETAINED_EARNINGS</td>
+</tr>
+<tr>
+<td>3200</td>
+<td>Owner Current Account</td>
+<td>Equity</td>
+<td></td>
+</tr>
+<tr>
+<td>4000</td>
+<td>Revenue</td>
+<td>Revenue (heading)</td>
+<td></td>
+</tr>
+<tr>
+<td>4010</td>
+<td>Sales Revenue</td>
+<td>Revenue</td>
+<td>SALES_REVENUE</td>
+</tr>
+<tr>
+<td>4100</td>
+<td>Other Income</td>
+<td>Revenue</td>
+<td></td>
+</tr>
+<tr>
+<td>5000</td>
+<td>Cost of Sales</td>
+<td>Expense (heading)</td>
+<td></td>
+</tr>
+<tr>
+<td>5010</td>
+<td>Cost of Goods Sold</td>
+<td>Expense</td>
+<td>COGS</td>
+</tr>
+<tr>
+<td>6000</td>
+<td>Operating Expenses</td>
+<td>Expense (heading)</td>
+<td></td>
+</tr>
+<tr>
+<td>6010 to 6700</td>
+<td>Administrative, Salaries, Office, Repairs, Government fees, Other, Depreciation</td>
+<td>Expense</td>
+<td>DIRECT_OPEX (6010)</td>
+</tr>
+<tr>
+<td>7000</td>
+<td>Other Items</td>
+<td>Expense (heading)</td>
+<td></td>
+</tr>
+<tr>
+<td>7900</td>
+<td>Rounding Adjustment</td>
+<td>Expense</td>
+<td>ROUNDING_ADJUSTMENT</td>
+</tr>
+</tbody></table></div>
+<p>Accumulated depreciation, depreciation expense and zakat payable exist as accounts for manual use; there is no fixed-asset or zakat module.</p>
+<h3 id="rev--p-p-2">3.5 Example: control accounts protect the subledger</h3>
+<p>An accountant tries to post a manual journal <em>Dr Accounts Receivable 500 / Cr Sales 500</em>. The system refuses: <em>&quot;Accounts Receivable is a control account; use a receivable document.&quot;</em> This is deliberate: a manual entry to a control account would make the receivable total differ from the sum of customer balances.</p>
+<p><strong>Review questions (section 3).</strong> 3.1 Is a five-type chart with a heading hierarchy enough, or do you require sub-classification on the account (current and non-current, cash-flow class, statutory line)? 3.2 Is the role mechanism an acceptable way to let documents find accounts? 3.3 Are the 16 roles the right set? 3.4 Would you allow controlled manual adjustments to control accounts? 3.5 Is the starter chart acceptable as a Saudi starting point or should it follow a specific statutory format?</p>
+<h2 id="rev---7">4. Dimensions</h2>
+<h3 id="rev---8">4.1 How they work</h3>
+<p>A <strong>dimension type</strong> is an analytical view of the business: <em>Branch</em> and <em>Department</em> exist from the start; a company can add as many as it needs (product line, project, region, channel). Each type has <strong>values</strong>, which can form a hierarchy. A ledger line carries at most one value of each type; the set of values on a line is stored as one deduplicated <strong>combination</strong>, so filtering is one indexed lookup however many types exist. There is no limit on the number of types.</p>
+<p>Dimensions are <strong>analytical</strong>: they never change an account&#39;s balance. A balance sheet filtered by a dimension is shown as partial.</p>
+<h3 id="rev--p-5">4.2 Rules per account</h3>
+<p>Each account can say, for each dimension type, <strong>Required</strong>, <strong>Optional</strong> or <strong>Not allowed</strong>, with an optional default. A manual journal line that breaks a Required rule is refused. Documents (invoices, bills, expenses) apply the defaults but do not yet enforce Required, because their forms do not yet collect dimensions (planned).</p>
+<h3 id="rev---9">4.3 Where a line&#39;s tags come from</h3>
+<p>The engine fills tags in this order, the first source that has a value wins: the line itself, the document, the customer&#39;s or vendor&#39;s default, the bank&#39;s default, the account&#39;s default. Tags the account does not allow are dropped.</p>
+<h3 id="rev--p-6">4.4 Example</h3>
+<p>A company has Branch (Riyadh, Jeddah) and Department (Sales, Admin). Account 6010 Administrative Expenses has the rule <em>Department: Required, default Admin</em>. A manual journal <em>Dr 6010 1,000 / Cr 2200 Accrued Expenses 1,000</em> with no department is refused until a department is chosen; with <em>Branch: Jeddah</em> and <em>Department: Admin</em> it posts, and the trial balance can then be run for Jeddah only, or for Admin across all branches.</p>
+<h3 id="rev--p-7">4.5 Reporting by dimension</h3>
+<p>Every report row and column can filter by any dimension (including all descendants of a hierarchical value). A report that <strong>breaks down</strong> by every value automatically is proposed, not built.</p>
+<p><strong>Review questions (section 4).</strong> 4.1 Is &quot;analytical tags that never change balances&quot; the right model for your clients, or do you need profit-centre balance sheets (balanced per unit)? 4.2 Is Required, Optional or Not allowed per account sufficient? 4.3 Do you need rules by document type or amount?</p>
+<h2 id="rev--p-8">5. The posting engine</h2>
+<h3 id="rev--pp">5.1 What happens when a document is saved</h3>
+<pre class="mermaid">sequenceDiagram
+  participant U as User screen
+  participant D as Document route
+  participant G as Posting guard
+  participant E as Posting engine
+  participant L as Ledger
+  U-&gt;&gt;D: save invoice (customer, items, date)
+  D-&gt;&gt;D: validate, compute totals on the server
+  D-&gt;&gt;G: may this date be posted?
+  G--&gt;&gt;D: yes (or refused with a reason)
+  D-&gt;&gt;E: lines by ROLE + context (customer, bank, branch, category)
+  E-&gt;&gt;E: find accounts, control account, dimension tags, party tags
+  E-&gt;&gt;E: check the entry balances
+  E-&gt;&gt;L: write entry and lines (one transaction)
+  D-&gt;&gt;D: write voucher if cash moved, audit log
+  D--&gt;&gt;U: saved (e-invoice sent afterwards, never blocking)</pre>
+<p>All of this happens in <strong>one database transaction</strong>: either the document, its entries and its voucher all exist, or none do.</p>
+<h3 id="rev---10">5.2 How the engine finds an account</h3>
+<p>For each line a document says <em>what role</em> and <em>who/what it concerns</em> (customer, vendor, bank, expense category, branch). The engine resolves in this order: the party&#39;s own control account (for receivables and payables), the bank&#39;s own account (for cash lines), the expense category&#39;s mapped account, then the company&#39;s mapping for the role. Dimension tags are merged as in section 4.3. This means that <em>selecting a customer on an invoice is enough</em>: no one picks an account.</p>
+<h3 id="rev---11">5.3 Reversals</h3>
+<p>A cancellation, credit note, return or receipt cancellation never edits the original. The engine finds every unreversed entry of the document and writes mirror entries on the reversal date (which must itself pass the guard). A bank line already <strong>reconciled</strong> cannot be reversed until the reconciliation is reopened.</p>
+<h3 id="rev---12">5.4 Who and when: two dates</h3>
+<p>Every document has a <strong>document date</strong> (the date on the paper, used for registers and aging) and a <strong>posting date</strong> (the date the ledger and the period controls use). They are equal unless a back-dating rule applies. Financial statements and period locks use the posting date.</p>
+<p><strong>Review questions (section 5).</strong> 5.1 Is resolving accounts from role plus party, bank and category the right level of automation, or do you need rules by item class and transaction type? 5.2 Is &quot;reverse, never edit&quot; acceptable for all corrections?</p>
+<h2 id="rev--p-9">6. What each document posts</h2>
+<p>All entries also carry the dimension and party tags described above. Dr is debit and Cr credit.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Source document</th>
+<th>Voucher</th>
+<th>Entry</th>
+<th>Date used by the guard</th>
+</tr>
+</thead><tbody><tr>
+<td><strong>Sales invoice</strong></td>
+<td>none; <strong>Receipt</strong> if paid at creation</td>
+<td>Dr Accounts receivable (customer) for the total; Cr Sales revenue net of discount; Cr VAT output. For stock items a second entry: Dr Cost of goods sold / Cr Inventory at average cost</td>
+<td>posting date</td>
+</tr>
+<tr>
+<td>Payment recorded with the invoice</td>
+<td>Receipt</td>
+<td>Dr Bank / Cr Accounts receivable</td>
+<td>payment date</td>
+</tr>
+<tr>
+<td><strong>Credit note</strong></td>
+<td>Reversal if money is refunded</td>
+<td>Mirror of the invoice lines it reverses (and, for stock items, the cost of goods sold is adjusted by the change in stock valuation); one credit note per invoice; reverses the receipt of a paid invoice</td>
+<td>issue date</td>
+</tr>
+<tr>
+<td><strong>POS sale or return</strong></td>
+<td>Receipt or Reversal</td>
+<td>As invoice or credit note</td>
+<td>sale date</td>
+</tr>
+<tr>
+<td><strong>Customer receipt</strong> (Receive Payment)</td>
+<td>Receipt</td>
+<td>Dr Bank / Cr Accounts receivable (customer tag), allocated to chosen invoices; the rest stays on account</td>
+<td>document date</td>
+</tr>
+<tr>
+<td><strong>Expense</strong> (actual)</td>
+<td>none; <strong>Payment</strong> if paid at creation</td>
+<td>Dr the category&#39;s expense account (net); Dr VAT input; Cr Accounts payable (vendor). Fixed-asset class: Dr Fixed assets</td>
+<td>posting date</td>
+</tr>
+<tr>
+<td>Expense payment</td>
+<td>Payment</td>
+<td>Dr Accounts payable / Cr Bank</td>
+<td>payment date</td>
+</tr>
+<tr>
+<td><strong>Accrual</strong> (estimate)</td>
+<td>none</td>
+<td>Dr operating expense / Cr Accounts payable at net, no VAT</td>
+<td>posting date</td>
+</tr>
+<tr>
+<td><strong>Goods receipt</strong></td>
+<td>none</td>
+<td>Dr Inventory / Cr Goods received not invoiced, at cost, no VAT</td>
+<td>receipt date</td>
+</tr>
+<tr>
+<td><strong>Purchase bill</strong></td>
+<td>none; <strong>Payment</strong> if paid</td>
+<td>Dr Goods received not invoiced; Dr VAT input; Cr Accounts payable (vendor)</td>
+<td>posting date</td>
+</tr>
+<tr>
+<td><strong>Vendor payment</strong> (Pay Vendor)</td>
+<td>Payment</td>
+<td>Dr Accounts payable (vendor tag) / Cr Bank, allocated to bills and expenses; the rest on account</td>
+<td>document date</td>
+</tr>
+<tr>
+<td><strong>Purchase return</strong></td>
+<td>Reversal or Receipt as applicable</td>
+<td>Unbilled: Dr GRNI / Cr Inventory. Billed, unpaid: Dr Accounts payable / Cr Inventory, Cr VAT input. Billed, paid: Dr Vendor credit receivable / Cr Inventory, Cr VAT input</td>
+<td>return date</td>
+</tr>
+<tr>
+<td><strong>Vendor refund</strong></td>
+<td>Receipt</td>
+<td>Dr Bank / Cr Vendor credit receivable</td>
+<td>refund date</td>
+</tr>
+<tr>
+<td><strong>Stock adjustment or stock take</strong></td>
+<td>none</td>
+<td>The change in stock valuation: shortage Dr Cost of goods sold / Cr Inventory; surplus the opposite</td>
+<td>date</td>
+</tr>
+<tr>
+<td><strong>Warehouse transfer</strong></td>
+<td>none</td>
+<td>No ledger entry: stock moves between warehouses; there is one inventory account (in-transit is not tracked)</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Inter-bank transfer</strong></td>
+<td>Transfer out and in</td>
+<td>Dr Bank (to) / Cr Bank (from)</td>
+<td>transfer date</td>
+</tr>
+<tr>
+<td><strong>Investor contribution</strong></td>
+<td>Receipt</td>
+<td>Dr Bank / Cr Paid-in capital</td>
+<td>date</td>
+</tr>
+<tr>
+<td><strong>Bank charge</strong> (from reconciliation)</td>
+<td>Payment</td>
+<td>Dr expense account chosen / Cr Bank</td>
+<td>statement line date</td>
+</tr>
+<tr>
+<td><strong>Bank interest</strong> (from reconciliation)</td>
+<td>Receipt</td>
+<td>Dr Bank / Cr income account chosen</td>
+<td>statement line date</td>
+</tr>
+<tr>
+<td><strong>Manual journal</strong></td>
+<td>none</td>
+<td>As entered; control and bank accounts refused</td>
+<td>posting date, checked at submit and at approval</td>
+</tr>
+<tr>
+<td><strong>Opening balances</strong></td>
+<td>none</td>
+<td>As entered, with an optional equity balancing line</td>
+<td>opening date</td>
+</tr>
+<tr>
+<td><strong>Cancel a receipt or payment</strong></td>
+<td>Reversal</td>
+<td>Mirror entry; allocations undone</td>
+<td>cancel date</td>
+</tr>
+</tbody></table></div>
+<p>Two consequences worth stating:</p>
+<ul>
+<li><strong>Cash basis versus accrual:</strong> an expense or bill is posted when it is <em>raised</em>, and payment is a separate entry; the ledger is on the accrual basis.</li>
+<li><strong>Voucher and entry are separate things:</strong> the voucher is the cash record shown on cash reports and printed vouchers; the entry is the ledger record. Both are created in the same transaction.</li>
+</ul>
+<p><strong>Review questions (section 6).</strong> 6.1 Check each row: is the entry correct for the event? 6.2 Is cost of sales at the time of invoice (average cost) acceptable? 6.3 Should a warehouse transfer post to an in-transit account? 6.4 Should discounts be recorded in a contra-revenue account instead of netting into revenue? 6.5 Should stock adjustments go to cost of sales or to a separate shrinkage account?</p>
+<h2 id="rev--p-10">7. Process flows end to end</h2>
+<h3 id="rev---13">7.1 Order to cash (receivables)</h3>
+<pre class="mermaid">flowchart TD
+  Q[&quot;Quotation&lt;br/&gt;(no ledger effect)&quot;] --&gt;|convert| I
+  I[&quot;Sales invoice&lt;br/&gt;raised&quot;] --&gt; P{&quot;Approval rule&lt;br/&gt;matches?&quot;}
+  P --&gt;|no| L1[&quot;Entry: Dr AR, Cr Revenue, Cr VAT output&lt;br/&gt;and Dr COGS, Cr Inventory&quot;]
+  P --&gt;|yes, credit notes only| W[&quot;Wait for approval&quot;]
+  W --&gt; L1
+  L1 --&gt; Z[&quot;E-invoice sent to ZATCA&lt;br/&gt;after commit&quot;]
+  L1 --&gt; R[&quot;Customer receipt&lt;br/&gt;Dr Bank, Cr AR&quot;]
+  R --&gt; A[&quot;Allocation to invoices&lt;br/&gt;or held on account&quot;]
+  L1 --&gt; C[&quot;Credit note&lt;br/&gt;mirror entry&quot;]
+  L1 --&gt; X[&quot;Cancel invoice&lt;br/&gt;reversing entry&lt;br/&gt;(not if cleared by ZATCA)&quot;]
+  A --&gt; G[&quot;Aging and customer ledger&lt;br/&gt;from tagged lines&quot;]</pre>
+<p><strong>Worked example.</strong> Invoice INV-1 to customer <em>Gulf Builders</em>: 10,000 of goods plus 15% VAT, total 11,500; the goods cost 6,000 on average cost.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Step</th>
+<th>Entry</th>
+</tr>
+</thead><tbody><tr>
+<td>Raise the invoice</td>
+<td>Dr Accounts receivable (Gulf Builders) 11,500; Cr Sales revenue 10,000; Cr VAT output 1,500</td>
+</tr>
+<tr>
+<td>Cost of the goods</td>
+<td>Dr Cost of goods sold 6,000; Cr Inventory 6,000</td>
+</tr>
+<tr>
+<td>Customer pays 11,500 by transfer</td>
+<td>Voucher RCP-1. Dr Bank 11,500; Cr Accounts receivable (Gulf Builders) 11,500; allocated to INV-1</td>
+</tr>
+<tr>
+<td>Customer instead pays 5,000</td>
+<td>Dr Bank 5,000; Cr Accounts receivable 5,000, allocated 5,000 to INV-1; balance 6,500 remains in aging</td>
+</tr>
+<tr>
+<td>Customer pays 12,000</td>
+<td>Allocated 11,500 to INV-1; <strong>500 held on account</strong> (a customer advance, a liability)</td>
+</tr>
+<tr>
+<td>Credit note for the whole invoice (not paid)</td>
+<td>Mirrors the invoice lines: Dr Sales revenue 10,000; Dr VAT output 1,500; Cr Accounts receivable 11,500. For stock items the cost of goods sold is also adjusted by the change in stock valuation when the goods return to stock. The receivable is cleared</td>
+</tr>
+</tbody></table></div>
+<p>Rules: an invoice paid through a receipt cannot be cancelled until that receipt is cancelled; a credit note is the only way to reverse an invoice that ZATCA has cleared; the invoice date must pass the posting guard (open month, VAT quarter not filed).</p>
+<h3 id="rev--p-p-p">7.2 Procure to pay (payables)</h3>
+<pre class="mermaid">flowchart TD
+  PR[&quot;Purchase requisition&quot;] --&gt; PO[&quot;Purchase order&lt;br/&gt;(no ledger effect)&quot;]
+  PO --&gt; GRN[&quot;Goods receipt&lt;br/&gt;Dr Inventory, Cr GRNI&quot;]
+  GRN --&gt; B{&quot;Approval rule&lt;br/&gt;matches?&quot;}
+  B --&gt;|no| BILL[&quot;Purchase bill&lt;br/&gt;Dr GRNI, Dr VAT input, Cr AP&quot;]
+  B --&gt;|yes| W[&quot;Wait for approval&quot;]
+  W --&gt; BILL
+  BILL --&gt; PAY[&quot;Vendor payment&lt;br/&gt;Dr AP, Cr Bank&quot;]
+  GRN --&gt; RET[&quot;Purchase return&lt;br/&gt;(entry depends on bill and payment state)&quot;]
+  BILL --&gt; RET
+  PAY --&gt; RF[&quot;Vendor refund&lt;br/&gt;Dr Bank, Cr Vendor credit receivable&quot;]
+  BILL --&gt; AG[&quot;Aging and vendor ledger&quot;]</pre>
+<p><strong>Worked example.</strong> 8,000 of goods received from vendor <em>Al Rowad</em>; bill of 8,000 plus 15% VAT, total 9,200.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Step</th>
+<th>Entry</th>
+</tr>
+</thead><tbody><tr>
+<td>Goods receipt</td>
+<td>Dr Inventory 8,000; Cr Goods received not invoiced 8,000</td>
+</tr>
+<tr>
+<td>Purchase bill</td>
+<td>Dr Goods received not invoiced 8,000; Dr VAT input 1,200; Cr Accounts payable (Al Rowad) 9,200</td>
+</tr>
+<tr>
+<td>Pay the bill</td>
+<td>Voucher PAY-1. Dr Accounts payable 9,200; Cr Bank 9,200</td>
+</tr>
+<tr>
+<td>Return of 1,000 of the goods after payment</td>
+<td>Dr Vendor credit receivable 1,150; Cr Inventory 1,000; Cr VAT input 150</td>
+</tr>
+<tr>
+<td>Vendor refunds 1,150</td>
+<td>Dr Bank 1,150; Cr Vendor credit receivable 1,150</td>
+</tr>
+</tbody></table></div>
+<p>The <strong>GRNI</strong> account shows goods received but not yet billed: its balance is the value of unbilled receipts. A bill is limited to receipts of one vendor, a receipt can be billed once, and bill totals are computed on the server from the receipts. A bill that would be paid at delivery is refused whole if an approval rule would hold it.</p>
+<h3 id="rev--p-p-3">7.3 Expense to pay</h3>
+<pre class="mermaid">flowchart TD
+  E[&quot;Expense entered&lt;br/&gt;category, vendor, amount incl. VAT&quot;] --&gt; S[&quot;VAT split by the slab&lt;br/&gt;net and tax&quot;]
+  S --&gt; L[&quot;Entry: Dr category account, Dr VAT input, Cr AP&quot;]
+  L --&gt; PAY[&quot;Paid at creation or later&lt;br/&gt;Dr AP, Cr Bank&quot;]
+  R[&quot;Recurring template&quot;] --&gt;|post as Actual| L
+  R --&gt;|post as Accrual| AC[&quot;Dr expense, Cr AP, net,&lt;br/&gt;no VAT (an estimate)&quot;]
+  AC --&gt; SE[&quot;Settle accrual with the real bill&quot;]
+  L --&gt; CN[&quot;Cancel: reversal entry&lt;br/&gt;(open month only)&quot;]
+  L --&gt; RV[&quot;Reverse in a later month&lt;br/&gt;if the month is closed&quot;]</pre>
+<p><strong>Worked example.</strong> Rent of 2,300 including 15% VAT for office premises (category Admin Expenses): net 2,000, VAT 300.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Step</th>
+<th>Entry</th>
+</tr>
+</thead><tbody><tr>
+<td>Expense raised</td>
+<td>Dr Administrative expenses 2,000; Dr VAT input 300; Cr Accounts payable (landlord) 2,300</td>
+</tr>
+<tr>
+<td>Paid in full</td>
+<td>Voucher PAY-2. Dr Accounts payable 2,300; Cr Bank 2,300</td>
+</tr>
+<tr>
+<td>Same rent entered as an <strong>asset</strong> (classification Asset)</td>
+<td>Dr Fixed assets 2,000 instead of the expense account</td>
+</tr>
+</tbody></table></div>
+<p>Recurring expenses use a <strong>template</strong>; each month it is posted as an <em>Actual</em> (full entry with VAT) or as an <em>Accrual</em> (an estimate: net cost against accounts payable, no VAT); the accrual is later settled against the real bill. An expense of a <strong>closed month</strong> cannot be cancelled; it is corrected with a reversing document dated in the current month.</p>
+<h3 id="rev---14">7.4 Cash and bank</h3>
+<ul>
+<li>Every bank or cash account is a ledger account created automatically; receipts and payments post to it.</li>
+<li>An <strong>inter-bank transfer</strong> is one voucher pair and one entry.</li>
+<li><strong>Bank reconciliation</strong> works in sessions, one per bank and statement date:</li>
+</ul>
+<pre class="mermaid">flowchart LR
+  S[&quot;Start session&lt;br/&gt;bank, statement date,&lt;br/&gt;ending balance&quot;] --&gt; T[&quot;Enter or import&lt;br/&gt;statement lines&quot;]
+  T --&gt; M[&quot;Match lines to&lt;br/&gt;ledger bank lines&quot;]
+  M --&gt; U{&quot;Unmatched&lt;br/&gt;charge or interest?&quot;}
+  U --&gt;|yes| A[&quot;Post adjustment:&lt;br/&gt;bank charge or interest&lt;br/&gt;(voucher + entry)&quot;]
+  U --&gt;|no| D[&quot;Difference = 0?&quot;]
+  A --&gt; D
+  D --&gt;|yes| C[&quot;Complete session&lt;br/&gt;matched lines are locked&quot;]
+  D --&gt;|no| M
+  C --&gt; RP[&quot;Print reconciliation statement&quot;]</pre>
+<p>Rules: a matched line cannot be reversed until the session is reopened; only the latest completed session of a bank can be reopened and only when no other session is in progress.</p>
+<p><strong>Example.</strong> The bank statement ends at 99,950 because the bank debited a charge of 50. The ledger bank balance is still 100,000. In the session the charge line is left unmatched; posting it as a bank charge writes <em>Dr Bank charges (other expenses) 50 / Cr Bank 50</em> (voucher and entry) and marks the line matched. The ledger balance becomes 99,950, the difference is 0 and the session can be completed.</p>
+<h3 id="rev--pp-2">7.5 Journals and approvals</h3>
+<pre class="mermaid">stateDiagram-v2
+  [*] --&gt; Draft
+  Draft --&gt; Pending: submit (balanced, period ok)
+  Pending --&gt; Posted: approve by someone other than the preparer
+  Pending --&gt; Draft: reject with a reason
+  Draft --&gt; Discarded
+  Posted --&gt; Posted: reverse = a new reversing draft through the same path</pre>
+<ul>
+<li>A <strong>manual journal</strong> needs at least two lines, a debit or credit per line, a balanced total, and may not use control, bank or heading accounts. The preparer cannot approve their own journal unless the company switch <em>allow self-approval</em> is on (owner or administrator only, audited).</li>
+<li><strong>Approval rules</strong> (by document type and amount band) can replace the single step with several levels (role, named user, permission, or the submitter&#39;s manager). Applies to manual journals, vendor payments, vendor bills and credit notes. A rule holds the <strong>intent</strong> of the document; nothing posts until the last level approves; the posting guard is checked again at that moment.</li>
+<li>Delegation for absence (with dates), recall by the submitter, and rejection with a reason are supported.</li>
+</ul>
+<p><strong>Example.</strong> A rule says vendor payments over 5,000 need the Finance Manager role. A payment of 8,000 is saved: no voucher, no ledger entry, no bank movement; it appears in <em>My Approvals</em> of the Finance Manager. Approval creates the payment exactly as if it had been saved directly.</p>
+<h3 id="rev--p-11">7.6 Periods and controls</h3>
+<pre class="mermaid">flowchart TD
+  D[&quot;Posting date&quot;] --&gt; M{&quot;Fiscal month&lt;br/&gt;open and not future?&quot;}
+  M --&gt;|no| R1[&quot;Refused&quot;]
+  M --&gt;|yes| V{&quot;VAT quarter&lt;br/&gt;filed or frozen&lt;br/&gt;(VAT-touching document)?&quot;}
+  V --&gt;|yes| R2[&quot;Refused&quot;]
+  V --&gt;|no| LK{&quot;After the lock date?&quot;}
+  LK --&gt;|no, needs override right| R3[&quot;Refused unless&lt;br/&gt;override-lock right,&lt;br/&gt;audited&quot;]
+  LK --&gt;|yes| BD{&quot;Within the&lt;br/&gt;back-date window?&quot;}
+  BD --&gt;|no, needs back-date right| R4[&quot;Refused unless&lt;br/&gt;back-date right,&lt;br/&gt;audited&quot;]
+  BD --&gt;|yes| RS{&quot;Older than the&lt;br/&gt;reason threshold?&quot;}
+  RS --&gt;|yes| R5[&quot;Reason required&quot;]
+  RS --&gt;|no| OK[&quot;Posted&quot;]
+  R5 --&gt; OK</pre>
+<ul>
+<li><strong>Fiscal months</strong> are opened and closed by authorised users; closing a month locks it (and settles recurring templates).</li>
+<li>A <strong>lock date</strong> per company refuses anything dated on or before it. A <strong>back-date window</strong> (days) and a <strong>reason threshold</strong> refine this; users with the <em>back-date</em> or <em>override lock</em> rights can pass them and every use is audited.</li>
+<li>A <strong>VAT quarter</strong> that is filed (or frozen by a generated return) refuses invoices, credit notes, expenses and purchase bills dated in it, and refuses cancelling them.</li>
+<li><strong>Correcting an error in a closed period:</strong> reverse or credit in the <strong>current</strong> period; a closed period is never rewritten.</li>
+</ul>
+<p><strong>Review questions (section 7).</strong> 7.1 Walk the worked examples: are the entries what you would post? 7.2 Is the accrual treatment (net, no VAT) acceptable? 7.3 Is the approval model (holds intent, posts nothing until approved) acceptable for your clients&#39; controls? 7.4 Is the order of period checks right? 7.5 Do you need period status per module (receivables, payables, inventory, ledger separately)? 7.6 How should corrections of closed years be handled?</p>
+<h2 id="rev--p-p-4">8. Month-end worked example (one small company)</h2>
+<p>Events, in order, all posted by the rules above:</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>#</th>
+<th>Event</th>
+<th>Entry</th>
+</tr>
+</thead><tbody><tr>
+<td>1</td>
+<td>Owner contributes 100,000</td>
+<td>Dr Bank 100,000; Cr Paid-in capital 100,000</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Goods received 8,000</td>
+<td>Dr Inventory 8,000; Cr GRNI 8,000</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Bill 8,000 + VAT 1,200</td>
+<td>Dr GRNI 8,000; Dr VAT input 1,200; Cr AP 9,200</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Invoice 10,000 + VAT 1,500</td>
+<td>Dr AR 11,500; Cr Revenue 10,000; Cr VAT output 1,500</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Cost of goods sold 6,000</td>
+<td>Dr COGS 6,000; Cr Inventory 6,000</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Customer pays 11,500</td>
+<td>Dr Bank 11,500; Cr AR 11,500</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Pay vendor 9,200</td>
+<td>Dr AP 9,200; Cr Bank 9,200</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Rent 2,000 + VAT 300, paid</td>
+<td>Dr Admin expenses 2,000; Dr VAT input 300; Cr AP 2,300. Dr AP 2,300; Cr Bank 2,300</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Bank charge 50 (reconciliation)</td>
+<td>Dr Bank charges (other expenses) 50; Cr Bank 50</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Accrual journal for utilities 500</td>
+<td>Dr Admin expenses 500; Cr Accrued expenses 500</td>
+</tr>
+</tbody></table></div>
+<p><strong>Trial balance after the events</strong></p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Account</th>
+<th>Debit</th>
+<th>Credit</th>
+</tr>
+</thead><tbody><tr>
+<td>Bank</td>
+<td>99,950</td>
+<td></td>
+</tr>
+<tr>
+<td>Inventory</td>
+<td>2,000</td>
+<td></td>
+</tr>
+<tr>
+<td>VAT input</td>
+<td>1,500</td>
+<td></td>
+</tr>
+<tr>
+<td>Accounts receivable</td>
+<td>0</td>
+<td></td>
+</tr>
+<tr>
+<td>Accounts payable</td>
+<td></td>
+<td>0</td>
+</tr>
+<tr>
+<td>GRNI</td>
+<td></td>
+<td>0</td>
+</tr>
+<tr>
+<td>VAT output</td>
+<td></td>
+<td>1,500</td>
+</tr>
+<tr>
+<td>Accrued expenses</td>
+<td></td>
+<td>500</td>
+</tr>
+<tr>
+<td>Paid-in capital</td>
+<td></td>
+<td>100,000</td>
+</tr>
+<tr>
+<td>Sales revenue</td>
+<td></td>
+<td>10,000</td>
+</tr>
+<tr>
+<td>Cost of goods sold</td>
+<td>6,000</td>
+<td></td>
+</tr>
+<tr>
+<td>Administrative and other expenses</td>
+<td>2,550</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td><strong>112,000</strong></td>
+<td><strong>112,000</strong></td>
+</tr>
+</tbody></table></div>
+<ul>
+<li><strong>Income statement:</strong> revenue 10,000 less cost of goods sold 6,000 less expenses 2,550 = <strong>profit 1,450</strong>.</li>
+<li><strong>Balance sheet:</strong> assets 103,450 (bank 99,950, inventory 2,000, VAT input 1,500); liabilities 2,000 (VAT output 1,500, accrued 500); equity 101,450 (capital 100,000 plus profit 1,450). 103,450 = 2,000 + 101,450.</li>
+<li><strong>VAT:</strong> output 1,500 less input 1,500 = nil payable for the period.</li>
+<li><strong>Subledgers:</strong> receivable and payable parties all show zero; GRNI is nil because everything received was billed.</li>
+</ul>
+<h2 id="rev--p-p-5">9. Reports and how they are produced</h2>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Report</th>
+<th>Source</th>
+<th>Notes</th>
+</tr>
+</thead><tbody><tr>
+<td>Trial balance</td>
+<td>Ledger lines</td>
+<td>States in words whether debits equal credits; accounts no row covers are listed so nothing is lost</td>
+</tr>
+<tr>
+<td>Income statement, balance sheet, cash flow</td>
+<td>Ledger lines through the report engine</td>
+<td>Configurable rows and columns (period, comparatives, variance, dimension filters); balance sheet states whether assets equal liabilities plus equity; cash flow is fixed-format</td>
+</tr>
+<tr>
+<td>General ledger detail</td>
+<td>Ledger lines</td>
+<td>Every report figure drills to it</td>
+</tr>
+<tr>
+<td>Aging and customer or vendor ledger</td>
+<td>Tagged ledger lines</td>
+<td>Oldest charge settled first; money on account in its own column; ties to the control account</td>
+</tr>
+<tr>
+<td>Journal listing and voucher print</td>
+<td>Entries</td>
+<td>Each entry prints with accounts, parties, dimensions, amount in words, signatures</td>
+</tr>
+<tr>
+<td>Document-based reports (sales and purchase registers, VAT summary, statements)</td>
+<td>Documents</td>
+<td>Run side by side with the ledger reports; <strong>Ledger vs Documents</strong> proves they agree</td>
+</tr>
+<tr>
+<td>Consistency check</td>
+<td>Ledger and documents</td>
+<td>Control accounts equal subledgers; ledger equals documents; inventory equals stock valuation</td>
+</tr>
+<tr>
+<td>Report designer</td>
+<td>Definitions</td>
+<td>Companies design their own statements with account selectors, subtotals and formulas</td>
+</tr>
+</tbody></table></div>
+<p>All figures are computed on the server for the active company. A closed period&#39;s figures cannot change because a report definition changed: definitions affect presentation only.</p>
+<p><strong>Review questions (section 9).</strong> 9.1 Are these the statements you need? 9.2 Do you require statutory formats (balance sheet and income statement layouts) and comparatives with prior years? 9.3 Is running ledger and document reports side by side until cut-over acceptable, and when should one be retired?</p>
+<h2 id="rev---15">10. VAT as it works today</h2>
+<ul>
+<li>A company keeps <strong>tax slabs</strong> (name, percentage, exemption reason code for zero-rated or exempt). A document has a header slab; an invoice line can have its own, falling back to the header.</li>
+<li>Tax is computed per line, rounded per line, and summed. Prices are tax-exclusive; an expense amount is tax-inclusive and split.</li>
+<li><strong>Output VAT</strong> posts to <em>VAT output</em> and <strong>input VAT</strong> to <em>VAT input</em>. Zero-rated and exempt lines create <strong>no</strong> VAT line, and the ledger cannot tell them apart (documents and the e-invoice can).</li>
+<li>A <strong>VAT return</strong> is generated per quarter from documents (sales, output tax, purchases, input tax, with credit notes netted and purchase returns in the period of the return) and filed in order; filing locks the quarter (section 7.6). Filing does <strong>not</strong> yet post a settlement entry.</li>
+<li>Non-recoverable VAT, reverse charge, withholding, excise, import VAT and customs duty are <strong>not</strong> handled (section 13).</li>
+</ul>
+<p><strong>Review questions (section 10).</strong> 10.1 Is one VAT output and one VAT input account acceptable until the tax design is built? 10.2 What is your view of the proposed tax-code and tax-profile design (section 14)?</p>
+<h2 id="rev---16">11. Inventory and cost of sales as built</h2>
+<ul>
+<li>Stock is held by warehouse in a stock ledger with every movement; the ledger holds one <strong>inventory</strong> control account; a consistency check compares the two.</li>
+<li><strong>Costing is average cost.</strong> The cost of goods sold is posted when a stock item is invoiced, at the average cost at that time. A purchase return reverses at cost; goods receipts add at cost.</li>
+<li>A <strong>stock take</strong> compares counted with system quantity (a snapshot taken on the server); finalising posts the variance (shortage as cost, surplus as gain) once.</li>
+<li>There is <strong>no landed cost, no foreign currency, no costing method other than average, no work in progress</strong> (section 13).</li>
+</ul>
+<h2 id="rev--pp-3">12. Security, approvals and audit</h2>
+<ul>
+<li><strong>Permissions</strong> are roles combined per user (union); each module has create, read, update and delete rights, plus separate action rights (for example approve, close a month, back-date, override the lock). <em>Delete</em> means cancel or deactivate; nothing financial is hard-deleted.</li>
+<li><strong>Record state</strong> is checked separately: a cancelled record cannot be edited, a ZATCA-cleared invoice cannot be cancelled.</li>
+<li><strong>Company isolation:</strong> every company&#39;s data is separate; the database itself enforces it in addition to the application.</li>
+<li><strong>Audit log:</strong> creation, changes, cancellations, approvals, period actions and every use of an override right are recorded with who, when and what.</li>
+<li><strong>Segregation of duties:</strong> the maker-checker for journals and approval rules for payments, bills and credit notes; conflict rules between roles are not built.</li>
+</ul>
+<p><strong>Review questions (section 12).</strong> 12.1 Is the permission model fine-grained enough? 12.2 Do you require segregation-of-duties conflict rules (for example create vendor and change its bank account)? 12.3 What retention and anonymisation policy do you recommend for personal data?</p>
+<h2 id="rev--p-12">13. What is not built (stated plainly)</h2>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Area</th>
+<th>State</th>
+</tr>
+</thead><tbody><tr>
+<td>Multi-currency and exchange differences</td>
+<td>Not built (currency is a label only)</td>
+</tr>
+<tr>
+<td>Several ledgers or books (IFRS, local, tax), intercompany, consolidation</td>
+<td>Not built</td>
+</tr>
+<tr>
+<td>Tax engine (codes, determination, recovery, reverse charge, withholding, import VAT, excise); VAT settlement entry</td>
+<td>Designed, not built</td>
+</tr>
+<tr>
+<td>Account sub-classification, posting controls on accounts, chart templates, effective dating</td>
+<td>Proposed</td>
+</tr>
+<tr>
+<td>Year-end close and retained earnings carry-forward; per-module period status; adjustment periods</td>
+<td>Planned</td>
+</tr>
+<tr>
+<td>Payment terms, early-payment discounts, dunning, credit limits, write-offs, bad-debt provision, payment runs</td>
+<td>Not built</td>
+</tr>
+<tr>
+<td>Landed cost, customs, costing methods other than average, work in progress and production costing</td>
+<td>Not built</td>
+</tr>
+<tr>
+<td>Fixed assets and depreciation; prepaid and deferred items; revenue recognition schedules</td>
+<td>Not built</td>
+</tr>
+<tr>
+<td>Budgets and commitment control</td>
+<td>Not built</td>
+</tr>
+<tr>
+<td>Profit centre balancing, project accounting, break-down reports by dimension, allocation runs</td>
+<td>Proposed or planned</td>
+</tr>
+<tr>
+<td>Accounting events layer (preview and re-derivation of entries), generic typed references, quantities on ledger lines</td>
+<td>Proposed</td>
+</tr>
+<tr>
+<td>Segregation-of-duties rules; master-data change approval</td>
+<td>Not built</td>
+</tr>
+</tbody></table></div>
+<h2 id="rev--p-p-6">14. Design proposals already written (not agreed, nothing built)</h2>
+<p>These are for your reaction; each is a document in the technical documentation.</p>
+<ul>
+<li><strong>Taxation and tax profiles:</strong> tax codes with components and dated rates; profiles on parties, items and the company; automatic determination; recoverable and non-recoverable tax; reverse charge; withholding; import; settlement entry.</li>
+<li><strong>Chart of accounts benchmark:</strong> compares the chart with SAP, Oracle, Dynamics and NetSuite and proposes account attributes, templates and chart views.</li>
+<li><strong>A domain-neutral core:</strong> the primitives (typed references, quantities, accounting events, recognition schedules, currencies and ledgers, dimension capabilities) that would let retail, trading, manufacturing, real estate and other domains be added later without redesign.</li>
+<li><strong>Agreed decisions register</strong> with a professional review of every agreed entry.</li>
+</ul>
+<p><strong>Questions for you on direction.</strong> 14.1 Which of the gaps in section 13 would you rank as most important for your clients? 14.2 Which accounting standards or statutory formats must the design satisfy first? 14.3 Are there entries in section 6 you would change before we build anything more?</p>
+<h2 id="rev---17">15. Review form</h2>
+<p>Please return this table. <em>A</em> = accept, <em>C</em> = change (say what), <em>Q</em> = question.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>#</th>
+<th>Topic</th>
+<th>A / C / Q</th>
+<th>Comment</th>
+</tr>
+</thead><tbody><tr>
+<td>1.1</td>
+<td>The ten principles are right</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>1.2</td>
+<td>Anything an auditor would expect that is missing</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>3.1</td>
+<td>Five account types and a heading hierarchy are enough, or sub-classification is required</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>3.2</td>
+<td>Roles are an acceptable way for documents to find accounts</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>3.3</td>
+<td>The 16 roles are the right set</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>3.4</td>
+<td>Controlled manual adjustment of control accounts</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>3.5</td>
+<td>Starter chart and statutory format</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>4.1</td>
+<td>Dimensions are analytical only, or per-unit balancing is needed</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>4.2</td>
+<td>Required, optional, not allowed per account is sufficient</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>4.3</td>
+<td>Rules by document type or amount are needed</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>5.1</td>
+<td>Level of automation of account selection</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>5.2</td>
+<td>Reverse, never edit</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>6.1</td>
+<td>Each posting in section 6 is correct</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>6.2</td>
+<td>Cost of sales at invoice at average cost</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>6.3</td>
+<td>Warehouse transfers and an in-transit account</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>6.4</td>
+<td>Discounts as contra-revenue</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>6.5</td>
+<td>Stock adjustments to cost of sales or a shrinkage account</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>7.1</td>
+<td>The worked examples are what you would post</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>7.2</td>
+<td>Accrual treatment (net, no VAT)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>7.3</td>
+<td>Approval model</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>7.4</td>
+<td>Order of period checks</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>7.5</td>
+<td>Period status per module</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>7.6</td>
+<td>Corrections of closed years</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>9.1</td>
+<td>Statements provided</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>9.2</td>
+<td>Statutory formats and comparatives</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>9.3</td>
+<td>Ledger and document reports side by side, and the cut-over</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>10.1</td>
+<td>One VAT output and one VAT input account for now</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>10.2</td>
+<td>Proposed tax design</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>12.1</td>
+<td>Permission model</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>12.2</td>
+<td>Segregation of duties</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>12.3</td>
+<td>Retention and anonymisation</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>14.1</td>
+<td>Ranking of the gaps in section 13</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>14.2</td>
+<td>Standards and formats to satisfy first</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>14.3</td>
+<td>Entries in section 6 to change before further building</td>
+<td></td>
+<td></td>
+</tr>
+</tbody></table></div>
+<p><strong>Reviewer:</strong> ______________________  <strong>Date:</strong> ______________  <strong>Overall opinion:</strong> Accept / Accept with changes / Do not proceed</p>
+<h2 id="rev--pp-p">Appendix A: voucher types</h2>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Voucher</th>
+<th>Used for</th>
+</tr>
+</thead><tbody><tr>
+<td>Receipt</td>
+<td>Money in: customer receipts, payments received with an invoice, vendor refunds, investor contributions, bank interest</td>
+</tr>
+<tr>
+<td>Payment</td>
+<td>Money out: vendor payments, expense payments, bank charges</td>
+</tr>
+<tr>
+<td>Reversal</td>
+<td>Money returned or a payment undone: cancelled receipts or payments, refunds on credit notes</td>
+</tr>
+<tr>
+<td>Transfer out and in</td>
+<td>Inter-bank transfers</td>
+</tr>
+</tbody></table></div>
+<h2 id="rev--pp-4">Appendix B: facts and sources</h2>
+<p>This pack was produced from the code and the design documents of 2026-10-19 (posting calls per document, the starter chart, the period and approval logic, the reconciliation rules) and checked against a worked example whose totals balance. Accounting standards referred to in the proposals were not re-read for this pack; where it says &quot;proposed&quot;, please treat it as a question, not a decision.</p>
+</section></main></div><script>(function(){var l=[].slice.call(document.querySelectorAll('.rail a[href^="#"]'));var s=l.map(function(a){return document.querySelector(a.getAttribute('href'))}).filter(Boolean);if(!('IntersectionObserver' in window))return;var io=new IntersectionObserver(function(e){e.forEach(function(x){if(!x.isIntersecting)return;var id='#'+x.target.id;l.forEach(function(a){a.classList.toggle('active',a.getAttribute('href')===id)})})},{rootMargin:'-10% 0px -80% 0px'});s.forEach(function(x){io.observe(x)})})();</script><script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script><script>if(window.mermaid)mermaid.initialize({startOnLoad:true,theme:'neutral'});</script></body></html>
