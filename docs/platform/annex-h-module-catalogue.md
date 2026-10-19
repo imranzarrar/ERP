@@ -1,6 +1,6 @@
 # Annex H: Module catalogue (every module, older and new)
 
-Generated 2026-10-18 by `node scripts/build-module-catalogue.mjs` from the code: endpoints and permissions from `server/routes`, tables from `src/db/schema.ts`, tests from `tests/`. The one-line description of each module and the manual link are written in that script. This is the index of **what the system contains**; the rules that apply to all of it are in the Platform architecture chapter, and the finance core is specified in the requirements and design chapters.
+Generated 2026-10-19 by `node scripts/build-module-catalogue.mjs` from the code: endpoints and permissions from `server/routes`, tables from `src/db/schema.ts`, tests from `tests/`. The one-line description of each module and the manual link are written in that script. This is the index of **what the system contains**; the rules that apply to all of it are in the Platform architecture chapter, and the finance core is specified in the requirements and design chapters.
 
 | Module | Mount | Endpoints | Tables touched | Tests |
 |---|---|---|---|---|

@@ -159,9 +159,23 @@ A multi-tenant web application (React client, Node/Express API, PostgreSQL with 
 
 | FR | BR | The system shall | Implemented in | Test cases |
 |---|---|---|---|---|
-| FR-TAX-01.1 | BR-TAX-01 | VAT roles shall post to VAT output/input accounts; tax-code tagging on lines (Sprint 14). | ledger.ts; planned tag | AR-001 |
-| FR-TAX-02.1 | BR-TAX-02 | Filing a quarter shall post a settlement entry (Sprint 14). | planned | (target: sprint 14) |
-| FR-TAX-03.1 | BR-TAX-03 | Per-line tax rounding exists; the cash-rounding account posting to be completed (Sprint 14). | businessLogic.ts; planned | AR-006 |
+| FR-TAX-01.1 | BR-TAX-01 | VAT roles shall post to VAT output/input accounts; tax-code tagging on lines (Sprints 14 to 14b, see BR-TAX-05). | ledger.ts; planned tag | AR-001, TAX-004 |
+| FR-TAX-02.1 | BR-TAX-02 | Filing a quarter shall post a settlement entry netting output against input VAT into VAT payable to the authority (Sprint 14c). | planned: server/lib/vatReturn.ts; server/routes/taxReturns.ts | TAX-023 |
+| FR-TAX-03.1 | BR-TAX-03 | Per-line tax rounding exists; the cash-rounding account posting to be completed (Sprint 14). | businessLogic.ts; planned | AR-006, TAX-016, TAX-017 |
+| FR-TAX-04.1 | BR-TAX-04 | The system shall store tax codes with components and rates having valid-from and valid-to dates, refuse overlapping dates for one component, and take the rate valid on the document date. | planned: server/lib/tax/codes.ts; tax_codes, tax_components, tax_rates | TAX-001, TAX-002, TAX-003 |
+| FR-TAX-05.1 | BR-TAX-05 | The system shall post every tax component to the accounts of its tax code through the posting engine and write the tax code, component, direction, recoverable amount and return box on each ledger tax line; a code cannot be activated without the accounts its components need. | planned: server/lib/tax/post.ts; server/lib/ledger.ts; journal_lines tax columns | TAX-004, TAX-005, TAX-030 |
+| FR-TAX-06.1 | BR-TAX-06 | The system shall migrate each tax slab into a tax code of the matching supply nature in one idempotent script, leaving documents, entries, XML and filed returns unchanged, and make the slab column read-only afterwards. | planned: scripts/migrate-tax-slabs.ts | TAX-006, TAX-007 |
+| FR-TAX-07.1 | BR-TAX-07 | The system shall hold a tax profile on customers, vendors, items and the company with the fields named in the requirement, maintained through the master-data screens with their own permission. | planned: customer_tax_profiles, vendor_tax_profiles, item_tax_classes, company_tax_profile; server/routes/taxSetup.ts | TAX-010, TAX-011 |
+| FR-TAX-08.1 | BR-TAX-08 | The system shall determine the tax code of each line through ordered rules (most specific first) from transaction type, party class, item class, place and date, return the tax lines to the calling document, and refuse a line with no rule, naming the rule that is missing. | planned: server/lib/tax/determine.ts; tax_rules | TAX-010, TAX-011, TAX-012, TAX-013 |
+| FR-TAX-09.1 | BR-TAX-09 | The system shall accept a tax-code override on a line only from a user holding the override right and with a reason, audit it, and show it on the document and in the registers. | planned: server/lib/tax/determine.ts; permission taxOverride | TAX-014, TAX-015 |
+| FR-TAX-10.1 | BR-TAX-10 | The system shall extract tax from tax-inclusive prices per line, round per line and make the document total equal the price shown. | planned: server/lib/tax/compute.ts; server/lib/businessLogic.ts | TAX-016 |
+| FR-TAX-11.1 | BR-TAX-11 | The system shall carry the supply nature of the tax code on ledger tags, the return and the e-invoice category and reason code, treat zero-rated supplies as taxable supplies for recovery and exempt supplies as not. | planned: server/lib/tax/; server/lib/zatca/xmlBuilder.ts | TAX-011, TAX-018, TAX-019 |
+| FR-TAX-12.1 | BR-TAX-12 | The system shall split input tax at posting into recoverable and non-recoverable parts by item class, category and the company recovery method and compute the apportionment percentage from the ledger. | planned: server/lib/tax/recovery.ts | TAX-019, TAX-020, TAX-021 |
+| FR-TAX-13.1 | BR-TAX-13 | The system shall compute the VAT return boxes and every tax register on the server from the ledger tax tags and expose the difference to the documents in the consistency check. | planned: server/lib/vatReturn.ts; server/lib/consistencyCheck.ts | TAX-022, TAX-024 |
+| FR-TAX-14.1 | BR-TAX-14 | The system shall post self-assessed output tax and the matching input tax for an import of services in one entry, in the prescribed boxes, and suppress the input side when the use is exempt. | planned: server/lib/tax/reverseCharge.ts | TAX-025, TAX-026 |
+| FR-TAX-15.1 | BR-TAX-15 | The system shall deduct withholding at the rate of the service class on payments to non-residents, post the liability with its due date, pay the vendor the net, apply a treaty rate only while the certificate is valid, and issue the withholding record. | planned: server/lib/tax/withholding.ts; withholding_rates | TAX-027, TAX-028 |
+| FR-TAX-16.1 | BR-TAX-16 | The system shall post an excise component to its own accounts and include it in the VAT base when the rule says so. | planned: server/lib/tax/ | TAX-029 |
+| FR-TAX-17.1 | BR-TAX-17 | The system shall guard tax codes, rules, profiles and overrides with their own permissions, audit every change, scope them by company with row-level security, forbid deleting a code that a document used, and apply setup changes only to later dates once a quarter is filed. | planned: server/routes/taxSetup.ts; src/permissionSchema.ts | TAX-008, TAX-009 |
 
 ### PRT — Printed accounting documents
 
@@ -199,6 +213,16 @@ A multi-tenant web application (React client, Node/Express API, PostgreSQL with 
 | FR-NFR-04.1 | BR-NFR-04 | Release scripts shall run the date migration, pre-push keys, db:push review, RLS, constraints, seed, back-fill and translations. | deploy/release-demo.sh; deploy/release.sh | REL-001, REL-002, REL-003, REL-004, REL-005, REL-006, REL-007, REL-008, REL-009 |
 | FR-NFR-05.1 | BR-NFR-05 | The BRD, SRS, sprint log and traceability matrix shall be generated from docs/gl-ap-ar/source and validated. | scripts/build-gl-docs.mjs | (target: sprint 10,10,10,10,10,10,10) |
 | FR-NFR-06.1 | BR-NFR-06 | Live promotion shall run on a scrubbed copy of production first (Sprint 20). | planned | REL-009 |
+
+### IMP — Imports, landed cost and foreign currency
+
+| FR | BR | The system shall | Implemented in | Test cases |
+|---|---|---|---|---|
+| FR-IMP-01.1 | BR-IMP-01 | The system shall store the currency, the rate of the document date and the company-currency amounts on foreign-currency purchase documents, post exchange differences on settlement and refuse a missing rate. | planned: server/lib/currency.ts; exchange_rates | IMP-001, IMP-002, IMP-003 |
+| FR-IMP-02.1 | BR-IMP-02 | The system shall hold landed-cost types and sheets, allocate capitalised lines to items by value, quantity or manual amounts, and recompute the average cost from the landed cost. | planned: server/lib/landedCost.ts; landed_cost_types, landed_cost_sheets, landed_cost_lines, landed_cost_allocations | IMP-004, IMP-010 |
+| FR-IMP-03.1 | BR-IMP-03 | The system shall record a customs entry with customs value, duty and import VAT payable to the authority and post recoverable import VAT to input tax and the rest to stock cost. | planned: server/routes/customsEntries.ts; customs_entries | IMP-006, IMP-007 |
+| FR-IMP-04.1 | BR-IMP-04 | The system shall classify a purchase of goods from a foreign-profile vendor as an import of goods in the tax determination and request the customs entry at receipt. | planned: server/lib/tax/determine.ts; server/routes/inventory.ts | IMP-008 |
+| FR-IMP-05.1 | BR-IMP-05 | The system shall create one payable per payee of a shipment, each visible in aging, accrued at receipt and cleared by that payee own bill. | planned: landed cost lines with vendor_id | IMP-005, IMP-009 |
 
 ### SAL — Sales documents (quotations, invoices, credit notes)
 

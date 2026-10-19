@@ -1,6 +1,6 @@
 # Test-case catalogue (generated)
 
-**420 cases** across 30 modules, written so a tool can run them. Generated from `catalogue-source.mjs` by `node scripts/build-test-catalogue.mjs`; edit the source, never these files.
+**460 cases** across 32 modules, written so a tool can run them. Generated from `catalogue-source.mjs` by `node scripts/build-test-catalogue.mjs`; edit the source, never these files.
 
 | Files | Use |
 |---|---|
@@ -42,7 +42,9 @@
 | ORG | Tenancy, users and company administration | 18 | 12 | 18 | 0 | 0 |
 | REP | Reports and dashboard (documents) | 9 | 9 | 9 | 0 | 0 |
 | CFG | Document templates and translations | 3 | 0 | 3 | 0 | 0 |
-| | **Total** | **420** | **288** | **325** | **60** | **35** |
+| TAX | Taxation: codes, profiles, determination, recovery, return | 30 | 22 | 0 | 30 | 0 |
+| IMP | Imports, landed cost and foreign currency | 10 | 9 | 0 | 10 | 0 |
+| | **Total** | **460** | **319** | **325** | **100** | **35** |
 
 * **Automated**: mapped to the existing vitest file in `tests/` that exercises it, against a real server and real Postgres (no mocks). `--check` fails if the named file does not exist. The mapping is by area, so read it as "covered by that file", not "every Then clause is asserted": when you tighten a case or automate a Candidate, put its ID in the `it(...)` title so a run traces back to the catalogue.
 * **Candidate**: can be automated exactly as written, as an API test (same style as `tests/settlements.test.ts`) or a DB assertion.

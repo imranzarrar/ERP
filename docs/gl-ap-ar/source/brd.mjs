@@ -21,6 +21,7 @@ export const AREAS = [
   { id: 'SEC', name: 'Security, permissions and audit' },
   { id: 'LOC', name: 'Localisation' },
   { id: 'NFR', name: 'Platform and quality' },
+  { id: "IMP", name: "Imports, landed cost and foreign currency" },
   { id: "SAL", name: "Sales documents (quotations, invoices, credit notes)" },
   { id: "EXP", name: "Expenses and recurring postings" },
   { id: "PUR", name: "Procurement and inventory" },
@@ -147,6 +148,20 @@ add('TAX', [
   ['VAT posted to its own accounts', 'Output and recoverable input VAT post to dedicated accounts, never blended into revenue or expense; each line carries its tax code.', 'Blueprint', 'Must', 'Partial', ['FR-TAX-01']],
   ['VAT settlement entry', 'Filing a quarter posts a settlement entry netting output against input VAT into VAT payable.', 'Blueprint', 'Should', 'Planned', ['FR-TAX-02']],
   ['Line rounding and cash rounding', 'Line tax is computed at higher precision and rounded per line; cash-tender rounding never changes the legal total and posts to a rounding account.', 'Blueprint', 'Should', 'Partial', ['FR-RND-01', 'FR-RND-02']],
+  ["Tax codes with components and effective-dated rates","A tax code is the treatment a line receives. It bundles one or more components (VAT, import VAT, reverse-charge VAT, withholding, excise, customs duty), each with a rate that has a valid-from and valid-to date. A document keeps the code and the rate it was taxed with; a later rate change never alters it.","Standard","Must","Planned",["FR-TAX-01"]],
+  ["Tax accounts per code and tagged tax lines","Each component of a tax code names the accounts it posts to: output, recoverable input, non-recoverable treatment, reverse-charge pair, clearing and the authority payable. Every tax line in the ledger carries the tax code, the component, the direction, the recoverable amount and the return box.","Blueprint","Must","Planned",["FR-TAX-01"]],
+  ["Existing tax slabs become tax codes","Every tax slab of every company becomes one tax code of the matching supply nature, with no change to any existing document, ledger entry, e-invoice or filed return. After the migration the tax code is the only source of tax treatment; the old slab column is read-only.","Decision","Must","Planned",[]],
+  ["Party, item and company tax profiles","A customer and a vendor carry a tax profile (registration, residency class domestic, GCC or foreign, designated zone, withholding applicability, exemption or treaty certificate with expiry). An item carries a tax class (standard, zero-rated, exempt, excise category, recoverability class, and for goods the customs tariff code and duty rate). A company carries its tax registrations, rounding method, price basis and recovery method.","Standard","Must","Planned",[]],
+  ["Automatic tax determination","The system determines the tax code of every line from the transaction type, the party profile, the item class, the place and the date, through ordered rules where the most specific rule wins. A line with no matching rule is refused with a message naming the missing rule; the system never silently posts zero tax. The operator chooses neither the tax treatment nor any account.","Decision","Must","Planned",[]],
+  ["Authorised override of a determined tax code","A user holding the override right may change the determined tax code of a line only with a reason. The override is audited and visible on the document and in the registers; a user without the right cannot change it, through the screen or the API.","Standard","Must","Planned",[]],
+  ["Tax-inclusive and tax-exclusive pricing","A company, price list or item may price tax-inclusive. The system extracts the tax from the price per line, rounds per line, and the document total equals the price the customer sees.","Standard","Should","Planned",["FR-RND-01"]],
+  ["Zero-rated, exempt and out-of-scope are different supplies","The supply nature (standard, zero-rated, exempt, out of scope) is a property of the tax code and is carried on the ledger tags, the return and the e-invoice category with its exemption reason code. A zero-rated supply keeps the right to recover input tax; an exempt supply does not.","Compliance","Must","Planned",[]],
+  ["Recoverable and non-recoverable input tax","Input tax is split at posting into the recoverable part (an asset until set off) and the non-recoverable part (added to the cost of the purchase), by the item class, category blocks and the company recovery method, including a percentage apportioned between taxable and exempt supplies and computed from the ledger.","Standard","Should","Planned",[]],
+  ["VAT return and registers from ledger tax tags","The VAT return boxes, the sales, purchase, import, reverse-charge and withholding registers are computed on the server from the ledger tax tags and reconcile to the documents; the consistency check compares the two.","Blueprint","Must","Planned",["FR-TAX-01"]],
+  ["Reverse charge on imported services","A service bought from a non-resident vendor is determined as an import of services: output tax is self-assessed and, where the company is entitled, deducted as input tax in the same entry and in the prescribed return boxes.","Compliance","Must","Planned",[]],
+  ["Withholding tax on payments to non-residents","A payment to a non-resident for a service class that attracts withholding deducts tax at the rate of that class, posts the liability to the authority with its own due date, and pays the vendor the net. A treaty certificate on the vendor profile lowers the rate only while it is valid. The payee receives a withholding record.","Compliance","Should","Planned",[]],
+  ["Excise and other tax components","A line may carry an excise component (and other configured components) posting to its own accounts, included in the VAT base where the law says so.","Compliance","Could","Planned",[]],
+  ["Governance of tax setup","Tax codes, rules, profiles and overrides have their own permissions (create, read, update, deactivate), are audited, are company-scoped with row-level security, and a tax code used by any document can only be deactivated, never deleted. Changes after a VAT quarter is filed apply only to later dates.","Standard","Must","Planned",[]],
 ]);
 
 add('PRT', [
@@ -244,6 +259,14 @@ add("REP", [
 
 add("CFG", [
   ["Print templates and translations","Each company has its own print templates (create, edit options and layout, activate one per language, delete); only an administrator manages them and no template can be changed across companies. Translations are one shared table managed only by a super-administrator, per key.","Platform","Should","Built",[]],
+]);
+
+add("IMP", [
+  ["Foreign-currency documents and exchange differences","A purchase document may be in a foreign currency with the rate of its date stored on it. Tax and inventory post in the company currency; a payment at another rate posts the exchange difference; a missing rate is refused.","Blueprint","Must","Planned",[]],
+  ["Landed cost","Any number of cost lines (freight, duty, insurance, clearing agent, bank charges) can be added to a goods receipt, each capitalised into stock or expensed by default and overridable, allocated to items by value, quantity or manually, so that the average cost used for cost of sales is the fully landed cost.","Blueprint","Must","Planned",["FR-LC-01","FR-LC-02","FR-LC-04"]],
+  ["Customs entry","An import is recorded by a customs entry: customs value, duty and import VAT payable to the customs authority, with the recoverable import VAT posted to input tax and any non-recoverable part added to the stock cost.","Compliance","Must","Planned",[]],
+  ["Import of goods is determined automatically","A purchase of goods from a vendor whose profile is foreign is treated as an import of goods without the operator choosing it: the expected duty and import VAT are shown and the customs entry is requested at receipt.","Decision","Must","Planned",[]],
+  ["Several payees per shipment","The goods vendor, the freight forwarder, the customs authority, the insurer and the clearing agent each become their own payable, visible in payables aging, none forced onto the goods bill.","Blueprint","Must","Planned",["FR-LC-03"]],
 ]);
 
 export const BRS = R;

@@ -94,6 +94,25 @@ Definition = rows × columns. Rows: Heading, Accounts (selectors: account, paren
 * Executors: `VendorPayment` (settlements route, `recordSettlement`), `VendorBill` (inventory route, `createPurchaseBillForGrns`). A bill's amount comes from `purchaseBillTotals` (the same function the bill is built from). The goods-receipt "paid at delivery" shortcut calls `findRule` and is refused when a rule would hold the bill or its payment.
 * Add a document type: register an executor, add the type to `SUPPORTED` in the routes and to the table check, route its create endpoint through `submitForApproval`, add tests, update the BRD/SRS/manual.
 
+## 11b. Tax engine (planned design, not built: Sprints 14 to 14f)
+
+Target module map, so that every document follows one path (see the design note *Taxation and tax profiles* and decisions D18 to D24):
+
+| Module (planned) | Responsibility |
+|---|---|
+| `server/lib/tax/determine.ts` | From the transaction type, party profile, item class, place and date, returns the tax code per line through ordered rules; refuses a line with no rule; applies an authorised override |
+| `server/lib/tax/compute.ts` | Base, rate valid on the document date, tax-inclusive extraction, per-line rounding; the only place tax arithmetic lives (replaces the arithmetic in `computeInvoiceServerTotals` and the expense helper) |
+| `server/lib/tax/post.ts` | Turns tax lines into ledger lines through `postJournalEntry`: accounts of the code, recoverable and non-recoverable split, tags (code, component, direction, return box) |
+| `server/lib/tax/recovery.ts` | Category blocks and the apportionment percentage from the ledger |
+| `server/lib/tax/reverseCharge.ts`, `withholding.ts` | Imported services and payments to non-residents |
+| `server/lib/currency.ts`, `landedCost.ts`, `server/routes/customsEntries.ts` | Foreign currency, landed cost, customs entry (prerequisites of the import of goods) |
+| `server/routes/taxSetup.ts` | Codes, rates, rules, profiles; permissions and audit |
+| `server/lib/vatReturn.ts` (changed) | Return and registers from the ledger tags; settlement entry on filing |
+
+Existing code that must change so the new path is the only one: the invoice, quotation, credit note, POS, expense, purchase bill, goods receipt and return routes stop computing and posting tax themselves; the VAT return stops summing documents; the ZATCA XML builder reads category and reason from the tax code; the slab column becomes read-only after migration.
+
+Traps to design against: a migration must not touch filed quarters or closed months; the ZATCA XML of existing documents must stay byte-identical (dual-gate check); a rate change must not alter issued documents; during the migration the slab and the tax code must never both drive one document.
+
 ## 12. Consistency checks (`GET /api/reports/consistency-check`)
 
 R1.1 balance sheet balances · R1.2 trial balance balances · R2.x balances tie to registers · R3 stock register = quantity · R4 locked periods never move · R5.1 balance sheet balances at every earlier month end · R6.1 ledger agrees with documents per account (AR/AP net of money on account) · R7 journal soundness · R8.1–R8.4 party tags and subledger ties. Error-severity failures fail the test suites that call it.

@@ -28,7 +28,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 .filters{display:flex;flex-wrap:wrap;gap:.6rem;margin:1rem 0}.filters input,.filters select{font:inherit;padding:.4rem .6rem;border:1px solid var(--line);border-radius:8px;background:var(--raised)}
 @media (max-width:900px){.layout{grid-template-columns:1fr}.rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:1.2rem 1rem 3rem}}
 @media print{.rail{display:none}.layout{grid-template-columns:1fr}.chapter{page-break-before:always}}
-</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Technical documentation</div><a class="home" href="../index.html">← All documentation</a><div class="grp">Orientation</div><a href="#overview">1. How this documentation fits together</a><a href="#environments">2. Environments: Live (1.0) and Demo / development (2.0)</a><div class="grp">The whole system</div><a href="#platform">3. Platform architecture: how the whole system works</a><a href="#module-catalogue">4. Annex H: Module catalogue (every module, older and new)</a><div class="grp">Requirements</div><a href="#brd">5. Business Requirements Document</a><a href="#srs">6. Software Requirements Specification</a><div class="grp">Design</div><a href="#solution-design">7. Solution Design Document</a><a href="#technical-design">8. Technical Design Document</a><a href="#accounting-rules">9. Accounting and reporting rules</a><a href="#period-rule">10. Period rule for cancel, reversal, return and credit</a><a href="#date-standard">11. Date fields on documents: the standard (Demo / 2.0)</a><a href="#posting-control">12. Posting control: the lock date and back-dating rules (Demo / 2.0)</a><a href="#ar-ap-bank">13. AR, AP and bank reconciliation: design against the Finance Core Blueprint (Demo / 2.0)</a><a href="#dimensions-decisions">14. GL Step 1.5: dimensions and configurable statements. CFO and architect decisions</a><a href="#approval-research">15. Sprint 11 — Approval rules: what tier-1 ERPs do, and what we should build</a><div class="grp">Quality</div><a href="#test-strategy">16. Test Strategy</a><div class="grp">Delivery</div><a href="#sprint-log">17. Sprint log and plan — GL / AR / AP 2.0</a><div class="grp">Reference</div><a href="#api">18. Annex B — API reference (GL / AR / AP routes)</a><a href="#permissions">19. Annex C — Permission modules (GL / AR / AP)</a><a href="#posting-rules">20. Annex D — Posting rules catalogue</a><a href="#developer-guide">21. Annex E — Developer guide for future ledger work</a><a href="#runbook">22. Annex F — Operations runbook (ledger core)</a><a href="#glossary">23. Annex G — Glossary</a><div class="grp">Operations and proposals</div><a href="#deployment">24. Hostinger VPS Deployment Plan</a><a href="#ha-proposal">25. High Availability Plan (for review)</a><a href="#ai-proposal">26. AI Features — Implementation Plan (for review)</a><div class="grp">Linked documents</div><a href="#linked">27. Linked pages and other documents</a></aside><main><p class="eyebrow">Warraq ERP · Technical documentation</p><h1 style="font-size:2.3rem;margin:.2rem 0 1.5rem">Warraq ERP: platform, modules and finance core</h1>
+</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Technical documentation</div><a class="home" href="../index.html">← All documentation</a><div class="grp">Orientation</div><a href="#overview">1. How this documentation fits together</a><a href="#environments">2. Environments: Live (1.0) and Demo / development (2.0)</a><div class="grp">The whole system</div><a href="#platform">3. Platform architecture: how the whole system works</a><a href="#module-catalogue">4. Annex H: Module catalogue (every module, older and new)</a><div class="grp">Requirements</div><a href="#brd">5. Business Requirements Document</a><a href="#srs">6. Software Requirements Specification</a><div class="grp">Design</div><a href="#solution-design">7. Solution Design Document</a><a href="#technical-design">8. Technical Design Document</a><a href="#accounting-rules">9. Accounting and reporting rules</a><a href="#period-rule">10. Period rule for cancel, reversal, return and credit</a><a href="#date-standard">11. Date fields on documents: the standard (Demo / 2.0)</a><a href="#posting-control">12. Posting control: the lock date and back-dating rules (Demo / 2.0)</a><a href="#ar-ap-bank">13. AR, AP and bank reconciliation: design against the Finance Core Blueprint (Demo / 2.0)</a><a href="#dimensions-decisions">14. GL Step 1.5: dimensions and configurable statements. CFO and architect decisions</a><a href="#approval-research">15. Sprint 11 — Approval rules: what tier-1 ERPs do, and what we should build</a><a href="#tax-analysis">16. Taxation and tax profiles: analysis and design options (for decision, nothing built)</a><div class="grp">Quality</div><a href="#test-strategy">17. Test Strategy</a><div class="grp">Delivery</div><a href="#sprint-log">18. Sprint log and plan — GL / AR / AP 2.0</a><div class="grp">Reference</div><a href="#api">19. Annex B — API reference (GL / AR / AP routes)</a><a href="#permissions">20. Annex C — Permission modules (GL / AR / AP)</a><a href="#posting-rules">21. Annex D — Posting rules catalogue</a><a href="#developer-guide">22. Annex E — Developer guide for future ledger work</a><a href="#runbook">23. Annex F — Operations runbook (ledger core)</a><a href="#glossary">24. Annex G — Glossary</a><div class="grp">Operations and proposals</div><a href="#deployment">25. Hostinger VPS Deployment Plan</a><a href="#ha-proposal">26. High Availability Plan (for review)</a><a href="#ai-proposal">27. AI Features — Implementation Plan (for review)</a><div class="grp">Linked documents</div><a href="#linked">28. Linked pages and other documents</a></aside><main><p class="eyebrow">Warraq ERP · Technical documentation</p><h1 style="font-size:2.3rem;margin:.2rem 0 1.5rem">Warraq ERP: platform, modules and finance core</h1>
 <section class="chapter" id="overview"><p class="eyebrow">Chapter 1</p><h2>How this documentation fits together</h2><p>This is the technical documentation of Warraq ERP as a whole: how the platform works (companies, permissions, ledger, e-invoicing), every module with its endpoints, tables, screens and tests, and the requirements, design, tests and delivery history. The requirements and tests of the older modules (sales, expenses, procurement, POS, ZATCA, VAT, master data, users) were written as built from the code and its automated tests; those of the finance core (General Ledger, Receivables, Payables, Bank) were written before it was built. It is one document, read top to bottom or by the menu on the left. Three long tables are on their own pages and linked: the <a href="data-dictionary.html">data dictionary</a>, the <a href="traceability.html">traceability matrix</a> and the <a href="test-catalogue.html">test-case catalogue</a>.</p>
 <div class="table-wrap"><table class="plan"><thead><tr><th>If you want to know…</th><th>Read</th></tr></thead><tbody>
 <tr><td>How the whole system works, and what modules exist</td><td><a href="#platform">Platform architecture</a>, then the <a href="#module-catalogue">Module catalogue</a> (one sheet per module)</td></tr>
@@ -46,7 +46,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 </tbody></table></div>
 <div class="callout"><div class="label">Which version is described</div><p>The finance core is <b>Warraq 2.0</b> (branch <code>v2</code>, the Demo). Live (1.0, branch <code>master</code>) does not have it yet. Chapters say so where it matters; the <a href="#environments">Environments</a> chapter explains the two tracks.</p></div>
 <div class="callout warn"><div class="label">Reading copy, not the source</div><p>This page is generated. The requirements, system requirements, sprint log, traceability and annexes A to C are generated from <code>docs/gl-ap-ar/source/*.mjs</code> and from the code; the other chapters are hand-written Markdown under <code>docs/gl-ap-ar</code>, <code>docs/design-notes</code>, <code>docs/operations</code> and <code>docs/proposals</code>. Edit those, then run <code>npx tsx scripts/build-gl-docs.mjs</code> and <code>node scripts/build-docs-html.mjs</code>; never edit this page. The skill <code>update-docs-after-development</code> walks through it.</p></div>
-<p class="src">Version: built 2026-10-18, branch v2, after commit 061ee71.</p></section>
+<p class="src">Version: built 2026-10-19, branch v2, after commit 69905e0.</p></section>
 <section class="chapter" id="environments"><p class="eyebrow">Chapter 2</p><h2>Environments: Live (1.0) and Demo / development (2.0)</h2><p class="src">Source: <code>docs/operations/environments.md</code></p><p>Two words are used everywhere from now on:</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th></th>
@@ -197,7 +197,7 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <li>Update the documentation (the skill <code>update-docs-after-development</code>) before saying the work is done.</li>
 </ol>
 </section>
-<section class="chapter" id="module-catalogue"><p class="eyebrow">Chapter 4</p><h2>Annex H: Module catalogue (every module, older and new)</h2><p class="src">Source: <code>docs/platform/annex-h-module-catalogue.md</code></p><p>Generated 2026-10-18 by <code>node scripts/build-module-catalogue.mjs</code> from the code: endpoints and permissions from <code>server/routes</code>, tables from <code>src/db/schema.ts</code>, tests from <code>tests/</code>. The one-line description of each module and the manual link are written in that script. This is the index of <strong>what the system contains</strong>; the rules that apply to all of it are in the Platform architecture chapter, and the finance core is specified in the requirements and design chapters.</p>
+<section class="chapter" id="module-catalogue"><p class="eyebrow">Chapter 4</p><h2>Annex H: Module catalogue (every module, older and new)</h2><p class="src">Source: <code>docs/platform/annex-h-module-catalogue.md</code></p><p>Generated 2026-10-19 by <code>node scripts/build-module-catalogue.mjs</code> from the code: endpoints and permissions from <code>server/routes</code>, tables from <code>src/db/schema.ts</code>, tests from <code>tests/</code>. The one-line description of each module and the manual link are written in that script. This is the index of <strong>what the system contains</strong>; the rules that apply to all of it are in the Platform architecture chapter, and the finance core is specified in the requirements and design chapters.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Module</th>
 <th>Mount</th>
@@ -2268,7 +2268,7 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <li>The solution serves thousands of concurrent users across many companies, safely isolated.</li>
 </ol>
 <h3 id="brd--p-2">4. Scope</h3>
-<p><strong>In scope:</strong> 137 business requirements in 24 areas (section 6). 114 are built, 5 partly built, 18 planned.</p>
+<p><strong>In scope:</strong> 156 business requirements in 25 areas (section 6). 114 are built, 5 partly built, 37 planned.</p>
 <p><strong>Out of scope (this programme):</strong></p>
 <ul>
 <li>Fixed assets and depreciation (classes, CWIP, methods, runs, disposal, transfer, documents) (FR-FA-01..10) — A later phase; the ledger and dimensions are designed not to block it.</li>
@@ -2489,10 +2489,38 @@ Bank fees and interest found while reconciling appear in the profit and loss, tr
 <h4 id="brd--p-4">TAX — Tax and rounding postings</h4>
 <p><strong>BR-TAX-01 VAT posted to its own accounts</strong> — Must, Partial, Blueprint FR-TAX-01, source Blueprint, sprint S14.
 Output and recoverable input VAT post to dedicated accounts, never blended into revenue or expense; each line carries its tax code.</p>
-<p><strong>BR-TAX-02 VAT settlement entry</strong> — Should, Planned, Blueprint FR-TAX-02, source Blueprint, sprint S14.
+<p><strong>BR-TAX-02 VAT settlement entry</strong> — Should, Planned, Blueprint FR-TAX-02, source Blueprint, sprint S14c.
 Filing a quarter posts a settlement entry netting output against input VAT into VAT payable.</p>
-<p><strong>BR-TAX-03 Line rounding and cash rounding</strong> — Should, Partial, Blueprint FR-RND-01, FR-RND-02, source Blueprint, sprint S14.
+<p><strong>BR-TAX-03 Line rounding and cash rounding</strong> — Should, Partial, Blueprint FR-RND-01, FR-RND-02, source Blueprint, sprint S14b.
 Line tax is computed at higher precision and rounded per line; cash-tender rounding never changes the legal total and posts to a rounding account.</p>
+<p><strong>BR-TAX-04 Tax codes with components and effective-dated rates</strong> — Must, Planned, Blueprint FR-TAX-01, source Standard, sprint S14.
+A tax code is the treatment a line receives. It bundles one or more components (VAT, import VAT, reverse-charge VAT, withholding, excise, customs duty), each with a rate that has a valid-from and valid-to date. A document keeps the code and the rate it was taxed with; a later rate change never alters it.</p>
+<p><strong>BR-TAX-05 Tax accounts per code and tagged tax lines</strong> — Must, Planned, Blueprint FR-TAX-01, source Blueprint, sprint S14.
+Each component of a tax code names the accounts it posts to: output, recoverable input, non-recoverable treatment, reverse-charge pair, clearing and the authority payable. Every tax line in the ledger carries the tax code, the component, the direction, the recoverable amount and the return box.</p>
+<p><strong>BR-TAX-06 Existing tax slabs become tax codes</strong> — Must, Planned, source Decision, sprint S14.
+Every tax slab of every company becomes one tax code of the matching supply nature, with no change to any existing document, ledger entry, e-invoice or filed return. After the migration the tax code is the only source of tax treatment; the old slab column is read-only.</p>
+<p><strong>BR-TAX-07 Party, item and company tax profiles</strong> — Must, Planned, source Standard, sprint S14b.
+A customer and a vendor carry a tax profile (registration, residency class domestic, GCC or foreign, designated zone, withholding applicability, exemption or treaty certificate with expiry). An item carries a tax class (standard, zero-rated, exempt, excise category, recoverability class, and for goods the customs tariff code and duty rate). A company carries its tax registrations, rounding method, price basis and recovery method.</p>
+<p><strong>BR-TAX-08 Automatic tax determination</strong> — Must, Planned, source Decision, sprint S14b.
+The system determines the tax code of every line from the transaction type, the party profile, the item class, the place and the date, through ordered rules where the most specific rule wins. A line with no matching rule is refused with a message naming the missing rule; the system never silently posts zero tax. The operator chooses neither the tax treatment nor any account.</p>
+<p><strong>BR-TAX-09 Authorised override of a determined tax code</strong> — Must, Planned, source Standard, sprint S14b.
+A user holding the override right may change the determined tax code of a line only with a reason. The override is audited and visible on the document and in the registers; a user without the right cannot change it, through the screen or the API.</p>
+<p><strong>BR-TAX-10 Tax-inclusive and tax-exclusive pricing</strong> — Should, Planned, Blueprint FR-RND-01, source Standard, sprint S14b.
+A company, price list or item may price tax-inclusive. The system extracts the tax from the price per line, rounds per line, and the document total equals the price the customer sees.</p>
+<p><strong>BR-TAX-11 Zero-rated, exempt and out-of-scope are different supplies</strong> — Must, Planned, source Compliance, sprint S14b.
+The supply nature (standard, zero-rated, exempt, out of scope) is a property of the tax code and is carried on the ledger tags, the return and the e-invoice category with its exemption reason code. A zero-rated supply keeps the right to recover input tax; an exempt supply does not.</p>
+<p><strong>BR-TAX-12 Recoverable and non-recoverable input tax</strong> — Should, Planned, source Standard, sprint S14c.
+Input tax is split at posting into the recoverable part (an asset until set off) and the non-recoverable part (added to the cost of the purchase), by the item class, category blocks and the company recovery method, including a percentage apportioned between taxable and exempt supplies and computed from the ledger.</p>
+<p><strong>BR-TAX-13 VAT return and registers from ledger tax tags</strong> — Must, Planned, Blueprint FR-TAX-01, source Blueprint, sprint S14c.
+The VAT return boxes, the sales, purchase, import, reverse-charge and withholding registers are computed on the server from the ledger tax tags and reconcile to the documents; the consistency check compares the two.</p>
+<p><strong>BR-TAX-14 Reverse charge on imported services</strong> — Must, Planned, source Compliance, sprint S14d.
+A service bought from a non-resident vendor is determined as an import of services: output tax is self-assessed and, where the company is entitled, deducted as input tax in the same entry and in the prescribed return boxes.</p>
+<p><strong>BR-TAX-15 Withholding tax on payments to non-residents</strong> — Should, Planned, source Compliance, sprint S14d.
+A payment to a non-resident for a service class that attracts withholding deducts tax at the rate of that class, posts the liability to the authority with its own due date, and pays the vendor the net. A treaty certificate on the vendor profile lowers the rate only while it is valid. The payee receives a withholding record.</p>
+<p><strong>BR-TAX-16 Excise and other tax components</strong> — Could, Planned, source Compliance, sprint S14f.
+A line may carry an excise component (and other configured components) posting to its own accounts, included in the VAT base where the law says so.</p>
+<p><strong>BR-TAX-17 Governance of tax setup</strong> — Must, Planned, source Standard, sprint S14.
+Tax codes, rules, profiles and overrides have their own permissions (create, read, update, deactivate), are audited, are company-scoped with row-level security, and a tax code used by any document can only be deactivated, never deleted. Changes after a VAT quarter is filed apply only to later dates.</p>
 <h4 id="brd--p-p-4">PRT — Printed accounting documents</h4>
 <p><strong>BR-PRT-01 Receipt and payment voucher</strong> — Must, Built, source Standard, sprint S9.
 A receipt or payment prints as a voucher with party, amount in words, bank, settled documents, amount held on account, accounting entry and signatures; a cancelled one is stamped and shows its reversing entry.</p>
@@ -2531,6 +2559,17 @@ Live (1.0) and Demo (2.0) are separate tracks; releases run by script with a rea
 The requirements, design, test and sprint documents of the ledger core are generated from one traceable source and kept in the repository.</p>
 <p><strong>BR-NFR-06 Promotion to Live</strong> — Must, Planned, source Decision, sprint S20.
 The Demo release is promoted to the Live system in a controlled release, with data migration, back-fill and verification on a copy of production first.</p>
+<h4 id="brd--p-p-5">IMP — Imports, landed cost and foreign currency</h4>
+<p><strong>BR-IMP-01 Foreign-currency documents and exchange differences</strong> — Must, Planned, source Blueprint, sprint S14e.
+A purchase document may be in a foreign currency with the rate of its date stored on it. Tax and inventory post in the company currency; a payment at another rate posts the exchange difference; a missing rate is refused.</p>
+<p><strong>BR-IMP-02 Landed cost</strong> — Must, Planned, Blueprint FR-LC-01, FR-LC-02, FR-LC-04, source Blueprint, sprint S14e.
+Any number of cost lines (freight, duty, insurance, clearing agent, bank charges) can be added to a goods receipt, each capitalised into stock or expensed by default and overridable, allocated to items by value, quantity or manually, so that the average cost used for cost of sales is the fully landed cost.</p>
+<p><strong>BR-IMP-03 Customs entry</strong> — Must, Planned, source Compliance, sprint S14e.
+An import is recorded by a customs entry: customs value, duty and import VAT payable to the customs authority, with the recoverable import VAT posted to input tax and any non-recoverable part added to the stock cost.</p>
+<p><strong>BR-IMP-04 Import of goods is determined automatically</strong> — Must, Planned, source Decision, sprint S14e.
+A purchase of goods from a vendor whose profile is foreign is treated as an import of goods without the operator choosing it: the expected duty and import VAT are shown and the customs entry is requested at receipt.</p>
+<p><strong>BR-IMP-05 Several payees per shipment</strong> — Must, Planned, Blueprint FR-LC-03, source Blueprint, sprint S14e.
+The goods vendor, the freight forwarder, the customs authority, the insurer and the clearing agent each become their own payable, visible in payables aging, none forced onto the goods bill.</p>
 <h4 id="brd---9">SAL — Sales documents (quotations, invoices, credit notes)</h4>
 <p><strong>BR-SAL-01 Quotations convert to invoices</strong> — Must, Built, source Platform, sprint SB1.
 A quotation can be created, edited, cancelled and converted into a tax invoice. A converted quotation is final. The conversion is an ordinary invoice and follows every invoice rule (numbering, period locks, e-invoicing).</p>
@@ -2549,7 +2588,7 @@ An expense can be paid in several payments, each its own payment voucher, never 
 An expense can be cancelled once, by a user with the cancel right. A paid expense is cancelled with a reversal voucher. An expense dated in a filed VAT quarter cannot be cancelled.</p>
 <p><strong>BR-EXP-03 Recurring templates and accruals</strong> — Should, Built, source Platform, sprint SB1.
 A company keeps recurring expense templates (create, edit, switch off) and accrual entries (edit, cancel). Amounts must be valid; nothing is hard-deleted: a template is deactivated and an accrual cancelled, together with its linked recurring posting.</p>
-<h4 id="brd--p-p-5">PUR — Procurement and inventory</h4>
+<h4 id="brd--p-p-6">PUR — Procurement and inventory</h4>
 <p><strong>BR-PUR-01 Purchase bills from goods receipts</strong> — Must, Built, source Platform, sprint SB1.
 A purchase bill is raised from goods receipt notes of one vendor. Its totals are computed on the server from the receipts, a receipt can be billed only once, a reversed receipt cannot be billed, and only a user with the create right can bill. A bill that matches an approval rule waits for approval.</p>
 <p><strong>BR-PUR-02 Purchase bill payment and cancellation</strong> — Must, Built, source Platform, sprint SB1.
@@ -2560,7 +2599,7 @@ Goods can be returned to a vendor against a receipt: never more than was receive
 A stock take snapshots the system quantity on the server and computes the variance. Finalising posts the counted quantity as the stock level, once. A draft can be cancelled; a completed one cannot.</p>
 <p><strong>BR-PUR-05 Warehouse transfers</strong> — Must, Built, source Platform, sprint SB1.
 Stock moves between warehouses by a dispatch and a receiving. Dispatch deducts the source, receiving adds the quantity actually received, once even under concurrent requests. A dispatch still in transit can be cancelled to restore stock. Branch-restricted users act only on their own warehouses, and cross-company warehouses are refused.</p>
-<h4 id="brd--p-p-6">POS — Point of sale</h4>
+<h4 id="brd--p-p-7">POS — Point of sale</h4>
 <p><strong>BR-POS-01 Cashier shifts</strong> — Must, Built, source Platform, sprint SB1.
 A cashier opens and closes a shift, recording actual and expected cash. Shifts are listed and closed only within their own company; opening and closing need the shift right and using the terminal needs the access right.</p>
 <p><strong>BR-POS-02 Held sales</strong> — Should, Built, source Platform, sprint SB1.
@@ -2607,7 +2646,7 @@ A session records the user and company at sign-in, expires, and is extended once
 There is no endpoint that overwrites posted documents in bulk. A document is written only through its own route, and a request naming an existing id cannot take over another document&#39;s lines.</p>
 <p><strong>BR-ORG-06 Capital contributions</strong> — Should, Built, source Platform, sprint SB1.
 An investor&#39;s capital contribution can be recorded: it creates a receipt voucher and adds to capital contributed, accumulating across contributions. Amounts must be positive, banks active and investors in the company.</p>
-<h4 id="brd--p-p-7">REP — Reports and dashboard (documents)</h4>
+<h4 id="brd--p-p-8">REP — Reports and dashboard (documents)</h4>
 <p><strong>BR-REP-01 Server-side, paged and exact reports</strong> — Must, Built, source Platform, sprint SB1.
 Every register, statement and report is computed on the server for the active company. Long lists are paged in the database with the full count and totals over every row, with a no-paging path for print and export. An end date includes its whole last day, an invalid date is refused, a branch-restricted user never sees other branches, and a user without the report right is refused.</p>
 <p><strong>BR-REP-02 Reports agree with the documents and with each other</strong> — Must, Built, source Platform, sprint SB1.
@@ -2791,8 +2830,24 @@ Each company has its own print templates (create, edit options and layout, activ
 <td>BR-JNL-05</td>
 </tr>
 <tr>
+<td>FR-LC-01</td>
+<td>BR-IMP-02</td>
+</tr>
+<tr>
+<td>FR-LC-02</td>
+<td>BR-IMP-02</td>
+</tr>
+<tr>
+<td>FR-LC-03</td>
+<td>BR-IMP-05</td>
+</tr>
+<tr>
+<td>FR-LC-04</td>
+<td>BR-IMP-02</td>
+</tr>
+<tr>
 <td>FR-RND-01</td>
-<td>BR-TAX-03</td>
+<td>BR-TAX-03, BR-TAX-10</td>
 </tr>
 <tr>
 <td>FR-RND-02</td>
@@ -2800,7 +2855,7 @@ Each company has its own print templates (create, edit options and layout, activ
 </tr>
 <tr>
 <td>FR-TAX-01</td>
-<td>BR-TAX-01</td>
+<td>BR-TAX-01, BR-TAX-04, BR-TAX-05, BR-TAX-13</td>
 </tr>
 <tr>
 <td>FR-TAX-02</td>
@@ -3556,23 +3611,121 @@ Each company has its own print templates (create, edit options and layout, activ
 </thead><tbody><tr>
 <td>FR-TAX-01.1</td>
 <td>BR-TAX-01</td>
-<td>VAT roles shall post to VAT output/input accounts; tax-code tagging on lines (Sprint 14).</td>
+<td>VAT roles shall post to VAT output/input accounts; tax-code tagging on lines (Sprints 14 to 14b, see BR-TAX-05).</td>
 <td>ledger.ts; planned tag</td>
-<td>AR-001</td>
+<td>AR-001, TAX-004</td>
 </tr>
 <tr>
 <td>FR-TAX-02.1</td>
 <td>BR-TAX-02</td>
-<td>Filing a quarter shall post a settlement entry (Sprint 14).</td>
-<td>planned</td>
-<td>(target: sprint 14)</td>
+<td>Filing a quarter shall post a settlement entry netting output against input VAT into VAT payable to the authority (Sprint 14c).</td>
+<td>planned: server/lib/vatReturn.ts; server/routes/taxReturns.ts</td>
+<td>TAX-023</td>
 </tr>
 <tr>
 <td>FR-TAX-03.1</td>
 <td>BR-TAX-03</td>
 <td>Per-line tax rounding exists; the cash-rounding account posting to be completed (Sprint 14).</td>
 <td>businessLogic.ts; planned</td>
-<td>AR-006</td>
+<td>AR-006, TAX-016, TAX-017</td>
+</tr>
+<tr>
+<td>FR-TAX-04.1</td>
+<td>BR-TAX-04</td>
+<td>The system shall store tax codes with components and rates having valid-from and valid-to dates, refuse overlapping dates for one component, and take the rate valid on the document date.</td>
+<td>planned: server/lib/tax/codes.ts; tax_codes, tax_components, tax_rates</td>
+<td>TAX-001, TAX-002, TAX-003</td>
+</tr>
+<tr>
+<td>FR-TAX-05.1</td>
+<td>BR-TAX-05</td>
+<td>The system shall post every tax component to the accounts of its tax code through the posting engine and write the tax code, component, direction, recoverable amount and return box on each ledger tax line; a code cannot be activated without the accounts its components need.</td>
+<td>planned: server/lib/tax/post.ts; server/lib/ledger.ts; journal_lines tax columns</td>
+<td>TAX-004, TAX-005, TAX-030</td>
+</tr>
+<tr>
+<td>FR-TAX-06.1</td>
+<td>BR-TAX-06</td>
+<td>The system shall migrate each tax slab into a tax code of the matching supply nature in one idempotent script, leaving documents, entries, XML and filed returns unchanged, and make the slab column read-only afterwards.</td>
+<td>planned: scripts/migrate-tax-slabs.ts</td>
+<td>TAX-006, TAX-007</td>
+</tr>
+<tr>
+<td>FR-TAX-07.1</td>
+<td>BR-TAX-07</td>
+<td>The system shall hold a tax profile on customers, vendors, items and the company with the fields named in the requirement, maintained through the master-data screens with their own permission.</td>
+<td>planned: customer_tax_profiles, vendor_tax_profiles, item_tax_classes, company_tax_profile; server/routes/taxSetup.ts</td>
+<td>TAX-010, TAX-011</td>
+</tr>
+<tr>
+<td>FR-TAX-08.1</td>
+<td>BR-TAX-08</td>
+<td>The system shall determine the tax code of each line through ordered rules (most specific first) from transaction type, party class, item class, place and date, return the tax lines to the calling document, and refuse a line with no rule, naming the rule that is missing.</td>
+<td>planned: server/lib/tax/determine.ts; tax_rules</td>
+<td>TAX-010, TAX-011, TAX-012, TAX-013</td>
+</tr>
+<tr>
+<td>FR-TAX-09.1</td>
+<td>BR-TAX-09</td>
+<td>The system shall accept a tax-code override on a line only from a user holding the override right and with a reason, audit it, and show it on the document and in the registers.</td>
+<td>planned: server/lib/tax/determine.ts; permission taxOverride</td>
+<td>TAX-014, TAX-015</td>
+</tr>
+<tr>
+<td>FR-TAX-10.1</td>
+<td>BR-TAX-10</td>
+<td>The system shall extract tax from tax-inclusive prices per line, round per line and make the document total equal the price shown.</td>
+<td>planned: server/lib/tax/compute.ts; server/lib/businessLogic.ts</td>
+<td>TAX-016</td>
+</tr>
+<tr>
+<td>FR-TAX-11.1</td>
+<td>BR-TAX-11</td>
+<td>The system shall carry the supply nature of the tax code on ledger tags, the return and the e-invoice category and reason code, treat zero-rated supplies as taxable supplies for recovery and exempt supplies as not.</td>
+<td>planned: server/lib/tax/; server/lib/zatca/xmlBuilder.ts</td>
+<td>TAX-011, TAX-018, TAX-019</td>
+</tr>
+<tr>
+<td>FR-TAX-12.1</td>
+<td>BR-TAX-12</td>
+<td>The system shall split input tax at posting into recoverable and non-recoverable parts by item class, category and the company recovery method and compute the apportionment percentage from the ledger.</td>
+<td>planned: server/lib/tax/recovery.ts</td>
+<td>TAX-019, TAX-020, TAX-021</td>
+</tr>
+<tr>
+<td>FR-TAX-13.1</td>
+<td>BR-TAX-13</td>
+<td>The system shall compute the VAT return boxes and every tax register on the server from the ledger tax tags and expose the difference to the documents in the consistency check.</td>
+<td>planned: server/lib/vatReturn.ts; server/lib/consistencyCheck.ts</td>
+<td>TAX-022, TAX-024</td>
+</tr>
+<tr>
+<td>FR-TAX-14.1</td>
+<td>BR-TAX-14</td>
+<td>The system shall post self-assessed output tax and the matching input tax for an import of services in one entry, in the prescribed boxes, and suppress the input side when the use is exempt.</td>
+<td>planned: server/lib/tax/reverseCharge.ts</td>
+<td>TAX-025, TAX-026</td>
+</tr>
+<tr>
+<td>FR-TAX-15.1</td>
+<td>BR-TAX-15</td>
+<td>The system shall deduct withholding at the rate of the service class on payments to non-residents, post the liability with its due date, pay the vendor the net, apply a treaty rate only while the certificate is valid, and issue the withholding record.</td>
+<td>planned: server/lib/tax/withholding.ts; withholding_rates</td>
+<td>TAX-027, TAX-028</td>
+</tr>
+<tr>
+<td>FR-TAX-16.1</td>
+<td>BR-TAX-16</td>
+<td>The system shall post an excise component to its own accounts and include it in the VAT base when the rule says so.</td>
+<td>planned: server/lib/tax/</td>
+<td>TAX-029</td>
+</tr>
+<tr>
+<td>FR-TAX-17.1</td>
+<td>BR-TAX-17</td>
+<td>The system shall guard tax codes, rules, profiles and overrides with their own permissions, audit every change, scope them by company with row-level security, forbid deleting a code that a document used, and apply setup changes only to later dates once a quarter is filed.</td>
+<td>planned: server/routes/taxSetup.ts; src/permissionSchema.ts</td>
+<td>TAX-008, TAX-009</td>
 </tr>
 </tbody></table></div>
 <h4 id="srs--p-p-3">PRT — Printed accounting documents</h4>
@@ -3730,6 +3883,50 @@ Each company has its own print templates (create, edit options and layout, activ
 <td>REL-009</td>
 </tr>
 </tbody></table></div>
+<h4 id="srs--p-p-4">IMP — Imports, landed cost and foreign currency</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>FR</th>
+<th>BR</th>
+<th>The system shall</th>
+<th>Implemented in</th>
+<th>Test cases</th>
+</tr>
+</thead><tbody><tr>
+<td>FR-IMP-01.1</td>
+<td>BR-IMP-01</td>
+<td>The system shall store the currency, the rate of the document date and the company-currency amounts on foreign-currency purchase documents, post exchange differences on settlement and refuse a missing rate.</td>
+<td>planned: server/lib/currency.ts; exchange_rates</td>
+<td>IMP-001, IMP-002, IMP-003</td>
+</tr>
+<tr>
+<td>FR-IMP-02.1</td>
+<td>BR-IMP-02</td>
+<td>The system shall hold landed-cost types and sheets, allocate capitalised lines to items by value, quantity or manual amounts, and recompute the average cost from the landed cost.</td>
+<td>planned: server/lib/landedCost.ts; landed_cost_types, landed_cost_sheets, landed_cost_lines, landed_cost_allocations</td>
+<td>IMP-004, IMP-010</td>
+</tr>
+<tr>
+<td>FR-IMP-03.1</td>
+<td>BR-IMP-03</td>
+<td>The system shall record a customs entry with customs value, duty and import VAT payable to the authority and post recoverable import VAT to input tax and the rest to stock cost.</td>
+<td>planned: server/routes/customsEntries.ts; customs_entries</td>
+<td>IMP-006, IMP-007</td>
+</tr>
+<tr>
+<td>FR-IMP-04.1</td>
+<td>BR-IMP-04</td>
+<td>The system shall classify a purchase of goods from a foreign-profile vendor as an import of goods in the tax determination and request the customs entry at receipt.</td>
+<td>planned: server/lib/tax/determine.ts; server/routes/inventory.ts</td>
+<td>IMP-008</td>
+</tr>
+<tr>
+<td>FR-IMP-05.1</td>
+<td>BR-IMP-05</td>
+<td>The system shall create one payable per payee of a shipment, each visible in aging, accrued at receipt and cleared by that payee own bill.</td>
+<td>planned: landed cost lines with vendor_id</td>
+<td>IMP-005, IMP-009</td>
+</tr>
+</tbody></table></div>
 <h4 id="srs---9">SAL — Sales documents (quotations, invoices, credit notes)</h4>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>FR</th>
@@ -3804,7 +4001,7 @@ Each company has its own print templates (create, edit options and layout, activ
 <td>EXP-007, EXP-008, EXP-009</td>
 </tr>
 </tbody></table></div>
-<h4 id="srs--p-p-4">PUR — Procurement and inventory</h4>
+<h4 id="srs--p-p-5">PUR — Procurement and inventory</h4>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>FR</th>
 <th>BR</th>
@@ -3848,7 +4045,7 @@ Each company has its own print templates (create, edit options and layout, activ
 <td>PUR-014, PUR-015, PUR-016, PUR-017, PUR-018</td>
 </tr>
 </tbody></table></div>
-<h4 id="srs--p-p-5">POS — Point of sale</h4>
+<h4 id="srs--p-p-6">POS — Point of sale</h4>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>FR</th>
 <th>BR</th>
@@ -4040,7 +4237,7 @@ Each company has its own print templates (create, edit options and layout, activ
 <td>ORG-017, ORG-018</td>
 </tr>
 </tbody></table></div>
-<h4 id="srs--p-p-6">REP — Reports and dashboard (documents)</h4>
+<h4 id="srs--p-p-7">REP — Reports and dashboard (documents)</h4>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>FR</th>
 <th>BR</th>
@@ -4295,6 +4492,41 @@ Each company has its own print templates (create, edit options and layout, activ
 <td>One company setting decides whether the submitter may approve, for every document type</td>
 <td>One place, owner/admin only, audited</td>
 </tr>
+<tr>
+<td>D18</td>
+<td>Proposed: tax determination, computation, posting, reporting and settlement are separate steps; every document calls one tax engine and contains no tax logic</td>
+<td>A rate on a document cannot also decide accounts, recovery and boxes; one engine gives one behaviour for invoice, POS, bill, expense, receipt and return</td>
+</tr>
+<tr>
+<td>D19</td>
+<td>Proposed: the tax code is the unit; components with effective-dated rates; accounts hang off the code and component</td>
+<td>History is never rewritten by a rate change; accounts are looked up, never typed</td>
+</tr>
+<tr>
+<td>D20</td>
+<td>Proposed: profiles on the party, the item and the company; ordered determination rules, most specific first; no matching rule is an error, never zero; override only with the right and a reason</td>
+<td>The data entry operator names the party and items; the system decides what to post and where</td>
+</tr>
+<tr>
+<td>D21</td>
+<td>Proposed: recoverable and non-recoverable input tax are split at posting; apportionment is computed from the ledger</td>
+<td>Cost and the tax asset are right from the first entry, and a mixed taxable and exempt business is supported</td>
+</tr>
+<tr>
+<td>D22</td>
+<td>Proposed: the return, the registers and the settlement entry read ledger tax tags and reconcile to documents</td>
+<td>One set of numbers; the consistency check proves it</td>
+</tr>
+<tr>
+<td>D23</td>
+<td>Proposed: import of goods is automated only after foreign currency, landed cost and customs entry exist</td>
+<td>The import entries need those three; building the tax side first would post wrong costs</td>
+</tr>
+<tr>
+<td>D24</td>
+<td>Proposed: existing slabs migrate to tax codes in one idempotent script; afterwards the slab column is read-only</td>
+<td>One source of tax treatment, no parallel logic</td>
+</tr>
 </tbody></table></div>
 <h3 id="solution-design---4">5. Key flows</h3>
 <h4 id="solution-design--p">5.1 A document posts</h4>
@@ -4382,6 +4614,49 @@ Full column-level detail: annex A.</li>
 <tr>
 <td>Document drift</td>
 <td>This set is generated from one traceable source and validated (<code>build-gl-docs.mjs --check</code>)</td>
+</tr>
+</tbody></table></div>
+<h3 id="solution-design--p-p-p">Taxation architecture (proposed, Sprints 14 to 14f; nothing built)</h3>
+<p>The full analysis, the tier-1 comparison, the scenarios (retail, imports, exports, manufacturing) and the open decisions are in the design note <em>Taxation and tax profiles</em> (chapter in the technical documentation). In one paragraph: a document names the party and the items; the tax engine looks up the <strong>party tax profile</strong>, the <strong>item tax class</strong>, the <strong>company tax profile</strong> and the <strong>transaction type</strong>, matches an ordered <strong>determination rule</strong> and returns a <strong>tax code</strong>; the code gives the components, the rates valid on the document date, the recoverability and the accounts; the posting engine writes the tax lines with their tags; the return, the registers and the settlement entry read those tags. The operator never chooses a tax or an account.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Principle (decision)</th>
+<th>Requirement ids</th>
+<th>Sprint</th>
+</tr>
+</thead><tbody><tr>
+<td>One engine; codes, components, dated rates, accounts per code (D18, D19)</td>
+<td>BR-TAX-04, BR-TAX-05, BR-TAX-17</td>
+<td>14</td>
+</tr>
+<tr>
+<td>Slabs migrate to codes (D24)</td>
+<td>BR-TAX-06</td>
+<td>14</td>
+</tr>
+<tr>
+<td>Profiles, determination, override, supply natures, tax-inclusive pricing (D20)</td>
+<td>BR-TAX-07..11, BR-TAX-03</td>
+<td>14b</td>
+</tr>
+<tr>
+<td>Recovery, return from the ledger, settlement entry (D21, D22)</td>
+<td>BR-TAX-12, BR-TAX-13, BR-TAX-02</td>
+<td>14c</td>
+</tr>
+<tr>
+<td>Reverse charge and withholding</td>
+<td>BR-TAX-14, BR-TAX-15</td>
+<td>14d</td>
+</tr>
+<tr>
+<td>Foreign currency, landed cost, customs entry, automatic import (D23)</td>
+<td>BR-IMP-01..05</td>
+<td>14e</td>
+</tr>
+<tr>
+<td>Excise and other components</td>
+<td>BR-TAX-16</td>
+<td>14f</td>
 </tr>
 </tbody></table></div>
 </section>
@@ -4514,7 +4789,48 @@ Full column-level detail: annex A.</li>
 <li>Executors: <code>VendorPayment</code> (settlements route, <code>recordSettlement</code>), <code>VendorBill</code> (inventory route, <code>createPurchaseBillForGrns</code>). A bill&#39;s amount comes from <code>purchaseBillTotals</code> (the same function the bill is built from). The goods-receipt &quot;paid at delivery&quot; shortcut calls <code>findRule</code> and is refused when a rule would hold the bill or its payment.</li>
 <li>Add a document type: register an executor, add the type to <code>SUPPORTED</code> in the routes and to the table check, route its create endpoint through <code>submitForApproval</code>, add tests, update the BRD/SRS/manual.</li>
 </ul>
-<h3 id="technical-design--p-p-2">12. Consistency checks (<code>GET /api/reports/consistency-check</code>)</h3>
+<h3 id="technical-design--p-p-2">11b. Tax engine (planned design, not built: Sprints 14 to 14f)</h3>
+<p>Target module map, so that every document follows one path (see the design note <em>Taxation and tax profiles</em> and decisions D18 to D24):</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Module (planned)</th>
+<th>Responsibility</th>
+</tr>
+</thead><tbody><tr>
+<td><code>server/lib/tax/determine.ts</code></td>
+<td>From the transaction type, party profile, item class, place and date, returns the tax code per line through ordered rules; refuses a line with no rule; applies an authorised override</td>
+</tr>
+<tr>
+<td><code>server/lib/tax/compute.ts</code></td>
+<td>Base, rate valid on the document date, tax-inclusive extraction, per-line rounding; the only place tax arithmetic lives (replaces the arithmetic in <code>computeInvoiceServerTotals</code> and the expense helper)</td>
+</tr>
+<tr>
+<td><code>server/lib/tax/post.ts</code></td>
+<td>Turns tax lines into ledger lines through <code>postJournalEntry</code>: accounts of the code, recoverable and non-recoverable split, tags (code, component, direction, return box)</td>
+</tr>
+<tr>
+<td><code>server/lib/tax/recovery.ts</code></td>
+<td>Category blocks and the apportionment percentage from the ledger</td>
+</tr>
+<tr>
+<td><code>server/lib/tax/reverseCharge.ts</code>, <code>withholding.ts</code></td>
+<td>Imported services and payments to non-residents</td>
+</tr>
+<tr>
+<td><code>server/lib/currency.ts</code>, <code>landedCost.ts</code>, <code>server/routes/customsEntries.ts</code></td>
+<td>Foreign currency, landed cost, customs entry (prerequisites of the import of goods)</td>
+</tr>
+<tr>
+<td><code>server/routes/taxSetup.ts</code></td>
+<td>Codes, rates, rules, profiles; permissions and audit</td>
+</tr>
+<tr>
+<td><code>server/lib/vatReturn.ts</code> (changed)</td>
+<td>Return and registers from the ledger tags; settlement entry on filing</td>
+</tr>
+</tbody></table></div>
+<p>Existing code that must change so the new path is the only one: the invoice, quotation, credit note, POS, expense, purchase bill, goods receipt and return routes stop computing and posting tax themselves; the VAT return stops summing documents; the ZATCA XML builder reads category and reason from the tax code; the slab column becomes read-only after migration.</p>
+<p>Traps to design against: a migration must not touch filed quarters or closed months; the ZATCA XML of existing documents must stay byte-identical (dual-gate check); a rate change must not alter issued documents; during the migration the slab and the tax code must never both drive one document.</p>
+<h3 id="technical-design--p-p-3">12. Consistency checks (<code>GET /api/reports/consistency-check</code>)</h3>
 <p>R1.1 balance sheet balances · R1.2 trial balance balances · R2.x balances tie to registers · R3 stock register = quantity · R4 locked periods never move · R5.1 balance sheet balances at every earlier month end · R6.1 ledger agrees with documents per account (AR/AP net of money on account) · R7 journal soundness · R8.1–R8.4 party tags and subledger ties. Error-severity failures fail the test suites that call it.</p>
 <h3 id="technical-design--p-4">13. Print</h3>
 <p><code>DocumentRenderer</code> document types <code>SettlementVoucher</code>, <code>JournalVoucher</code>, <code>BankReconciliation</code> take server-resolved data (<code>GET /settlements/:id</code>, <code>…/manual-journals/:id/print-data</code>, <code>…/journals/entries/:id/print-data</code>, <code>GET /bank-reconciliations/:id</code>). Accounting documents follow the viewer&#39;s language and direction (<code>isAccountingDoc</code>). The overlay uses <code>z-[60]</code> so it sits above drawers.</p>
@@ -5114,7 +5430,615 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li><strong>Back-dating, lock-date override and reopening a reconciliation remain authority rights</strong>, not workflow.</li>
 </ol>
 </section>
-<section class="chapter" id="test-strategy"><p class="eyebrow">Chapter 16</p><h2>Test Strategy</h2><p class="src">Source: <code>docs/gl-ap-ar/05-test-strategy.md</code></p><p>Version 1.0 / 2026-10-15. The complete case list is the catalogue in <code>docs/test-cases/</code> (CSV, JSON, Gherkin); each case is traced to a system requirement and a business requirement in the traceability matrix (08).</p>
+<section class="chapter" id="tax-analysis"><p class="eyebrow">Chapter 16</p><h2>Taxation and tax profiles: analysis and design options (for decision, nothing built)</h2><p class="src">Source: <code>docs/design-notes/taxation-analysis.md</code> · <span class="pill">Analysis and proposal for decision: nothing built (Sprints 14 to 14f)</span></p><p>Written 2026-10-19 after the owner asked for a holistic accountant&#39;s view of taxation: how tier-1 ERPs do it, how imports, manufacturing and retail behave, how our solution measures up, and a flexible design in which <strong>the system, not the data entry operator, decides what to post and where</strong>. This note analyses and proposes; it does not decide. Section 10 lists the decisions needed.</p>
+<p>Method (architecture first): the Finance Core Blueprint (FR-TAX, FR-RND, FR-LC, ERD), the existing design notes, the code as it is today, public documentation of the tier-1 products, and the Saudi (ZATCA) rules as published. Where a statement could not be checked against a primary source it is marked <strong>[verify]</strong>: nothing marked so should be built on before a tax adviser confirms it.</p>
+<h3 id="tax-analysis--section">1. What a correct tax solution must do (the accountant&#39;s test)</h3>
+<ol>
+<li><strong>Determine, then compute, then post, then report, then settle.</strong> These are five separate responsibilities. Tier-1 systems keep them separate; mixing them (a rate on the document that also decides the account) is what makes a tax design rigid.</li>
+<li><strong>The operator never chooses accounts or tax treatment.</strong> The operator names the party and the items; the tax treatment follows from profiles and the transaction type. A manual override is possible only with a permission, a reason and an audit record.</li>
+<li><strong>Tax is a subledger, not a balance.</strong> Every tax line is tagged with the tax code, the jurisdiction, the direction (output, input, reverse charge, withholding), recoverability and the return box it belongs to, so the return, the registers and the ledger are the same numbers.</li>
+<li><strong>Recoverable and non-recoverable tax are different accounting.</strong> Recoverable input tax is an asset until set off; non-recoverable tax is part of the cost of what was bought.</li>
+<li><strong>Rates and rules have effective dates.</strong> A document keeps the code and the rate it was taxed with; changing the law (5% to 15% in 2020) never rewrites history.</li>
+<li><strong>Tax follows the legal timing</strong>, which is not always the invoice date (time of supply, advances, import clearance, reverse charge on payment or invoice).</li>
+<li><strong>Filing is an accounting event</strong>: the return settles the tax accounts against the authority payable (FR-TAX-02), and the period locks follow.</li>
+<li><strong>Statutory output and the ledger agree</strong>: the e-invoice (ZATCA) category and exemption code, the VAT return boxes and the ledger tax lines come from the same tax code.</li>
+</ol>
+<h3 id="tax-analysis--p">2. How tier-1 ERPs do it</h3>
+<p>All of them separate &quot;which tax applies&quot; from &quot;how it is calculated&quot; from &quot;where it posts&quot;.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Concept</th>
+<th>SAP (S/4HANA, ECC)</th>
+<th>Oracle Fusion Tax</th>
+<th>Dynamics 365 Finance</th>
+<th>NetSuite (SuiteTax)</th>
+<th>Odoo (SME reference)</th>
+</tr>
+</thead><tbody><tr>
+<td>Result of determination</td>
+<td><strong>Tax code</strong> (per country tax procedure; input or output)</td>
+<td><strong>Tax rate</strong> within a <strong>tax status</strong> within a <strong>tax</strong> within a <strong>tax regime</strong></td>
+<td><strong>Sales tax code</strong>; the applicable codes are those present in both the party&#39;s group and the item&#39;s group</td>
+<td><strong>Tax code</strong> (group of tax types and agencies)</td>
+<td><strong>Tax</strong> (a record with its own accounts)</td>
+</tr>
+<tr>
+<td>What drives it</td>
+<td>Tax classification of customer / vendor / material (master data) and the condition technique; tax code can be defaulted or overridden per line</td>
+<td><strong>Party tax profile</strong> and <strong>product fiscal classification</strong> plus transaction attributes, through ordered <strong>tax rules</strong>; three levels from &quot;defaults only&quot; to full rule-based</td>
+<td><strong>Sales tax group</strong> (on customer, vendor, ledger account) intersected with <strong>item sales tax group</strong> (on item)</td>
+<td>Nexus, item tax schedule, entity tax registrations, tax rules</td>
+<td><strong>Fiscal position</strong> (on partner) maps product taxes to other taxes and accounts</td>
+</tr>
+<tr>
+<td>Recoverability</td>
+<td>Tax code carries deductible and non-deductible parts, with accounts per process key</td>
+<td><strong>Recovery rate</strong> per tax, with its own recoverable and non-recoverable accounts</td>
+<td>Tax code options: deductible percentage, use tax (self-assessment), exempt</td>
+<td>Non-recoverable on the tax code</td>
+<td>Tax repartition lines (base, tax, non-deductible)</td>
+</tr>
+<tr>
+<td>Account determination</td>
+<td>Tax code + process key (input, output, non-deductible, reverse charge) to G/L account</td>
+<td>Tax accounts on the tax rate: tax account and recovery account</td>
+<td><strong>Ledger posting groups</strong> per tax code (sales tax payable, receivable, use tax)</td>
+<td>Tax code to account per agency</td>
+<td>Per tax and repartition line</td>
+</tr>
+<tr>
+<td>Reverse charge / import</td>
+<td>Tax codes with two postings (self-assessed output and input); import VAT through customs vendor</td>
+<td>Self-assessed (reverse charge) taxes and import tax rules</td>
+<td>Use tax and the &quot;reverse charge&quot; settings; charges codes for duty</td>
+<td>Reverse charge tax codes</td>
+<td>Reverse-charge taxes (two repartition lines)</td>
+</tr>
+<tr>
+<td>Withholding</td>
+<td>Extended withholding tax (per vendor, per withholding type, per business place)</td>
+<td>Withholding tax codes, groups and rates</td>
+<td>Withholding tax codes and groups on vendors</td>
+<td>Withholding tax codes</td>
+<td>Withholding taxes as negative taxes</td>
+</tr>
+<tr>
+<td>Settlement</td>
+<td>Tax-code-based VAT return and the tax payable clearing</td>
+<td>Tax reporting ledger and the tax return</td>
+<td><strong>Sales tax settlement period</strong>: tax balance posts to the authority, which can be a vendor, then is paid</td>
+<td>Tax return and payment</td>
+<td>Tax closing entry</td>
+</tr>
+<tr>
+<td>Reporting</td>
+<td>Document-level tax data feeds statutory reports</td>
+<td>Tax reporting ledger</td>
+<td>Sales tax payment report, per code</td>
+<td>Tax reports per agency and box</td>
+<td>Tax report by repartition</td>
+</tr>
+</tbody></table></div>
+<p>Sources checked: Oracle&#39;s <a href="https://docs.oracle.com/en/cloud/saas/financials/26c/faitx/tax-determination.html" target="_blank" rel="noopener">tax determination</a> and <a href="https://docs.oracle.com/en/cloud/saas/financials/24b/faitx/tax-rate-setup.html" target="_blank" rel="noopener">tax rate setup</a> pages (regime, status, rate, effective periods, recovery rate, rules); Microsoft&#39;s <a href="https://learn.microsoft.com/en-au/dynamics365/finance/general-ledger/tasks/set-up-sales-tax-groups-item-sales-tax-groups" target="_blank" rel="noopener">sales tax groups and item sales tax groups</a> (intersection of the party group and the item group; posting groups; settlement periods). The SAP, NetSuite and Odoo columns are from general product knowledge and were not re-checked in this session <strong>[verify if any detail is relied on]</strong>.</p>
+<p><strong>The pattern worth copying:</strong></p>
+<ul>
+<li><em>Profiles on both sides</em> (party and item) plus the <em>type of transaction</em>, resolved by an <strong>ordered rule table</strong> to a <strong>tax code</strong>.</li>
+<li>The <strong>tax code is the unit of everything else</strong>: rate (effective-dated), recoverability, accounts per role, e-invoice category, return box.</li>
+<li><strong>Accounts hang off the tax code</strong>, not off the document and not off the item.</li>
+<li>A <strong>settlement</strong> step posts the period&#39;s tax against the authority.</li>
+</ul>
+<h3 id="tax-analysis---2">3. Business scenarios and how tax behaves</h3>
+<p>(Saudi Arabia is the home jurisdiction; the design must also fit other GCC states and, later, other countries. Statements about law are summarised and marked <strong>[verify]</strong> where not confirmed in a primary source.)</p>
+<h4 id="tax-analysis---3">3.1 Retail</h4>
+<ul>
+<li><strong>Sale to consumers</strong> (simplified invoice, POS): prices are usually <strong>tax-inclusive</strong>; the system must extract tax from the shelf price, round per line (FR-RND-01), and never change the legal total with cash rounding (FR-RND-02).</li>
+<li><strong>Mixed baskets</strong>: standard-rated, zero-rated and exempt items on one receipt. Tax is per line; the receipt shows each category.</li>
+<li><strong>Returns and credit notes</strong> reverse in the period of the return, with the original rate and code.</li>
+<li><strong>Stock transfers between branches</strong> are not sales: no tax, no tax code.</li>
+<li><strong>Samples, gifts, shortages</strong>: write-offs of stock; whether any deemed supply or input adjustment arises is a tax adviser&#39;s call <strong>[verify]</strong>.</li>
+<li><strong>Excise goods</strong> (tobacco, energy and sweetened drinks) carry an excise tax in the price and on the invoice; excise is a second tax component on the same line <strong>[verify scope]</strong>.</li>
+</ul>
+<h4 id="tax-analysis--p-2">3.2 Imports</h4>
+<ul>
+<li><strong>Import of goods</strong>: at clearance the customs authority collects duty and import VAT on the customs value plus duty (and excise, if any). The importer&#39;s documents are the <strong>customs declaration</strong> and the <strong>freight, insurance and clearing-agent bills</strong>. Accounting: duty and the clearing costs are <strong>capitalised into stock</strong> (landed cost, FR-LC-01..05); import VAT is <strong>recoverable input tax</strong> if the goods are used for taxable supplies, and not recoverable on goods for exempt use (ZATCA&#39;s input-tax guidance, summarised by secondary sources) <strong>[verify]</strong>. Whether import VAT can be deferred to the return instead of being paid at customs is <strong>not confirmed</strong> by this research and must be settled with a tax adviser before design <strong>[verify]</strong>.</li>
+<li><strong>Several payees for one shipment</strong>: the supplier, the freight forwarder, the customs authority, the insurer and the clearing agent are separate liabilities (Blueprint, landed-cost model).</li>
+<li><strong>Foreign currency</strong>: the supplier invoice is in dollars or euros; the tax and the inventory are in riyals. Rate on the date of customs clearance for VAT; the rates of receipt and of payment for the supplier, with exchange differences.</li>
+<li><strong>Import of services</strong> from a non-resident (software, consulting, management fees): <strong>reverse charge</strong> (the Saudi customer self-assesses output VAT and, if entitled, deducts it as input VAT in the same return, in the return boxes ZATCA prescribes) <strong>[verify boxes]</strong>, and often <strong>withholding tax</strong> on the payment to the non-resident. Published rates differ between sources (royalties 15% and management fees 20% are consistent; technical or consulting services appear as 5% in most sources and 15% in one; treaty relief needs a residency certificate) <strong>[verify rates]</strong>. Withholding is remitted by the 10th day of the following month.</li>
+<li><strong>Intra-GCC</strong> purchases follow the GCC VAT agreement; the treatment differs from a third-country import <strong>[verify]</strong>.</li>
+</ul>
+<h4 id="tax-analysis--p-pp">3.3 Exports and zero-rated supplies</h4>
+<ul>
+<li>Exports of goods and services, international transport and some other supplies are <strong>zero-rated</strong>: tax rate 0%, but they are <em>supplies</em> (they go in the return and keep the right to recover input tax). They need an <strong>exemption reason code</strong> on the e-invoice and <strong>proof</strong> (customs export document).</li>
+<li><strong>Exempt</strong> supplies (for example some financial services, residential real estate) are different: no tax charged and <strong>no right to recover related input tax</strong>. A business with both taxable and exempt supplies needs a <strong>recovery apportionment</strong> (a percentage of input tax recoverable).</li>
+<li>Zero-rated and exempt look identical on a document (no tax line) and are completely different in the return and in recovery; the ledger must distinguish them.</li>
+</ul>
+<h4 id="tax-analysis---4">3.4 Manufacturing</h4>
+<ul>
+<li>Raw materials and packaging bought with recoverable input VAT; inventory carried <strong>tax-exclusive</strong>.</li>
+<li>Raw material, work in progress and finished goods are separate inventory accounts (FR-WIP-01); tax never enters production cost unless it is non-recoverable.</li>
+<li><strong>Mixed supplies</strong> (taxable domestic sales, zero-rated exports, exempt sales) make the <strong>recovery percentage</strong> a real parameter: input VAT on materials used for exempt output is not recoverable.</li>
+<li><strong>Free zones and bonded warehouses</strong> change the place of supply and the customs treatment <strong>[verify]</strong>.</li>
+<li><strong>Scrap and by-products</strong> are sales with their own tax class.</li>
+</ul>
+<h4 id="tax-analysis---5">3.5 Cross-cutting</h4>
+<ul>
+<li><strong>Advances and deposits</strong>: tax at the time of payment where the law says so, then set off on the final invoice <strong>[verify]</strong>.</li>
+<li><strong>Credit and debit notes</strong>: tax adjusts at the original rate and code.</li>
+<li><strong>Non-recoverable categories</strong> (for example entertainment, some vehicles) go to cost whatever the rate <strong>[verify list]</strong>.</li>
+<li><strong>Fixed assets</strong> carry input tax like other purchases; capital-goods adjustment rules may apply <strong>[verify]</strong>.</li>
+<li><strong>Bad-debt relief, reverse charge timing, partial payments</strong>: timing rules differ by law.</li>
+<li><strong>Zakat and income tax</strong> are year-end computations from the ledger, outside transaction tax; keep them out of this design but make sure the ledger can feed them.</li>
+</ul>
+<h3 id="tax-analysis---6">4. Where we are today (checked in the code)</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Area</th>
+<th>What exists</th>
+<th>Evidence</th>
+</tr>
+</thead><tbody><tr>
+<td>Tax model</td>
+<td>A <strong>tax slab</strong> per company: name, percentage, default flag, exemption reason code and text. Nothing else: no type (standard, zero, exempt), no direction, no effective dates, no accounts.</td>
+<td><code>tax_slabs</code> in <code>src/db/schema.ts</code></td>
+</tr>
+<tr>
+<td>Choosing the tax</td>
+<td>The user picks a slab on the document header and optionally per invoice line. A line without a slab falls back to the header. Expenses and bills carry one slab. <strong>No determination from the customer, the vendor or the item.</strong></td>
+<td><code>computeInvoiceServerTotals</code> in <code>server/lib/businessLogic.ts</code>; <code>taxSlabId</code> columns</td>
+</tr>
+<tr>
+<td>Party and item data</td>
+<td>Customer and vendor have a VAT number, a buyer type (B2B / B2C) and a country code. Items have a kind (item or service) and a category. <strong>No tax profile, no residency class, no exemption certificate, no HS code or duty rate, no excise class.</strong></td>
+<td><code>customers</code>, <code>vendors</code>, catalog tables</td>
+</tr>
+<tr>
+<td>Posting</td>
+<td>Each document posts its total tax as one line to the single <strong>VAT output</strong> or <strong>VAT input</strong> account, only when the amount is above zero.</td>
+<td><code>server/routes/transactions.ts</code>, <code>expenses.ts</code>, <code>server/lib/purchasing.ts</code>, <code>inventory.ts</code>, <code>pos.ts</code></td>
+</tr>
+<tr>
+<td>Accounts</td>
+<td>Chosen by posting role through the account mapping; the receivable and payable lines can use the party&#39;s own control account. Tax accounts are fixed roles, not per tax.</td>
+<td><code>postJournalEntry</code>, <code>postingContext.ts</code>, <code>partyProfile.ts</code>, <code>chartOfAccounts.ts</code></td>
+</tr>
+<tr>
+<td>Tags on ledger lines</td>
+<td>Customer, vendor and dimensions. <strong>No tax code, no direction, no recoverability, no return box.</strong></td>
+<td>BR-TAX-01 is <strong>Partial</strong></td>
+</tr>
+<tr>
+<td>Recoverability</td>
+<td>Everything on bills and expenses is treated as fully recoverable input tax. No non-recoverable part, no apportionment.</td>
+<td><code>inputVat.ts</code>, expense and bill posting</td>
+</tr>
+<tr>
+<td>Import</td>
+<td><strong>Not built</strong>: no customs entry, no duty, no landed cost (specified in the Blueprint, none in code), no import VAT, no foreign-currency documents (currency is a text field defaulting to SAR, no rates).</td>
+<td>grep of <code>server/</code>, <code>src/</code></td>
+</tr>
+<tr>
+<td>Reverse charge</td>
+<td><strong>Not built.</strong></td>
+<td>no code</td>
+</tr>
+<tr>
+<td>Withholding</td>
+<td><strong>Not built.</strong></td>
+<td>no code</td>
+</tr>
+<tr>
+<td>Excise</td>
+<td><strong>Not built.</strong></td>
+<td>no code</td>
+</tr>
+<tr>
+<td>Return</td>
+<td>VAT return computed from <strong>documents</strong> by quarter (not from ledger tags); a filed quarter locks VAT documents. <strong>No settlement entry</strong> (FR-TAX-02).</td>
+<td><code>taxReturns.ts</code>, <code>vatReturn.ts</code></td>
+</tr>
+<tr>
+<td>E-invoice</td>
+<td>The slab percentage and exemption code drive the ZATCA tax category; works for standard, zero-rated and exempt lines.</td>
+<td><code>server/lib/zatca/</code></td>
+</tr>
+<tr>
+<td>Rounding</td>
+<td>Tax is rounded per line and summed; no cash-rounding account (FR-RND-02 partial).</td>
+<td><code>computeInvoiceServerTotals</code></td>
+</tr>
+</tbody></table></div>
+<p><strong>Conclusion.</strong> The present design is one <em>rate</em> chosen by hand. It cannot express a <em>treatment</em>: the accounts, recoverability, reverse charge, withholding, the return box and the legal category all hang off a bare percentage, and so cannot be automated. That is the root cause behind every gap in the table, not a list of separate missing features.</p>
+<h3 id="tax-analysis--p-p">5. Design principles for our solution</h3>
+<ol>
+<li><strong>One tax engine</strong> (<code>server/lib/tax/</code>), the only code that determines, computes and returns tax lines. Documents never contain tax logic; invoice, quotation, POS, expense, bill, goods receipt, return and credit note all call it.</li>
+<li><strong>Profiles, not choices.</strong> Tax treatment comes from the party profile, the item profile and the transaction type. The document form shows the outcome and allows an authorised override with a reason.</li>
+<li><strong>The tax code is the unit.</strong> A tax code bundles components (VAT, import VAT, reverse-charge VAT, withholding, excise, customs duty), each with its effective-dated rate, recoverability and accounts.</li>
+<li><strong>Accounts are looked up, never typed</strong>: from the tax code and the role of the component, through the existing posting engine and account mapping.</li>
+<li><strong>Backward compatible.</strong> Every existing slab becomes a tax code automatically; existing documents keep their slab and code; no history is re-posted.</li>
+<li><strong>Auditable and period-safe.</strong> Tax changes go through the posting guard and period rules already in place; changes to rules and codes are audited and effective-dated.</li>
+<li><strong>The ledger is the book of tax</strong>: return, registers and settlement read the ledger tax tags and reconcile to documents (the &quot;Ledger vs Documents&quot; pattern).</li>
+</ol>
+<h3 id="tax-analysis--p-3">6. Candidate architecture (one option, for discussion)</h3>
+<h4 id="tax-analysis---7">6.1 The objects</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Object</th>
+<th>Purpose</th>
+<th>Key fields (indicative)</th>
+</tr>
+</thead><tbody><tr>
+<td><strong>Tax jurisdiction</strong></td>
+<td>The authority and the law (for example KSA VAT; GCC state; withholding; customs)</td>
+<td>country, authority (a vendor-like payee), return period type</td>
+</tr>
+<tr>
+<td><strong>Tax component</strong></td>
+<td>One kind of tax on a line</td>
+<td>kind (vat, import_vat, reverse_charge, withholding, excise, duty), direction (collected, paid, both)</td>
+</tr>
+<tr>
+<td><strong>Tax code</strong></td>
+<td>The treatment a line receives; bundles one or more components</td>
+<td>name, jurisdiction, e-invoice category and exemption code, return box per component, supply nature (standard, zero-rated, exempt, out of scope), active</td>
+</tr>
+<tr>
+<td><strong>Tax rate</strong></td>
+<td>Effective-dated rate of a component in a code</td>
+<td>rate, valid from / to, base (net, net plus duty, gross)</td>
+</tr>
+<tr>
+<td><strong>Tax code accounts</strong></td>
+<td>Where each component posts</td>
+<td>per component: output account, input-recoverable account, non-recoverable treatment (to cost or to expense), reverse-charge pair, clearing account, authority payable</td>
+</tr>
+<tr>
+<td><strong>Recovery rule</strong></td>
+<td>How much input tax is recoverable</td>
+<td>percentage (fixed or by apportionment period), category blocks (for example entertainment)</td>
+</tr>
+<tr>
+<td><strong>Party tax profile</strong></td>
+<td>Per customer and vendor</td>
+<td>registration status and number, residency class (domestic, GCC, foreign), designated zone, withholding applicability, exemption or treaty certificate and expiry, default treatment overrides</td>
+</tr>
+<tr>
+<td><strong>Item tax profile</strong> (tax class)</td>
+<td>Per item or category</td>
+<td>class (standard, zero, exempt, excise category), HS code and duty rate, recoverability class, tax-inclusive pricing flag</td>
+</tr>
+<tr>
+<td><strong>Company tax profile</strong></td>
+<td>Per company</td>
+<td>registrations, accounting basis, partial-exemption method, rounding method, settlement frequency</td>
+</tr>
+<tr>
+<td><strong>Tax determination rule</strong></td>
+<td>Ordered rule table</td>
+<td>transaction type, party class, item class, origin / destination, date range, then the tax code (or codes)</td>
+</tr>
+<tr>
+<td><strong>Transaction tax lines</strong></td>
+<td>What a document stores</td>
+<td>per document line: code, component, base, rate, amount, recoverable and non-recoverable parts, account ids, return box</td>
+</tr>
+</tbody></table></div>
+<h4 id="tax-analysis---8">6.2 Determination, in order</h4>
+<ol>
+<li><strong>Transaction type</strong> from the document and the party: sale, export, retail sale, domestic purchase, import of goods, import of services, internal transfer. A foreign-resident vendor on a purchase makes it an import; a goods item makes it import of goods, a service item import of services.</li>
+<li>Rules are matched most specific first on (transaction type, party class, item class, place, date); the first match wins; no match is an error that names the missing rule (never a silent zero).</li>
+<li>The matched <strong>tax code</strong> gives components, rates valid on the document date, recoverability and accounts.</li>
+<li><strong>Override</strong> only with a permission, a reason and an audit entry; the override is shown on the document and in the register.</li>
+</ol>
+<h4 id="tax-analysis--p-p-2">6.3 What posts (examples)</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Scenario</th>
+<th>Tax lines created</th>
+<th>Ledger effect</th>
+</tr>
+</thead><tbody><tr>
+<td>Domestic standard sale</td>
+<td>Output VAT 15%</td>
+<td>Dr receivable (customer); Cr revenue; Cr VAT output</td>
+</tr>
+<tr>
+<td>Zero-rated export</td>
+<td>Output VAT 0%, supply nature zero-rated, reason code</td>
+<td>Dr receivable; Cr revenue; <strong>tagged line</strong> with tax code and zero amount for the return and e-invoice (no VAT line value)</td>
+</tr>
+<tr>
+<td>Exempt sale</td>
+<td>Supply nature exempt</td>
+<td>As above, plus excluded from recoverable-input computations</td>
+</tr>
+<tr>
+<td>Retail sale, tax-inclusive price</td>
+<td>VAT extracted from the price</td>
+<td>Dr bank or receivable; Cr revenue; Cr VAT output</td>
+</tr>
+<tr>
+<td>Domestic purchase, recoverable</td>
+<td>Input VAT</td>
+<td>Dr inventory or expense; Dr VAT input; Cr payable</td>
+</tr>
+<tr>
+<td>Domestic purchase, non-recoverable category</td>
+<td>Input VAT 15%, recoverable 0%</td>
+<td>The tax is added to the cost line</td>
+</tr>
+<tr>
+<td>Import of goods</td>
+<td>Customs duty, import VAT on (customs value plus duty)</td>
+<td>At customs entry: Dr inventory (duty and clearing costs, by landed-cost allocation); Dr VAT input (recoverable import VAT); Cr customs authority payable; the supplier is a separate payable in foreign currency</td>
+</tr>
+<tr>
+<td>Import of services</td>
+<td>Reverse-charge VAT, withholding</td>
+<td>Dr expense; Cr supplier payable (net of withholding); Cr withholding payable; Dr VAT input and Cr VAT output (self-assessed, in the return boxes)</td>
+</tr>
+<tr>
+<td>Credit note</td>
+<td>Same code, rate and accounts as the original, opposite sign</td>
+<td>Mirror entry</td>
+</tr>
+<tr>
+<td>Filing a quarter</td>
+<td>Settlement</td>
+<td>Dr VAT output, Cr VAT input, difference to VAT payable to the authority (FR-TAX-02)</td>
+</tr>
+</tbody></table></div>
+<h4 id="tax-analysis--p-p-3">6.4 How the operator experiences it</h4>
+<ul>
+<li><strong>Invoice for an import</strong> (purchase from a foreign supplier): the operator chooses the vendor and the items. The vendor profile says &quot;foreign&quot;, the item says &quot;goods, HS code with duty rate&quot;, so the system proposes <em>import of goods</em>: it shows the duty and import VAT expected, asks for the customs declaration number and the clearing cost lines when the shipment is received, and posts everything (stock at landed cost, recoverable import VAT, payables to each payee). The operator picks no account.</li>
+<li><strong>Service invoice from a foreign vendor</strong>: the same vendor profile and a service item give <em>import of services</em>: reverse charge and withholding are computed and posted automatically; the payment screen shows the withholding amount.</li>
+<li><strong>Retail</strong>: the item&#39;s class decides the rate; prices are tax-inclusive per company setting; mixed baskets just work.</li>
+<li><strong>Manufacturing</strong>: purchases of materials post recoverable input tax per the company&#39;s recovery rule; exports are zero-rated by the customer&#39;s profile; the monthly recovery percentage is a company setting, computed from the ledger.</li>
+</ul>
+<h4 id="tax-analysis--p-4">6.5 Reporting and settlement</h4>
+<ul>
+<li><strong>VAT return boxes</strong> from ledger tax tags (sales by supply nature, output tax, purchases, input tax, import VAT, reverse charge, adjustments), reconciled to the registers and to documents by the existing <em>Ledger vs Documents</em> check.</li>
+<li><strong>Registers</strong>: sales VAT, purchase VAT, import and customs, reverse charge, withholding (with certificates for the payee), excise.</li>
+<li><strong>Settlement entry</strong> on filing; payment of the net to the authority goes through the normal payment screens (the authority is a vendor-like payee).</li>
+<li><strong>Withholding remittance</strong> is its own liability with its own due date.</li>
+</ul>
+<h4 id="tax-analysis--p-5">6.6 Dependencies that are bigger than tax</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Dependency</th>
+<th>Why tax needs it</th>
+<th>State</th>
+</tr>
+</thead><tbody><tr>
+<td><strong>Foreign currency</strong> (rates, revaluation, exchange differences)</td>
+<td>Import documents and withholding on foreign payments</td>
+<td>Not built; currency is only a text field</td>
+</tr>
+<tr>
+<td><strong>Landed cost</strong> (Blueprint FR-LC)</td>
+<td>Duty and clearing costs must reach inventory cost</td>
+<td>Specified, not built</td>
+</tr>
+<tr>
+<td><strong>Customs entry</strong> document</td>
+<td>Source of import VAT and duty with its own payee</td>
+<td>Not built</td>
+</tr>
+<tr>
+<td><strong>Item master fields</strong> (HS code, duty, class)</td>
+<td>Determination and duty</td>
+<td>Not built</td>
+</tr>
+<tr>
+<td><strong>Return box reference data</strong></td>
+<td>Mapping tax code to box</td>
+<td>Not built; must come from the authority&#39;s current return form <strong>[verify]</strong></td>
+</tr>
+</tbody></table></div>
+<h3 id="tax-analysis--p-p-4">7. Impact map (what a build touches)</h3>
+<p>Schema and RLS for every new table (all company-scoped), composite company keys, company-deletion routine, migration of tax slabs to tax codes with default profiles; the posting engine and <code>postingContext</code>; every document route (invoice, quotation, credit note, POS, expense, bill, goods receipt, return) and its screen; the ZATCA tax category mapping and XML builder; the VAT return and every VAT report; consistency-check rules for tax; permissions (tax codes, rules, profiles, override, settlement); audit log; translations (English, Arabic, Urdu); the print documents; tests (real HTTP and database, including period locks and cross-company isolation); the Blueprint traceability (BR-TAX-01..03 and new requirements); the documentation set and release script.</p>
+<h3 id="tax-analysis--pp-p-p">8. Order of work, mapped to sprints, requirements and tests (if the design is accepted)</h3>
+<p>The slices below are now in the sprint plan (Sprints 14 to 14f), and every slice has requirements (BR), system requirements (FR) and planned test cases in the generated documents. Section 12 lists the mapping in full.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Slice</th>
+<th>Sprint</th>
+<th>Content</th>
+<th>Requirements</th>
+<th>Depends on</th>
+</tr>
+</thead><tbody><tr>
+<td>T1</td>
+<td>14</td>
+<td>Tax codes, components, dated rates, accounts per code; tagged tax lines; migrate every slab; governance</td>
+<td>BR-TAX-01, 04, 05, 06, 17</td>
+<td>none</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>14b</td>
+<td>Profiles, determination, override, supply natures, tax-inclusive pricing, cash rounding</td>
+<td>BR-TAX-03, 07, 08, 09, 10, 11</td>
+<td>T1</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>14c</td>
+<td>Recovery and apportionment; return and registers from ledger tags; settlement entry</td>
+<td>BR-TAX-02, 12, 13</td>
+<td>T1, T2</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>14d</td>
+<td>Reverse charge; withholding</td>
+<td>BR-TAX-14, 15</td>
+<td>T2, T3</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>14e</td>
+<td>Foreign currency, landed cost, customs entry, automatic import of goods, one payable per payee</td>
+<td>BR-IMP-01..05</td>
+<td>T2, T3</td>
+</tr>
+<tr>
+<td>T6</td>
+<td>14f</td>
+<td>Excise and other components, if a customer needs them</td>
+<td>BR-TAX-16</td>
+<td>T1</td>
+</tr>
+</tbody></table></div>
+<p>T1 to T3 deliver the domestic and retail cases completely and are the foundation; T4 and T5 are the import and manufacturing cases.</p>
+<h3 id="tax-analysis---9">9. Risks and what must not be broken</h3>
+<ul>
+<li><strong>ZATCA pipeline</strong>: the e-invoice category and exemption code must keep coming from the tax code with byte-identical XML for existing cases; every change under <code>server/lib/zatca</code> is verified under the dual-gate protocol.</li>
+<li><strong>Filed quarters and closed months</strong> must never be re-posted by a migration.</li>
+<li><strong>Two sources of truth</strong>: during migration slab and tax code must not both drive the same document; one code path only, the old column read-only afterwards.</li>
+<li><strong>Rate changes</strong> must not alter issued documents.</li>
+</ul>
+<h3 id="tax-analysis---10">10. Decisions needed from the owner</h3>
+<ol>
+<li><strong>Scope of jurisdictions</strong>: Saudi Arabia only for now, or design for other GCC states and countries from the start (affects jurisdiction and return-box modelling)?</li>
+<li><strong>Which components are in scope and when</strong>: VAT (all scenarios); import VAT and customs duty; reverse charge; withholding tax; excise. Which of these does a real customer of yours need first?</li>
+<li><strong>Import VAT treatment</strong>: pay at customs and recover in the return, or deferral where the law allows it <strong>[verify with a tax adviser]</strong>. This changes the entries.</li>
+<li><strong>Recovery</strong>: full recovery only, or apportionment for mixed taxable and exempt supplies (manufacturers and some retailers)?</li>
+<li><strong>Pricing</strong>: tax-inclusive or exclusive, per company, per price list, or per item?</li>
+<li><strong>Override policy</strong>: who may override a determined tax code, and must a reason be mandatory?</li>
+<li><strong>Foreign currency and landed cost</strong> are prerequisites for imports: are they in the same programme, and in which order relative to Sprint 12 to 14?</li>
+<li><strong>Return form</strong>: who supplies the current VAT return box definitions, and who reviews the tax-code setup for each new company (a template set per country, reviewed by a tax adviser)?</li>
+<li><strong>Existing data</strong>: confirm the migration rule: each current slab becomes one tax code of the matching supply nature (percentage above zero: standard; zero with an exemption reason: zero-rated or exempt as the reason code says).</li>
+</ol>
+<h3 id="tax-analysis--p-6">12. Traceability: scenario to requirement to test to sprint</h3>
+<p>All of these exist as <strong>planned</strong> entries in the generated requirement register, system requirements, test-case catalogue (modules TAX and IMP, all marked Candidate until built) and sprint log. The Technical documentation&#39;s traceability page shows the same mapping with the system-requirement text.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Scenario or capability (section 3 and 6)</th>
+<th>Requirements</th>
+<th>Planned test cases</th>
+<th>Sprint</th>
+</tr>
+</thead><tbody><tr>
+<td>Rates that change over time, history untouched</td>
+<td>BR-TAX-04</td>
+<td>TAX-001..003</td>
+<td>14</td>
+</tr>
+<tr>
+<td>Tax on its own accounts, tagged lines, e-invoice category from the code</td>
+<td>BR-TAX-01, BR-TAX-05</td>
+<td>TAX-004, 005, 030</td>
+<td>14</td>
+</tr>
+<tr>
+<td>Existing slabs become codes without changing history</td>
+<td>BR-TAX-06</td>
+<td>TAX-006, 007</td>
+<td>14</td>
+</tr>
+<tr>
+<td>Who may change tax setup, audit, isolation</td>
+<td>BR-TAX-17</td>
+<td>TAX-008, 009</td>
+<td>14</td>
+</tr>
+<tr>
+<td>Domestic and retail sale, determination from profiles</td>
+<td>BR-TAX-07, BR-TAX-08</td>
+<td>TAX-010..013</td>
+<td>14b</td>
+</tr>
+<tr>
+<td>Export and zero-rated, exempt, supply natures</td>
+<td>BR-TAX-11</td>
+<td>TAX-011, 018, 019</td>
+<td>14b</td>
+</tr>
+<tr>
+<td>Override with reason</td>
+<td>BR-TAX-09</td>
+<td>TAX-014, 015</td>
+<td>14b</td>
+</tr>
+<tr>
+<td>Retail tax-inclusive pricing, rounding</td>
+<td>BR-TAX-10, BR-TAX-03</td>
+<td>TAX-016, 017</td>
+<td>14b</td>
+</tr>
+<tr>
+<td>Non-recoverable tax, apportionment (manufacturing, mixed supplies)</td>
+<td>BR-TAX-12</td>
+<td>TAX-019..021</td>
+<td>14c</td>
+</tr>
+<tr>
+<td>Return and registers from the ledger, purchase return period</td>
+<td>BR-TAX-13</td>
+<td>TAX-022, 024</td>
+<td>14c</td>
+</tr>
+<tr>
+<td>Settlement on filing</td>
+<td>BR-TAX-02</td>
+<td>TAX-023</td>
+<td>14c</td>
+</tr>
+<tr>
+<td>Imported services: reverse charge</td>
+<td>BR-TAX-14</td>
+<td>TAX-025, 026</td>
+<td>14d</td>
+</tr>
+<tr>
+<td>Payments to non-residents: withholding, treaty</td>
+<td>BR-TAX-15</td>
+<td>TAX-027, 028</td>
+<td>14d</td>
+</tr>
+<tr>
+<td>Foreign currency and exchange differences</td>
+<td>BR-IMP-01</td>
+<td>IMP-001..003</td>
+<td>14e</td>
+</tr>
+<tr>
+<td>Landed cost and landed average cost</td>
+<td>BR-IMP-02</td>
+<td>IMP-004, 010</td>
+<td>14e</td>
+</tr>
+<tr>
+<td>Customs entry, import VAT and duty</td>
+<td>BR-IMP-03</td>
+<td>IMP-006, 007</td>
+<td>14e</td>
+</tr>
+<tr>
+<td>Import of goods determined from the vendor profile</td>
+<td>BR-IMP-04</td>
+<td>IMP-008</td>
+<td>14e</td>
+</tr>
+<tr>
+<td>One payable per payee</td>
+<td>BR-IMP-05</td>
+<td>IMP-005, 009</td>
+<td>14e</td>
+</tr>
+<tr>
+<td>Excise</td>
+<td>BR-TAX-16</td>
+<td>TAX-029</td>
+<td>14f</td>
+</tr>
+</tbody></table></div>
+<p>The posting entries for each scenario are in the Posting rules annex (planned section); the decisions are D18 to D24 in the Solution design; the module map is section 11b of the Technical design; the new terms are in the glossary. Section 10&#39;s decisions must be answered before Sprint 14 starts.</p>
+<h3 id="tax-analysis---11">11. Sources and confidence</h3>
+<ul>
+<li>Finance Core Blueprint (this repository, <code>docs/reference</code>): FR-TAX-01/02, FR-RND-01/02, FR-LC-01..05, FR-WIP-01, ERD (&quot;tax_slabs gain Output/Input VAT account links&quot;).</li>
+<li>Code as of this date: see section 4.</li>
+<li>Oracle Fusion Tax documentation: <a href="https://docs.oracle.com/en/cloud/saas/financials/26c/faitx/tax-determination.html" target="_blank" rel="noopener">tax determination</a>, <a href="https://docs.oracle.com/en/cloud/saas/financials/24b/faitx/tax-rate-setup.html" target="_blank" rel="noopener">tax rate setup</a>.</li>
+<li>Microsoft Dynamics 365 Finance: <a href="https://learn.microsoft.com/en-au/dynamics365/finance/general-ledger/tasks/set-up-sales-tax-groups-item-sales-tax-groups" target="_blank" rel="noopener">sales tax groups and item sales tax groups</a>.</li>
+<li>ZATCA guidelines (table of contents seen; substance <strong>not</strong> read in this session): <a href="https://zatca.gov.sa/en/HelpCenter/guidelines/Documents/Guideline-on-Imports-and-Exports-under-VAT-Provision.pdf" target="_blank" rel="noopener">Imports and Exports</a>, <a href="https://zatca.gov.sa/en/HelpCenter/guidelines/Documents/Guideline-on-Input-Tax-Deduction-under-VAT-Provisions.pdf" target="_blank" rel="noopener">Input Tax Deduction</a>, <a href="https://zatca.gov.sa/en/HelpCenter/guidelines/Documents/Guideline-for-Tax-Invoicing-and-Records-under-VAT-Provisions.pdf" target="_blank" rel="noopener">Tax Invoicing and Records</a>, and the <a href="https://pwc.com/m1/en/services/tax/me-tax-legal-news/2021/saudi-arabia-circular-on-the-reverse-charge-mechanism-application.html" target="_blank" rel="noopener">reverse charge circular summary</a>.</li>
+<li>Secondary commentary on withholding rates and input-tax deduction (rates disagree between sources): <a href="https://www.cleartax.com/sa/withholding-tax-saudi-arabia" target="_blank" rel="noopener">ClearTax withholding tax</a>, <a href="https://www.dariba.co/withholding-tax-in-saudi-arabia/" target="_blank" rel="noopener">Dariba</a>, <a href="https://www.cleartax.com/sa/input-vat-deduction-ksa" target="_blank" rel="noopener">ClearTax input VAT</a>.</li>
+<li><strong>Not independently verified</strong>: SAP, NetSuite and Odoo behaviour (general knowledge); every Saudi legal point marked <strong>[verify]</strong>. A qualified tax adviser should confirm the treatment of import VAT (deferral), reverse-charge boxes, withholding rates and non-recoverable categories before any of it is implemented.</li>
+</ul>
+</section>
+<section class="chapter" id="test-strategy"><p class="eyebrow">Chapter 17</p><h2>Test Strategy</h2><p class="src">Source: <code>docs/gl-ap-ar/05-test-strategy.md</code></p><p>Version 1.0 / 2026-10-15. The complete case list is the catalogue in <code>docs/test-cases/</code> (CSV, JSON, Gherkin); each case is traced to a system requirement and a business requirement in the traceability matrix (08).</p>
 <h3 id="test-strategy--section">1. Objectives</h3>
 <ol>
 <li>Prove every business requirement with at least one repeatable test; none is &quot;verified by looking&quot;.</li>
@@ -5240,7 +6164,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="sprint-log"><p class="eyebrow">Chapter 17</p><h2>Sprint log and plan — GL / AR / AP 2.0</h2><p class="src">Source: <code>docs/gl-ap-ar/07-sprint-log.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+<section class="chapter" id="sprint-log"><p class="eyebrow">Chapter 18</p><h2>Sprint log and plan — GL / AR / AP 2.0</h2><p class="src">Source: <code>docs/gl-ap-ar/07-sprint-log.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
 </div>
 <p>Sprints are numbered. Done sprints list the commits that delivered them (git, branch <code>v2</code>); planned sprints list the BRD items they will deliver. Forward mapping (BR → sprint) and back mapping (sprint item → BR) are both here and in the traceability matrix (08). The first ten sprints were delivered in one continuous build, 2026-10-14 → 2026-10-15.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -5357,10 +6281,45 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 <tr>
 <td>S14</td>
-<td>Tax postings</td>
+<td>Tax engine and codes (T1)</td>
 <td>Planned</td>
 <td>TBD</td>
-<td>Tax-code tags on lines, VAT settlement entry, cash rounding account.</td>
+<td>One tax engine, tax codes with components and dated rates, accounts per code, tagged tax lines, migration of the existing slabs, governance.</td>
+</tr>
+<tr>
+<td>S14b</td>
+<td>Tax profiles and determination (T2)</td>
+<td>Planned</td>
+<td>TBD</td>
+<td>Party, item and company tax profiles; automatic determination; override with reason; supply natures; tax-inclusive pricing and cash rounding.</td>
+</tr>
+<tr>
+<td>S14c</td>
+<td>Recovery, return from the ledger and settlement (T3)</td>
+<td>Planned</td>
+<td>TBD</td>
+<td>Recoverable and non-recoverable input tax, the VAT return and registers from ledger tags, the settlement entry on filing.</td>
+</tr>
+<tr>
+<td>S14d</td>
+<td>Reverse charge and withholding (T4)</td>
+<td>Planned</td>
+<td>TBD</td>
+<td>Imported services: self-assessed tax; withholding on payments to non-residents.</td>
+</tr>
+<tr>
+<td>S14e</td>
+<td>Foreign currency, landed cost and imports (T5)</td>
+<td>Planned</td>
+<td>TBD</td>
+<td>Foreign-currency purchase documents, landed cost, customs entry, automatic import of goods, several payees per shipment.</td>
+</tr>
+<tr>
+<td>S14f</td>
+<td>Excise and other tax components (T6)</td>
+<td>Planned</td>
+<td>TBD</td>
+<td>Excise and any further tax components, only if a customer needs them.</td>
 </tr>
 <tr>
 <td>S15</td>
@@ -5834,8 +6793,8 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-PER-10.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-p-4">Sprint 14 — Tax postings (Planned)</h3>
-<p>Tax-code tags on lines, VAT settlement entry, cash rounding account.</p>
+<h3 id="sprint-log--p-p-7">Sprint 14 — Tax engine and codes (T1) (Planned)</h3>
+<p>One tax engine, tax codes with components and dated rates, accounts per code, tagged tax lines, migration of the existing slabs, governance.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
 <th>Title</th>
@@ -5844,18 +6803,171 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </thead><tbody><tr>
 <td>S14-01</td>
+<td>Tax codes, components and effective-dated rates</td>
+<td>BR-TAX-04 Tax codes with components and effective-dated rates</td>
+<td>FR-TAX-04.1</td>
+</tr>
+<tr>
+<td>S14-02</td>
+<td>Tax accounts per code and tagged tax lines (the tax tag on ledger lines)</td>
+<td>BR-TAX-01 VAT posted to its own accounts; BR-TAX-05 Tax accounts per code and tagged tax lines</td>
+<td>FR-TAX-01.1, FR-TAX-05.1</td>
+</tr>
+<tr>
+<td>S14-03</td>
+<td>Migration of every tax slab to a tax code, one source of truth</td>
+<td>BR-TAX-06 Existing tax slabs become tax codes</td>
+<td>FR-TAX-06.1</td>
+</tr>
+<tr>
+<td>S14-04</td>
+<td>Permissions, audit, isolation and no-delete rule for tax setup</td>
+<td>BR-TAX-17 Governance of tax setup</td>
+<td>FR-TAX-17.1</td>
+</tr>
+</tbody></table></div>
+<h3 id="sprint-log--p-p-p-4">Sprint 14b — Tax profiles and determination (T2) (Planned)</h3>
+<p>Party, item and company tax profiles; automatic determination; override with reason; supply natures; tax-inclusive pricing and cash rounding.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Item</th>
+<th>Title</th>
+<th>Business requirements</th>
+<th>System requirements</th>
+</tr>
+</thead><tbody><tr>
+<td>S14b-01</td>
+<td>Party, item and company tax profiles</td>
+<td>BR-TAX-07 Party, item and company tax profiles</td>
+<td>FR-TAX-07.1</td>
+</tr>
+<tr>
+<td>S14b-02</td>
+<td>Ordered determination rules, no silent zero</td>
+<td>BR-TAX-08 Automatic tax determination</td>
+<td>FR-TAX-08.1</td>
+</tr>
+<tr>
+<td>S14b-03</td>
+<td>Authorised override with reason</td>
+<td>BR-TAX-09 Authorised override of a determined tax code</td>
+<td>FR-TAX-09.1</td>
+</tr>
+<tr>
+<td>S14b-04</td>
+<td>Zero-rated, exempt and out-of-scope carried to ledger, return and e-invoice</td>
+<td>BR-TAX-11 Zero-rated, exempt and out-of-scope are different supplies</td>
+<td>FR-TAX-11.1</td>
+</tr>
+<tr>
+<td>S14b-05</td>
+<td>Tax-inclusive pricing; cash rounding posting</td>
+<td>BR-TAX-10 Tax-inclusive and tax-exclusive pricing; BR-TAX-03 Line rounding and cash rounding</td>
+<td>FR-TAX-10.1, FR-TAX-03.1</td>
+</tr>
+</tbody></table></div>
+<h3 id="sprint-log--p-p-8">Sprint 14c — Recovery, return from the ledger and settlement (T3) (Planned)</h3>
+<p>Recoverable and non-recoverable input tax, the VAT return and registers from ledger tags, the settlement entry on filing.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Item</th>
+<th>Title</th>
+<th>Business requirements</th>
+<th>System requirements</th>
+</tr>
+</thead><tbody><tr>
+<td>S14c-01</td>
+<td>Recoverable and non-recoverable input tax; apportionment</td>
+<td>BR-TAX-12 Recoverable and non-recoverable input tax</td>
+<td>FR-TAX-12.1</td>
+</tr>
+<tr>
+<td>S14c-02</td>
+<td>VAT return and registers from ledger tax tags, reconciled to documents</td>
+<td>BR-TAX-13 VAT return and registers from ledger tax tags</td>
+<td>FR-TAX-13.1</td>
+</tr>
+<tr>
+<td>S14c-03</td>
 <td>VAT settlement entry on filing</td>
 <td>BR-TAX-02 VAT settlement entry</td>
 <td>FR-TAX-02.1</td>
 </tr>
+</tbody></table></div>
+<h3 id="sprint-log--p-p-9">Sprint 14d — Reverse charge and withholding (T4) (Planned)</h3>
+<p>Imported services: self-assessed tax; withholding on payments to non-residents.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Item</th>
+<th>Title</th>
+<th>Business requirements</th>
+<th>System requirements</th>
+</tr>
+</thead><tbody><tr>
+<td>S14d-01</td>
+<td>Reverse charge on imported services</td>
+<td>BR-TAX-14 Reverse charge on imported services</td>
+<td>FR-TAX-14.1</td>
+</tr>
 <tr>
-<td>S14-02</td>
-<td>Tax code on lines; cash rounding posting</td>
-<td>BR-TAX-01 VAT posted to its own accounts; BR-TAX-03 Line rounding and cash rounding</td>
-<td>FR-TAX-01.1, FR-TAX-03.1</td>
+<td>S14d-02</td>
+<td>Withholding tax on payments to non-residents</td>
+<td>BR-TAX-15 Withholding tax on payments to non-residents</td>
+<td>FR-TAX-15.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-7">Sprint 15 — Cost allocation (Planned)</h3>
+<h3 id="sprint-log--p-p-p-5">Sprint 14e — Foreign currency, landed cost and imports (T5) (Planned)</h3>
+<p>Foreign-currency purchase documents, landed cost, customs entry, automatic import of goods, several payees per shipment.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Item</th>
+<th>Title</th>
+<th>Business requirements</th>
+<th>System requirements</th>
+</tr>
+</thead><tbody><tr>
+<td>S14e-01</td>
+<td>Foreign-currency documents and exchange differences</td>
+<td>BR-IMP-01 Foreign-currency documents and exchange differences</td>
+<td>FR-IMP-01.1</td>
+</tr>
+<tr>
+<td>S14e-02</td>
+<td>Landed cost sheets and landed average cost</td>
+<td>BR-IMP-02 Landed cost</td>
+<td>FR-IMP-02.1</td>
+</tr>
+<tr>
+<td>S14e-03</td>
+<td>Customs entry with duty and import VAT</td>
+<td>BR-IMP-03 Customs entry</td>
+<td>FR-IMP-03.1</td>
+</tr>
+<tr>
+<td>S14e-04</td>
+<td>Import of goods determined automatically from the vendor profile</td>
+<td>BR-IMP-04 Import of goods is determined automatically</td>
+<td>FR-IMP-04.1</td>
+</tr>
+<tr>
+<td>S14e-05</td>
+<td>One payable per payee of a shipment</td>
+<td>BR-IMP-05 Several payees per shipment</td>
+<td>FR-IMP-05.1</td>
+</tr>
+</tbody></table></div>
+<h3 id="sprint-log--p-p-p-6">Sprint 14f — Excise and other tax components (T6) (Planned)</h3>
+<p>Excise and any further tax components, only if a customer needs them.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Item</th>
+<th>Title</th>
+<th>Business requirements</th>
+<th>System requirements</th>
+</tr>
+</thead><tbody><tr>
+<td>S14f-01</td>
+<td>Excise and other tax components</td>
+<td>BR-TAX-16 Excise and other tax components</td>
+<td>FR-TAX-16.1</td>
+</tr>
+</tbody></table></div>
+<h3 id="sprint-log--p-p-10">Sprint 15 — Cost allocation (Planned)</h3>
 <p>Allocation run and branch P&amp;L subtotals.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -5876,7 +6988,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-DIM-08.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-8">Sprint 16 — Dimensions on documents (Planned)</h3>
+<h3 id="sprint-log--p-p-11">Sprint 16 — Dimensions on documents (Planned)</h3>
 <p>Collect dimensions on invoice, expense and bill forms; enforce Required.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -5891,7 +7003,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-DIM-06.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-9">Sprint 17 — Receivables enhancements (Planned)</h3>
+<h3 id="sprint-log--p-p-12">Sprint 17 — Receivables enhancements (Planned)</h3>
 <p>Credit note application, statement printing, reminders.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -5912,7 +7024,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-AR-10.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-p-5">Sprint 18 — Payables enhancements (Planned)</h3>
+<h3 id="sprint-log--p-p-p-7">Sprint 18 — Payables enhancements (Planned)</h3>
 <p>Payment approval and payment runs.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -5954,7 +7066,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-RPT-12.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-p-6">Sprint 20 — Hardening and Live promotion (Planned)</h3>
+<h3 id="sprint-log--p-p-p-8">Sprint 20 — Hardening and Live promotion (Planned)</h3>
 <p>Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to Live.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -6484,12 +7596,96 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>BR-TAX-02</td>
 <td>VAT settlement entry</td>
 <td>Planned</td>
-<td>S14</td>
+<td>S14c</td>
 </tr>
 <tr>
 <td>BR-TAX-03</td>
 <td>Line rounding and cash rounding</td>
 <td>Partial</td>
+<td>S14b</td>
+</tr>
+<tr>
+<td>BR-TAX-04</td>
+<td>Tax codes with components and effective-dated rates</td>
+<td>Planned</td>
+<td>S14</td>
+</tr>
+<tr>
+<td>BR-TAX-05</td>
+<td>Tax accounts per code and tagged tax lines</td>
+<td>Planned</td>
+<td>S14</td>
+</tr>
+<tr>
+<td>BR-TAX-06</td>
+<td>Existing tax slabs become tax codes</td>
+<td>Planned</td>
+<td>S14</td>
+</tr>
+<tr>
+<td>BR-TAX-07</td>
+<td>Party, item and company tax profiles</td>
+<td>Planned</td>
+<td>S14b</td>
+</tr>
+<tr>
+<td>BR-TAX-08</td>
+<td>Automatic tax determination</td>
+<td>Planned</td>
+<td>S14b</td>
+</tr>
+<tr>
+<td>BR-TAX-09</td>
+<td>Authorised override of a determined tax code</td>
+<td>Planned</td>
+<td>S14b</td>
+</tr>
+<tr>
+<td>BR-TAX-10</td>
+<td>Tax-inclusive and tax-exclusive pricing</td>
+<td>Planned</td>
+<td>S14b</td>
+</tr>
+<tr>
+<td>BR-TAX-11</td>
+<td>Zero-rated, exempt and out-of-scope are different supplies</td>
+<td>Planned</td>
+<td>S14b</td>
+</tr>
+<tr>
+<td>BR-TAX-12</td>
+<td>Recoverable and non-recoverable input tax</td>
+<td>Planned</td>
+<td>S14c</td>
+</tr>
+<tr>
+<td>BR-TAX-13</td>
+<td>VAT return and registers from ledger tax tags</td>
+<td>Planned</td>
+<td>S14c</td>
+</tr>
+<tr>
+<td>BR-TAX-14</td>
+<td>Reverse charge on imported services</td>
+<td>Planned</td>
+<td>S14d</td>
+</tr>
+<tr>
+<td>BR-TAX-15</td>
+<td>Withholding tax on payments to non-residents</td>
+<td>Planned</td>
+<td>S14d</td>
+</tr>
+<tr>
+<td>BR-TAX-16</td>
+<td>Excise and other tax components</td>
+<td>Planned</td>
+<td>S14f</td>
+</tr>
+<tr>
+<td>BR-TAX-17</td>
+<td>Governance of tax setup</td>
+<td>Planned</td>
 <td>S14</td>
 </tr>
 <tr>
@@ -6816,6 +8012,36 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>Built</td>
 <td>SB1</td>
 </tr>
+<tr>
+<td>BR-IMP-01</td>
+<td>Foreign-currency documents and exchange differences</td>
+<td>Planned</td>
+<td>S14e</td>
+</tr>
+<tr>
+<td>BR-IMP-02</td>
+<td>Landed cost</td>
+<td>Planned</td>
+<td>S14e</td>
+</tr>
+<tr>
+<td>BR-IMP-03</td>
+<td>Customs entry</td>
+<td>Planned</td>
+<td>S14e</td>
+</tr>
+<tr>
+<td>BR-IMP-04</td>
+<td>Import of goods is determined automatically</td>
+<td>Planned</td>
+<td>S14e</td>
+</tr>
+<tr>
+<td>BR-IMP-05</td>
+<td>Several payees per shipment</td>
+<td>Planned</td>
+<td>S14e</td>
+</tr>
 </tbody></table></div>
 <h3 id="sprint-log--p-6">Roadmap (not yet built)</h3>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -6835,8 +8061,33 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 <tr>
 <td>S14</td>
-<td>Tax postings</td>
-<td>BR-TAX-02; BR-TAX-01, BR-TAX-03</td>
+<td>Tax engine and codes (T1)</td>
+<td>BR-TAX-04; BR-TAX-01, BR-TAX-05; BR-TAX-06; BR-TAX-17</td>
+</tr>
+<tr>
+<td>S14b</td>
+<td>Tax profiles and determination (T2)</td>
+<td>BR-TAX-07; BR-TAX-08; BR-TAX-09; BR-TAX-11; BR-TAX-10, BR-TAX-03</td>
+</tr>
+<tr>
+<td>S14c</td>
+<td>Recovery, return from the ledger and settlement (T3)</td>
+<td>BR-TAX-12; BR-TAX-13; BR-TAX-02</td>
+</tr>
+<tr>
+<td>S14d</td>
+<td>Reverse charge and withholding (T4)</td>
+<td>BR-TAX-14; BR-TAX-15</td>
+</tr>
+<tr>
+<td>S14e</td>
+<td>Foreign currency, landed cost and imports (T5)</td>
+<td>BR-IMP-01; BR-IMP-02; BR-IMP-03; BR-IMP-04; BR-IMP-05</td>
+</tr>
+<tr>
+<td>S14f</td>
+<td>Excise and other tax components (T6)</td>
+<td>BR-TAX-16</td>
 </tr>
 <tr>
 <td>S15</td>
@@ -6870,7 +8121,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="api"><p class="eyebrow">Chapter 18</p><h2>Annex B — API reference (GL / AR / AP routes)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-b-api-reference.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+<section class="chapter" id="api"><p class="eyebrow">Chapter 19</p><h2>Annex B — API reference (GL / AR / AP routes)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-b-api-reference.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
 </div>
 <p>Parsed from <code>server/routes/*.ts</code>. &quot;Permission&quot; lists the <code>hasPermission</code> keys found in the handler. All routes run in the tenant transaction (<code>withTenantDb</code>) and are scoped to the session company.</p>
 <h3 id="api--section">ledgerAccounts.ts</h3>
@@ -7623,7 +8874,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="permissions"><p class="eyebrow">Chapter 19</p><h2>Annex C — Permission modules (GL / AR / AP)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-c-permissions-matrix.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+<section class="chapter" id="permissions"><p class="eyebrow">Chapter 20</p><h2>Annex C — Permission modules (GL / AR / AP)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-c-permissions-matrix.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
 </div>
 <p>Source of truth: <code>src/permissionSchema.ts</code>. A user&#39;s rights are the union of all assigned roles; administrators hold every right. Delete means cancel or deactivate, never erase.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -8120,7 +9371,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="posting-rules"><p class="eyebrow">Chapter 20</p><h2>Annex D — Posting rules catalogue</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-d-posting-rules.md</code></p><p>What every source document posts (Dr = debit, Cr = credit). Roles are resolved by the posting engine to the company&#39;s account (customer/vendor control account, bank&#39;s own account, expense-category account when mapped). Every entry also carries the dimension tags and the customer/vendor tag its accounts require. A reversal (cancel, credit note, return, receipt cancel) mirrors the original lines, tags and parties on the reversal date.</p>
+<section class="chapter" id="posting-rules"><p class="eyebrow">Chapter 21</p><h2>Annex D — Posting rules catalogue</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-d-posting-rules.md</code></p><p>What every source document posts (Dr = debit, Cr = credit). Roles are resolved by the posting engine to the company&#39;s account (customer/vendor control account, bank&#39;s own account, expense-category account when mapped). Every entry also carries the dimension tags and the customer/vendor tag its accounts require. A reversal (cancel, credit note, return, receipt cancel) mirrors the original lines, tags and parties on the reversal date.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Source</th>
 <th>Voucher</th>
@@ -8254,8 +9505,71 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li><strong>Bank charges / interest</strong> are cash movements with their P&amp;L side read from the ledger entry.</li>
 <li>A cancelled customer receipt is cash <strong>out</strong>; a cancelled vendor payment is cash <strong>in</strong> (<code>reversalIsCashOut</code>).</li>
 </ul>
+<h3 id="posting-rules--p-p-p">Planned tax postings (not built: Sprints 14 to 14e)</h3>
+<p>What each scenario will post once the tax engine exists. Accounts are those of the tax code; the operator selects none of them. See the design note <em>Taxation and tax profiles</em>, section 6.3.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Scenario</th>
+<th>Entry</th>
+<th>Requirement</th>
+</tr>
+</thead><tbody><tr>
+<td>Domestic standard sale</td>
+<td>Dr receivable (customer); Cr revenue; Cr VAT output (tagged with code and return box)</td>
+<td>BR-TAX-05</td>
+</tr>
+<tr>
+<td>Zero-rated export</td>
+<td>Dr receivable; Cr revenue; a tagged tax line of zero amount with the zero-rated nature and reason code</td>
+<td>BR-TAX-11</td>
+</tr>
+<tr>
+<td>Exempt sale</td>
+<td>As above with the exempt nature; its share excluded from input-tax recovery</td>
+<td>BR-TAX-11, BR-TAX-12</td>
+</tr>
+<tr>
+<td>Retail sale, tax-inclusive price</td>
+<td>Dr bank or receivable; Cr revenue; Cr VAT output (tax extracted per line)</td>
+<td>BR-TAX-10</td>
+</tr>
+<tr>
+<td>Domestic purchase, recoverable</td>
+<td>Dr stock or expense; Dr VAT input; Cr payable (vendor)</td>
+<td>BR-TAX-05</td>
+</tr>
+<tr>
+<td>Purchase in a non-recoverable category, or the non-recoverable share</td>
+<td>The tax is added to the debit of the cost line; no VAT input line for that part</td>
+<td>BR-TAX-12</td>
+</tr>
+<tr>
+<td>Import of goods (customs entry)</td>
+<td>Dr stock (duty and clearing costs by landed-cost allocation); Dr VAT input (recoverable import VAT); Cr customs authority payable; the supplier is a separate payable in the foreign currency</td>
+<td>BR-IMP-02, BR-IMP-03, BR-IMP-04</td>
+</tr>
+<tr>
+<td>Import of services (reverse charge)</td>
+<td>Dr expense; Cr vendor payable (net of withholding); Cr withholding payable; Dr VAT input and Cr VAT output for the self-assessed amount</td>
+<td>BR-TAX-14, BR-TAX-15</td>
+</tr>
+<tr>
+<td>Credit note</td>
+<td>Mirror of the original: same code, rate and accounts</td>
+<td>BR-TAX-05</td>
+</tr>
+<tr>
+<td>Filing a quarter</td>
+<td>Dr VAT output; Cr VAT input; the difference to VAT payable to the authority</td>
+<td>BR-TAX-02</td>
+</tr>
+<tr>
+<td>Payment in a foreign currency at another rate</td>
+<td>Exchange difference to its account</td>
+<td>BR-IMP-01</td>
+</tr>
+</tbody></table></div>
 </section>
-<section class="chapter" id="developer-guide"><p class="eyebrow">Chapter 21</p><h2>Annex E — Developer guide for future ledger work</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-e-developer-guide.md</code></p><p>Read the Solution Design (03) principles first. This page is the practical checklist.</p>
+<section class="chapter" id="developer-guide"><p class="eyebrow">Chapter 22</p><h2>Annex E — Developer guide for future ledger work</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-e-developer-guide.md</code></p><p>Read the Solution Design (03) principles first. This page is the practical checklist.</p>
 <h3 id="developer-guide--p">Add a new source document that posts</h3>
 <ol>
 <li>Do not pick accounts. Call <code>postJournalEntry</code> with <code>referenceType</code>, <code>referenceId</code>, role lines, and a <code>context</code> (or let <code>partyOfDocument</code> read the party). Add the document type to <code>partyOfDocument</code> (<code>postingContext.ts</code>) and to the party back-fill (<code>scripts/backfill-party-tags.ts</code>) if it touches a customer/vendor.</li>
@@ -8287,7 +9601,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li>Run a Live release script from the 2.0 checkout, or merge v2 into master.</li>
 </ul>
 </section>
-<section class="chapter" id="runbook"><p class="eyebrow">Chapter 22</p><h2>Annex F — Operations runbook (ledger core)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-f-operations-runbook.md</code></p><h3 id="runbook--section">Tracks</h3>
+<section class="chapter" id="runbook"><p class="eyebrow">Chapter 23</p><h2>Annex F — Operations runbook (ledger core)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-f-operations-runbook.md</code></p><h3 id="runbook--section">Tracks</h3>
 <p>Live: branch <code>master</code>, folder <code>E:\ERP</code>, production warraq.compbrain.io, fixes only. Demo / 2.0: branch <code>v2</code>, folder <code>E:\ERP-2.0</code>, local port 3001 / database <code>erp_v2</code>, VPS <code>~/apps/erp-demo</code> port 4000 (127.0.0.1 only; reach it through an SSH tunnel). See <code>docs/operations/environments.md</code>.</p>
 <h3 id="runbook--p">Demo release (VPS, as the demo OS user)</h3>
 <pre class="code"><code>cd ~/apps/erp-demo
@@ -8308,7 +9622,7 @@ bash deploy/release-demo.sh</code></pre>
 <li>&quot;Cannot post a date&quot;: posting guard message names the rule (month, VAT quarter, lock date, window, reason).</li>
 </ul>
 </section>
-<section class="chapter" id="glossary"><p class="eyebrow">Chapter 23</p><h2>Annex G — Glossary</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-g-glossary.md</code></p><div class="table-wrap"><table class="plan"><thead><tr>
+<section class="chapter" id="glossary"><p class="eyebrow">Chapter 24</p><h2>Annex G — Glossary</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-g-glossary.md</code></p><div class="table-wrap"><table class="plan"><thead><tr>
 <th>Term</th>
 <th>Meaning</th>
 </tr>
@@ -8408,9 +9722,49 @@ bash deploy/release-demo.sh</code></pre>
 <td>Self-approved</td>
 <td>Approved by its own submitter under the company switch; flagged and audited</td>
 </tr>
+<tr>
+<td>Tax code</td>
+<td>The treatment a line receives: components with effective-dated rates, recoverability, accounts, e-invoice category and return boxes (planned)</td>
+</tr>
+<tr>
+<td>Tax component</td>
+<td>One kind of tax on a line: VAT, import VAT, reverse-charge VAT, withholding, excise or customs duty (planned)</td>
+</tr>
+<tr>
+<td>Supply nature</td>
+<td>Standard, zero-rated, exempt or out of scope; zero-rated keeps the right to recover input tax, exempt does not (planned)</td>
+</tr>
+<tr>
+<td>Tax profile</td>
+<td>The tax facts of a customer, vendor, item or company from which the system determines the tax code (planned)</td>
+</tr>
+<tr>
+<td>Determination rule</td>
+<td>An ordered rule matching transaction type, party class, item class, place and date to a tax code (planned)</td>
+</tr>
+<tr>
+<td>Recoverable input tax</td>
+<td>Input tax that may be set off against output tax; the rest is part of the cost (planned)</td>
+</tr>
+<tr>
+<td>Reverse charge</td>
+<td>The buyer self-assesses the tax on an import of services and, where entitled, deducts it in the same return (planned)</td>
+</tr>
+<tr>
+<td>Withholding tax</td>
+<td>Tax kept from a payment to a non-resident and paid to the authority (planned)</td>
+</tr>
+<tr>
+<td>Landed cost</td>
+<td>Freight, duty, insurance and clearing costs added to the cost of imported stock (planned)</td>
+</tr>
+<tr>
+<td>Customs entry</td>
+<td>The record of an import clearance: customs value, duty and import VAT payable to the customs authority (planned)</td>
+</tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="deployment"><p class="eyebrow">Chapter 24</p><h2>Hostinger VPS Deployment Plan</h2><p class="src">Source: <code>docs/operations/deployment-plan.md</code></p><p><strong>Status: LIVE.</strong> The app is running in production at <code>https://warraq.compbrain.io</code> (Nginx + Let&#39;s Encrypt SSL, PM2 2-instance cluster, Postgres on the same box). Load the <code>hostinger-deploy</code> skill before touching any of this — it has the full guardrails plus a real incident (PM2 startup registered under the wrong OS user) worth reading before touching PM2 lifecycle commands.</p>
+<section class="chapter" id="deployment"><p class="eyebrow">Chapter 25</p><h2>Hostinger VPS Deployment Plan</h2><p class="src">Source: <code>docs/operations/deployment-plan.md</code></p><p><strong>Status: LIVE.</strong> The app is running in production at <code>https://warraq.compbrain.io</code> (Nginx + Let&#39;s Encrypt SSL, PM2 2-instance cluster, Postgres on the same box). Load the <code>hostinger-deploy</code> skill before touching any of this — it has the full guardrails plus a real incident (PM2 startup registered under the wrong OS user) worth reading before touching PM2 lifecycle commands.</p>
 <h3 id="deployment--section">Decisions already locked in (confirmed with the user)</h3>
 <ul>
 <li><strong>Target</strong>: Hostinger VPS, 2 vCPU / 8GB RAM, Ubuntu LTS.</li>
@@ -8540,7 +9894,7 @@ bash deploy/maintenance-mode.sh off      # resume normal traffic
 bash deploy/maintenance-mode.sh status   # check which state it's in</code></pre>
 <p>It just creates/removes a sentinel file (<code>deploy/MAINTENANCE_ON</code>, gitignored) that the Nginx snippet checks, then runs <code>nginx -t</code> before reloading — never touches PM2 or Postgres. To keep your own access while maintenance is on, uncomment and edit the bypass-IP line in <code>erp-maintenance.conf</code> and reload.</p>
 </section>
-<section class="chapter" id="ha-proposal"><p class="eyebrow">Chapter 25</p><h2>High Availability Plan (for review)</h2><p class="src">Source: <code>docs/proposals/high-availability-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-22 in response to Hostinger&#39;s notice
+<section class="chapter" id="ha-proposal"><p class="eyebrow">Chapter 26</p><h2>High Availability Plan (for review)</h2><p class="src">Source: <code>docs/proposals/high-availability-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-22 in response to Hostinger&#39;s notice
 that VPS maintenance downtime is the customer&#39;s own responsibility — Hostinger is not
 obligated to provide HA for a single VPS, and won&#39;t.</p>
 <h3 id="ha-proposal--section">1. Where we actually stand today</h3>
@@ -8683,7 +10037,7 @@ to fund Tier 2 sooner.</li>
 <p>I haven&#39;t provisioned anything or touched the production server for this — tell me which
 tier to build and I&#39;ll start with the standby setup and the replication config.</p>
 </section>
-<section class="chapter" id="ai-proposal"><p class="eyebrow">Chapter 26</p><h2>AI Features — Implementation Plan (for review)</h2><p class="src">Source: <code>docs/proposals/ai-feature-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-20 against the current codebase.
+<section class="chapter" id="ai-proposal"><p class="eyebrow">Chapter 27</p><h2>AI Features — Implementation Plan (for review)</h2><p class="src">Source: <code>docs/proposals/ai-feature-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-20 against the current codebase.
 Focus, as requested: <strong>(1) reporting / data processing, (2) easier data entry and validation, (3) scenarios that can be configured, not hard-coded.</strong>
 Worked scenarios: ZATCA rejection analysis, sales trends, WhatsApp message → quotation.</p>
 <hr>
@@ -9018,7 +10372,7 @@ Output is a short list of &quot;fix these N things&quot; with a one-click jump t
 <li><strong>Data retention:</strong> how long to keep WhatsApp messages/bill images and AI audit logs.</li>
 </ol>
 </section>
-<section class="chapter" id="linked"><p class="eyebrow">Chapter 27</p><h2>Linked pages and other documents</h2><div class="cards">
+<section class="chapter" id="linked"><p class="eyebrow">Chapter 28</p><h2>Linked pages and other documents</h2><div class="cards">
 <a class="card" href="data-dictionary.html"><b>Data dictionary</b><span>Every table and column of the finance core, generated from the schema (annex A).</span></a>
 <a class="card" href="traceability.html"><b>Traceability matrix</b><span>Blueprint to business requirement to system requirement to test case to sprint.</span></a>
 <a class="card" href="test-catalogue.html"><b>Test-case catalogue</b><span>Every test case with its steps, filterable. Also as CSV, JSON and Gherkin in docs/test-cases.</span></a>

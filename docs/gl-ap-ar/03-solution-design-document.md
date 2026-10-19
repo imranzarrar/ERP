@@ -75,6 +75,13 @@ External systems: ZATCA (e-invoicing, outside this programme), SMTP (notificatio
 | D15 | An approval request holds the **intent** (payload) of a document, never a half-posted document; the document is created by its own executor when the last level approves | Nothing can leak into the ledger, reports or payment runs while waiting; one engine serves every document type |
 | D16 | A shortcut that would create and pay a document in one step is refused whole when a rule would hold either step | A rule cannot be bypassed by a convenience flow |
 | D17 | One company setting decides whether the submitter may approve, for every document type | One place, owner/admin only, audited |
+| D18 | Proposed: tax determination, computation, posting, reporting and settlement are separate steps; every document calls one tax engine and contains no tax logic | A rate on a document cannot also decide accounts, recovery and boxes; one engine gives one behaviour for invoice, POS, bill, expense, receipt and return |
+| D19 | Proposed: the tax code is the unit; components with effective-dated rates; accounts hang off the code and component | History is never rewritten by a rate change; accounts are looked up, never typed |
+| D20 | Proposed: profiles on the party, the item and the company; ordered determination rules, most specific first; no matching rule is an error, never zero; override only with the right and a reason | The data entry operator names the party and items; the system decides what to post and where |
+| D21 | Proposed: recoverable and non-recoverable input tax are split at posting; apportionment is computed from the ledger | Cost and the tax asset are right from the first entry, and a mixed taxable and exempt business is supported |
+| D22 | Proposed: the return, the registers and the settlement entry read ledger tax tags and reconcile to documents | One set of numbers; the consistency check proves it |
+| D23 | Proposed: import of goods is automated only after foreign currency, landed cost and customs entry exist | The import entries need those three; building the tax side first would post wrong costs |
+| D24 | Proposed: existing slabs migrate to tax codes in one idempotent script; afterwards the slab column is read-only | One source of tax treatment, no parallel logic |
 
 ## 5. Key flows
 
@@ -168,3 +175,17 @@ Real-HTTP + real-PostgreSQL tests (`tests/`), a 290-case catalogue (`docs/test-c
 | Cross-tenant leak | RLS + composite keys + isolation tripwire + per-table tests |
 | Schema push drops data | Reviewed plan, pre-push keys, date migration idempotent, backup first |
 | Document drift | This set is generated from one traceable source and validated (`build-gl-docs.mjs --check`) |
+
+## Taxation architecture (proposed, Sprints 14 to 14f; nothing built)
+
+The full analysis, the tier-1 comparison, the scenarios (retail, imports, exports, manufacturing) and the open decisions are in the design note *Taxation and tax profiles* (chapter in the technical documentation). In one paragraph: a document names the party and the items; the tax engine looks up the **party tax profile**, the **item tax class**, the **company tax profile** and the **transaction type**, matches an ordered **determination rule** and returns a **tax code**; the code gives the components, the rates valid on the document date, the recoverability and the accounts; the posting engine writes the tax lines with their tags; the return, the registers and the settlement entry read those tags. The operator never chooses a tax or an account.
+
+| Principle (decision) | Requirement ids | Sprint |
+|---|---|---|
+| One engine; codes, components, dated rates, accounts per code (D18, D19) | BR-TAX-04, BR-TAX-05, BR-TAX-17 | 14 |
+| Slabs migrate to codes (D24) | BR-TAX-06 | 14 |
+| Profiles, determination, override, supply natures, tax-inclusive pricing (D20) | BR-TAX-07..11, BR-TAX-03 | 14b |
+| Recovery, return from the ledger, settlement entry (D21, D22) | BR-TAX-12, BR-TAX-13, BR-TAX-02 | 14c |
+| Reverse charge and withholding | BR-TAX-14, BR-TAX-15 | 14d |
+| Foreign currency, landed cost, customs entry, automatic import (D23) | BR-IMP-01..05 | 14e |
+| Excise and other components | BR-TAX-16 | 14f |

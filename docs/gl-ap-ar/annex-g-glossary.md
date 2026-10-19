@@ -26,3 +26,13 @@
 | Approval request | A document waiting for approval: it holds the intent of the document and posts nothing |
 | Approver level | One step of a rule: a role, a user, a permission or the manager of the submitter |
 | Self-approved | Approved by its own submitter under the company switch; flagged and audited |
+| Tax code | The treatment a line receives: components with effective-dated rates, recoverability, accounts, e-invoice category and return boxes (planned) |
+| Tax component | One kind of tax on a line: VAT, import VAT, reverse-charge VAT, withholding, excise or customs duty (planned) |
+| Supply nature | Standard, zero-rated, exempt or out of scope; zero-rated keeps the right to recover input tax, exempt does not (planned) |
+| Tax profile | The tax facts of a customer, vendor, item or company from which the system determines the tax code (planned) |
+| Determination rule | An ordered rule matching transaction type, party class, item class, place and date to a tax code (planned) |
+| Recoverable input tax | Input tax that may be set off against output tax; the rest is part of the cost (planned) |
+| Reverse charge | The buyer self-assesses the tax on an import of services and, where entitled, deducts it in the same return (planned) |
+| Withholding tax | Tax kept from a payment to a non-resident and paid to the authority (planned) |
+| Landed cost | Freight, duty, insurance and clearing costs added to the cost of imported stock (planned) |
+| Customs entry | The record of an import clearance: customs value, duty and import VAT payable to the customs authority (planned) |

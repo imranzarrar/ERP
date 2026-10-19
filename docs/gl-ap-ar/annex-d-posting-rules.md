@@ -30,3 +30,22 @@ What every source document posts (Dr = debit, Cr = credit). Roles are resolved b
 * **Customer advances** (liability) = receipts not yet applied; **Vendor advances** (asset) = payments not yet applied.
 * **Bank charges / interest** are cash movements with their P&L side read from the ledger entry.
 * A cancelled customer receipt is cash **out**; a cancelled vendor payment is cash **in** (`reversalIsCashOut`).
+
+
+## Planned tax postings (not built: Sprints 14 to 14e)
+
+What each scenario will post once the tax engine exists. Accounts are those of the tax code; the operator selects none of them. See the design note *Taxation and tax profiles*, section 6.3.
+
+| Scenario | Entry | Requirement |
+|---|---|---|
+| Domestic standard sale | Dr receivable (customer); Cr revenue; Cr VAT output (tagged with code and return box) | BR-TAX-05 |
+| Zero-rated export | Dr receivable; Cr revenue; a tagged tax line of zero amount with the zero-rated nature and reason code | BR-TAX-11 |
+| Exempt sale | As above with the exempt nature; its share excluded from input-tax recovery | BR-TAX-11, BR-TAX-12 |
+| Retail sale, tax-inclusive price | Dr bank or receivable; Cr revenue; Cr VAT output (tax extracted per line) | BR-TAX-10 |
+| Domestic purchase, recoverable | Dr stock or expense; Dr VAT input; Cr payable (vendor) | BR-TAX-05 |
+| Purchase in a non-recoverable category, or the non-recoverable share | The tax is added to the debit of the cost line; no VAT input line for that part | BR-TAX-12 |
+| Import of goods (customs entry) | Dr stock (duty and clearing costs by landed-cost allocation); Dr VAT input (recoverable import VAT); Cr customs authority payable; the supplier is a separate payable in the foreign currency | BR-IMP-02, BR-IMP-03, BR-IMP-04 |
+| Import of services (reverse charge) | Dr expense; Cr vendor payable (net of withholding); Cr withholding payable; Dr VAT input and Cr VAT output for the self-assessed amount | BR-TAX-14, BR-TAX-15 |
+| Credit note | Mirror of the original: same code, rate and accounts | BR-TAX-05 |
+| Filing a quarter | Dr VAT output; Cr VAT input; the difference to VAT payable to the authority | BR-TAX-02 |
+| Payment in a foreign currency at another rate | Exchange difference to its account | BR-IMP-01 |

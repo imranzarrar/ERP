@@ -29,7 +29,7 @@ Before 2.0 the system computed every report from documents (invoices, expenses, 
 
 ## 4. Scope
 
-**In scope:** 137 business requirements in 24 areas (section 6). 114 are built, 5 partly built, 18 planned.
+**In scope:** 156 business requirements in 25 areas (section 6). 114 are built, 5 partly built, 37 planned.
 
 **Out of scope (this programme):**
 * Fixed assets and depreciation (classes, CWIP, methods, runs, disposal, transfer, documents) (FR-FA-01..10) — A later phase; the ledger and dimensions are designed not to block it.
@@ -318,11 +318,53 @@ Bank fees and interest found while reconciling appear in the profit and loss, tr
 **BR-TAX-01 VAT posted to its own accounts** — Must, Partial, Blueprint FR-TAX-01, source Blueprint, sprint S14.
 Output and recoverable input VAT post to dedicated accounts, never blended into revenue or expense; each line carries its tax code.
 
-**BR-TAX-02 VAT settlement entry** — Should, Planned, Blueprint FR-TAX-02, source Blueprint, sprint S14.
+**BR-TAX-02 VAT settlement entry** — Should, Planned, Blueprint FR-TAX-02, source Blueprint, sprint S14c.
 Filing a quarter posts a settlement entry netting output against input VAT into VAT payable.
 
-**BR-TAX-03 Line rounding and cash rounding** — Should, Partial, Blueprint FR-RND-01, FR-RND-02, source Blueprint, sprint S14.
+**BR-TAX-03 Line rounding and cash rounding** — Should, Partial, Blueprint FR-RND-01, FR-RND-02, source Blueprint, sprint S14b.
 Line tax is computed at higher precision and rounded per line; cash-tender rounding never changes the legal total and posts to a rounding account.
+
+**BR-TAX-04 Tax codes with components and effective-dated rates** — Must, Planned, Blueprint FR-TAX-01, source Standard, sprint S14.
+A tax code is the treatment a line receives. It bundles one or more components (VAT, import VAT, reverse-charge VAT, withholding, excise, customs duty), each with a rate that has a valid-from and valid-to date. A document keeps the code and the rate it was taxed with; a later rate change never alters it.
+
+**BR-TAX-05 Tax accounts per code and tagged tax lines** — Must, Planned, Blueprint FR-TAX-01, source Blueprint, sprint S14.
+Each component of a tax code names the accounts it posts to: output, recoverable input, non-recoverable treatment, reverse-charge pair, clearing and the authority payable. Every tax line in the ledger carries the tax code, the component, the direction, the recoverable amount and the return box.
+
+**BR-TAX-06 Existing tax slabs become tax codes** — Must, Planned, source Decision, sprint S14.
+Every tax slab of every company becomes one tax code of the matching supply nature, with no change to any existing document, ledger entry, e-invoice or filed return. After the migration the tax code is the only source of tax treatment; the old slab column is read-only.
+
+**BR-TAX-07 Party, item and company tax profiles** — Must, Planned, source Standard, sprint S14b.
+A customer and a vendor carry a tax profile (registration, residency class domestic, GCC or foreign, designated zone, withholding applicability, exemption or treaty certificate with expiry). An item carries a tax class (standard, zero-rated, exempt, excise category, recoverability class, and for goods the customs tariff code and duty rate). A company carries its tax registrations, rounding method, price basis and recovery method.
+
+**BR-TAX-08 Automatic tax determination** — Must, Planned, source Decision, sprint S14b.
+The system determines the tax code of every line from the transaction type, the party profile, the item class, the place and the date, through ordered rules where the most specific rule wins. A line with no matching rule is refused with a message naming the missing rule; the system never silently posts zero tax. The operator chooses neither the tax treatment nor any account.
+
+**BR-TAX-09 Authorised override of a determined tax code** — Must, Planned, source Standard, sprint S14b.
+A user holding the override right may change the determined tax code of a line only with a reason. The override is audited and visible on the document and in the registers; a user without the right cannot change it, through the screen or the API.
+
+**BR-TAX-10 Tax-inclusive and tax-exclusive pricing** — Should, Planned, Blueprint FR-RND-01, source Standard, sprint S14b.
+A company, price list or item may price tax-inclusive. The system extracts the tax from the price per line, rounds per line, and the document total equals the price the customer sees.
+
+**BR-TAX-11 Zero-rated, exempt and out-of-scope are different supplies** — Must, Planned, source Compliance, sprint S14b.
+The supply nature (standard, zero-rated, exempt, out of scope) is a property of the tax code and is carried on the ledger tags, the return and the e-invoice category with its exemption reason code. A zero-rated supply keeps the right to recover input tax; an exempt supply does not.
+
+**BR-TAX-12 Recoverable and non-recoverable input tax** — Should, Planned, source Standard, sprint S14c.
+Input tax is split at posting into the recoverable part (an asset until set off) and the non-recoverable part (added to the cost of the purchase), by the item class, category blocks and the company recovery method, including a percentage apportioned between taxable and exempt supplies and computed from the ledger.
+
+**BR-TAX-13 VAT return and registers from ledger tax tags** — Must, Planned, Blueprint FR-TAX-01, source Blueprint, sprint S14c.
+The VAT return boxes, the sales, purchase, import, reverse-charge and withholding registers are computed on the server from the ledger tax tags and reconcile to the documents; the consistency check compares the two.
+
+**BR-TAX-14 Reverse charge on imported services** — Must, Planned, source Compliance, sprint S14d.
+A service bought from a non-resident vendor is determined as an import of services: output tax is self-assessed and, where the company is entitled, deducted as input tax in the same entry and in the prescribed return boxes.
+
+**BR-TAX-15 Withholding tax on payments to non-residents** — Should, Planned, source Compliance, sprint S14d.
+A payment to a non-resident for a service class that attracts withholding deducts tax at the rate of that class, posts the liability to the authority with its own due date, and pays the vendor the net. A treaty certificate on the vendor profile lowers the rate only while it is valid. The payee receives a withholding record.
+
+**BR-TAX-16 Excise and other tax components** — Could, Planned, source Compliance, sprint S14f.
+A line may carry an excise component (and other configured components) posting to its own accounts, included in the VAT base where the law says so.
+
+**BR-TAX-17 Governance of tax setup** — Must, Planned, source Standard, sprint S14.
+Tax codes, rules, profiles and overrides have their own permissions (create, read, update, deactivate), are audited, are company-scoped with row-level security, and a tax code used by any document can only be deactivated, never deleted. Changes after a VAT quarter is filed apply only to later dates.
 
 ### PRT — Printed accounting documents
 
@@ -382,6 +424,23 @@ The requirements, design, test and sprint documents of the ledger core are gener
 
 **BR-NFR-06 Promotion to Live** — Must, Planned, source Decision, sprint S20.
 The Demo release is promoted to the Live system in a controlled release, with data migration, back-fill and verification on a copy of production first.
+
+### IMP — Imports, landed cost and foreign currency
+
+**BR-IMP-01 Foreign-currency documents and exchange differences** — Must, Planned, source Blueprint, sprint S14e.
+A purchase document may be in a foreign currency with the rate of its date stored on it. Tax and inventory post in the company currency; a payment at another rate posts the exchange difference; a missing rate is refused.
+
+**BR-IMP-02 Landed cost** — Must, Planned, Blueprint FR-LC-01, FR-LC-02, FR-LC-04, source Blueprint, sprint S14e.
+Any number of cost lines (freight, duty, insurance, clearing agent, bank charges) can be added to a goods receipt, each capitalised into stock or expensed by default and overridable, allocated to items by value, quantity or manually, so that the average cost used for cost of sales is the fully landed cost.
+
+**BR-IMP-03 Customs entry** — Must, Planned, source Compliance, sprint S14e.
+An import is recorded by a customs entry: customs value, duty and import VAT payable to the customs authority, with the recoverable import VAT posted to input tax and any non-recoverable part added to the stock cost.
+
+**BR-IMP-04 Import of goods is determined automatically** — Must, Planned, source Decision, sprint S14e.
+A purchase of goods from a vendor whose profile is foreign is treated as an import of goods without the operator choosing it: the expected duty and import VAT are shown and the customs entry is requested at receipt.
+
+**BR-IMP-05 Several payees per shipment** — Must, Planned, Blueprint FR-LC-03, source Blueprint, sprint S14e.
+The goods vendor, the freight forwarder, the customs authority, the insurer and the clearing agent each become their own payable, visible in payables aging, none forced onto the goods bill.
 
 ### SAL — Sales documents (quotations, invoices, credit notes)
 
@@ -571,7 +630,11 @@ Each company has its own print templates (create, edit options and layout, activ
 | FR-JE-02 | BR-JNL-03 |
 | FR-JE-03 | BR-JNL-04, BR-DIM-03 |
 | FR-JE-04 | BR-JNL-05 |
-| FR-RND-01 | BR-TAX-03 |
+| FR-LC-01 | BR-IMP-02 |
+| FR-LC-02 | BR-IMP-02 |
+| FR-LC-03 | BR-IMP-05 |
+| FR-LC-04 | BR-IMP-02 |
+| FR-RND-01 | BR-TAX-03, BR-TAX-10 |
 | FR-RND-02 | BR-TAX-03 |
-| FR-TAX-01 | BR-TAX-01 |
+| FR-TAX-01 | BR-TAX-01, BR-TAX-04, BR-TAX-05, BR-TAX-13 |
 | FR-TAX-02 | BR-TAX-02 |

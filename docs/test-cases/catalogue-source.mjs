@@ -39,6 +39,8 @@ export const MODULES = [
   { id: "ORG", name: "Tenancy, users and company administration", ref: "Warraq 1.0 baseline (as built); BR-ORG" },
   { id: "REP", name: "Reports and dashboard (documents)", ref: "Warraq 1.0 baseline (as built); BR-REP" },
   { id: "CFG", name: "Document templates and translations", ref: "Warraq 1.0 baseline (as built); BR-CFG" },
+  { id: "TAX", name: "Taxation: codes, profiles, determination, recovery, return", ref: "docs/design-notes/taxation-analysis.md; BR-TAX" },
+  { id: "IMP", name: "Imports, landed cost and foreign currency", ref: "docs/design-notes/taxation-analysis.md; BR-IMP" },
 ];
 
 const T = {};
@@ -553,6 +555,52 @@ add("CFG", [
   ["A template is created and listed only for its own company; a non-admin or a nameless template is refused","Security","P2","Two companies","Templates are created and listed","Scoped to each company; refused for non-admin","API+DB","tests/settingsResources.test.ts"],
   ["Activating a template deactivates its siblings of the same company and language","Functional","P2","Two templates","One is activated","The other becomes inactive","API+DB","tests/settingsResources.test.ts"],
   ["A company admin who is not a super-administrator cannot edit translations; a super-administrator can, per key","Security","P2","A company admin and a super-admin","A translation key is created and edited","Refused for the first; saved for the second","API+DB","tests/settingsResources.test.ts"],
+]);
+
+add("TAX", [
+  ["A tax code with components and dated rates takes the rate valid on the document date","Functional","P1","A code with 5% to 30 June and 15% from 1 July","Invoices dated 30 June and 1 July are created","Taxed at 5% and 15%","API+DB","Candidate"],
+  ["A later rate change does not alter documents already issued","Regression","P1","An issued invoice and a new rate valid from tomorrow","The rate is added","The issued invoice, its entry and its XML are unchanged","API+DB","Candidate"],
+  ["Overlapping dates for one component are refused","Negative","P2","A component with a rate valid in July","Another rate overlapping July is added","Refused","API+DB","Candidate"],
+  ["A tax line carries code, component, direction and return box and posts to the accounts of its code","Functional","P1","A code with its own output account","An invoice is posted","The tax line is on that account with the tags","API+DB","Candidate"],
+  ["A tax code without the accounts its components need cannot be activated","Negative","P1","A code with an output component and no output account","It is activated","Refused naming the missing account","API+DB","Candidate"],
+  ["Migration turns every slab into a tax code of the matching supply nature and changes no document or entry","Regression","P1","A company with 15%, 0% and exempt slabs and documents","The migration runs twice","One code per slab; nothing else changed; the second run changes nothing","API+DB","Candidate"],
+  ["After migration ledger totals, the VAT return and the XML of existing documents are identical","Regression","P1","Documents before and after the migration","Totals, return and XML are compared","Byte-identical","API+DB","Candidate"],
+  ["Tax setup needs its own rights, is audited and is isolated between companies","Security","P1","A user without the right and a second company","Codes, rules and profiles are changed or read","Refused or invisible; changes audited","API+DB","Candidate"],
+  ["A tax code used by a document cannot be deleted, only deactivated","Negative","P2","A code used by an invoice","It is deleted","Refused; deactivation allowed","API+DB","Candidate"],
+  ["A domestic business customer and a standard item determine the standard sales code with no operator input","Functional","P1","Profiles of a domestic B2B customer and a standard item","An invoice is created without choosing a tax","The standard 15% code and its accounts are used","API+DB","Candidate"],
+  ["A foreign customer and an export item determine the zero-rated code with its reason","Functional","P1","Profiles of a foreign customer and an export item","An invoice is created","Zero-rated code, reason code on the line, no tax amount","API+DB","Candidate"],
+  ["A line with no matching rule is refused and names the missing rule","Negative","P1","A profile combination with no rule","A document is saved","Refused; nothing posts as zero","API+DB","Candidate"],
+  ["The most specific rule wins and an ambiguous rule set is refused at setup","Boundary","P2","A general and a specific rule, and two equal rules","Lines are determined; the equal rules are saved","Specific wins; ambiguity refused","API+DB","Candidate"],
+  ["An override needs the right and a reason, is audited and is shown on the document","Functional","P1","A user with the override right","A line is overridden with and without a reason","Refused without a reason; audited and visible with one","API+DB","Candidate"],
+  ["A user without the override right cannot change the determined code through the API","Security","P1","A user without the right","A request names another code","Refused","API+DB","Candidate"],
+  ["A tax-inclusive price is split per line and the total equals the price shown","Boundary","P1","A tax-inclusive price list and a 3-line basket","The sale is made","Each line rounded; total equals the sum of shelf prices","API+DB","Candidate"],
+  ["Cash rounding never changes the legal total and posts to the rounding account","Functional","P2","Cash rounding enabled","A cash sale of 10.37 is paid","The invoice total is unchanged; the delta is on the rounding account","API+DB","Candidate"],
+  ["Zero-rated and exempt lines are distinguishable in ledger tags, the return and the e-invoice","Functional","P1","A zero-rated line and an exempt line","They are posted, returned and submitted","Different supply nature in each, with the right reason code","API+DB","Candidate"],
+  ["Exempt sales reduce the recoverable share of input tax","Functional","P1","Taxable and exempt sales in a period","The recovery percentage is computed","The exempt share is excluded from recovery","API+DB","Candidate"],
+  ["A non-recoverable category posts its tax to the cost line","Functional","P1","A category blocked for recovery","A purchase of that category is posted","No input VAT line; the tax is in the cost","API+DB","Candidate"],
+  ["An apportionment percentage splits input tax into recoverable and cost parts and is frozen after filing","Functional","P2","A 70 percent recovery for a period","Purchases are posted and the quarter filed","Seventy percent recoverable; later setup changes apply only to later dates","API+DB","Candidate"],
+  ["The VAT return boxes come from ledger tags and equal the registers and the documents","Integration","P1","A book of sales, purchases, returns and credits","The return, registers and documents are compared","All equal; the consistency check shows no difference","API+DB","Candidate"],
+  ["Filing a quarter posts the settlement entry into VAT payable","Functional","P1","A quarter with output and input VAT","The return is filed","Dr VAT output, Cr VAT input, the difference to VAT payable to the authority; no second filing","API+DB","Candidate"],
+  ["A purchase return gives back input tax in the period of the return","Regression","P1","A billed purchase and a return in a later quarter","The return is posted","The adjustment falls in the later quarter","API+DB","Candidate"],
+  ["An imported service posts self-assessed output and input tax in one entry and the right boxes","Functional","P1","A foreign vendor and a service item","The bill is posted","Output and input VAT of equal amount and the reverse-charge boxes","API+DB","Candidate"],
+  ["Reverse-charge input tax is not deducted when the use is exempt","Boundary","P2","An imported service used for exempt supplies","The bill is posted","Output tax without the input side","API+DB","Candidate"],
+  ["A payment to a non-resident withholds tax at the rate of the service class","Functional","P1","A foreign vendor and a management-fee service","The bill is paid","Withholding liability posted; the vendor receives the net","API+DB","Candidate"],
+  ["A treaty certificate lowers the withholding rate only while valid","Boundary","P2","A certificate expiring on a date","Payments before and after expiry are made","Treaty rate before; domestic rate after","API+DB","Candidate"],
+  ["An excise component posts to its own account and enters the VAT base","Functional","P2","An excise class item","A sale is posted","Excise on its account; VAT computed on price plus excise","API+DB","Candidate"],
+  ["The tax code feeds the e-invoice category and reason code and existing XML is unchanged","Integration","P1","Standard, zero-rated and exempt invoices","They are built before and after the change","Category and reason identical; the dual-gate validation passes","API+DB","Candidate"],
+]);
+
+add("IMP", [
+  ["A foreign-currency document stores currency, rate and company-currency amounts with tax in the company currency","Functional","P1","A purchase in dollars with a rate for its date","It is posted","Amounts in both currencies stored; tax and stock in riyals","API+DB","Candidate"],
+  ["Settling at a different rate posts the exchange difference","Functional","P1","A bill at 3.75 paid at 3.76","The payment is posted","The exchange difference is on its account","API+DB","Candidate"],
+  ["A document dated with no rate available is refused","Negative","P2","No rate for the date","A foreign-currency document is saved","Refused naming the missing rate","API+DB","Candidate"],
+  ["A landed-cost sheet allocates freight, duty and insurance by value, quantity or manually","Functional","P1","A receipt of two items and three cost lines","The sheet is posted with each basis","Each item landed unit cost reflects its share","API+DB","Candidate"],
+  ["Each cost line accrues at receipt and clears to the bill of its own payee","Functional","P1","A receipt with freight and duty lines","The freight bill is matched","Only the freight accrual clears","API+DB","Candidate"],
+  ["A customs entry records duty and import VAT payable to the customs authority","Functional","P1","A shipment with a customs value and a duty rate","The entry is posted","Duty and import VAT payable to the authority on customs value plus duty","API+DB","Candidate"],
+  ["Recoverable import VAT goes to input tax and a non-recoverable part to the stock cost","Boundary","P1","An import for taxable use and one for exempt use","Entries are posted","Input VAT for the first; cost for the second","API+DB","Candidate"],
+  ["A purchase of goods from a foreign vendor is determined as an import without operator input","Functional","P1","A foreign-profile vendor and a goods item","A purchase order is received","Import of goods is applied and the customs entry requested","API+DB","Candidate"],
+  ["Several payees of one shipment each get their own payable","Functional","P1","Goods vendor, forwarder, customs and insurer","The shipment costs are posted","Four payables, each in aging","API+DB","Candidate"],
+  ["The average cost used for cost of sales is the landed cost","Regression","P1","An item received with landed costs","It is sold","Cost of sales uses the landed average","API+DB","Candidate"],
 ]);
 
 export const CASES = [];

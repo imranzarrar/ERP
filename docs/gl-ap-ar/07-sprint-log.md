@@ -21,7 +21,12 @@ Sprints are numbered. Done sprints list the commits that delivered them (git, br
 | S11 | Approval rules | Done | 2026-10-15 to 2026-10-16 | Amount-threshold, multi-level approval for journals, bills, payments and credit notes. |
 | S12 | Period control | Planned | TBD | Restricted month, adjustment period, readiness checklist, ledger-verified month close, per-module close. |
 | S13 | Year-end close | Planned | TBD | One closing entry into retained earnings; next year opens automatically. |
-| S14 | Tax postings | Planned | TBD | Tax-code tags on lines, VAT settlement entry, cash rounding account. |
+| S14 | Tax engine and codes (T1) | Planned | TBD | One tax engine, tax codes with components and dated rates, accounts per code, tagged tax lines, migration of the existing slabs, governance. |
+| S14b | Tax profiles and determination (T2) | Planned | TBD | Party, item and company tax profiles; automatic determination; override with reason; supply natures; tax-inclusive pricing and cash rounding. |
+| S14c | Recovery, return from the ledger and settlement (T3) | Planned | TBD | Recoverable and non-recoverable input tax, the VAT return and registers from ledger tags, the settlement entry on filing. |
+| S14d | Reverse charge and withholding (T4) | Planned | TBD | Imported services: self-assessed tax; withholding on payments to non-residents. |
+| S14e | Foreign currency, landed cost and imports (T5) | Planned | TBD | Foreign-currency purchase documents, landed cost, customs entry, automatic import of goods, several payees per shipment. |
+| S14f | Excise and other tax components (T6) | Planned | TBD | Excise and any further tax components, only if a customer needs them. |
 | S15 | Cost allocation | Planned | TBD | Allocation run and branch P&L subtotals. |
 | S16 | Dimensions on documents | Planned | TBD | Collect dimensions on invoice, expense and bill forms; enforce Required. |
 | S17 | Receivables enhancements | Planned | TBD | Credit note application, statement printing, reminders. |
@@ -205,14 +210,67 @@ One closing entry into retained earnings; next year opens automatically.
 |---|---|---|---|
 | S13-01 | Year-end close | BR-PER-10 Year-end close | FR-PER-10.1 |
 
-## Sprint 14 — Tax postings (Planned)
+## Sprint 14 — Tax engine and codes (T1) (Planned)
 
-Tax-code tags on lines, VAT settlement entry, cash rounding account.
+One tax engine, tax codes with components and dated rates, accounts per code, tagged tax lines, migration of the existing slabs, governance.
 
 | Item | Title | Business requirements | System requirements |
 |---|---|---|---|
-| S14-01 | VAT settlement entry on filing | BR-TAX-02 VAT settlement entry | FR-TAX-02.1 |
-| S14-02 | Tax code on lines; cash rounding posting | BR-TAX-01 VAT posted to its own accounts; BR-TAX-03 Line rounding and cash rounding | FR-TAX-01.1, FR-TAX-03.1 |
+| S14-01 | Tax codes, components and effective-dated rates | BR-TAX-04 Tax codes with components and effective-dated rates | FR-TAX-04.1 |
+| S14-02 | Tax accounts per code and tagged tax lines (the tax tag on ledger lines) | BR-TAX-01 VAT posted to its own accounts; BR-TAX-05 Tax accounts per code and tagged tax lines | FR-TAX-01.1, FR-TAX-05.1 |
+| S14-03 | Migration of every tax slab to a tax code, one source of truth | BR-TAX-06 Existing tax slabs become tax codes | FR-TAX-06.1 |
+| S14-04 | Permissions, audit, isolation and no-delete rule for tax setup | BR-TAX-17 Governance of tax setup | FR-TAX-17.1 |
+
+## Sprint 14b — Tax profiles and determination (T2) (Planned)
+
+Party, item and company tax profiles; automatic determination; override with reason; supply natures; tax-inclusive pricing and cash rounding.
+
+| Item | Title | Business requirements | System requirements |
+|---|---|---|---|
+| S14b-01 | Party, item and company tax profiles | BR-TAX-07 Party, item and company tax profiles | FR-TAX-07.1 |
+| S14b-02 | Ordered determination rules, no silent zero | BR-TAX-08 Automatic tax determination | FR-TAX-08.1 |
+| S14b-03 | Authorised override with reason | BR-TAX-09 Authorised override of a determined tax code | FR-TAX-09.1 |
+| S14b-04 | Zero-rated, exempt and out-of-scope carried to ledger, return and e-invoice | BR-TAX-11 Zero-rated, exempt and out-of-scope are different supplies | FR-TAX-11.1 |
+| S14b-05 | Tax-inclusive pricing; cash rounding posting | BR-TAX-10 Tax-inclusive and tax-exclusive pricing; BR-TAX-03 Line rounding and cash rounding | FR-TAX-10.1, FR-TAX-03.1 |
+
+## Sprint 14c — Recovery, return from the ledger and settlement (T3) (Planned)
+
+Recoverable and non-recoverable input tax, the VAT return and registers from ledger tags, the settlement entry on filing.
+
+| Item | Title | Business requirements | System requirements |
+|---|---|---|---|
+| S14c-01 | Recoverable and non-recoverable input tax; apportionment | BR-TAX-12 Recoverable and non-recoverable input tax | FR-TAX-12.1 |
+| S14c-02 | VAT return and registers from ledger tax tags, reconciled to documents | BR-TAX-13 VAT return and registers from ledger tax tags | FR-TAX-13.1 |
+| S14c-03 | VAT settlement entry on filing | BR-TAX-02 VAT settlement entry | FR-TAX-02.1 |
+
+## Sprint 14d — Reverse charge and withholding (T4) (Planned)
+
+Imported services: self-assessed tax; withholding on payments to non-residents.
+
+| Item | Title | Business requirements | System requirements |
+|---|---|---|---|
+| S14d-01 | Reverse charge on imported services | BR-TAX-14 Reverse charge on imported services | FR-TAX-14.1 |
+| S14d-02 | Withholding tax on payments to non-residents | BR-TAX-15 Withholding tax on payments to non-residents | FR-TAX-15.1 |
+
+## Sprint 14e — Foreign currency, landed cost and imports (T5) (Planned)
+
+Foreign-currency purchase documents, landed cost, customs entry, automatic import of goods, several payees per shipment.
+
+| Item | Title | Business requirements | System requirements |
+|---|---|---|---|
+| S14e-01 | Foreign-currency documents and exchange differences | BR-IMP-01 Foreign-currency documents and exchange differences | FR-IMP-01.1 |
+| S14e-02 | Landed cost sheets and landed average cost | BR-IMP-02 Landed cost | FR-IMP-02.1 |
+| S14e-03 | Customs entry with duty and import VAT | BR-IMP-03 Customs entry | FR-IMP-03.1 |
+| S14e-04 | Import of goods determined automatically from the vendor profile | BR-IMP-04 Import of goods is determined automatically | FR-IMP-04.1 |
+| S14e-05 | One payable per payee of a shipment | BR-IMP-05 Several payees per shipment | FR-IMP-05.1 |
+
+## Sprint 14f — Excise and other tax components (T6) (Planned)
+
+Excise and any further tax components, only if a customer needs them.
+
+| Item | Title | Business requirements | System requirements |
+|---|---|---|---|
+| S14f-01 | Excise and other tax components | BR-TAX-16 Excise and other tax components | FR-TAX-16.1 |
 
 ## Sprint 15 — Cost allocation (Planned)
 
@@ -354,8 +412,22 @@ Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to
 | BR-BNK-07 | Excel statement import and saved formats | Planned | S20 |
 | BR-BNK-08 | Bank charges and interest in every statement | Built | S8 |
 | BR-TAX-01 | VAT posted to its own accounts | Partial | S14 |
-| BR-TAX-02 | VAT settlement entry | Planned | S14 |
-| BR-TAX-03 | Line rounding and cash rounding | Partial | S14 |
+| BR-TAX-02 | VAT settlement entry | Planned | S14c |
+| BR-TAX-03 | Line rounding and cash rounding | Partial | S14b |
+| BR-TAX-04 | Tax codes with components and effective-dated rates | Planned | S14 |
+| BR-TAX-05 | Tax accounts per code and tagged tax lines | Planned | S14 |
+| BR-TAX-06 | Existing tax slabs become tax codes | Planned | S14 |
+| BR-TAX-07 | Party, item and company tax profiles | Planned | S14b |
+| BR-TAX-08 | Automatic tax determination | Planned | S14b |
+| BR-TAX-09 | Authorised override of a determined tax code | Planned | S14b |
+| BR-TAX-10 | Tax-inclusive and tax-exclusive pricing | Planned | S14b |
+| BR-TAX-11 | Zero-rated, exempt and out-of-scope are different supplies | Planned | S14b |
+| BR-TAX-12 | Recoverable and non-recoverable input tax | Planned | S14c |
+| BR-TAX-13 | VAT return and registers from ledger tax tags | Planned | S14c |
+| BR-TAX-14 | Reverse charge on imported services | Planned | S14d |
+| BR-TAX-15 | Withholding tax on payments to non-residents | Planned | S14d |
+| BR-TAX-16 | Excise and other tax components | Planned | S14f |
+| BR-TAX-17 | Governance of tax setup | Planned | S14 |
 | BR-PRT-01 | Receipt and payment voucher | Built | S9 |
 | BR-PRT-02 | Journal voucher | Built | S9 |
 | BR-PRT-03 | Bank reconciliation statement | Built | S9 |
@@ -410,6 +482,11 @@ Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to
 | BR-REP-01 | Server-side, paged and exact reports | Built | SB1 |
 | BR-REP-02 | Reports agree with the documents and with each other | Built | SB1 |
 | BR-CFG-01 | Print templates and translations | Built | SB1 |
+| BR-IMP-01 | Foreign-currency documents and exchange differences | Planned | S14e |
+| BR-IMP-02 | Landed cost | Planned | S14e |
+| BR-IMP-03 | Customs entry | Planned | S14e |
+| BR-IMP-04 | Import of goods is determined automatically | Planned | S14e |
+| BR-IMP-05 | Several payees per shipment | Planned | S14e |
 
 ## Roadmap (not yet built)
 
@@ -417,7 +494,12 @@ Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to
 |---|---|---|
 | S12 | Period control | BR-PER-07; BR-PER-08; BR-PER-09; BR-PER-11 |
 | S13 | Year-end close | BR-PER-10 |
-| S14 | Tax postings | BR-TAX-02; BR-TAX-01, BR-TAX-03 |
+| S14 | Tax engine and codes (T1) | BR-TAX-04; BR-TAX-01, BR-TAX-05; BR-TAX-06; BR-TAX-17 |
+| S14b | Tax profiles and determination (T2) | BR-TAX-07; BR-TAX-08; BR-TAX-09; BR-TAX-11; BR-TAX-10, BR-TAX-03 |
+| S14c | Recovery, return from the ledger and settlement (T3) | BR-TAX-12; BR-TAX-13; BR-TAX-02 |
+| S14d | Reverse charge and withholding (T4) | BR-TAX-14; BR-TAX-15 |
+| S14e | Foreign currency, landed cost and imports (T5) | BR-IMP-01; BR-IMP-02; BR-IMP-03; BR-IMP-04; BR-IMP-05 |
+| S14f | Excise and other tax components (T6) | BR-TAX-16 |
 | S15 | Cost allocation | BR-DIM-07; BR-DIM-08 |
 | S16 | Dimensions on documents | BR-DIM-06 |
 | S17 | Receivables enhancements | BR-AR-09; BR-AR-10 |
