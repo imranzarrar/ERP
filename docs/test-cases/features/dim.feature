@@ -99,3 +99,33 @@ Feature: Dimensions (branch, department, custom)
     Given A user restricted to branch X
     When General ledger and journals are read
     Then Only branch X entries (entries with no branch are hidden)
+
+  @DIM-015 @P1 @Functional @API+DB @candidate
+  Scenario: A balancing type forces per-value balance with inter-unit clearing
+    Given A balancing profit-centre type
+    When An entry unbalanced per value is posted
+    Then Clearing lines are added; each value balances
+
+  @DIM-016 @P1 @Negative @API+DB @candidate
+  Scenario: A value outside its validity or in a closed status refuses posting
+    Given A closed project value
+    When A line is posted to it
+    Then Refused
+
+  @DIM-017 @P2 @Functional @API+DB @candidate
+  Scenario: An invalid combination of types is refused and a default is derived
+    Given A rule project implies profit centre
+    When A line names a project only
+    Then The profit centre is derived; a mismatch is refused
+
+  @DIM-018 @P1 @Functional @API+DB @candidate
+  Scenario: Allocation by a statistical driver over any type posts net zero
+    Given A pool and a driver of hours
+    When The run is previewed and posted
+    Then Cost moves by the driver; net zero
+
+  @DIM-019 @P2 @Functional @API+DB @candidate
+  Scenario: A break-down report gives a column per value with roll-up
+    Given A hierarchical type
+    When A profit and loss is broken down
+    Then One column per value; parents roll up

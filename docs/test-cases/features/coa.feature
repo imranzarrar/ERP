@@ -153,3 +153,33 @@ Feature: Chart of accounts and account mapping
     When The adjustment account list is read
     Then Only active, postable expense and revenue accounts are offered
     # automated by tests/bankReconciliation.test.ts
+
+  @COA-023 @P1 @Functional @API+DB @candidate
+  Scenario: Account classification drives the cash-flow statement and statutory lines
+    Given Accounts with classes and a chart view
+    When Statements are run
+    Then Lines and cash flow derive from the classes
+
+  @COA-024 @P1 @Negative @API+DB @candidate
+  Scenario: A blocked account refuses a posting; an auto-only account refuses a manual journal
+    Given A blocked and an auto-only account
+    When Postings are attempted
+    Then Refused with the reason
+
+  @COA-025 @P2 @Functional @API+DB @candidate
+  Scenario: A retail template creates its role accounts, dimension rules and layouts and can be merged
+    Given A new company
+    When A template is chosen then merged into another company chart
+    Then Accounts created without duplicates
+
+  @COA-026 @P1 @Integration @API+DB @candidate
+  Scenario: The same ledger is presented through two chart views with equal totals
+    Given Two views mapped
+    When Statements are run for each
+    Then Totals equal; lines differ
+
+  @COA-027 @P2 @Boundary @API+DB @candidate
+  Scenario: A chart change dated in future does not alter past statements and needs approval when configured
+    Given Approval on for chart changes
+    When An account is changed
+    Then Pending until approved; history unchanged

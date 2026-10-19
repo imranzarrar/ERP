@@ -10,7 +10,7 @@
 
 1. Read sections 1 to 5 (structure and mechanism), then the process chapters 6 to 10.
 2. At the end of each section there is a short list of **review questions**. Mark each one *Accept*, *Change* or *Question*, with a comment. Section 15 collects all of them in one table you can return.
-3. Section 13 lists what is **not** built and section 14 the changes already proposed. Please say which matter most for the businesses you advise (retail, trading, manufacturing, real estate, services).
+3. Section 13 lists what is **not** built and section 14 the **decisions the owner has taken and the build programme proposed**, for your confirmation before building starts. Please say which matter most for the businesses you advise (retail, trading, manufacturing, real estate, services).
 
 **Conventions.** *Dr* is debit, *Cr* is credit. Amounts are in Saudi riyals. Account codes are from the standard starter chart; every company can change them. "As built" means the code does this today; "proposed" means it is a design for discussion and does nothing yet.
 
@@ -580,16 +580,89 @@ The direction in 10.1 is agreed. These details are not, and your advice is what 
 | Accounting events layer (preview and re-derivation of entries), generic typed references, quantities on ledger lines | Proposed |
 | Segregation-of-duties rules; master-data change approval | Not built |
 
-## 14. Design proposals already written (not agreed, nothing built)
+## 14. Decisions taken and the programme proposed for your confirmation
 
-These are for your reaction; each is a document in the technical documentation.
+On 19 October 2026 the owner accepted the recommendations below and asked that the **standard, tier-1-compliant solution** be built, including optional capabilities, with **no patches or workarounds**, and with flexible standard accounting. Nothing in this section is built yet. **We ask you to confirm or change each decision and each step of the programme before building starts.**
 
-* **Taxation and tax profiles** (direction agreed, detailed design for your review): tax codes with components and dated rates; profiles on parties, items and the company; automatic determination; recoverable and non-recoverable tax; reverse charge; withholding; import; settlement entry. See section 10.
-* **Chart of accounts benchmark:** compares the chart with SAP, Oracle, Dynamics and NetSuite and proposes account attributes, templates and chart views.
-* **A domain-neutral core:** the primitives (typed references, quantities, accounting events, recognition schedules, currencies and ledgers, dimension capabilities) that would let retail, trading, manufacturing, real estate and other domains be added later without redesign.
-* **Agreed decisions register** with a professional review of every agreed entry.
+### 14.1 Decisions taken
 
-**Questions for you on direction.** 14.1 Which of the gaps in section 13 would you rank as most important for your clients? 14.2 Which accounting standards or statutory formats must the design satisfy first? 14.3 Are there entries in section 6 you would change before we build anything more?
+| # | Decision | Reasoning |
+|---|---|---|
+| D-1 | Build the standard solution, including optional capabilities; no patches | A patched ledger cannot be audited or extended |
+| D-2 | Tax is a layered structure on tax profiles (section 10); Saudi VAT first, built so other GCC states can be added | Treatment follows facts, not typing |
+| D-3 | Tax components in this order: all VAT scenarios; import VAT, customs duty and reverse charge; withholding; excise last | Follows how often each occurs |
+| D-4 | Import VAT supports both treatments (paid at customs and recovered, or deferred where the law allows), chosen per company, **to be confirmed by a tax adviser** | The law decides, not the software |
+| D-5 | Partial recovery of input tax (taxable and exempt sales) is designed in from the start | A mixed business cannot be retrofitted |
+| D-6 | Prices tax-inclusive or tax-exclusive as a company setting with an item override | Retail and trade differ |
+| D-7 | A determined tax can be overridden only by a user holding the right, with a mandatory reason, audited | Control without losing flexibility |
+| D-8 | Existing tax slabs become tax codes automatically, with no change to any posted history | No restatement |
+| D-9 | **Accounting events layer**: documents raise events, rules produce the entries, with preview and re-derivation | The tier-1 way to support several ledgers and rules |
+| D-10 | **Currency and parallel ledgers** are designed now and built early | They change what an amount is |
+| D-11 | **Typed references** from a ledger line to any business object, replacing one column per subledger | A new domain needs no new ledger column |
+| D-12 | **Quantity and unit** on ledger lines | Rates, capacity, per-unit cost, statistical drivers |
+| D-13 | **One recognition-schedule engine** (deferred income, prepaid cost, depreciation, lease income, progress) | One mechanism, one control |
+| D-14 | Dimensions stay unlimited; **profit centre is a balancing dimension type** (the branch can be that type by default); a dimension never changes an account's **total**, and a balancing type must also **balance per value** | Profit-centre accounting without a second ledger |
+| D-15 | Work orders and similar documents are allowed as **process documents keyed to a dimension value**; a second ledger or a hard-coded cost object is not | Flexible for any domain |
+| D-16 | Project costing: cost collection and profitability first; billing and revenue recognition later | Staged |
+| D-17 | Budget control mode is configurable, **warn by default** | Practical control |
+| D-18 | Chart templates for retail, trading, manufacturing, real estate and services; the reference standard is **IFRS as adopted in Saudi Arabia**, with local statutory views mappable | Flexible, standard-based |
+| D-19 | Escalation of overdue approvals stays in the backlog until requested | Not needed yet |
+
+### 14.2 The target structure
+
+```mermaid
+flowchart TD
+  subgraph DOC["Documents (sales, purchases, expenses, cash, journals, domain documents later)"]
+    D1["Document names who and what"]
+  end
+  DOC --> EV["Accounting events layer<br/>event, rules, preview, re-derivation"]
+  PR["Profiles: party, item, company,<br/>tax profiles, determination rules"] --> EV
+  EV --> L1["Primary ledger<br/>functional currency"]
+  EV --> L2["Second ledger<br/>(for example local statutory or tax)"]
+  EV --> L3["Reporting-currency view"]
+  L1 --> DIM["Dimensions on every line<br/>unlimited types, roles, balancing,<br/>typed object references, quantities"]
+  DIM --> RPT["Reports: statements by chart view,<br/>break-down by any dimension,<br/>budget versus actual, tax return"]
+  SCH["Recognition schedules and runs<br/>(deferrals, depreciation, leases)"] --> EV
+  BUD["Budgets and commitments<br/>on dimension combinations"] --> RPT
+  CTL["Controls: posting guard, period status per ledger,<br/>approvals, segregation of duties,<br/>master-data approval, audit"] -.-> EV
+```
+
+### 14.3 The programme, in the proposed order
+
+| Step | Delivers | What to check as an accountant |
+|---|---|---|
+| F1 Accounting events | Every document posts through events and rules, with an entry preview; results identical to today | Is previewing and re-deriving entries acceptable audit practice? |
+| F2 Currency and ledgers | Transaction, functional and reporting currency; dated rates; exchange differences; revaluation; more than one ledger | Are the exchange-difference and revaluation entries (examples below) right? |
+| F3 Typed references and quantities | Any object referenced from a line; hours, units, area stored with postings | Which objects and statistical keys do your clients need? |
+| F4 Account master and templates | Account classes, posting controls, groups, five industry templates, chart views mapped to IFRS as adopted in Saudi Arabia, effective dating | Is the classification and the template list right? |
+| F5 Determination engine | Accounts (and later tax codes) found from item class, party class, branch, transaction type | Which classifications decide accounts for your clients? |
+| Tax series (14 to 14f) | Codes, profiles, recovery, return from the ledger and settlement, reverse charge, withholding, imports, excise | Section 10 |
+| F6 Dimension capabilities | Roles, attributes and lifecycle, valid combinations, balancing, allocation by any basis, break-down reports | Is balancing per value with inter-unit clearing right? |
+| F7 Budgeting | Versions, control (warn by default), commitments, budget versus actual | Is the control model right? |
+| F8 Recognition schedules | One engine for deferrals, prepayments, depreciation, leases, progress | Are the release patterns right? |
+| F9 Controls | Segregation-of-duties rules and approval of sensitive master-data changes | Which conflicts must be forbidden? |
+
+Period control (month, lock date, year-end) and landed cost with customs entry continue in the existing plan and are prerequisites for some steps.
+
+### 14.4 Worked examples of what the new structure will post
+
+**(a) Purchase in foreign currency.** 1 March: goods of USD 1,000 bought at 3.75. *Dr Inventory 3,750; Cr Accounts payable 3,750 (USD 1,000 held on the line).*
+* *If paid on 20 March at 3.76:* *Dr Accounts payable 3,750; Dr Realised exchange loss 10; Cr Bank 3,760.*
+* *If still open at 31 March when the rate is 3.77 (revaluation run):* *Dr Unrealised exchange loss 20; Cr Accounts payable 20;* the run reverses on 1 April; the later payment then posts the realised difference as above.
+
+**(b) Deferred income over a 12-month service contract.** 1 January: invoice 12,000 (VAT ignored for clarity). *Dr Accounts receivable 12,000; Cr Deferred income 12,000.* Each month the approved recognition run posts *Dr Deferred income 1,000; Cr Revenue 1,000.* After March: deferred income 9,000, revenue 3,000; the run for a locked period cannot be repeated.
+
+**(c) Profit-centre balancing.** Head office pays a supplier 600 for Store B. The document is *Dr Expense (Store B) 600; Cr Bank (Head office) 600*, which does not balance per profit centre. The engine adds the inter-unit lines: *Store B: Cr Inter-unit payable 600; Head office: Dr Inter-unit receivable 600.* Each profit centre now balances and has its own balance sheet.
+
+**(d) One event, two ledgers.** An invoice raises one accounting event. The primary ledger (IFRS as adopted) and a second ledger (for example local statutory) each apply their own rules, so the same event can produce different entries where the two bases differ, and each ledger has its own period status.
+
+**(e) Budget control.** Department Admin has a March budget of 10,000 for the *Office* account group; actual is 9,500. An expense of 800 would exceed it by 300. Mode *warn* (default): the user sees the warning and may continue with a reason, audited; mode *stop*: refused unless an override right is used; mode *report*: only shown on the budget report.
+
+**(f) Account determination.** A sale of an item in class *Goods for resale* posts to *Retail sales*; an item in class *Services* to *Service income*; an item in class *Imported goods* adds the customs and landed-cost lines when received. The operator selects only the customer and the items.
+
+### 14.5 What we ask of you
+
+14.1 Do you confirm each decision D-1 to D-19, or which do you change? 14.2 Is the proposed order of the programme right, given the business your clients do? 14.3 Are the entries in 14.4 what you would post? 14.4 Which standard disclosures or statutory formats must the chart views produce first? 14.5 Which accounting treatments in 14.1 need a tax adviser or auditor before we build (import VAT deferral, recovery apportionment, withholding rates)? 14.6 Anything in this programme that you would **not** build, or that is missing?
 
 ## 15. Review form
 
@@ -630,9 +703,12 @@ Please return this table. *A* = accept, *C* = change (say what), *Q* = question.
 | 12.1 | Permission model | | |
 | 12.2 | Segregation of duties | | |
 | 12.3 | Retention and anonymisation | | |
-| 14.1 | Ranking of the gaps in section 13 | | |
-| 14.2 | Standards and formats to satisfy first | | |
-| 14.3 | Entries in section 6 to change before further building | | |
+| 14.1 | Decisions D-1 to D-19 confirmed (say which change) | | |
+| 14.2 | Order of the programme F1 to F9 and the tax series | | |
+| 14.3 | The entries in 14.4 (foreign currency, deferral, balancing, two ledgers, budget control, determination) are right | | |
+| 14.4 | Disclosures and statutory formats the chart views must produce first | | |
+| 14.5 | Treatments needing a tax adviser or auditor before building | | |
+| 14.6 | Anything not to build, or missing | | |
 
 **Reviewer:** ______________________  **Date:** ______________  **Overall opinion:** Accept / Accept with changes / Do not proceed
 

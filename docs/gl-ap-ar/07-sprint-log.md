@@ -21,6 +21,15 @@ Sprints are numbered. Done sprints list the commits that delivered them (git, br
 | S11 | Approval rules | Done | 2026-10-15 to 2026-10-16 | Amount-threshold, multi-level approval for journals, bills, payments and credit notes. |
 | S12 | Period control | Planned | TBD | Restricted month, adjustment period, readiness checklist, ledger-verified month close, per-module close. |
 | S13 | Year-end close | Planned | TBD | One closing entry into retained earnings; next year opens automatically. |
+| SF1 | Accounting events layer | Planned | TBD | Documents raise accounting events; rules produce the lines with preview and re-derivation; every existing posting path moves onto the layer with identical results. |
+| SF2 | Currency and parallel ledgers | Planned | TBD | Transaction, functional and reporting currency, rates, exchange differences, revaluation; several ledgers fed by the same events. |
+| SF3 | Typed references and quantities | Planned | TBD | One typed reference mechanism and quantity with unit on ledger lines; quantity and rate in reports. |
+| SF4 | Account master, templates and chart views | Planned | TBD | Account classes and controls, groups, industry templates, chart views with statutory mapping, effective dating and approval. |
+| SF5 | Determination engine | Planned | TBD | One rule engine for accounts (and later tax codes) from transaction type, party class, item class, branch and date. |
+| SF6 | Dimension framework capabilities | Planned | TBD | Roles, attributes and lifecycle, valid combinations, balancing, widened allocation, break-down reports. |
+| SF7 | Budgeting and commitment control | Planned | TBD | Budget versions, control, commitments and budget versus actual on dimension combinations. |
+| SF8 | Recognition schedules | Planned | TBD | One schedule engine for deferred income, prepaid cost, depreciation, lease income and progress-based recognition. |
+| SF9 | Segregation of duties and master-data approval | Planned | TBD | Conflict rules and approval of sensitive master-data changes. |
 | S14 | Tax engine and codes (T1) | Planned | TBD | One tax engine, tax codes with components and dated rates, accounts per code, tagged tax lines, migration of the existing slabs, governance. |
 | S14b | Tax profiles and determination (T2) | Planned | TBD | Party, item and company tax profiles; automatic determination; override with reason; supply natures; tax-inclusive pricing and cash rounding. |
 | S14c | Recovery, return from the ledger and settlement (T3) | Planned | TBD | Recoverable and non-recoverable input tax, the VAT return and registers from ledger tags, the settlement entry on filing. |
@@ -210,6 +219,91 @@ One closing entry into retained earnings; next year opens automatically.
 |---|---|---|---|
 | S13-01 | Year-end close | BR-PER-10 Year-end close | FR-PER-10.1 |
 
+## Sprint F1 — Accounting events layer (Planned)
+
+Documents raise accounting events; rules produce the lines with preview and re-derivation; every existing posting path moves onto the layer with identical results.
+
+| Item | Title | Business requirements | System requirements |
+|---|---|---|---|
+| SF1-01 | Accounting events and rules; migration of every posting path | BR-FND-01 Accounting events layer | FR-FND-01.1 |
+
+## Sprint F2 — Currency and parallel ledgers (Planned)
+
+Transaction, functional and reporting currency, rates, exchange differences, revaluation; several ledgers fed by the same events.
+
+| Item | Title | Business requirements | System requirements |
+|---|---|---|---|
+| SF2-01 | Currency | BR-FND-03 Currency | FR-FND-03.1 |
+| SF2-02 | Parallel ledgers | BR-FND-02 Parallel ledgers | FR-FND-02.1 |
+
+## Sprint F3 — Typed references and quantities (Planned)
+
+One typed reference mechanism and quantity with unit on ledger lines; quantity and rate in reports.
+
+| Item | Title | Business requirements | System requirements |
+|---|---|---|---|
+| SF3-01 | Typed business-object references | BR-FND-04 Typed business-object references | FR-FND-04.1 |
+| SF3-02 | Quantities on ledger lines | BR-FND-05 Quantities on ledger lines | FR-FND-05.1 |
+
+## Sprint F4 — Account master, templates and chart views (Planned)
+
+Account classes and controls, groups, industry templates, chart views with statutory mapping, effective dating and approval.
+
+| Item | Title | Business requirements | System requirements |
+|---|---|---|---|
+| SF4-01 | Account classification | BR-COA-09 Account classification | FR-COA-09.1 |
+| SF4-02 | Posting controls and groups | BR-COA-10 Posting controls and account groups | FR-COA-10.1 |
+| SF4-03 | Industry templates | BR-COA-11 Industry chart templates | FR-COA-11.1 |
+| SF4-04 | Chart views and statutory mapping | BR-COA-12 Chart views and statutory mapping | FR-COA-12.1 |
+| SF4-05 | Effective dating and approval | BR-COA-13 Effective dating and approval of chart changes | FR-COA-13.1 |
+
+## Sprint F5 — Determination engine (Planned)
+
+One rule engine for accounts (and later tax codes) from transaction type, party class, item class, branch and date.
+
+| Item | Title | Business requirements | System requirements |
+|---|---|---|---|
+| SF5-01 | Account determination rules | BR-FND-07 Account determination rules | FR-FND-07.1 |
+
+## Sprint F6 — Dimension framework capabilities (Planned)
+
+Roles, attributes and lifecycle, valid combinations, balancing, widened allocation, break-down reports.
+
+| Item | Title | Business requirements | System requirements |
+|---|---|---|---|
+| SF6-01 | Dimension type roles | BR-DIM-09 Dimension type roles | FR-DIM-09.1 |
+| SF6-02 | Value attributes and lifecycle | BR-DIM-10 Dimension value attributes and lifecycle | FR-DIM-10.1 |
+| SF6-03 | Valid-combination rules | BR-DIM-11 Valid-combination rules between dimension types | FR-DIM-11.1 |
+| SF6-04 | Balancing and widened allocation | BR-DIM-12 Balancing per dimension value | FR-DIM-12.1 |
+| SF6-05 | Break-down reports | BR-DIM-13 Break-down reports | FR-DIM-13.1 |
+
+## Sprint F7 — Budgeting and commitment control (Planned)
+
+Budget versions, control, commitments and budget versus actual on dimension combinations.
+
+| Item | Title | Business requirements | System requirements |
+|---|---|---|---|
+| SF7-01 | Budget versions | BR-BUD-01 Budget versions | FR-BUD-01.1 |
+| SF7-02 | Budget control | BR-BUD-02 Budget control | FR-BUD-02.1 |
+| SF7-03 | Commitments | BR-BUD-03 Commitments | FR-BUD-03.1 |
+| SF7-04 | Budget versus actual | BR-BUD-04 Budget versus actual reporting | FR-BUD-04.1 |
+
+## Sprint F8 — Recognition schedules (Planned)
+
+One schedule engine for deferred income, prepaid cost, depreciation, lease income and progress-based recognition.
+
+| Item | Title | Business requirements | System requirements |
+|---|---|---|---|
+| SF8-01 | Recognition schedules and runs | BR-FND-06 Recognition schedules | FR-FND-06.1 |
+
+## Sprint F9 — Segregation of duties and master-data approval (Planned)
+
+Conflict rules and approval of sensitive master-data changes.
+
+| Item | Title | Business requirements | System requirements |
+|---|---|---|---|
+| SF9-01 | SoD rules and master-data approval | BR-FND-08 Segregation of duties and master-data approval | FR-FND-08.1 |
+
 ## Sprint 14 — Tax engine and codes (T1) (Planned)
 
 One tax engine, tax codes with components and dated rates, accounts per code, tagged tax lines, migration of the existing slabs, governance.
@@ -339,6 +433,11 @@ Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to
 | BR-COA-06 | Account mapping | Built | S1 |
 | BR-COA-07 | Chart import and export | Built | S1 |
 | BR-COA-08 | Audit of chart changes | Built | S1 |
+| BR-COA-09 | Account classification | Planned | SF4 |
+| BR-COA-10 | Posting controls and account groups | Planned | SF4 |
+| BR-COA-11 | Industry chart templates | Planned | SF4 |
+| BR-COA-12 | Chart views and statutory mapping | Planned | SF4 |
+| BR-COA-13 | Effective dating and approval of chart changes | Planned | SF4 |
 | BR-JNL-01 | Manual journals with maker-checker | Built | S1, S11 |
 | BR-JNL-02 | Balanced entries only | Built | S1 |
 | BR-JNL-03 | Posted entries are immutable | Built | S1 |
@@ -372,6 +471,11 @@ Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to
 | BR-DIM-06 | Dimensions captured on documents | Planned | S16 |
 | BR-DIM-07 | Monthly allocation run | Planned | S15 |
 | BR-DIM-08 | Branch profit and loss subtotals | Planned | S15 |
+| BR-DIM-09 | Dimension type roles | Planned | SF6 |
+| BR-DIM-10 | Dimension value attributes and lifecycle | Planned | SF6 |
+| BR-DIM-11 | Valid-combination rules between dimension types | Planned | SF6 |
+| BR-DIM-12 | Balancing per dimension value | Planned | SF6 |
+| BR-DIM-13 | Break-down reports | Planned | SF6 |
 | BR-RPT-01 | General ledger detail | Built | S1 |
 | BR-RPT-02 | One report engine | Built | S2 |
 | BR-RPT-03 | Custom report designer | Built | S2 |
@@ -487,6 +591,18 @@ Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to
 | BR-IMP-03 | Customs entry | Planned | S14e |
 | BR-IMP-04 | Import of goods is determined automatically | Planned | S14e |
 | BR-IMP-05 | Several payees per shipment | Planned | S14e |
+| BR-FND-01 | Accounting events layer | Planned | SF1 |
+| BR-FND-02 | Parallel ledgers | Planned | SF2 |
+| BR-FND-03 | Currency | Planned | SF2 |
+| BR-FND-04 | Typed business-object references | Planned | SF3 |
+| BR-FND-05 | Quantities on ledger lines | Planned | SF3 |
+| BR-FND-06 | Recognition schedules | Planned | SF8 |
+| BR-FND-07 | Account determination rules | Planned | SF5 |
+| BR-FND-08 | Segregation of duties and master-data approval | Planned | SF9 |
+| BR-BUD-01 | Budget versions | Planned | SF7 |
+| BR-BUD-02 | Budget control | Planned | SF7 |
+| BR-BUD-03 | Commitments | Planned | SF7 |
+| BR-BUD-04 | Budget versus actual reporting | Planned | SF7 |
 
 ## Roadmap (not yet built)
 
@@ -494,6 +610,15 @@ Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to
 |---|---|---|
 | S12 | Period control | BR-PER-07; BR-PER-08; BR-PER-09; BR-PER-11 |
 | S13 | Year-end close | BR-PER-10 |
+| SF1 | Accounting events layer | BR-FND-01 |
+| SF2 | Currency and parallel ledgers | BR-FND-03; BR-FND-02 |
+| SF3 | Typed references and quantities | BR-FND-04; BR-FND-05 |
+| SF4 | Account master, templates and chart views | BR-COA-09; BR-COA-10; BR-COA-11; BR-COA-12; BR-COA-13 |
+| SF5 | Determination engine | BR-FND-07 |
+| SF6 | Dimension framework capabilities | BR-DIM-09; BR-DIM-10; BR-DIM-11; BR-DIM-12; BR-DIM-13 |
+| SF7 | Budgeting and commitment control | BR-BUD-01; BR-BUD-02; BR-BUD-03; BR-BUD-04 |
+| SF8 | Recognition schedules | BR-FND-06 |
+| SF9 | Segregation of duties and master-data approval | BR-FND-08 |
 | S14 | Tax engine and codes (T1) | BR-TAX-04; BR-TAX-01, BR-TAX-05; BR-TAX-06; BR-TAX-17 |
 | S14b | Tax profiles and determination (T2) | BR-TAX-07; BR-TAX-08; BR-TAX-09; BR-TAX-11; BR-TAX-10, BR-TAX-03 |
 | S14c | Recovery, return from the ledger and settlement (T3) | BR-TAX-12; BR-TAX-13; BR-TAX-02 |

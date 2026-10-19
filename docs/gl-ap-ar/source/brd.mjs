@@ -22,6 +22,8 @@ export const AREAS = [
   { id: 'LOC', name: 'Localisation' },
   { id: 'NFR', name: 'Platform and quality' },
   { id: "IMP", name: "Imports, landed cost and foreign currency" },
+  { id: "FND", name: "Core foundations (events, ledgers, currency, references, quantities, schedules, determination)" },
+  { id: "BUD", name: "Budgeting and commitment control" },
   { id: "SAL", name: "Sales documents (quotations, invoices, credit notes)" },
   { id: "EXP", name: "Expenses and recurring postings" },
   { id: "PUR", name: "Procurement and inventory" },
@@ -46,6 +48,11 @@ add('COA', [
   ['Account mapping', 'The accountant chooses which account each posting role and each expense category posts to. A change applies to future postings only; old lines keep the account they were posted to.', 'Decision', 'Must', 'Built', []],
   ['Chart import and export', 'The chart can be exported to Excel and imported from Excel with a preview; only the rows the user selects are saved and an existing account type is never changed.', 'Decision', 'Should', 'Built', []],
   ['Audit of chart changes', 'Creating, changing, importing, mapping and deactivating accounts is written to the audit trail.', 'Standard', 'Must', 'Built', []],
+  ["Account classification","Every account carries a class and sub-class (cash, bank, receivable, other current asset, non-current asset, current and non-current liability, equity, operating revenue, other income, cost of sales, operating expense, finance cost, tax), a nature or function for expenses, a cash-flow class and a statement mapping key, so that statutory and management statements and the cash-flow statement derive from the chart.","Decision","Must","Planned",[]],
+  ["Posting controls and account groups","An account can be blocked for posting (distinct from inactive), restricted to automatic posting, required to carry a currency or a tax category, and belongs to an account group that supplies defaults and number ranges.","Decision","Must","Planned",[]],
+  ["Industry chart templates","A company chooses a starter chart for retail, trading, manufacturing, real estate or services, each with its role accounts, dimension rules and statement layouts, reviewed by an accountant; a template can be merged into an existing chart.","Decision","Should","Planned",[]],
+  ["Chart views and statutory mapping","One ledger can be presented through several chart views (IFRS as adopted in Saudi Arabia as the reference, local statutory, management) that map accounts to the view lines; statements and the cash-flow statement use the selected view.","Decision","Must","Planned",[]],
+  ["Effective dating and approval of chart changes","Accounts carry valid-from and valid-to dates; changes to the chart can require approval and are audited; history is never rewritten.","Decision","Should","Planned",[]],
 ]);
 
 add('JNL', [
@@ -91,6 +98,11 @@ add('DIM', [
   ['Dimensions captured on documents', 'Invoice, expense and bill forms collect dimensions, so a Required rule can be enforced on documents as it is on manual journals.', 'Decision', 'Should', 'Planned', []],
   ['Monthly allocation run', 'A configurable monthly run redistributes a shared cost centre across destination branches by fixed or revenue percentage into an allocated-overhead account, net zero at company level.', 'Blueprint', 'Could', 'Planned', ['FR-DIM-03']],
   ['Branch profit and loss subtotals', 'Branch P&L shows direct expenses and allocated overhead as separate subtotals (contribution margin, then fully loaded profit).', 'Blueprint', 'Could', 'Planned', ['FR-DIM-04']],
+  ["Dimension type roles","A dimension type can be marked balancing (a profit unit), cost object, or statistical driver; the engine treats each role accordingly.","Decision","Must","Planned",[]],
+  ["Dimension value attributes and lifecycle","A dimension value carries configurable attributes (text, number, date, status, link to a customer, employee or branch) and a lifecycle (status and validity dates); posting to a value outside its validity is refused.","Decision","Must","Planned",[]],
+  ["Valid-combination rules between dimension types","A company can require, imply or default one dimension from another (a project belongs to one profit centre); invalid combinations are refused.","Decision","Must","Planned",[]],
+  ["Balancing per dimension value","For a balancing type each entry balances per value: where it does not, the engine adds inter-unit clearing lines; balance sheet and profit and loss can be produced per value. Allocation (BR-DIM-07) is widened to any dimension type, any basis including statistical drivers, with allocation cycles.","Decision","Must","Planned",[]],
+  ["Break-down reports","Any report can break down by any dimension type, one column or row per value rolled up through the hierarchy, with drill to the ledger.","Decision","Must","Planned",[]],
 ]);
 
 add('RPT', [
@@ -267,6 +279,24 @@ add("IMP", [
   ["Customs entry","An import is recorded by a customs entry: customs value, duty and import VAT payable to the customs authority, with the recoverable import VAT posted to input tax and any non-recoverable part added to the stock cost.","Compliance","Must","Planned",[]],
   ["Import of goods is determined automatically","A purchase of goods from a vendor whose profile is foreign is treated as an import of goods without the operator choosing it: the expected duty and import VAT are shown and the customs entry is requested at receipt.","Decision","Must","Planned",[]],
   ["Several payees per shipment","The goods vendor, the freight forwarder, the customs authority, the insurer and the clearing agent each become their own payable, visible in payables aging, none forced onto the goods bill.","Blueprint","Must","Planned",["FR-LC-03"]],
+]);
+
+add("FND", [
+  ["Accounting events layer","A document raises an accounting event; accounting rules turn the event into balanced ledger lines with a preview and can re-derive them; every existing posting path moves onto this layer without changing its result.","Decision","Must","Planned",[]],
+  ["Parallel ledgers","A company can keep more than one ledger (for example IFRS, local statutory, tax) fed by the same events, each with its own rules and period status.","Decision","Must","Planned",[]],
+  ["Currency","Transaction, functional and reporting currencies; dated exchange rates; documents in foreign currency store the rate and the amounts in each currency; settlement posts exchange differences; open items and balances are revalued by a run.","Decision","Must","Planned",[]],
+  ["Typed business-object references","A ledger line can reference any registered business object (party, item, asset, project, order, property, unit, lease, fund) through one typed, validated mechanism instead of one column per subledger.","Decision","Must","Planned",[]],
+  ["Quantities on ledger lines","A ledger line can carry a quantity and unit of measure (hours, units, area) for rates, per-unit cost, capacity and statistical drivers; reports can show quantity and rate as value bases.","Decision","Must","Planned",[]],
+  ["Recognition schedules","One schedule engine releases an amount over time or by progress (deferred income, prepaid cost, depreciation, lease income, percentage of completion) through previewed, approved and period-locked runs.","Decision","Must","Planned",[]],
+  ["Account determination rules","Rules determine accounts from the transaction type, party class, item class, branch and date (and any registered attribute) so that documents name only who and what; one rule engine serves accounts and tax codes.","Decision","Must","Planned",[]],
+  ["Segregation of duties and master-data approval","Conflicting duties are defined and enforced (for example create a vendor and change its bank account), and changes to sensitive master data (bank details, credit limit, tax profile) can require approval.","Decision","Should","Planned",[]],
+]);
+
+add("BUD", [
+  ["Budget versions","Budgets are held in versions (original, revised, forecast) by account or account group, dimension combination and fiscal period, with optional quantity.","Decision","Must","Planned",[]],
+  ["Budget control","A company chooses which dimension types a control applies to and the mode (report, warn or stop; warn by default) at posting, requisition and order.","Decision","Must","Planned",[]],
+  ["Commitments","Open requisitions and orders count against the budget with their dimension combination until invoiced.","Decision","Must","Planned",[]],
+  ["Budget versus actual reporting","Budget is a value basis of the report designer so that budget, actual, prior year and variance can be shown for any dimension.","Decision","Must","Planned",[]],
 ]);
 
 export const BRS = R;

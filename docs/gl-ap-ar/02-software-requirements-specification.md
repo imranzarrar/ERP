@@ -35,6 +35,11 @@ A multi-tenant web application (React client, Node/Express API, PostgreSQL with 
 | FR-COA-06.1 | BR-COA-06 | The system shall let an authorised user map posting roles and expense categories to accounts of the right type, applying to future postings only. | server/routes/ledgerAccounts.ts (mapping); screen Account Mapping | COA-014, COA-017 |
 | FR-COA-07.1 | BR-COA-07 | The system shall export the chart to Excel and import it with a row preview, saving only chosen rows and never changing a type. | ledgerAccounts.ts (import/export) | COA-018, COA-019 |
 | FR-COA-08.1 | BR-COA-08 | Every chart create, update, import, map and (de)activate shall write an audit entry. | recordAuditLog in ledgerAccounts.ts | SEC-011 |
+| FR-COA-09.1 | BR-COA-09 | Every account shall hold class, sub-class, nature or function, cash-flow class and statement key, validated against its type. | planned: company_accounts attributes; server/routes/ledgerAccounts.ts | COA-023 |
+| FR-COA-10.1 | BR-COA-10 | The system shall refuse a posting to an account blocked for posting or restricted to automatic posting, and apply group defaults and number ranges. | planned: company_accounts attributes; server/routes/ledgerAccounts.ts | COA-024 |
+| FR-COA-11.1 | BR-COA-11 | The system shall seed a chart template by industry, mergeable into an existing chart. | planned: company_accounts attributes; server/routes/ledgerAccounts.ts | COA-025 |
+| FR-COA-12.1 | BR-COA-12 | The system shall map accounts to the lines of a chart view and render statements and the cash-flow statement from the chosen view. | planned: company_accounts attributes; server/routes/ledgerAccounts.ts | COA-026 |
+| FR-COA-13.1 | BR-COA-13 | The system shall hold validity dates on accounts and require approval for chart changes where the company chooses. | planned: company_accounts attributes; server/routes/ledgerAccounts.ts | COA-027 |
 
 ### JNL — Journals and opening balances
 
@@ -95,6 +100,11 @@ A multi-tenant web application (React client, Node/Express API, PostgreSQL with 
 | FR-DIM-06.1 | BR-DIM-06 | Invoice, expense and bill forms shall collect dimensions and enforce Required (Sprint 16). | planned | (target: sprint 16) |
 | FR-DIM-07.1 | BR-DIM-07 | A monthly allocation run shall post pool redistribution entries net zero per company (Sprint 15). | planned | (target: sprint 15) |
 | FR-DIM-08.1 | BR-DIM-08 | The branch P&L definition shall show direct and allocated subtotals (Sprint 15). | planned | (target: sprint 15) |
+| FR-DIM-09.1 | BR-DIM-09 | The system shall hold roles on dimension types and apply them in posting, allocation and budgeting. | planned: dimension_types roles, dimension_values attributes; server/lib/dimensions.ts; server/lib/reportEngine.ts | DIM-015 |
+| FR-DIM-10.1 | BR-DIM-10 | The system shall store configurable attributes and a lifecycle on dimension values and refuse posting outside validity. | planned: dimension_types roles, dimension_values attributes; server/lib/dimensions.ts; server/lib/reportEngine.ts | DIM-016 |
+| FR-DIM-11.1 | BR-DIM-11 | The system shall evaluate valid-combination rules at posting and on document forms. | planned: dimension_types roles, dimension_values attributes; server/lib/dimensions.ts; server/lib/reportEngine.ts | DIM-017 |
+| FR-DIM-12.1 | BR-DIM-12 | The system shall balance entries per value of a balancing type with inter-unit clearing lines, and widen allocation to any type, basis and cycle. | planned: dimension_types roles, dimension_values attributes; server/lib/dimensions.ts; server/lib/reportEngine.ts | DIM-018 |
+| FR-DIM-13.1 | BR-DIM-13 | The system shall generate a column or row per value of a chosen type with roll-up and drill. | planned: dimension_types roles, dimension_values attributes; server/lib/dimensions.ts; server/lib/reportEngine.ts | DIM-019 |
 
 ### RPT — Ledger reporting
 
@@ -223,6 +233,28 @@ A multi-tenant web application (React client, Node/Express API, PostgreSQL with 
 | FR-IMP-03.1 | BR-IMP-03 | The system shall record a customs entry with customs value, duty and import VAT payable to the authority and post recoverable import VAT to input tax and the rest to stock cost. | planned: server/routes/customsEntries.ts; customs_entries | IMP-006, IMP-007 |
 | FR-IMP-04.1 | BR-IMP-04 | The system shall classify a purchase of goods from a foreign-profile vendor as an import of goods in the tax determination and request the customs entry at receipt. | planned: server/lib/tax/determine.ts; server/routes/inventory.ts | IMP-008 |
 | FR-IMP-05.1 | BR-IMP-05 | The system shall create one payable per payee of a shipment, each visible in aging, accrued at receipt and cleared by that payee own bill. | planned: landed cost lines with vendor_id | IMP-005, IMP-009 |
+
+### FND — Core foundations (events, ledgers, currency, references, quantities, schedules, determination)
+
+| FR | BR | The system shall | Implemented in | Test cases |
+|---|---|---|---|---|
+| FR-FND-01.1 | BR-FND-01 | The system shall route every document posting through accounting events and rules with preview and re-derivation, producing the same entries as today. | planned: server/lib/accountingEvents.ts; server/lib/currency.ts; server/lib/recognition.ts; server/lib/determination.ts | FND-001, FND-002 |
+| FR-FND-02.1 | BR-FND-02 | The system shall post each event to every ledger of the company with that ledger own rules and period status. | planned: server/lib/accountingEvents.ts; server/lib/currency.ts; server/lib/recognition.ts; server/lib/determination.ts | FND-003 |
+| FR-FND-03.1 | BR-FND-03 | The system shall store currency, rate and base amounts, post exchange differences and run revaluation. | planned: server/lib/accountingEvents.ts; server/lib/currency.ts; server/lib/recognition.ts; server/lib/determination.ts | FND-004, FND-005 |
+| FR-FND-04.1 | BR-FND-04 | The system shall provide one typed reference mechanism on ledger lines with validation by object type. | planned: server/lib/accountingEvents.ts; server/lib/currency.ts; server/lib/recognition.ts; server/lib/determination.ts | FND-006 |
+| FR-FND-05.1 | BR-FND-05 | The system shall store quantity and unit on ledger lines and expose quantity and rate in reports. | planned: server/lib/accountingEvents.ts; server/lib/currency.ts; server/lib/recognition.ts; server/lib/determination.ts | FND-007 |
+| FR-FND-06.1 | BR-FND-06 | The system shall create, preview, approve, post and lock recognition schedule runs. | planned: server/lib/accountingEvents.ts; server/lib/currency.ts; server/lib/recognition.ts; server/lib/determination.ts | FND-008 |
+| FR-FND-07.1 | BR-FND-07 | The system shall determine accounts and tax codes through ordered rules from a registered context. | planned: server/lib/accountingEvents.ts; server/lib/currency.ts; server/lib/recognition.ts; server/lib/determination.ts | FND-009 |
+| FR-FND-08.1 | BR-FND-08 | The system shall define conflicting duties and enforce them, and route sensitive master-data changes through approval. | planned: server/lib/accountingEvents.ts; server/lib/currency.ts; server/lib/recognition.ts; server/lib/determination.ts | FND-010 |
+
+### BUD — Budgeting and commitment control
+
+| FR | BR | The system shall | Implemented in | Test cases |
+|---|---|---|---|---|
+| FR-BUD-01.1 | BR-BUD-01 | The system shall store budget versions keyed by account or group, dimension combination and period. | planned: budgets tables; server/lib/budget.ts | BUD-001 |
+| FR-BUD-02.1 | BR-BUD-02 | The system shall apply the budget control mode at posting, requisition and order for the chosen dimension types. | planned: budgets tables; server/lib/budget.ts | BUD-002 |
+| FR-BUD-03.1 | BR-BUD-03 | The system shall count open requisitions and orders as commitments against the budget. | planned: budgets tables; server/lib/budget.ts | BUD-003 |
+| FR-BUD-04.1 | BR-BUD-04 | The system shall expose budget as a value basis of the report engine. | planned: budgets tables; server/lib/budget.ts | BUD-004 |
 
 ### SAL — Sales documents (quotations, invoices, credit notes)
 

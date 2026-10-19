@@ -29,7 +29,7 @@ Before 2.0 the system computed every report from documents (invoices, expenses, 
 
 ## 4. Scope
 
-**In scope:** 156 business requirements in 25 areas (section 6). 114 are built, 5 partly built, 37 planned.
+**In scope:** 178 business requirements in 27 areas (section 6). 114 are built, 5 partly built, 59 planned.
 
 **Out of scope (this programme):**
 * Fixed assets and depreciation (classes, CWIP, methods, runs, disposal, transfer, documents) (FR-FA-01..10) — A later phase; the ledger and dimensions are designed not to block it.
@@ -80,6 +80,21 @@ The chart can be exported to Excel and imported from Excel with a preview; only 
 
 **BR-COA-08 Audit of chart changes** — Must, Built, source Standard, sprint S1.
 Creating, changing, importing, mapping and deactivating accounts is written to the audit trail.
+
+**BR-COA-09 Account classification** — Must, Planned, source Decision, sprint SF4.
+Every account carries a class and sub-class (cash, bank, receivable, other current asset, non-current asset, current and non-current liability, equity, operating revenue, other income, cost of sales, operating expense, finance cost, tax), a nature or function for expenses, a cash-flow class and a statement mapping key, so that statutory and management statements and the cash-flow statement derive from the chart.
+
+**BR-COA-10 Posting controls and account groups** — Must, Planned, source Decision, sprint SF4.
+An account can be blocked for posting (distinct from inactive), restricted to automatic posting, required to carry a currency or a tax category, and belongs to an account group that supplies defaults and number ranges.
+
+**BR-COA-11 Industry chart templates** — Should, Planned, source Decision, sprint SF4.
+A company chooses a starter chart for retail, trading, manufacturing, real estate or services, each with its role accounts, dimension rules and statement layouts, reviewed by an accountant; a template can be merged into an existing chart.
+
+**BR-COA-12 Chart views and statutory mapping** — Must, Planned, source Decision, sprint SF4.
+One ledger can be presented through several chart views (IFRS as adopted in Saudi Arabia as the reference, local statutory, management) that map accounts to the view lines; statements and the cash-flow statement use the selected view.
+
+**BR-COA-13 Effective dating and approval of chart changes** — Should, Planned, source Decision, sprint SF4.
+Accounts carry valid-from and valid-to dates; changes to the chart can require approval and are audited; history is never rewritten.
 
 ### JNL — Journals and opening balances
 
@@ -187,6 +202,21 @@ A configurable monthly run redistributes a shared cost centre across destination
 
 **BR-DIM-08 Branch profit and loss subtotals** — Could, Planned, Blueprint FR-DIM-04, source Blueprint, sprint S15.
 Branch P&L shows direct expenses and allocated overhead as separate subtotals (contribution margin, then fully loaded profit).
+
+**BR-DIM-09 Dimension type roles** — Must, Planned, source Decision, sprint SF6.
+A dimension type can be marked balancing (a profit unit), cost object, or statistical driver; the engine treats each role accordingly.
+
+**BR-DIM-10 Dimension value attributes and lifecycle** — Must, Planned, source Decision, sprint SF6.
+A dimension value carries configurable attributes (text, number, date, status, link to a customer, employee or branch) and a lifecycle (status and validity dates); posting to a value outside its validity is refused.
+
+**BR-DIM-11 Valid-combination rules between dimension types** — Must, Planned, source Decision, sprint SF6.
+A company can require, imply or default one dimension from another (a project belongs to one profit centre); invalid combinations are refused.
+
+**BR-DIM-12 Balancing per dimension value** — Must, Planned, source Decision, sprint SF6.
+For a balancing type each entry balances per value: where it does not, the engine adds inter-unit clearing lines; balance sheet and profit and loss can be produced per value. Allocation (BR-DIM-07) is widened to any dimension type, any basis including statistical drivers, with allocation cycles.
+
+**BR-DIM-13 Break-down reports** — Must, Planned, source Decision, sprint SF6.
+Any report can break down by any dimension type, one column or row per value rolled up through the hierarchy, with drill to the ledger.
 
 ### RPT — Ledger reporting
 
@@ -441,6 +471,46 @@ A purchase of goods from a vendor whose profile is foreign is treated as an impo
 
 **BR-IMP-05 Several payees per shipment** — Must, Planned, Blueprint FR-LC-03, source Blueprint, sprint S14e.
 The goods vendor, the freight forwarder, the customs authority, the insurer and the clearing agent each become their own payable, visible in payables aging, none forced onto the goods bill.
+
+### FND — Core foundations (events, ledgers, currency, references, quantities, schedules, determination)
+
+**BR-FND-01 Accounting events layer** — Must, Planned, source Decision, sprint SF1.
+A document raises an accounting event; accounting rules turn the event into balanced ledger lines with a preview and can re-derive them; every existing posting path moves onto this layer without changing its result.
+
+**BR-FND-02 Parallel ledgers** — Must, Planned, source Decision, sprint SF2.
+A company can keep more than one ledger (for example IFRS, local statutory, tax) fed by the same events, each with its own rules and period status.
+
+**BR-FND-03 Currency** — Must, Planned, source Decision, sprint SF2.
+Transaction, functional and reporting currencies; dated exchange rates; documents in foreign currency store the rate and the amounts in each currency; settlement posts exchange differences; open items and balances are revalued by a run.
+
+**BR-FND-04 Typed business-object references** — Must, Planned, source Decision, sprint SF3.
+A ledger line can reference any registered business object (party, item, asset, project, order, property, unit, lease, fund) through one typed, validated mechanism instead of one column per subledger.
+
+**BR-FND-05 Quantities on ledger lines** — Must, Planned, source Decision, sprint SF3.
+A ledger line can carry a quantity and unit of measure (hours, units, area) for rates, per-unit cost, capacity and statistical drivers; reports can show quantity and rate as value bases.
+
+**BR-FND-06 Recognition schedules** — Must, Planned, source Decision, sprint SF8.
+One schedule engine releases an amount over time or by progress (deferred income, prepaid cost, depreciation, lease income, percentage of completion) through previewed, approved and period-locked runs.
+
+**BR-FND-07 Account determination rules** — Must, Planned, source Decision, sprint SF5.
+Rules determine accounts from the transaction type, party class, item class, branch and date (and any registered attribute) so that documents name only who and what; one rule engine serves accounts and tax codes.
+
+**BR-FND-08 Segregation of duties and master-data approval** — Should, Planned, source Decision, sprint SF9.
+Conflicting duties are defined and enforced (for example create a vendor and change its bank account), and changes to sensitive master data (bank details, credit limit, tax profile) can require approval.
+
+### BUD — Budgeting and commitment control
+
+**BR-BUD-01 Budget versions** — Must, Planned, source Decision, sprint SF7.
+Budgets are held in versions (original, revised, forecast) by account or account group, dimension combination and fiscal period, with optional quantity.
+
+**BR-BUD-02 Budget control** — Must, Planned, source Decision, sprint SF7.
+A company chooses which dimension types a control applies to and the mode (report, warn or stop; warn by default) at posting, requisition and order.
+
+**BR-BUD-03 Commitments** — Must, Planned, source Decision, sprint SF7.
+Open requisitions and orders count against the budget with their dimension combination until invoiced.
+
+**BR-BUD-04 Budget versus actual reporting** — Must, Planned, source Decision, sprint SF7.
+Budget is a value basis of the report designer so that budget, actual, prior year and variance can be shown for any dimension.
 
 ### SAL — Sales documents (quotations, invoices, credit notes)
 

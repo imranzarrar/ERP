@@ -30,8 +30,8 @@ Status: **Built** (in the code), **Planned** (agreed, in the sprint plan), **Sta
 | ID | Agreed | Source | Status |
 |---|---|---|---|
 | AG-10 | **Dimensions are unlimited and configurable.** A company defines any number of dimension types (Branch and Department are seeded); each is combinable on any ledger line; values form hierarchies. They are the single mechanism for **budgeting, costing, control and profit and loss** by any analytical view. Owner-stated, reaffirmed 2026-10-19 | Blueprint FR-DIM-01; owner | Built (types, values, combinations, rules, filters) |
-| AG-11 | **Management accounting is delivered as capabilities of the dimension framework, never as separate hard-coded modules or ledgers.** Profit centre, cost centre, project, product line, region and channel are dimension types. Budget, balancing, attributes, lifecycle, allocation and break-down reports are added to the framework so any type can use them. (Correction recorded 2026-10-19 after the chart-of-accounts benchmark proposed separate objects.) | Owner 2026-10-19 | Standing; capabilities Planned |
-| AG-12 | Dimensions are **analytical, not a second ledger**: they never change an account balance; a balance sheet filtered by a dimension is shown as partial | CFO decision 5 | Built |
+| AG-11 | **Management accounting is delivered as capabilities of the dimension framework, never as a second ledger or a hard-coded cost object.** Profit centre, cost centre, project, product line, region and channel are dimension types. Domain **process documents** (work order, project billing, budget commitment) keyed to a dimension value are allowed; the ledger stays the single source. Wording confirmed by the owner 2026-10-19 | Owner | Standing; capabilities Planned (F6, F7) |
+| AG-12 | A dimension **never changes an account's total**; a type flagged **balancing** must also **balance per value** (inter-unit clearing), so profit-centre balance sheets and profit and loss exist. Without a balancing type, a balance sheet filtered by a dimension is shown as partial. Wording confirmed by the owner 2026-10-19 | CFO decision 5, revised | Standing; balancing Planned (F6) |
 | AG-13 | Storage: a deduplicated **dimension combination id** per line; typed entries with real foreign keys and composite company keys; branch has one meaning (the entry's branch unless the combination names one) | Architect decisions 2 to 4 | Built |
 | AG-14 | **Rules per account**: a dimension is required, optional or not allowed for an account, with an optional default. Manual journals enforce Required; documents apply defaults and enforce Required only once their forms collect dimensions | CFO decision 8 | Built for journals; documents Planned (Sprint 16) |
 | AG-15 | Default tags are filled in this priority: line, document, customer or vendor default, bank default, account default | BR-DIM-04 | Built |
@@ -39,6 +39,11 @@ Status: **Built** (in the code), **Planned** (agreed, in the sprint plan), **Sta
 | AG-17 | Cost allocation runs redistribute shared cost by fixed or revenue percentage, net zero, into an allocated-overhead account, with contribution margin and fully loaded subtotals | BR-DIM-07, BR-DIM-08 | Planned (Sprint 15); widening to any dimension type proposed, not yet agreed |
 | AG-18 | **The GL core is domain-neutral and flexible**: its structure must be able to carry the scenarios of any domain (retail, trading, manufacturing including order costing, real estate, contracting, services, fund accounting) **if and when asked**, without redesign. Domain modules are built only on request and use the core's general primitives; the core holds no domain-specific tables. Analysis is not a request to build. Owner-stated 2026-10-19 | Owner | Standing; structural readiness reviewed in `domain-neutral-core` |
 | AG-19 | **Tax is a layered structure built on tax profiles.** Tax profiles are attached to customers, vendors, items and the company; the system determines the tax treatment and the accounts from the profiles and the transaction type; the data entry operator selects neither the tax nor any account; the structure is flexible for every scenario (retail, trading, imports, manufacturing, real estate) and follows the best financial standards. Owner-stated 2026-10-19. The **direction** is agreed; the detailed design (`taxation-analysis`) is a proposal awaiting the decisions in its section 10. Today's single VAT output and input accounts are an interim state | Owner | Direction agreed (Standing); design Planned (Sprints 14 to 14f); interim behaviour Built |
+| AG-20 | **Build the standard, tier-1-compliant solution including optional capabilities, with no patches or workarounds; flexible standard accounting.** Owner 2026-10-19, in reply to the pending-decisions list | Owner | Standing |
+| AG-21 | **Tax details accepted:** Saudi VAT first, built jurisdiction-aware; components in the order all VAT scenarios, import VAT with duty and reverse charge, withholding, excise; import VAT supports both treatments per company (tax adviser to confirm); partial recovery designed in; tax-inclusive or exclusive as a company setting with an item override; override only with the right and a reason, audited; return boxes supplied by the tax adviser; each existing slab becomes a tax code | Owner 2026-10-19 | Planned (Sprints 14 to 14f) |
+| AG-22 | **Core foundations accepted:** an accounting-events layer with preview and re-derivation; parallel ledgers and currency (designed now, built early); typed business-object references; quantity and unit on ledger lines; one recognition-schedule engine; one account-determination engine; segregation of duties and master-data approval. Order: events and currency first | Owner 2026-10-19 | Planned (F1 to F5, F8, F9) |
+| AG-23 | **Chart and dimensions accepted:** account master and templates first, then dimension capabilities and budgeting; profit centre is a balancing dimension type (the branch can be that type by default); project costing: cost collection and profitability first, billing and recognition later; budget control configurable, warn by default; chart templates for retail, trading, manufacturing, real estate and services | Owner 2026-10-19 | Planned (F4, F6, F7) |
+| AG-24 | **Reference standard:** IFRS as adopted in Saudi Arabia, with local statutory and management views mappable as chart views; to be confirmed by the company's accountant | Owner 2026-10-19 | Planned (F4) |
 
 ## C. Reports
 
@@ -104,15 +109,14 @@ Status: **Built** (in the code), **Planned** (agreed, in the sprint plan), **Sta
 
 ## I. Proposals awaiting a decision (not agreed; do not build)
 
-| Proposal | Where | Needs from the owner |
+The owner accepted the recommendations on 2026-10-19 (AG-20 to AG-24), so the former proposals for tax, the chart, the dimension framework, the foundations and manufacturing readiness are now **planned**. What still awaits a decision:
+
+| Item | Needs from | Note |
 |---|---|---|
-| Tax engine **details** (the direction is agreed, AG-19): tax codes, profiles, determination rules, recovery, reverse charge, withholding, imports, Sprints 14 to 14f | `taxation-analysis` and the sprint plan | The nine decisions in its section 10 |
-| Account master enrichment, chart templates, chart views, effective dating | `coa-tier1-benchmark` sections 7.1, 7.2 | Order, business models, statutory standard |
-| Dimension framework capabilities (roles, attributes, lifecycle, valid combinations, balancing, break-down reports) and budgeting on dimension combinations | `coa-tier1-benchmark` sections 7.3, 7.4 | Whether to build, and the order |
-| Foreign currency and parallel ledgers | `coa-tier1-benchmark` section 7.5 | Whether they are in the programme, before the above are frozen |
-| Account determination rules (one mechanism for tax and accounts) | both notes | Agreement to treat as one engine |
-| Structural readiness of the core for any domain: typed references, quantities on lines, accounting events, recognition schedules, currency and ledgers | `domain-neutral-core` | The seven decisions in its section 9 |
-| Manufacturing cost accounting as an **illustration** of what the structure must permit (not a build request) | `manufacturing-and-tax-alignment` | Nothing now; domain choices when a module is requested |
+| Confirmation of decisions D-1 to D-19 and the programme order | Finance professional (review pack section 14) | Building starts after the review |
+| Year-end close method, cut-over date for the document-based reports, data retention and anonymisation policy | Finance professional | Policy questions, not owner choices |
+| Import VAT deferral, recovery apportionment, withholding rates, return boxes | Tax adviser | Law-dependent |
+| Arabic edition and screenshots in the review pack | Owner | Optional |
 
 ## J. Professional review of the agreed decisions (tier-1 practice and accounting guidelines)
 

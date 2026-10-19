@@ -1,6 +1,6 @@
 # Test-case catalogue (generated)
 
-**460 cases** across 32 modules, written so a tool can run them. Generated from `catalogue-source.mjs` by `node scripts/build-test-catalogue.mjs`; edit the source, never these files.
+**484 cases** across 34 modules, written so a tool can run them. Generated from `catalogue-source.mjs` by `node scripts/build-test-catalogue.mjs`; edit the source, never these files.
 
 | Files | Use |
 |---|---|
@@ -14,10 +14,10 @@
 |---|---|---|---|---|---|---|
 | PC | Posting control and period locks | 19 | 15 | 13 | 4 | 2 |
 | DT | Document date standard | 10 | 5 | 2 | 8 | 0 |
-| COA | Chart of accounts and account mapping | 22 | 12 | 19 | 2 | 1 |
+| COA | Chart of accounts and account mapping | 27 | 15 | 19 | 7 | 1 |
 | JV | Manual journals and approval | 24 | 15 | 20 | 3 | 1 |
 | OPN | Opening balances | 6 | 4 | 5 | 1 | 0 |
-| DIM | Dimensions (branch, department, custom) | 14 | 8 | 13 | 1 | 0 |
+| DIM | Dimensions (branch, department, custom) | 19 | 11 | 13 | 6 | 0 |
 | RPT | Ledger reports and the report designer | 23 | 13 | 21 | 2 | 0 |
 | APR | Approval rules (Sprint 11) | 18 | 14 | 18 | 0 | 0 |
 | AR | Receivables: invoices and credit notes | 16 | 14 | 10 | 5 | 1 |
@@ -44,7 +44,9 @@
 | CFG | Document templates and translations | 3 | 0 | 3 | 0 | 0 |
 | TAX | Taxation: codes, profiles, determination, recovery, return | 30 | 22 | 0 | 30 | 0 |
 | IMP | Imports, landed cost and foreign currency | 10 | 9 | 0 | 10 | 0 |
-| | **Total** | **460** | **319** | **325** | **100** | **35** |
+| FND | Core foundations | 10 | 8 | 0 | 10 | 0 |
+| BUD | Budgeting | 4 | 2 | 0 | 4 | 0 |
+| | **Total** | **484** | **335** | **325** | **124** | **35** |
 
 * **Automated**: mapped to the existing vitest file in `tests/` that exercises it, against a real server and real Postgres (no mocks). `--check` fails if the named file does not exist. The mapping is by area, so read it as "covered by that file", not "every Then clause is asserted": when you tighten a case or automate a Candidate, put its ID in the `it(...)` title so a run traces back to the catalogue.
 * **Candidate**: can be automated exactly as written, as an API test (same style as `tests/settlements.test.ts`) or a DB assertion.

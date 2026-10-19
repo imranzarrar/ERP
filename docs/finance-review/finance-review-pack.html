@@ -28,14 +28,14 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 .filters{display:flex;flex-wrap:wrap;gap:.6rem;margin:1rem 0}.filters input,.filters select{font:inherit;padding:.4rem .6rem;border:1px solid var(--line);border-radius:8px;background:var(--raised)}
 @media (max-width:900px){.layout{grid-template-columns:1fr}.rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:1.2rem 1rem 3rem}}
 @media print{.rail{display:none}.layout{grid-template-columns:1fr}.chapter{page-break-before:always}}
-</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Finance review pack</div><a class="home" href="../index.html">← All documentation</a><a href="#rev--p">0. How to use this pack</a><a href="#rev--p-2">1. The system on one page</a><a href="#rev--p-3">2. Vocabulary used in this pack</a><a href="#rev---3">3. The chart of accounts</a><a href="#rev---7">4. Dimensions</a><a href="#rev--p-8">5. The posting engine</a><a href="#rev--p-9">6. What each document posts</a><a href="#rev--p-10">7. Process flows end to end</a><a href="#rev--p-p-4">8. Month-end worked example (one small company)</a><a href="#rev--p-p-5">9. Reports and how they are produced</a><a href="#rev---15">10. Tax: the agreed direction, the layered structure, and what exists today</a><a href="#rev---20">11. Inventory and cost of sales as built</a><a href="#rev--pp-3">12. Security, approvals and audit</a><a href="#rev--p-13">13. What is not built (stated plainly)</a><a href="#rev--p-p-6">14. Design proposals already written (not agreed, nothing built)</a><a href="#rev---21">15. Review form</a><a href="#rev--pp-p">Appendix A: voucher types</a><a href="#rev--pp-4">Appendix B: facts and sources</a></aside><main><section class="chapter"><p class="eyebrow">Review pack for a finance professional · built 2026-10-19</p><h1 style="font-size:2.1rem;margin:.2rem 0 1rem">Warraq ERP finance core: how the General Ledger, Receivables, Payables and Expenses work</h1><p class="src">Source: <code>docs/finance-review/finance-review-pack.md</code></p><p><strong>Review pack for a finance professional.</strong> Version of 19 October 2026. Describes Warraq 2.0 (the Demo). Live (1.0) does not have the ledger yet.</p>
+</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Finance review pack</div><a class="home" href="../index.html">← All documentation</a><a href="#rev--p">0. How to use this pack</a><a href="#rev--p-2">1. The system on one page</a><a href="#rev--p-3">2. Vocabulary used in this pack</a><a href="#rev---3">3. The chart of accounts</a><a href="#rev---7">4. Dimensions</a><a href="#rev--p-8">5. The posting engine</a><a href="#rev--p-9">6. What each document posts</a><a href="#rev--p-10">7. Process flows end to end</a><a href="#rev--p-p-4">8. Month-end worked example (one small company)</a><a href="#rev--p-p-5">9. Reports and how they are produced</a><a href="#rev---15">10. Tax: the agreed direction, the layered structure, and what exists today</a><a href="#rev---20">11. Inventory and cost of sales as built</a><a href="#rev--pp-3">12. Security, approvals and audit</a><a href="#rev--p-13">13. What is not built (stated plainly)</a><a href="#rev--p-p-p-2">14. Decisions taken and the programme proposed for your confirmation</a><a href="#rev---24">15. Review form</a><a href="#rev--pp-p">Appendix A: voucher types</a><a href="#rev--pp-4">Appendix B: facts and sources</a></aside><main><section class="chapter"><p class="eyebrow">Review pack for a finance professional · built 2026-10-19</p><h1 style="font-size:2.1rem;margin:.2rem 0 1rem">Warraq ERP finance core: how the General Ledger, Receivables, Payables and Expenses work</h1><p class="src">Source: <code>docs/finance-review/finance-review-pack.md</code></p><p><strong>Review pack for a finance professional.</strong> Version of 19 October 2026. Describes Warraq 2.0 (the Demo). Live (1.0) does not have the ledger yet.</p>
 <h2 id="rev--p">0. How to use this pack</h2>
 <p><strong>Purpose.</strong> This document explains, in accounting terms, how the system is structured, how each business document turns into ledger entries, how periods and controls work, and what is not yet built. It is written so that an accountant can judge whether the design is sound <strong>before</strong> further development. Nothing in it is built on an assumption you have not seen.</p>
 <p><strong>What we ask of you.</strong></p>
 <ol>
 <li>Read sections 1 to 5 (structure and mechanism), then the process chapters 6 to 10.</li>
 <li>At the end of each section there is a short list of <strong>review questions</strong>. Mark each one <em>Accept</em>, <em>Change</em> or <em>Question</em>, with a comment. Section 15 collects all of them in one table you can return.</li>
-<li>Section 13 lists what is <strong>not</strong> built and section 14 the changes already proposed. Please say which matter most for the businesses you advise (retail, trading, manufacturing, real estate, services).</li>
+<li>Section 13 lists what is <strong>not</strong> built and section 14 the <strong>decisions the owner has taken and the build programme proposed</strong>, for your confirmation before building starts. Please say which matter most for the businesses you advise (retail, trading, manufacturing, real estate, services).</li>
 </ol>
 <p><strong>Conventions.</strong> <em>Dr</em> is debit, <em>Cr</em> is credit. Amounts are in Saudi riyals. Account codes are from the standard starter chart; every company can change them. &quot;As built&quot; means the code does this today; &quot;proposed&quot; means it is a design for discussion and does nothing yet.</p>
 <p><strong>What this pack covers.</strong> The general ledger (chart of accounts, dimensions, posting, periods, journals, reports), receivables (customers, invoices, credit notes, receipts), payables (vendors, purchase bills, goods receipts, returns, payments), expenses (including recurring and accrued), cash and bank (including reconciliation), approvals, and the VAT as it is handled today. It does not cover point-of-sale hardware, e-invoicing mechanics (ZATCA) or payroll.</p>
@@ -1154,16 +1154,197 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 <td>Not built</td>
 </tr>
 </tbody></table></div>
-<h2 id="rev--p-p-6">14. Design proposals already written (not agreed, nothing built)</h2>
-<p>These are for your reaction; each is a document in the technical documentation.</p>
+<h2 id="rev--p-p-p-2">14. Decisions taken and the programme proposed for your confirmation</h2>
+<p>On 19 October 2026 the owner accepted the recommendations below and asked that the <strong>standard, tier-1-compliant solution</strong> be built, including optional capabilities, with <strong>no patches or workarounds</strong>, and with flexible standard accounting. Nothing in this section is built yet. <strong>We ask you to confirm or change each decision and each step of the programme before building starts.</strong></p>
+<h3 id="rev---21">14.1 Decisions taken</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>#</th>
+<th>Decision</th>
+<th>Reasoning</th>
+</tr>
+</thead><tbody><tr>
+<td>D-1</td>
+<td>Build the standard solution, including optional capabilities; no patches</td>
+<td>A patched ledger cannot be audited or extended</td>
+</tr>
+<tr>
+<td>D-2</td>
+<td>Tax is a layered structure on tax profiles (section 10); Saudi VAT first, built so other GCC states can be added</td>
+<td>Treatment follows facts, not typing</td>
+</tr>
+<tr>
+<td>D-3</td>
+<td>Tax components in this order: all VAT scenarios; import VAT, customs duty and reverse charge; withholding; excise last</td>
+<td>Follows how often each occurs</td>
+</tr>
+<tr>
+<td>D-4</td>
+<td>Import VAT supports both treatments (paid at customs and recovered, or deferred where the law allows), chosen per company, <strong>to be confirmed by a tax adviser</strong></td>
+<td>The law decides, not the software</td>
+</tr>
+<tr>
+<td>D-5</td>
+<td>Partial recovery of input tax (taxable and exempt sales) is designed in from the start</td>
+<td>A mixed business cannot be retrofitted</td>
+</tr>
+<tr>
+<td>D-6</td>
+<td>Prices tax-inclusive or tax-exclusive as a company setting with an item override</td>
+<td>Retail and trade differ</td>
+</tr>
+<tr>
+<td>D-7</td>
+<td>A determined tax can be overridden only by a user holding the right, with a mandatory reason, audited</td>
+<td>Control without losing flexibility</td>
+</tr>
+<tr>
+<td>D-8</td>
+<td>Existing tax slabs become tax codes automatically, with no change to any posted history</td>
+<td>No restatement</td>
+</tr>
+<tr>
+<td>D-9</td>
+<td><strong>Accounting events layer</strong>: documents raise events, rules produce the entries, with preview and re-derivation</td>
+<td>The tier-1 way to support several ledgers and rules</td>
+</tr>
+<tr>
+<td>D-10</td>
+<td><strong>Currency and parallel ledgers</strong> are designed now and built early</td>
+<td>They change what an amount is</td>
+</tr>
+<tr>
+<td>D-11</td>
+<td><strong>Typed references</strong> from a ledger line to any business object, replacing one column per subledger</td>
+<td>A new domain needs no new ledger column</td>
+</tr>
+<tr>
+<td>D-12</td>
+<td><strong>Quantity and unit</strong> on ledger lines</td>
+<td>Rates, capacity, per-unit cost, statistical drivers</td>
+</tr>
+<tr>
+<td>D-13</td>
+<td><strong>One recognition-schedule engine</strong> (deferred income, prepaid cost, depreciation, lease income, progress)</td>
+<td>One mechanism, one control</td>
+</tr>
+<tr>
+<td>D-14</td>
+<td>Dimensions stay unlimited; <strong>profit centre is a balancing dimension type</strong> (the branch can be that type by default); a dimension never changes an account&#39;s <strong>total</strong>, and a balancing type must also <strong>balance per value</strong></td>
+<td>Profit-centre accounting without a second ledger</td>
+</tr>
+<tr>
+<td>D-15</td>
+<td>Work orders and similar documents are allowed as <strong>process documents keyed to a dimension value</strong>; a second ledger or a hard-coded cost object is not</td>
+<td>Flexible for any domain</td>
+</tr>
+<tr>
+<td>D-16</td>
+<td>Project costing: cost collection and profitability first; billing and revenue recognition later</td>
+<td>Staged</td>
+</tr>
+<tr>
+<td>D-17</td>
+<td>Budget control mode is configurable, <strong>warn by default</strong></td>
+<td>Practical control</td>
+</tr>
+<tr>
+<td>D-18</td>
+<td>Chart templates for retail, trading, manufacturing, real estate and services; the reference standard is <strong>IFRS as adopted in Saudi Arabia</strong>, with local statutory views mappable</td>
+<td>Flexible, standard-based</td>
+</tr>
+<tr>
+<td>D-19</td>
+<td>Escalation of overdue approvals stays in the backlog until requested</td>
+<td>Not needed yet</td>
+</tr>
+</tbody></table></div>
+<h3 id="rev---22">14.2 The target structure</h3>
+<pre class="mermaid">flowchart TD
+  subgraph DOC[&quot;Documents (sales, purchases, expenses, cash, journals, domain documents later)&quot;]
+    D1[&quot;Document names who and what&quot;]
+  end
+  DOC --&gt; EV[&quot;Accounting events layer&lt;br/&gt;event, rules, preview, re-derivation&quot;]
+  PR[&quot;Profiles: party, item, company,&lt;br/&gt;tax profiles, determination rules&quot;] --&gt; EV
+  EV --&gt; L1[&quot;Primary ledger&lt;br/&gt;functional currency&quot;]
+  EV --&gt; L2[&quot;Second ledger&lt;br/&gt;(for example local statutory or tax)&quot;]
+  EV --&gt; L3[&quot;Reporting-currency view&quot;]
+  L1 --&gt; DIM[&quot;Dimensions on every line&lt;br/&gt;unlimited types, roles, balancing,&lt;br/&gt;typed object references, quantities&quot;]
+  DIM --&gt; RPT[&quot;Reports: statements by chart view,&lt;br/&gt;break-down by any dimension,&lt;br/&gt;budget versus actual, tax return&quot;]
+  SCH[&quot;Recognition schedules and runs&lt;br/&gt;(deferrals, depreciation, leases)&quot;] --&gt; EV
+  BUD[&quot;Budgets and commitments&lt;br/&gt;on dimension combinations&quot;] --&gt; RPT
+  CTL[&quot;Controls: posting guard, period status per ledger,&lt;br/&gt;approvals, segregation of duties,&lt;br/&gt;master-data approval, audit&quot;] -.-&gt; EV</pre>
+<h3 id="rev--p-p-p-3">14.3 The programme, in the proposed order</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Step</th>
+<th>Delivers</th>
+<th>What to check as an accountant</th>
+</tr>
+</thead><tbody><tr>
+<td>F1 Accounting events</td>
+<td>Every document posts through events and rules, with an entry preview; results identical to today</td>
+<td>Is previewing and re-deriving entries acceptable audit practice?</td>
+</tr>
+<tr>
+<td>F2 Currency and ledgers</td>
+<td>Transaction, functional and reporting currency; dated rates; exchange differences; revaluation; more than one ledger</td>
+<td>Are the exchange-difference and revaluation entries (examples below) right?</td>
+</tr>
+<tr>
+<td>F3 Typed references and quantities</td>
+<td>Any object referenced from a line; hours, units, area stored with postings</td>
+<td>Which objects and statistical keys do your clients need?</td>
+</tr>
+<tr>
+<td>F4 Account master and templates</td>
+<td>Account classes, posting controls, groups, five industry templates, chart views mapped to IFRS as adopted in Saudi Arabia, effective dating</td>
+<td>Is the classification and the template list right?</td>
+</tr>
+<tr>
+<td>F5 Determination engine</td>
+<td>Accounts (and later tax codes) found from item class, party class, branch, transaction type</td>
+<td>Which classifications decide accounts for your clients?</td>
+</tr>
+<tr>
+<td>Tax series (14 to 14f)</td>
+<td>Codes, profiles, recovery, return from the ledger and settlement, reverse charge, withholding, imports, excise</td>
+<td>Section 10</td>
+</tr>
+<tr>
+<td>F6 Dimension capabilities</td>
+<td>Roles, attributes and lifecycle, valid combinations, balancing, allocation by any basis, break-down reports</td>
+<td>Is balancing per value with inter-unit clearing right?</td>
+</tr>
+<tr>
+<td>F7 Budgeting</td>
+<td>Versions, control (warn by default), commitments, budget versus actual</td>
+<td>Is the control model right?</td>
+</tr>
+<tr>
+<td>F8 Recognition schedules</td>
+<td>One engine for deferrals, prepayments, depreciation, leases, progress</td>
+<td>Are the release patterns right?</td>
+</tr>
+<tr>
+<td>F9 Controls</td>
+<td>Segregation-of-duties rules and approval of sensitive master-data changes</td>
+<td>Which conflicts must be forbidden?</td>
+</tr>
+</tbody></table></div>
+<p>Period control (month, lock date, year-end) and landed cost with customs entry continue in the existing plan and are prerequisites for some steps.</p>
+<h3 id="rev--p-p-6">14.4 Worked examples of what the new structure will post</h3>
+<p><strong>(a) Purchase in foreign currency.</strong> 1 March: goods of USD 1,000 bought at 3.75. <em>Dr Inventory 3,750; Cr Accounts payable 3,750 (USD 1,000 held on the line).</em></p>
 <ul>
-<li><strong>Taxation and tax profiles</strong> (direction agreed, detailed design for your review): tax codes with components and dated rates; profiles on parties, items and the company; automatic determination; recoverable and non-recoverable tax; reverse charge; withholding; import; settlement entry. See section 10.</li>
-<li><strong>Chart of accounts benchmark:</strong> compares the chart with SAP, Oracle, Dynamics and NetSuite and proposes account attributes, templates and chart views.</li>
-<li><strong>A domain-neutral core:</strong> the primitives (typed references, quantities, accounting events, recognition schedules, currencies and ledgers, dimension capabilities) that would let retail, trading, manufacturing, real estate and other domains be added later without redesign.</li>
-<li><strong>Agreed decisions register</strong> with a professional review of every agreed entry.</li>
+<li><em>If paid on 20 March at 3.76:</em> <em>Dr Accounts payable 3,750; Dr Realised exchange loss 10; Cr Bank 3,760.</em></li>
+<li><em>If still open at 31 March when the rate is 3.77 (revaluation run):</em> <em>Dr Unrealised exchange loss 20; Cr Accounts payable 20;</em> the run reverses on 1 April; the later payment then posts the realised difference as above.</li>
 </ul>
-<p><strong>Questions for you on direction.</strong> 14.1 Which of the gaps in section 13 would you rank as most important for your clients? 14.2 Which accounting standards or statutory formats must the design satisfy first? 14.3 Are there entries in section 6 you would change before we build anything more?</p>
-<h2 id="rev---21">15. Review form</h2>
+<p><strong>(b) Deferred income over a 12-month service contract.</strong> 1 January: invoice 12,000 (VAT ignored for clarity). <em>Dr Accounts receivable 12,000; Cr Deferred income 12,000.</em> Each month the approved recognition run posts <em>Dr Deferred income 1,000; Cr Revenue 1,000.</em> After March: deferred income 9,000, revenue 3,000; the run for a locked period cannot be repeated.</p>
+<p><strong>(c) Profit-centre balancing.</strong> Head office pays a supplier 600 for Store B. The document is <em>Dr Expense (Store B) 600; Cr Bank (Head office) 600</em>, which does not balance per profit centre. The engine adds the inter-unit lines: <em>Store B: Cr Inter-unit payable 600; Head office: Dr Inter-unit receivable 600.</em> Each profit centre now balances and has its own balance sheet.</p>
+<p><strong>(d) One event, two ledgers.</strong> An invoice raises one accounting event. The primary ledger (IFRS as adopted) and a second ledger (for example local statutory) each apply their own rules, so the same event can produce different entries where the two bases differ, and each ledger has its own period status.</p>
+<p><strong>(e) Budget control.</strong> Department Admin has a March budget of 10,000 for the <em>Office</em> account group; actual is 9,500. An expense of 800 would exceed it by 300. Mode <em>warn</em> (default): the user sees the warning and may continue with a reason, audited; mode <em>stop</em>: refused unless an override right is used; mode <em>report</em>: only shown on the budget report.</p>
+<p><strong>(f) Account determination.</strong> A sale of an item in class <em>Goods for resale</em> posts to <em>Retail sales</em>; an item in class <em>Services</em> to <em>Service income</em>; an item in class <em>Imported goods</em> adds the customs and landed-cost lines when received. The operator selects only the customer and the items.</p>
+<h3 id="rev---23">14.5 What we ask of you</h3>
+<p>14.1 Do you confirm each decision D-1 to D-19, or which do you change? 14.2 Is the proposed order of the programme right, given the business your clients do? 14.3 Are the entries in 14.4 what you would post? 14.4 Which standard disclosures or statutory formats must the chart views produce first? 14.5 Which accounting treatments in 14.1 need a tax adviser or auditor before we build (import VAT deferral, recovery apportionment, withholding rates)? 14.6 Anything in this programme that you would <strong>not</strong> build, or that is missing?</p>
+<h2 id="rev---24">15. Review form</h2>
 <p>Please return this table. <em>A</em> = accept, <em>C</em> = change (say what), <em>Q</em> = question.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>#</th>
@@ -1371,19 +1552,37 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 </tr>
 <tr>
 <td>14.1</td>
-<td>Ranking of the gaps in section 13</td>
+<td>Decisions D-1 to D-19 confirmed (say which change)</td>
 <td></td>
 <td></td>
 </tr>
 <tr>
 <td>14.2</td>
-<td>Standards and formats to satisfy first</td>
+<td>Order of the programme F1 to F9 and the tax series</td>
 <td></td>
 <td></td>
 </tr>
 <tr>
 <td>14.3</td>
-<td>Entries in section 6 to change before further building</td>
+<td>The entries in 14.4 (foreign currency, deferral, balancing, two ledgers, budget control, determination) are right</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>14.4</td>
+<td>Disclosures and statutory formats the chart views must produce first</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>14.5</td>
+<td>Treatments needing a tax adviser or auditor before building</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>14.6</td>
+<td>Anything not to build, or missing</td>
 <td></td>
 <td></td>
 </tr>

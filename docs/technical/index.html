@@ -46,7 +46,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 </tbody></table></div>
 <div class="callout"><div class="label">Which version is described</div><p>The finance core is <b>Warraq 2.0</b> (branch <code>v2</code>, the Demo). Live (1.0, branch <code>master</code>) does not have it yet. Chapters say so where it matters; the <a href="#environments">Environments</a> chapter explains the two tracks.</p></div>
 <div class="callout warn"><div class="label">Reading copy, not the source</div><p>This page is generated. The requirements, system requirements, sprint log, traceability and annexes A to C are generated from <code>docs/gl-ap-ar/source/*.mjs</code> and from the code; the other chapters are hand-written Markdown under <code>docs/gl-ap-ar</code>, <code>docs/design-notes</code>, <code>docs/operations</code> and <code>docs/proposals</code>. Edit those, then run <code>npx tsx scripts/build-gl-docs.mjs</code> and <code>node scripts/build-docs-html.mjs</code>; never edit this page. The skill <code>update-docs-after-development</code> walks through it.</p></div>
-<p class="src">Version: built 2026-10-19, branch v2, after commit 158749e.</p></section>
+<p class="src">Version: built 2026-10-19, branch v2, after commit a7f9630.</p></section>
 <section class="chapter" id="finance-review"><p class="eyebrow">Chapter 2</p><h2>Warraq ERP finance core: how the General Ledger, Receivables, Payables and Expenses work</h2><p class="src">Source: <code>docs/finance-review/finance-review-pack.md</code> · <span class="pill">Review pack for a finance professional (also available as a standalone page)</span></p><p><strong>Review pack for a finance professional.</strong> Version of 19 October 2026. Describes Warraq 2.0 (the Demo). Live (1.0) does not have the ledger yet.</p>
 <h3 id="finance-review--p">0. How to use this pack</h3>
 <p><strong>Purpose.</strong> This document explains, in accounting terms, how the system is structured, how each business document turns into ledger entries, how periods and controls work, and what is not yet built. It is written so that an accountant can judge whether the design is sound <strong>before</strong> further development. Nothing in it is built on an assumption you have not seen.</p>
@@ -54,7 +54,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 <ol>
 <li>Read sections 1 to 5 (structure and mechanism), then the process chapters 6 to 10.</li>
 <li>At the end of each section there is a short list of <strong>review questions</strong>. Mark each one <em>Accept</em>, <em>Change</em> or <em>Question</em>, with a comment. Section 15 collects all of them in one table you can return.</li>
-<li>Section 13 lists what is <strong>not</strong> built and section 14 the changes already proposed. Please say which matter most for the businesses you advise (retail, trading, manufacturing, real estate, services).</li>
+<li>Section 13 lists what is <strong>not</strong> built and section 14 the <strong>decisions the owner has taken and the build programme proposed</strong>, for your confirmation before building starts. Please say which matter most for the businesses you advise (retail, trading, manufacturing, real estate, services).</li>
 </ol>
 <p><strong>Conventions.</strong> <em>Dr</em> is debit, <em>Cr</em> is credit. Amounts are in Saudi riyals. Account codes are from the standard starter chart; every company can change them. &quot;As built&quot; means the code does this today; &quot;proposed&quot; means it is a design for discussion and does nothing yet.</p>
 <p><strong>What this pack covers.</strong> The general ledger (chart of accounts, dimensions, posting, periods, journals, reports), receivables (customers, invoices, credit notes, receipts), payables (vendors, purchase bills, goods receipts, returns, payments), expenses (including recurring and accrued), cash and bank (including reconciliation), approvals, and the VAT as it is handled today. It does not cover point-of-sale hardware, e-invoicing mechanics (ZATCA) or payroll.</p>
@@ -1173,16 +1173,197 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 <td>Not built</td>
 </tr>
 </tbody></table></div>
-<h3 id="finance-review--p-p-6">14. Design proposals already written (not agreed, nothing built)</h3>
-<p>These are for your reaction; each is a document in the technical documentation.</p>
+<h3 id="finance-review--p-p-p-2">14. Decisions taken and the programme proposed for your confirmation</h3>
+<p>On 19 October 2026 the owner accepted the recommendations below and asked that the <strong>standard, tier-1-compliant solution</strong> be built, including optional capabilities, with <strong>no patches or workarounds</strong>, and with flexible standard accounting. Nothing in this section is built yet. <strong>We ask you to confirm or change each decision and each step of the programme before building starts.</strong></p>
+<h4 id="finance-review---21">14.1 Decisions taken</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>#</th>
+<th>Decision</th>
+<th>Reasoning</th>
+</tr>
+</thead><tbody><tr>
+<td>D-1</td>
+<td>Build the standard solution, including optional capabilities; no patches</td>
+<td>A patched ledger cannot be audited or extended</td>
+</tr>
+<tr>
+<td>D-2</td>
+<td>Tax is a layered structure on tax profiles (section 10); Saudi VAT first, built so other GCC states can be added</td>
+<td>Treatment follows facts, not typing</td>
+</tr>
+<tr>
+<td>D-3</td>
+<td>Tax components in this order: all VAT scenarios; import VAT, customs duty and reverse charge; withholding; excise last</td>
+<td>Follows how often each occurs</td>
+</tr>
+<tr>
+<td>D-4</td>
+<td>Import VAT supports both treatments (paid at customs and recovered, or deferred where the law allows), chosen per company, <strong>to be confirmed by a tax adviser</strong></td>
+<td>The law decides, not the software</td>
+</tr>
+<tr>
+<td>D-5</td>
+<td>Partial recovery of input tax (taxable and exempt sales) is designed in from the start</td>
+<td>A mixed business cannot be retrofitted</td>
+</tr>
+<tr>
+<td>D-6</td>
+<td>Prices tax-inclusive or tax-exclusive as a company setting with an item override</td>
+<td>Retail and trade differ</td>
+</tr>
+<tr>
+<td>D-7</td>
+<td>A determined tax can be overridden only by a user holding the right, with a mandatory reason, audited</td>
+<td>Control without losing flexibility</td>
+</tr>
+<tr>
+<td>D-8</td>
+<td>Existing tax slabs become tax codes automatically, with no change to any posted history</td>
+<td>No restatement</td>
+</tr>
+<tr>
+<td>D-9</td>
+<td><strong>Accounting events layer</strong>: documents raise events, rules produce the entries, with preview and re-derivation</td>
+<td>The tier-1 way to support several ledgers and rules</td>
+</tr>
+<tr>
+<td>D-10</td>
+<td><strong>Currency and parallel ledgers</strong> are designed now and built early</td>
+<td>They change what an amount is</td>
+</tr>
+<tr>
+<td>D-11</td>
+<td><strong>Typed references</strong> from a ledger line to any business object, replacing one column per subledger</td>
+<td>A new domain needs no new ledger column</td>
+</tr>
+<tr>
+<td>D-12</td>
+<td><strong>Quantity and unit</strong> on ledger lines</td>
+<td>Rates, capacity, per-unit cost, statistical drivers</td>
+</tr>
+<tr>
+<td>D-13</td>
+<td><strong>One recognition-schedule engine</strong> (deferred income, prepaid cost, depreciation, lease income, progress)</td>
+<td>One mechanism, one control</td>
+</tr>
+<tr>
+<td>D-14</td>
+<td>Dimensions stay unlimited; <strong>profit centre is a balancing dimension type</strong> (the branch can be that type by default); a dimension never changes an account&#39;s <strong>total</strong>, and a balancing type must also <strong>balance per value</strong></td>
+<td>Profit-centre accounting without a second ledger</td>
+</tr>
+<tr>
+<td>D-15</td>
+<td>Work orders and similar documents are allowed as <strong>process documents keyed to a dimension value</strong>; a second ledger or a hard-coded cost object is not</td>
+<td>Flexible for any domain</td>
+</tr>
+<tr>
+<td>D-16</td>
+<td>Project costing: cost collection and profitability first; billing and revenue recognition later</td>
+<td>Staged</td>
+</tr>
+<tr>
+<td>D-17</td>
+<td>Budget control mode is configurable, <strong>warn by default</strong></td>
+<td>Practical control</td>
+</tr>
+<tr>
+<td>D-18</td>
+<td>Chart templates for retail, trading, manufacturing, real estate and services; the reference standard is <strong>IFRS as adopted in Saudi Arabia</strong>, with local statutory views mappable</td>
+<td>Flexible, standard-based</td>
+</tr>
+<tr>
+<td>D-19</td>
+<td>Escalation of overdue approvals stays in the backlog until requested</td>
+<td>Not needed yet</td>
+</tr>
+</tbody></table></div>
+<h4 id="finance-review---22">14.2 The target structure</h4>
+<pre class="mermaid">flowchart TD
+  subgraph DOC[&quot;Documents (sales, purchases, expenses, cash, journals, domain documents later)&quot;]
+    D1[&quot;Document names who and what&quot;]
+  end
+  DOC --&gt; EV[&quot;Accounting events layer&lt;br/&gt;event, rules, preview, re-derivation&quot;]
+  PR[&quot;Profiles: party, item, company,&lt;br/&gt;tax profiles, determination rules&quot;] --&gt; EV
+  EV --&gt; L1[&quot;Primary ledger&lt;br/&gt;functional currency&quot;]
+  EV --&gt; L2[&quot;Second ledger&lt;br/&gt;(for example local statutory or tax)&quot;]
+  EV --&gt; L3[&quot;Reporting-currency view&quot;]
+  L1 --&gt; DIM[&quot;Dimensions on every line&lt;br/&gt;unlimited types, roles, balancing,&lt;br/&gt;typed object references, quantities&quot;]
+  DIM --&gt; RPT[&quot;Reports: statements by chart view,&lt;br/&gt;break-down by any dimension,&lt;br/&gt;budget versus actual, tax return&quot;]
+  SCH[&quot;Recognition schedules and runs&lt;br/&gt;(deferrals, depreciation, leases)&quot;] --&gt; EV
+  BUD[&quot;Budgets and commitments&lt;br/&gt;on dimension combinations&quot;] --&gt; RPT
+  CTL[&quot;Controls: posting guard, period status per ledger,&lt;br/&gt;approvals, segregation of duties,&lt;br/&gt;master-data approval, audit&quot;] -.-&gt; EV</pre>
+<h4 id="finance-review--p-p-p-3">14.3 The programme, in the proposed order</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Step</th>
+<th>Delivers</th>
+<th>What to check as an accountant</th>
+</tr>
+</thead><tbody><tr>
+<td>F1 Accounting events</td>
+<td>Every document posts through events and rules, with an entry preview; results identical to today</td>
+<td>Is previewing and re-deriving entries acceptable audit practice?</td>
+</tr>
+<tr>
+<td>F2 Currency and ledgers</td>
+<td>Transaction, functional and reporting currency; dated rates; exchange differences; revaluation; more than one ledger</td>
+<td>Are the exchange-difference and revaluation entries (examples below) right?</td>
+</tr>
+<tr>
+<td>F3 Typed references and quantities</td>
+<td>Any object referenced from a line; hours, units, area stored with postings</td>
+<td>Which objects and statistical keys do your clients need?</td>
+</tr>
+<tr>
+<td>F4 Account master and templates</td>
+<td>Account classes, posting controls, groups, five industry templates, chart views mapped to IFRS as adopted in Saudi Arabia, effective dating</td>
+<td>Is the classification and the template list right?</td>
+</tr>
+<tr>
+<td>F5 Determination engine</td>
+<td>Accounts (and later tax codes) found from item class, party class, branch, transaction type</td>
+<td>Which classifications decide accounts for your clients?</td>
+</tr>
+<tr>
+<td>Tax series (14 to 14f)</td>
+<td>Codes, profiles, recovery, return from the ledger and settlement, reverse charge, withholding, imports, excise</td>
+<td>Section 10</td>
+</tr>
+<tr>
+<td>F6 Dimension capabilities</td>
+<td>Roles, attributes and lifecycle, valid combinations, balancing, allocation by any basis, break-down reports</td>
+<td>Is balancing per value with inter-unit clearing right?</td>
+</tr>
+<tr>
+<td>F7 Budgeting</td>
+<td>Versions, control (warn by default), commitments, budget versus actual</td>
+<td>Is the control model right?</td>
+</tr>
+<tr>
+<td>F8 Recognition schedules</td>
+<td>One engine for deferrals, prepayments, depreciation, leases, progress</td>
+<td>Are the release patterns right?</td>
+</tr>
+<tr>
+<td>F9 Controls</td>
+<td>Segregation-of-duties rules and approval of sensitive master-data changes</td>
+<td>Which conflicts must be forbidden?</td>
+</tr>
+</tbody></table></div>
+<p>Period control (month, lock date, year-end) and landed cost with customs entry continue in the existing plan and are prerequisites for some steps.</p>
+<h4 id="finance-review--p-p-6">14.4 Worked examples of what the new structure will post</h4>
+<p><strong>(a) Purchase in foreign currency.</strong> 1 March: goods of USD 1,000 bought at 3.75. <em>Dr Inventory 3,750; Cr Accounts payable 3,750 (USD 1,000 held on the line).</em></p>
 <ul>
-<li><strong>Taxation and tax profiles</strong> (direction agreed, detailed design for your review): tax codes with components and dated rates; profiles on parties, items and the company; automatic determination; recoverable and non-recoverable tax; reverse charge; withholding; import; settlement entry. See section 10.</li>
-<li><strong>Chart of accounts benchmark:</strong> compares the chart with SAP, Oracle, Dynamics and NetSuite and proposes account attributes, templates and chart views.</li>
-<li><strong>A domain-neutral core:</strong> the primitives (typed references, quantities, accounting events, recognition schedules, currencies and ledgers, dimension capabilities) that would let retail, trading, manufacturing, real estate and other domains be added later without redesign.</li>
-<li><strong>Agreed decisions register</strong> with a professional review of every agreed entry.</li>
+<li><em>If paid on 20 March at 3.76:</em> <em>Dr Accounts payable 3,750; Dr Realised exchange loss 10; Cr Bank 3,760.</em></li>
+<li><em>If still open at 31 March when the rate is 3.77 (revaluation run):</em> <em>Dr Unrealised exchange loss 20; Cr Accounts payable 20;</em> the run reverses on 1 April; the later payment then posts the realised difference as above.</li>
 </ul>
-<p><strong>Questions for you on direction.</strong> 14.1 Which of the gaps in section 13 would you rank as most important for your clients? 14.2 Which accounting standards or statutory formats must the design satisfy first? 14.3 Are there entries in section 6 you would change before we build anything more?</p>
-<h3 id="finance-review---21">15. Review form</h3>
+<p><strong>(b) Deferred income over a 12-month service contract.</strong> 1 January: invoice 12,000 (VAT ignored for clarity). <em>Dr Accounts receivable 12,000; Cr Deferred income 12,000.</em> Each month the approved recognition run posts <em>Dr Deferred income 1,000; Cr Revenue 1,000.</em> After March: deferred income 9,000, revenue 3,000; the run for a locked period cannot be repeated.</p>
+<p><strong>(c) Profit-centre balancing.</strong> Head office pays a supplier 600 for Store B. The document is <em>Dr Expense (Store B) 600; Cr Bank (Head office) 600</em>, which does not balance per profit centre. The engine adds the inter-unit lines: <em>Store B: Cr Inter-unit payable 600; Head office: Dr Inter-unit receivable 600.</em> Each profit centre now balances and has its own balance sheet.</p>
+<p><strong>(d) One event, two ledgers.</strong> An invoice raises one accounting event. The primary ledger (IFRS as adopted) and a second ledger (for example local statutory) each apply their own rules, so the same event can produce different entries where the two bases differ, and each ledger has its own period status.</p>
+<p><strong>(e) Budget control.</strong> Department Admin has a March budget of 10,000 for the <em>Office</em> account group; actual is 9,500. An expense of 800 would exceed it by 300. Mode <em>warn</em> (default): the user sees the warning and may continue with a reason, audited; mode <em>stop</em>: refused unless an override right is used; mode <em>report</em>: only shown on the budget report.</p>
+<p><strong>(f) Account determination.</strong> A sale of an item in class <em>Goods for resale</em> posts to <em>Retail sales</em>; an item in class <em>Services</em> to <em>Service income</em>; an item in class <em>Imported goods</em> adds the customs and landed-cost lines when received. The operator selects only the customer and the items.</p>
+<h4 id="finance-review---23">14.5 What we ask of you</h4>
+<p>14.1 Do you confirm each decision D-1 to D-19, or which do you change? 14.2 Is the proposed order of the programme right, given the business your clients do? 14.3 Are the entries in 14.4 what you would post? 14.4 Which standard disclosures or statutory formats must the chart views produce first? 14.5 Which accounting treatments in 14.1 need a tax adviser or auditor before we build (import VAT deferral, recovery apportionment, withholding rates)? 14.6 Anything in this programme that you would <strong>not</strong> build, or that is missing?</p>
+<h3 id="finance-review---24">15. Review form</h3>
 <p>Please return this table. <em>A</em> = accept, <em>C</em> = change (say what), <em>Q</em> = question.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>#</th>
@@ -1390,19 +1571,37 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 </tr>
 <tr>
 <td>14.1</td>
-<td>Ranking of the gaps in section 13</td>
+<td>Decisions D-1 to D-19 confirmed (say which change)</td>
 <td></td>
 <td></td>
 </tr>
 <tr>
 <td>14.2</td>
-<td>Standards and formats to satisfy first</td>
+<td>Order of the programme F1 to F9 and the tax series</td>
 <td></td>
 <td></td>
 </tr>
 <tr>
 <td>14.3</td>
-<td>Entries in section 6 to change before further building</td>
+<td>The entries in 14.4 (foreign currency, deferral, balancing, two ledgers, budget control, determination) are right</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>14.4</td>
+<td>Disclosures and statutory formats the chart views must produce first</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>14.5</td>
+<td>Treatments needing a tax adviser or auditor before building</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>14.6</td>
+<td>Anything not to build, or missing</td>
 <td></td>
 <td></td>
 </tr>
@@ -3654,7 +3853,7 @@ gets a GRANT on its own database and the role&#39;s password is never changed by
 <li>The solution serves thousands of concurrent users across many companies, safely isolated.</li>
 </ol>
 <h3 id="brd--p-2">4. Scope</h3>
-<p><strong>In scope:</strong> 156 business requirements in 25 areas (section 6). 114 are built, 5 partly built, 37 planned.</p>
+<p><strong>In scope:</strong> 178 business requirements in 27 areas (section 6). 114 are built, 5 partly built, 59 planned.</p>
 <p><strong>Out of scope (this programme):</strong></p>
 <ul>
 <li>Fixed assets and depreciation (classes, CWIP, methods, runs, disposal, transfer, documents) (FR-FA-01..10) — A later phase; the ledger and dimensions are designed not to block it.</li>
@@ -3720,6 +3919,16 @@ The accountant chooses which account each posting role and each expense category
 The chart can be exported to Excel and imported from Excel with a preview; only the rows the user selects are saved and an existing account type is never changed.</p>
 <p><strong>BR-COA-08 Audit of chart changes</strong> — Must, Built, source Standard, sprint S1.
 Creating, changing, importing, mapping and deactivating accounts is written to the audit trail.</p>
+<p><strong>BR-COA-09 Account classification</strong> — Must, Planned, source Decision, sprint SF4.
+Every account carries a class and sub-class (cash, bank, receivable, other current asset, non-current asset, current and non-current liability, equity, operating revenue, other income, cost of sales, operating expense, finance cost, tax), a nature or function for expenses, a cash-flow class and a statement mapping key, so that statutory and management statements and the cash-flow statement derive from the chart.</p>
+<p><strong>BR-COA-10 Posting controls and account groups</strong> — Must, Planned, source Decision, sprint SF4.
+An account can be blocked for posting (distinct from inactive), restricted to automatic posting, required to carry a currency or a tax category, and belongs to an account group that supplies defaults and number ranges.</p>
+<p><strong>BR-COA-11 Industry chart templates</strong> — Should, Planned, source Decision, sprint SF4.
+A company chooses a starter chart for retail, trading, manufacturing, real estate or services, each with its role accounts, dimension rules and statement layouts, reviewed by an accountant; a template can be merged into an existing chart.</p>
+<p><strong>BR-COA-12 Chart views and statutory mapping</strong> — Must, Planned, source Decision, sprint SF4.
+One ledger can be presented through several chart views (IFRS as adopted in Saudi Arabia as the reference, local statutory, management) that map accounts to the view lines; statements and the cash-flow statement use the selected view.</p>
+<p><strong>BR-COA-13 Effective dating and approval of chart changes</strong> — Should, Planned, source Decision, sprint SF4.
+Accounts carry valid-from and valid-to dates; changes to the chart can require approval and are audited; history is never rewritten.</p>
 <h4 id="brd--p-3">JNL — Journals and opening balances</h4>
 <p><strong>BR-JNL-01 Manual journals with maker-checker</strong> — Must, Built, Blueprint FR-JE-01, source Decision, sprint S1, S11.
 An accountant prepares a journal as a draft, submits it, and a different person with the posting right approves it (which posts it) or rejects it with a written reason, returning it to draft.</p>
@@ -3790,6 +3999,16 @@ Invoice, expense and bill forms collect dimensions, so a Required rule can be en
 A configurable monthly run redistributes a shared cost centre across destination branches by fixed or revenue percentage into an allocated-overhead account, net zero at company level.</p>
 <p><strong>BR-DIM-08 Branch profit and loss subtotals</strong> — Could, Planned, Blueprint FR-DIM-04, source Blueprint, sprint S15.
 Branch P&amp;L shows direct expenses and allocated overhead as separate subtotals (contribution margin, then fully loaded profit).</p>
+<p><strong>BR-DIM-09 Dimension type roles</strong> — Must, Planned, source Decision, sprint SF6.
+A dimension type can be marked balancing (a profit unit), cost object, or statistical driver; the engine treats each role accordingly.</p>
+<p><strong>BR-DIM-10 Dimension value attributes and lifecycle</strong> — Must, Planned, source Decision, sprint SF6.
+A dimension value carries configurable attributes (text, number, date, status, link to a customer, employee or branch) and a lifecycle (status and validity dates); posting to a value outside its validity is refused.</p>
+<p><strong>BR-DIM-11 Valid-combination rules between dimension types</strong> — Must, Planned, source Decision, sprint SF6.
+A company can require, imply or default one dimension from another (a project belongs to one profit centre); invalid combinations are refused.</p>
+<p><strong>BR-DIM-12 Balancing per dimension value</strong> — Must, Planned, source Decision, sprint SF6.
+For a balancing type each entry balances per value: where it does not, the engine adds inter-unit clearing lines; balance sheet and profit and loss can be produced per value. Allocation (BR-DIM-07) is widened to any dimension type, any basis including statistical drivers, with allocation cycles.</p>
+<p><strong>BR-DIM-13 Break-down reports</strong> — Must, Planned, source Decision, sprint SF6.
+Any report can break down by any dimension type, one column or row per value rolled up through the hierarchy, with drill to the ledger.</p>
 <h4 id="brd--p-p-2">RPT — Ledger reporting</h4>
 <p><strong>BR-RPT-01 General ledger detail</strong> — Must, Built, source Decision, sprint S1.
 For any account or set of accounts and a period, the general ledger shows opening balance, every movement with running balance, and links each line to its source document.</p>
@@ -3956,7 +4175,33 @@ An import is recorded by a customs entry: customs value, duty and import VAT pay
 A purchase of goods from a vendor whose profile is foreign is treated as an import of goods without the operator choosing it: the expected duty and import VAT are shown and the customs entry is requested at receipt.</p>
 <p><strong>BR-IMP-05 Several payees per shipment</strong> — Must, Planned, Blueprint FR-LC-03, source Blueprint, sprint S14e.
 The goods vendor, the freight forwarder, the customs authority, the insurer and the clearing agent each become their own payable, visible in payables aging, none forced onto the goods bill.</p>
-<h4 id="brd---9">SAL — Sales documents (quotations, invoices, credit notes)</h4>
+<h4 id="brd---9">FND — Core foundations (events, ledgers, currency, references, quantities, schedules, determination)</h4>
+<p><strong>BR-FND-01 Accounting events layer</strong> — Must, Planned, source Decision, sprint SF1.
+A document raises an accounting event; accounting rules turn the event into balanced ledger lines with a preview and can re-derive them; every existing posting path moves onto this layer without changing its result.</p>
+<p><strong>BR-FND-02 Parallel ledgers</strong> — Must, Planned, source Decision, sprint SF2.
+A company can keep more than one ledger (for example IFRS, local statutory, tax) fed by the same events, each with its own rules and period status.</p>
+<p><strong>BR-FND-03 Currency</strong> — Must, Planned, source Decision, sprint SF2.
+Transaction, functional and reporting currencies; dated exchange rates; documents in foreign currency store the rate and the amounts in each currency; settlement posts exchange differences; open items and balances are revalued by a run.</p>
+<p><strong>BR-FND-04 Typed business-object references</strong> — Must, Planned, source Decision, sprint SF3.
+A ledger line can reference any registered business object (party, item, asset, project, order, property, unit, lease, fund) through one typed, validated mechanism instead of one column per subledger.</p>
+<p><strong>BR-FND-05 Quantities on ledger lines</strong> — Must, Planned, source Decision, sprint SF3.
+A ledger line can carry a quantity and unit of measure (hours, units, area) for rates, per-unit cost, capacity and statistical drivers; reports can show quantity and rate as value bases.</p>
+<p><strong>BR-FND-06 Recognition schedules</strong> — Must, Planned, source Decision, sprint SF8.
+One schedule engine releases an amount over time or by progress (deferred income, prepaid cost, depreciation, lease income, percentage of completion) through previewed, approved and period-locked runs.</p>
+<p><strong>BR-FND-07 Account determination rules</strong> — Must, Planned, source Decision, sprint SF5.
+Rules determine accounts from the transaction type, party class, item class, branch and date (and any registered attribute) so that documents name only who and what; one rule engine serves accounts and tax codes.</p>
+<p><strong>BR-FND-08 Segregation of duties and master-data approval</strong> — Should, Planned, source Decision, sprint SF9.
+Conflicting duties are defined and enforced (for example create a vendor and change its bank account), and changes to sensitive master data (bank details, credit limit, tax profile) can require approval.</p>
+<h4 id="brd---10">BUD — Budgeting and commitment control</h4>
+<p><strong>BR-BUD-01 Budget versions</strong> — Must, Planned, source Decision, sprint SF7.
+Budgets are held in versions (original, revised, forecast) by account or account group, dimension combination and fiscal period, with optional quantity.</p>
+<p><strong>BR-BUD-02 Budget control</strong> — Must, Planned, source Decision, sprint SF7.
+A company chooses which dimension types a control applies to and the mode (report, warn or stop; warn by default) at posting, requisition and order.</p>
+<p><strong>BR-BUD-03 Commitments</strong> — Must, Planned, source Decision, sprint SF7.
+Open requisitions and orders count against the budget with their dimension combination until invoiced.</p>
+<p><strong>BR-BUD-04 Budget versus actual reporting</strong> — Must, Planned, source Decision, sprint SF7.
+Budget is a value basis of the report designer so that budget, actual, prior year and variance can be shown for any dimension.</p>
+<h4 id="brd---11">SAL — Sales documents (quotations, invoices, credit notes)</h4>
 <p><strong>BR-SAL-01 Quotations convert to invoices</strong> — Must, Built, source Platform, sprint SB1.
 A quotation can be created, edited, cancelled and converted into a tax invoice. A converted quotation is final. The conversion is an ordinary invoice and follows every invoice rule (numbering, period locks, e-invoicing).</p>
 <p><strong>BR-SAL-02 Invoice payments, in part or in full</strong> — Must, Built, source Platform, sprint SB1.
@@ -3992,7 +4237,7 @@ A cashier opens and closes a shift, recording actual and expected cash. Shifts a
 A sale in progress can be held and later resumed. Held sales are visible only within their company and need the terminal access right.</p>
 <p><strong>BR-POS-03 POS sales are invoices</strong> — Must, Built, source Compliance, sprint SB1.
 A POS sale is an ordinary tax invoice and goes through the same e-invoicing pipeline; a POS cancel needs its own permission.</p>
-<h4 id="brd---10">ZAT — ZATCA e-invoicing</h4>
+<h4 id="brd---12">ZAT — ZATCA e-invoicing</h4>
 <p><strong>BR-ZAT-01 E-invoicing is a per-company switch</strong> — Must, Built, source Compliance, sprint SB1.
 E-invoicing is off for a company until its onboarding enables it. With it off, an invoice lands as DISABLED with a real basic QR code and never touches the ZATCA gateway or the hash chain; with it on, the same invoice proceeds.</p>
 <p><strong>BR-ZAT-02 Cancellation of e-invoiced documents</strong> — Must, Built, source Compliance, sprint SB1.
@@ -4048,7 +4293,7 @@ Each company has its own print templates (create, edit options and layout, activ
 <li>ZATCA e-invoicing code is not altered by this programme.</li>
 <li>Document dates, posting guard and permission model are platform standards that every later feature must follow.</li>
 </ul>
-<h3 id="brd---11">8. Success criteria</h3>
+<h3 id="brd---13">8. Success criteria</h3>
 <ul>
 <li>Ledger-vs-Documents agrees to the cent for every company; the consistency check shows no error-level failure.</li>
 <li>Every built requirement has automated test coverage traced in the matrix (08).</li>
@@ -4359,6 +4604,41 @@ Each company has its own print templates (create, edit options and layout, activ
 <td>Every chart create, update, import, map and (de)activate shall write an audit entry.</td>
 <td>recordAuditLog in ledgerAccounts.ts</td>
 <td>SEC-011</td>
+</tr>
+<tr>
+<td>FR-COA-09.1</td>
+<td>BR-COA-09</td>
+<td>Every account shall hold class, sub-class, nature or function, cash-flow class and statement key, validated against its type.</td>
+<td>planned: company_accounts attributes; server/routes/ledgerAccounts.ts</td>
+<td>COA-023</td>
+</tr>
+<tr>
+<td>FR-COA-10.1</td>
+<td>BR-COA-10</td>
+<td>The system shall refuse a posting to an account blocked for posting or restricted to automatic posting, and apply group defaults and number ranges.</td>
+<td>planned: company_accounts attributes; server/routes/ledgerAccounts.ts</td>
+<td>COA-024</td>
+</tr>
+<tr>
+<td>FR-COA-11.1</td>
+<td>BR-COA-11</td>
+<td>The system shall seed a chart template by industry, mergeable into an existing chart.</td>
+<td>planned: company_accounts attributes; server/routes/ledgerAccounts.ts</td>
+<td>COA-025</td>
+</tr>
+<tr>
+<td>FR-COA-12.1</td>
+<td>BR-COA-12</td>
+<td>The system shall map accounts to the lines of a chart view and render statements and the cash-flow statement from the chosen view.</td>
+<td>planned: company_accounts attributes; server/routes/ledgerAccounts.ts</td>
+<td>COA-026</td>
+</tr>
+<tr>
+<td>FR-COA-13.1</td>
+<td>BR-COA-13</td>
+<td>The system shall hold validity dates on accounts and require approval for chart changes where the company chooses.</td>
+<td>planned: company_accounts attributes; server/routes/ledgerAccounts.ts</td>
+<td>COA-027</td>
 </tr>
 </tbody></table></div>
 <h4 id="srs--p">JNL — Journals and opening balances</h4>
@@ -4675,6 +4955,41 @@ Each company has its own print templates (create, edit options and layout, activ
 <td>The branch P&amp;L definition shall show direct and allocated subtotals (Sprint 15).</td>
 <td>planned</td>
 <td>(target: sprint 15)</td>
+</tr>
+<tr>
+<td>FR-DIM-09.1</td>
+<td>BR-DIM-09</td>
+<td>The system shall hold roles on dimension types and apply them in posting, allocation and budgeting.</td>
+<td>planned: dimension_types roles, dimension_values attributes; server/lib/dimensions.ts; server/lib/reportEngine.ts</td>
+<td>DIM-015</td>
+</tr>
+<tr>
+<td>FR-DIM-10.1</td>
+<td>BR-DIM-10</td>
+<td>The system shall store configurable attributes and a lifecycle on dimension values and refuse posting outside validity.</td>
+<td>planned: dimension_types roles, dimension_values attributes; server/lib/dimensions.ts; server/lib/reportEngine.ts</td>
+<td>DIM-016</td>
+</tr>
+<tr>
+<td>FR-DIM-11.1</td>
+<td>BR-DIM-11</td>
+<td>The system shall evaluate valid-combination rules at posting and on document forms.</td>
+<td>planned: dimension_types roles, dimension_values attributes; server/lib/dimensions.ts; server/lib/reportEngine.ts</td>
+<td>DIM-017</td>
+</tr>
+<tr>
+<td>FR-DIM-12.1</td>
+<td>BR-DIM-12</td>
+<td>The system shall balance entries per value of a balancing type with inter-unit clearing lines, and widen allocation to any type, basis and cycle.</td>
+<td>planned: dimension_types roles, dimension_values attributes; server/lib/dimensions.ts; server/lib/reportEngine.ts</td>
+<td>DIM-018</td>
+</tr>
+<tr>
+<td>FR-DIM-13.1</td>
+<td>BR-DIM-13</td>
+<td>The system shall generate a column or row per value of a chosen type with roll-up and drill.</td>
+<td>planned: dimension_types roles, dimension_values attributes; server/lib/dimensions.ts; server/lib/reportEngine.ts</td>
+<td>DIM-019</td>
 </tr>
 </tbody></table></div>
 <h4 id="srs--p-p">RPT — Ledger reporting</h4>
@@ -5313,7 +5628,109 @@ Each company has its own print templates (create, edit options and layout, activ
 <td>IMP-005, IMP-009</td>
 </tr>
 </tbody></table></div>
-<h4 id="srs---9">SAL — Sales documents (quotations, invoices, credit notes)</h4>
+<h4 id="srs---9">FND — Core foundations (events, ledgers, currency, references, quantities, schedules, determination)</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>FR</th>
+<th>BR</th>
+<th>The system shall</th>
+<th>Implemented in</th>
+<th>Test cases</th>
+</tr>
+</thead><tbody><tr>
+<td>FR-FND-01.1</td>
+<td>BR-FND-01</td>
+<td>The system shall route every document posting through accounting events and rules with preview and re-derivation, producing the same entries as today.</td>
+<td>planned: server/lib/accountingEvents.ts; server/lib/currency.ts; server/lib/recognition.ts; server/lib/determination.ts</td>
+<td>FND-001, FND-002</td>
+</tr>
+<tr>
+<td>FR-FND-02.1</td>
+<td>BR-FND-02</td>
+<td>The system shall post each event to every ledger of the company with that ledger own rules and period status.</td>
+<td>planned: server/lib/accountingEvents.ts; server/lib/currency.ts; server/lib/recognition.ts; server/lib/determination.ts</td>
+<td>FND-003</td>
+</tr>
+<tr>
+<td>FR-FND-03.1</td>
+<td>BR-FND-03</td>
+<td>The system shall store currency, rate and base amounts, post exchange differences and run revaluation.</td>
+<td>planned: server/lib/accountingEvents.ts; server/lib/currency.ts; server/lib/recognition.ts; server/lib/determination.ts</td>
+<td>FND-004, FND-005</td>
+</tr>
+<tr>
+<td>FR-FND-04.1</td>
+<td>BR-FND-04</td>
+<td>The system shall provide one typed reference mechanism on ledger lines with validation by object type.</td>
+<td>planned: server/lib/accountingEvents.ts; server/lib/currency.ts; server/lib/recognition.ts; server/lib/determination.ts</td>
+<td>FND-006</td>
+</tr>
+<tr>
+<td>FR-FND-05.1</td>
+<td>BR-FND-05</td>
+<td>The system shall store quantity and unit on ledger lines and expose quantity and rate in reports.</td>
+<td>planned: server/lib/accountingEvents.ts; server/lib/currency.ts; server/lib/recognition.ts; server/lib/determination.ts</td>
+<td>FND-007</td>
+</tr>
+<tr>
+<td>FR-FND-06.1</td>
+<td>BR-FND-06</td>
+<td>The system shall create, preview, approve, post and lock recognition schedule runs.</td>
+<td>planned: server/lib/accountingEvents.ts; server/lib/currency.ts; server/lib/recognition.ts; server/lib/determination.ts</td>
+<td>FND-008</td>
+</tr>
+<tr>
+<td>FR-FND-07.1</td>
+<td>BR-FND-07</td>
+<td>The system shall determine accounts and tax codes through ordered rules from a registered context.</td>
+<td>planned: server/lib/accountingEvents.ts; server/lib/currency.ts; server/lib/recognition.ts; server/lib/determination.ts</td>
+<td>FND-009</td>
+</tr>
+<tr>
+<td>FR-FND-08.1</td>
+<td>BR-FND-08</td>
+<td>The system shall define conflicting duties and enforce them, and route sensitive master-data changes through approval.</td>
+<td>planned: server/lib/accountingEvents.ts; server/lib/currency.ts; server/lib/recognition.ts; server/lib/determination.ts</td>
+<td>FND-010</td>
+</tr>
+</tbody></table></div>
+<h4 id="srs---10">BUD — Budgeting and commitment control</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>FR</th>
+<th>BR</th>
+<th>The system shall</th>
+<th>Implemented in</th>
+<th>Test cases</th>
+</tr>
+</thead><tbody><tr>
+<td>FR-BUD-01.1</td>
+<td>BR-BUD-01</td>
+<td>The system shall store budget versions keyed by account or group, dimension combination and period.</td>
+<td>planned: budgets tables; server/lib/budget.ts</td>
+<td>BUD-001</td>
+</tr>
+<tr>
+<td>FR-BUD-02.1</td>
+<td>BR-BUD-02</td>
+<td>The system shall apply the budget control mode at posting, requisition and order for the chosen dimension types.</td>
+<td>planned: budgets tables; server/lib/budget.ts</td>
+<td>BUD-002</td>
+</tr>
+<tr>
+<td>FR-BUD-03.1</td>
+<td>BR-BUD-03</td>
+<td>The system shall count open requisitions and orders as commitments against the budget.</td>
+<td>planned: budgets tables; server/lib/budget.ts</td>
+<td>BUD-003</td>
+</tr>
+<tr>
+<td>FR-BUD-04.1</td>
+<td>BR-BUD-04</td>
+<td>The system shall expose budget as a value basis of the report engine.</td>
+<td>planned: budgets tables; server/lib/budget.ts</td>
+<td>BUD-004</td>
+</tr>
+</tbody></table></div>
+<h4 id="srs---11">SAL — Sales documents (quotations, invoices, credit notes)</h4>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>FR</th>
 <th>BR</th>
@@ -5461,7 +5878,7 @@ Each company has its own print templates (create, edit options and layout, activ
 <td>POS-005, POS-006</td>
 </tr>
 </tbody></table></div>
-<h4 id="srs---10">ZAT — ZATCA e-invoicing</h4>
+<h4 id="srs---12">ZAT — ZATCA e-invoicing</h4>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>FR</th>
 <th>BR</th>
@@ -5662,14 +6079,14 @@ Each company has its own print templates (create, edit options and layout, activ
 <td>CFG-001, CFG-002, CFG-003</td>
 </tr>
 </tbody></table></div>
-<h3 id="srs---11">4. Interfaces</h3>
+<h3 id="srs---13">4. Interfaces</h3>
 <ul>
 <li>HTTP/JSON API: see annex B (generated from the route files).</li>
 <li>Permissions: annex C. Data model: annex A.</li>
 <li>Files: Excel (chart, reports, aging, ledger), CSV (bank statement import).</li>
 <li>Print: browser print through <code>DocumentRenderer</code> (A4, right-to-left for Arabic/Urdu).</li>
 </ul>
-<h3 id="srs---12">5. Non-functional requirements</h3>
+<h3 id="srs---14">5. Non-functional requirements</h3>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Id</th>
 <th>Requirement</th>
@@ -6892,15 +7309,15 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 <tr>
 <td>AG-11</td>
-<td><strong>Management accounting is delivered as capabilities of the dimension framework, never as separate hard-coded modules or ledgers.</strong> Profit centre, cost centre, project, product line, region and channel are dimension types. Budget, balancing, attributes, lifecycle, allocation and break-down reports are added to the framework so any type can use them. (Correction recorded 2026-10-19 after the chart-of-accounts benchmark proposed separate objects.)</td>
-<td>Owner 2026-10-19</td>
-<td>Standing; capabilities Planned</td>
+<td><strong>Management accounting is delivered as capabilities of the dimension framework, never as a second ledger or a hard-coded cost object.</strong> Profit centre, cost centre, project, product line, region and channel are dimension types. Domain <strong>process documents</strong> (work order, project billing, budget commitment) keyed to a dimension value are allowed; the ledger stays the single source. Wording confirmed by the owner 2026-10-19</td>
+<td>Owner</td>
+<td>Standing; capabilities Planned (F6, F7)</td>
 </tr>
 <tr>
 <td>AG-12</td>
-<td>Dimensions are <strong>analytical, not a second ledger</strong>: they never change an account balance; a balance sheet filtered by a dimension is shown as partial</td>
-<td>CFO decision 5</td>
-<td>Built</td>
+<td>A dimension <strong>never changes an account&#39;s total</strong>; a type flagged <strong>balancing</strong> must also <strong>balance per value</strong> (inter-unit clearing), so profit-centre balance sheets and profit and loss exist. Without a balancing type, a balance sheet filtered by a dimension is shown as partial. Wording confirmed by the owner 2026-10-19</td>
+<td>CFO decision 5, revised</td>
+<td>Standing; balancing Planned (F6)</td>
 </tr>
 <tr>
 <td>AG-13</td>
@@ -6943,6 +7360,36 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td><strong>Tax is a layered structure built on tax profiles.</strong> Tax profiles are attached to customers, vendors, items and the company; the system determines the tax treatment and the accounts from the profiles and the transaction type; the data entry operator selects neither the tax nor any account; the structure is flexible for every scenario (retail, trading, imports, manufacturing, real estate) and follows the best financial standards. Owner-stated 2026-10-19. The <strong>direction</strong> is agreed; the detailed design (<code>taxation-analysis</code>) is a proposal awaiting the decisions in its section 10. Today&#39;s single VAT output and input accounts are an interim state</td>
 <td>Owner</td>
 <td>Direction agreed (Standing); design Planned (Sprints 14 to 14f); interim behaviour Built</td>
+</tr>
+<tr>
+<td>AG-20</td>
+<td><strong>Build the standard, tier-1-compliant solution including optional capabilities, with no patches or workarounds; flexible standard accounting.</strong> Owner 2026-10-19, in reply to the pending-decisions list</td>
+<td>Owner</td>
+<td>Standing</td>
+</tr>
+<tr>
+<td>AG-21</td>
+<td><strong>Tax details accepted:</strong> Saudi VAT first, built jurisdiction-aware; components in the order all VAT scenarios, import VAT with duty and reverse charge, withholding, excise; import VAT supports both treatments per company (tax adviser to confirm); partial recovery designed in; tax-inclusive or exclusive as a company setting with an item override; override only with the right and a reason, audited; return boxes supplied by the tax adviser; each existing slab becomes a tax code</td>
+<td>Owner 2026-10-19</td>
+<td>Planned (Sprints 14 to 14f)</td>
+</tr>
+<tr>
+<td>AG-22</td>
+<td><strong>Core foundations accepted:</strong> an accounting-events layer with preview and re-derivation; parallel ledgers and currency (designed now, built early); typed business-object references; quantity and unit on ledger lines; one recognition-schedule engine; one account-determination engine; segregation of duties and master-data approval. Order: events and currency first</td>
+<td>Owner 2026-10-19</td>
+<td>Planned (F1 to F5, F8, F9)</td>
+</tr>
+<tr>
+<td>AG-23</td>
+<td><strong>Chart and dimensions accepted:</strong> account master and templates first, then dimension capabilities and budgeting; profit centre is a balancing dimension type (the branch can be that type by default); project costing: cost collection and profitability first, billing and recognition later; budget control configurable, warn by default; chart templates for retail, trading, manufacturing, real estate and services</td>
+<td>Owner 2026-10-19</td>
+<td>Planned (F4, F6, F7)</td>
+</tr>
+<tr>
+<td>AG-24</td>
+<td><strong>Reference standard:</strong> IFRS as adopted in Saudi Arabia, with local statutory and management views mappable as chart views; to be confirmed by the company&#39;s accountant</td>
+<td>Owner 2026-10-19</td>
+<td>Planned (F4)</td>
 </tr>
 </tbody></table></div>
 <h3 id="agreed-register--p-2">C. Reports</h3>
@@ -7186,45 +7633,31 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 <h3 id="agreed-register--p-p-2">I. Proposals awaiting a decision (not agreed; do not build)</h3>
+<p>The owner accepted the recommendations on 2026-10-19 (AG-20 to AG-24), so the former proposals for tax, the chart, the dimension framework, the foundations and manufacturing readiness are now <strong>planned</strong>. What still awaits a decision:</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
-<th>Proposal</th>
-<th>Where</th>
-<th>Needs from the owner</th>
+<th>Item</th>
+<th>Needs from</th>
+<th>Note</th>
 </tr>
 </thead><tbody><tr>
-<td>Tax engine <strong>details</strong> (the direction is agreed, AG-19): tax codes, profiles, determination rules, recovery, reverse charge, withholding, imports, Sprints 14 to 14f</td>
-<td><code>taxation-analysis</code> and the sprint plan</td>
-<td>The nine decisions in its section 10</td>
+<td>Confirmation of decisions D-1 to D-19 and the programme order</td>
+<td>Finance professional (review pack section 14)</td>
+<td>Building starts after the review</td>
 </tr>
 <tr>
-<td>Account master enrichment, chart templates, chart views, effective dating</td>
-<td><code>coa-tier1-benchmark</code> sections 7.1, 7.2</td>
-<td>Order, business models, statutory standard</td>
+<td>Year-end close method, cut-over date for the document-based reports, data retention and anonymisation policy</td>
+<td>Finance professional</td>
+<td>Policy questions, not owner choices</td>
 </tr>
 <tr>
-<td>Dimension framework capabilities (roles, attributes, lifecycle, valid combinations, balancing, break-down reports) and budgeting on dimension combinations</td>
-<td><code>coa-tier1-benchmark</code> sections 7.3, 7.4</td>
-<td>Whether to build, and the order</td>
+<td>Import VAT deferral, recovery apportionment, withholding rates, return boxes</td>
+<td>Tax adviser</td>
+<td>Law-dependent</td>
 </tr>
 <tr>
-<td>Foreign currency and parallel ledgers</td>
-<td><code>coa-tier1-benchmark</code> section 7.5</td>
-<td>Whether they are in the programme, before the above are frozen</td>
-</tr>
-<tr>
-<td>Account determination rules (one mechanism for tax and accounts)</td>
-<td>both notes</td>
-<td>Agreement to treat as one engine</td>
-</tr>
-<tr>
-<td>Structural readiness of the core for any domain: typed references, quantities on lines, accounting events, recognition schedules, currency and ledgers</td>
-<td><code>domain-neutral-core</code></td>
-<td>The seven decisions in its section 9</td>
-</tr>
-<tr>
-<td>Manufacturing cost accounting as an <strong>illustration</strong> of what the structure must permit (not a build request)</td>
-<td><code>manufacturing-and-tax-alignment</code></td>
-<td>Nothing now; domain choices when a module is requested</td>
+<td>Arabic edition and screenshots in the review pack</td>
+<td>Owner</td>
+<td>Optional</td>
 </tr>
 </tbody></table></div>
 <h3 id="agreed-register--p-p-3">J. Professional review of the agreed decisions (tier-1 practice and accounting guidelines)</h3>
@@ -9873,6 +10306,69 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>One closing entry into retained earnings; next year opens automatically.</td>
 </tr>
 <tr>
+<td>SF1</td>
+<td>Accounting events layer</td>
+<td>Planned</td>
+<td>TBD</td>
+<td>Documents raise accounting events; rules produce the lines with preview and re-derivation; every existing posting path moves onto the layer with identical results.</td>
+</tr>
+<tr>
+<td>SF2</td>
+<td>Currency and parallel ledgers</td>
+<td>Planned</td>
+<td>TBD</td>
+<td>Transaction, functional and reporting currency, rates, exchange differences, revaluation; several ledgers fed by the same events.</td>
+</tr>
+<tr>
+<td>SF3</td>
+<td>Typed references and quantities</td>
+<td>Planned</td>
+<td>TBD</td>
+<td>One typed reference mechanism and quantity with unit on ledger lines; quantity and rate in reports.</td>
+</tr>
+<tr>
+<td>SF4</td>
+<td>Account master, templates and chart views</td>
+<td>Planned</td>
+<td>TBD</td>
+<td>Account classes and controls, groups, industry templates, chart views with statutory mapping, effective dating and approval.</td>
+</tr>
+<tr>
+<td>SF5</td>
+<td>Determination engine</td>
+<td>Planned</td>
+<td>TBD</td>
+<td>One rule engine for accounts (and later tax codes) from transaction type, party class, item class, branch and date.</td>
+</tr>
+<tr>
+<td>SF6</td>
+<td>Dimension framework capabilities</td>
+<td>Planned</td>
+<td>TBD</td>
+<td>Roles, attributes and lifecycle, valid combinations, balancing, widened allocation, break-down reports.</td>
+</tr>
+<tr>
+<td>SF7</td>
+<td>Budgeting and commitment control</td>
+<td>Planned</td>
+<td>TBD</td>
+<td>Budget versions, control, commitments and budget versus actual on dimension combinations.</td>
+</tr>
+<tr>
+<td>SF8</td>
+<td>Recognition schedules</td>
+<td>Planned</td>
+<td>TBD</td>
+<td>One schedule engine for deferred income, prepaid cost, depreciation, lease income and progress-based recognition.</td>
+</tr>
+<tr>
+<td>SF9</td>
+<td>Segregation of duties and master-data approval</td>
+<td>Planned</td>
+<td>TBD</td>
+<td>Conflict rules and approval of sensitive master-data changes.</td>
+</tr>
+<tr>
 <td>S14</td>
 <td>Tax engine and codes (T1)</td>
 <td>Planned</td>
@@ -10386,7 +10882,220 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-PER-10.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-7">Sprint 14 — Tax engine and codes (T1) (Planned)</h3>
+<h3 id="sprint-log--p-p-7">Sprint F1 — Accounting events layer (Planned)</h3>
+<p>Documents raise accounting events; rules produce the lines with preview and re-derivation; every existing posting path moves onto the layer with identical results.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Item</th>
+<th>Title</th>
+<th>Business requirements</th>
+<th>System requirements</th>
+</tr>
+</thead><tbody><tr>
+<td>SF1-01</td>
+<td>Accounting events and rules; migration of every posting path</td>
+<td>BR-FND-01 Accounting events layer</td>
+<td>FR-FND-01.1</td>
+</tr>
+</tbody></table></div>
+<h3 id="sprint-log--p-p-p-4">Sprint F2 — Currency and parallel ledgers (Planned)</h3>
+<p>Transaction, functional and reporting currency, rates, exchange differences, revaluation; several ledgers fed by the same events.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Item</th>
+<th>Title</th>
+<th>Business requirements</th>
+<th>System requirements</th>
+</tr>
+</thead><tbody><tr>
+<td>SF2-01</td>
+<td>Currency</td>
+<td>BR-FND-03 Currency</td>
+<td>FR-FND-03.1</td>
+</tr>
+<tr>
+<td>SF2-02</td>
+<td>Parallel ledgers</td>
+<td>BR-FND-02 Parallel ledgers</td>
+<td>FR-FND-02.1</td>
+</tr>
+</tbody></table></div>
+<h3 id="sprint-log--p-p-p-5">Sprint F3 — Typed references and quantities (Planned)</h3>
+<p>One typed reference mechanism and quantity with unit on ledger lines; quantity and rate in reports.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Item</th>
+<th>Title</th>
+<th>Business requirements</th>
+<th>System requirements</th>
+</tr>
+</thead><tbody><tr>
+<td>SF3-01</td>
+<td>Typed business-object references</td>
+<td>BR-FND-04 Typed business-object references</td>
+<td>FR-FND-04.1</td>
+</tr>
+<tr>
+<td>SF3-02</td>
+<td>Quantities on ledger lines</td>
+<td>BR-FND-05 Quantities on ledger lines</td>
+<td>FR-FND-05.1</td>
+</tr>
+</tbody></table></div>
+<h3 id="sprint-log--p-p-p-6">Sprint F4 — Account master, templates and chart views (Planned)</h3>
+<p>Account classes and controls, groups, industry templates, chart views with statutory mapping, effective dating and approval.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Item</th>
+<th>Title</th>
+<th>Business requirements</th>
+<th>System requirements</th>
+</tr>
+</thead><tbody><tr>
+<td>SF4-01</td>
+<td>Account classification</td>
+<td>BR-COA-09 Account classification</td>
+<td>FR-COA-09.1</td>
+</tr>
+<tr>
+<td>SF4-02</td>
+<td>Posting controls and groups</td>
+<td>BR-COA-10 Posting controls and account groups</td>
+<td>FR-COA-10.1</td>
+</tr>
+<tr>
+<td>SF4-03</td>
+<td>Industry templates</td>
+<td>BR-COA-11 Industry chart templates</td>
+<td>FR-COA-11.1</td>
+</tr>
+<tr>
+<td>SF4-04</td>
+<td>Chart views and statutory mapping</td>
+<td>BR-COA-12 Chart views and statutory mapping</td>
+<td>FR-COA-12.1</td>
+</tr>
+<tr>
+<td>SF4-05</td>
+<td>Effective dating and approval</td>
+<td>BR-COA-13 Effective dating and approval of chart changes</td>
+<td>FR-COA-13.1</td>
+</tr>
+</tbody></table></div>
+<h3 id="sprint-log--p-p-8">Sprint F5 — Determination engine (Planned)</h3>
+<p>One rule engine for accounts (and later tax codes) from transaction type, party class, item class, branch and date.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Item</th>
+<th>Title</th>
+<th>Business requirements</th>
+<th>System requirements</th>
+</tr>
+</thead><tbody><tr>
+<td>SF5-01</td>
+<td>Account determination rules</td>
+<td>BR-FND-07 Account determination rules</td>
+<td>FR-FND-07.1</td>
+</tr>
+</tbody></table></div>
+<h3 id="sprint-log--p-p-p-7">Sprint F6 — Dimension framework capabilities (Planned)</h3>
+<p>Roles, attributes and lifecycle, valid combinations, balancing, widened allocation, break-down reports.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Item</th>
+<th>Title</th>
+<th>Business requirements</th>
+<th>System requirements</th>
+</tr>
+</thead><tbody><tr>
+<td>SF6-01</td>
+<td>Dimension type roles</td>
+<td>BR-DIM-09 Dimension type roles</td>
+<td>FR-DIM-09.1</td>
+</tr>
+<tr>
+<td>SF6-02</td>
+<td>Value attributes and lifecycle</td>
+<td>BR-DIM-10 Dimension value attributes and lifecycle</td>
+<td>FR-DIM-10.1</td>
+</tr>
+<tr>
+<td>SF6-03</td>
+<td>Valid-combination rules</td>
+<td>BR-DIM-11 Valid-combination rules between dimension types</td>
+<td>FR-DIM-11.1</td>
+</tr>
+<tr>
+<td>SF6-04</td>
+<td>Balancing and widened allocation</td>
+<td>BR-DIM-12 Balancing per dimension value</td>
+<td>FR-DIM-12.1</td>
+</tr>
+<tr>
+<td>SF6-05</td>
+<td>Break-down reports</td>
+<td>BR-DIM-13 Break-down reports</td>
+<td>FR-DIM-13.1</td>
+</tr>
+</tbody></table></div>
+<h3 id="sprint-log--p-p-9">Sprint F7 — Budgeting and commitment control (Planned)</h3>
+<p>Budget versions, control, commitments and budget versus actual on dimension combinations.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Item</th>
+<th>Title</th>
+<th>Business requirements</th>
+<th>System requirements</th>
+</tr>
+</thead><tbody><tr>
+<td>SF7-01</td>
+<td>Budget versions</td>
+<td>BR-BUD-01 Budget versions</td>
+<td>FR-BUD-01.1</td>
+</tr>
+<tr>
+<td>SF7-02</td>
+<td>Budget control</td>
+<td>BR-BUD-02 Budget control</td>
+<td>FR-BUD-02.1</td>
+</tr>
+<tr>
+<td>SF7-03</td>
+<td>Commitments</td>
+<td>BR-BUD-03 Commitments</td>
+<td>FR-BUD-03.1</td>
+</tr>
+<tr>
+<td>SF7-04</td>
+<td>Budget versus actual</td>
+<td>BR-BUD-04 Budget versus actual reporting</td>
+<td>FR-BUD-04.1</td>
+</tr>
+</tbody></table></div>
+<h3 id="sprint-log--p-p-10">Sprint F8 — Recognition schedules (Planned)</h3>
+<p>One schedule engine for deferred income, prepaid cost, depreciation, lease income and progress-based recognition.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Item</th>
+<th>Title</th>
+<th>Business requirements</th>
+<th>System requirements</th>
+</tr>
+</thead><tbody><tr>
+<td>SF8-01</td>
+<td>Recognition schedules and runs</td>
+<td>BR-FND-06 Recognition schedules</td>
+<td>FR-FND-06.1</td>
+</tr>
+</tbody></table></div>
+<h3 id="sprint-log--p-pp-p">Sprint F9 — Segregation of duties and master-data approval (Planned)</h3>
+<p>Conflict rules and approval of sensitive master-data changes.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Item</th>
+<th>Title</th>
+<th>Business requirements</th>
+<th>System requirements</th>
+</tr>
+</thead><tbody><tr>
+<td>SF9-01</td>
+<td>SoD rules and master-data approval</td>
+<td>BR-FND-08 Segregation of duties and master-data approval</td>
+<td>FR-FND-08.1</td>
+</tr>
+</tbody></table></div>
+<h3 id="sprint-log--p-p-11">Sprint 14 — Tax engine and codes (T1) (Planned)</h3>
 <p>One tax engine, tax codes with components and dated rates, accounts per code, tagged tax lines, migration of the existing slabs, governance.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -10419,7 +11128,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-TAX-17.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-p-4">Sprint 14b — Tax profiles and determination (T2) (Planned)</h3>
+<h3 id="sprint-log--p-p-p-8">Sprint 14b — Tax profiles and determination (T2) (Planned)</h3>
 <p>Party, item and company tax profiles; automatic determination; override with reason; supply natures; tax-inclusive pricing and cash rounding.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -10458,7 +11167,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-TAX-10.1, FR-TAX-03.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-8">Sprint 14c — Recovery, return from the ledger and settlement (T3) (Planned)</h3>
+<h3 id="sprint-log--p-p-12">Sprint 14c — Recovery, return from the ledger and settlement (T3) (Planned)</h3>
 <p>Recoverable and non-recoverable input tax, the VAT return and registers from ledger tags, the settlement entry on filing.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -10485,7 +11194,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-TAX-02.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-9">Sprint 14d — Reverse charge and withholding (T4) (Planned)</h3>
+<h3 id="sprint-log--p-p-13">Sprint 14d — Reverse charge and withholding (T4) (Planned)</h3>
 <p>Imported services: self-assessed tax; withholding on payments to non-residents.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -10506,7 +11215,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-TAX-15.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-p-5">Sprint 14e — Foreign currency, landed cost and imports (T5) (Planned)</h3>
+<h3 id="sprint-log--p-p-p-9">Sprint 14e — Foreign currency, landed cost and imports (T5) (Planned)</h3>
 <p>Foreign-currency purchase documents, landed cost, customs entry, automatic import of goods, several payees per shipment.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -10545,7 +11254,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-IMP-05.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-p-6">Sprint 14f — Excise and other tax components (T6) (Planned)</h3>
+<h3 id="sprint-log--p-p-p-10">Sprint 14f — Excise and other tax components (T6) (Planned)</h3>
 <p>Excise and any further tax components, only if a customer needs them.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -10560,7 +11269,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-TAX-16.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-10">Sprint 15 — Cost allocation (Planned)</h3>
+<h3 id="sprint-log--p-p-14">Sprint 15 — Cost allocation (Planned)</h3>
 <p>Allocation run and branch P&amp;L subtotals.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -10581,7 +11290,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-DIM-08.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-11">Sprint 16 — Dimensions on documents (Planned)</h3>
+<h3 id="sprint-log--p-p-15">Sprint 16 — Dimensions on documents (Planned)</h3>
 <p>Collect dimensions on invoice, expense and bill forms; enforce Required.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -10596,7 +11305,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-DIM-06.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-12">Sprint 17 — Receivables enhancements (Planned)</h3>
+<h3 id="sprint-log--p-p-16">Sprint 17 — Receivables enhancements (Planned)</h3>
 <p>Credit note application, statement printing, reminders.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -10617,7 +11326,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-AR-10.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-p-7">Sprint 18 — Payables enhancements (Planned)</h3>
+<h3 id="sprint-log--p-p-p-11">Sprint 18 — Payables enhancements (Planned)</h3>
 <p>Payment approval and payment runs.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -10659,7 +11368,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>FR-RPT-12.1</td>
 </tr>
 </tbody></table></div>
-<h3 id="sprint-log--p-p-p-8">Sprint 20 — Hardening and Live promotion (Planned)</h3>
+<h3 id="sprint-log--p-p-p-12">Sprint 20 — Hardening and Live promotion (Planned)</h3>
 <p>Excel bank import, Arabic/Urdu amount in words, COA references panel, promote to Live.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Item</th>
@@ -10746,6 +11455,36 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>Audit of chart changes</td>
 <td>Built</td>
 <td>S1</td>
+</tr>
+<tr>
+<td>BR-COA-09</td>
+<td>Account classification</td>
+<td>Planned</td>
+<td>SF4</td>
+</tr>
+<tr>
+<td>BR-COA-10</td>
+<td>Posting controls and account groups</td>
+<td>Planned</td>
+<td>SF4</td>
+</tr>
+<tr>
+<td>BR-COA-11</td>
+<td>Industry chart templates</td>
+<td>Planned</td>
+<td>SF4</td>
+</tr>
+<tr>
+<td>BR-COA-12</td>
+<td>Chart views and statutory mapping</td>
+<td>Planned</td>
+<td>SF4</td>
+</tr>
+<tr>
+<td>BR-COA-13</td>
+<td>Effective dating and approval of chart changes</td>
+<td>Planned</td>
+<td>SF4</td>
 </tr>
 <tr>
 <td>BR-JNL-01</td>
@@ -10944,6 +11683,36 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>Branch profit and loss subtotals</td>
 <td>Planned</td>
 <td>S15</td>
+</tr>
+<tr>
+<td>BR-DIM-09</td>
+<td>Dimension type roles</td>
+<td>Planned</td>
+<td>SF6</td>
+</tr>
+<tr>
+<td>BR-DIM-10</td>
+<td>Dimension value attributes and lifecycle</td>
+<td>Planned</td>
+<td>SF6</td>
+</tr>
+<tr>
+<td>BR-DIM-11</td>
+<td>Valid-combination rules between dimension types</td>
+<td>Planned</td>
+<td>SF6</td>
+</tr>
+<tr>
+<td>BR-DIM-12</td>
+<td>Balancing per dimension value</td>
+<td>Planned</td>
+<td>SF6</td>
+</tr>
+<tr>
+<td>BR-DIM-13</td>
+<td>Break-down reports</td>
+<td>Planned</td>
+<td>SF6</td>
 </tr>
 <tr>
 <td>BR-RPT-01</td>
@@ -11635,6 +12404,78 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>Planned</td>
 <td>S14e</td>
 </tr>
+<tr>
+<td>BR-FND-01</td>
+<td>Accounting events layer</td>
+<td>Planned</td>
+<td>SF1</td>
+</tr>
+<tr>
+<td>BR-FND-02</td>
+<td>Parallel ledgers</td>
+<td>Planned</td>
+<td>SF2</td>
+</tr>
+<tr>
+<td>BR-FND-03</td>
+<td>Currency</td>
+<td>Planned</td>
+<td>SF2</td>
+</tr>
+<tr>
+<td>BR-FND-04</td>
+<td>Typed business-object references</td>
+<td>Planned</td>
+<td>SF3</td>
+</tr>
+<tr>
+<td>BR-FND-05</td>
+<td>Quantities on ledger lines</td>
+<td>Planned</td>
+<td>SF3</td>
+</tr>
+<tr>
+<td>BR-FND-06</td>
+<td>Recognition schedules</td>
+<td>Planned</td>
+<td>SF8</td>
+</tr>
+<tr>
+<td>BR-FND-07</td>
+<td>Account determination rules</td>
+<td>Planned</td>
+<td>SF5</td>
+</tr>
+<tr>
+<td>BR-FND-08</td>
+<td>Segregation of duties and master-data approval</td>
+<td>Planned</td>
+<td>SF9</td>
+</tr>
+<tr>
+<td>BR-BUD-01</td>
+<td>Budget versions</td>
+<td>Planned</td>
+<td>SF7</td>
+</tr>
+<tr>
+<td>BR-BUD-02</td>
+<td>Budget control</td>
+<td>Planned</td>
+<td>SF7</td>
+</tr>
+<tr>
+<td>BR-BUD-03</td>
+<td>Commitments</td>
+<td>Planned</td>
+<td>SF7</td>
+</tr>
+<tr>
+<td>BR-BUD-04</td>
+<td>Budget versus actual reporting</td>
+<td>Planned</td>
+<td>SF7</td>
+</tr>
 </tbody></table></div>
 <h3 id="sprint-log--p-6">Roadmap (not yet built)</h3>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -11651,6 +12492,51 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>S13</td>
 <td>Year-end close</td>
 <td>BR-PER-10</td>
+</tr>
+<tr>
+<td>SF1</td>
+<td>Accounting events layer</td>
+<td>BR-FND-01</td>
+</tr>
+<tr>
+<td>SF2</td>
+<td>Currency and parallel ledgers</td>
+<td>BR-FND-03; BR-FND-02</td>
+</tr>
+<tr>
+<td>SF3</td>
+<td>Typed references and quantities</td>
+<td>BR-FND-04; BR-FND-05</td>
+</tr>
+<tr>
+<td>SF4</td>
+<td>Account master, templates and chart views</td>
+<td>BR-COA-09; BR-COA-10; BR-COA-11; BR-COA-12; BR-COA-13</td>
+</tr>
+<tr>
+<td>SF5</td>
+<td>Determination engine</td>
+<td>BR-FND-07</td>
+</tr>
+<tr>
+<td>SF6</td>
+<td>Dimension framework capabilities</td>
+<td>BR-DIM-09; BR-DIM-10; BR-DIM-11; BR-DIM-12; BR-DIM-13</td>
+</tr>
+<tr>
+<td>SF7</td>
+<td>Budgeting and commitment control</td>
+<td>BR-BUD-01; BR-BUD-02; BR-BUD-03; BR-BUD-04</td>
+</tr>
+<tr>
+<td>SF8</td>
+<td>Recognition schedules</td>
+<td>BR-FND-06</td>
+</tr>
+<tr>
+<td>SF9</td>
+<td>Segregation of duties and master-data approval</td>
+<td>BR-FND-08</td>
 </tr>
 <tr>
 <td>S14</td>

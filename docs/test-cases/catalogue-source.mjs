@@ -41,6 +41,8 @@ export const MODULES = [
   { id: "CFG", name: "Document templates and translations", ref: "Warraq 1.0 baseline (as built); BR-CFG" },
   { id: "TAX", name: "Taxation: codes, profiles, determination, recovery, return", ref: "docs/design-notes/taxation-analysis.md; BR-TAX" },
   { id: "IMP", name: "Imports, landed cost and foreign currency", ref: "docs/design-notes/taxation-analysis.md; BR-IMP" },
+  { id: "FND", name: "Core foundations", ref: "docs/design-notes/domain-neutral-core.md; BR-FND" },
+  { id: "BUD", name: "Budgeting", ref: "docs/design-notes/coa-tier1-benchmark.md; BR-BUD" },
 ];
 
 const T = {};
@@ -104,6 +106,11 @@ add('COA', [
   ['An ordinary account becomes a customer or vendor control account only if it fits and has no postings', 'Functional', 'P1', 'An asset account without postings', 'It is made a customer control account; then one with postings', 'The first succeeds, the second is refused', 'API', 'tests/ledgerPostingProfile.test.ts'],
   ['Arabic account names show on Arabic documents and the chart', 'Usability', 'P3', 'An account with an Arabic name', 'The UI language is Arabic', 'The Arabic name is shown', 'UI', 'Manual'],
   ['Expense accounts picked in a bank reconciliation exclude headings, control and inactive accounts', 'Functional', 'P2', 'A chart with each kind', 'The adjustment account list is read', 'Only active, postable expense and revenue accounts are offered', 'API', 'tests/bankReconciliation.test.ts'],
+  ["Account classification drives the cash-flow statement and statutory lines","Functional","P1","Accounts with classes and a chart view","Statements are run","Lines and cash flow derive from the classes","API+DB","Candidate"],
+  ["A blocked account refuses a posting; an auto-only account refuses a manual journal","Negative","P1","A blocked and an auto-only account","Postings are attempted","Refused with the reason","API+DB","Candidate"],
+  ["A retail template creates its role accounts, dimension rules and layouts and can be merged","Functional","P2","A new company","A template is chosen then merged into another company chart","Accounts created without duplicates","API+DB","Candidate"],
+  ["The same ledger is presented through two chart views with equal totals","Integration","P1","Two views mapped","Statements are run for each","Totals equal; lines differ","API+DB","Candidate"],
+  ["A chart change dated in future does not alter past statements and needs approval when configured","Boundary","P2","Approval on for chart changes","An account is changed","Pending until approved; history unchanged","API+DB","Candidate"],
 ]);
 
 add('JV', [
@@ -157,6 +164,11 @@ add('DIM', [
   ['Documents apply defaults but never block on a Required rule', 'Regression', 'P1', 'An invoice for an account with a Required rule', 'The invoice is posted', 'It posts; defaults fill; no blocking', 'API', 'tests/ledgerDimensions.test.ts'],
   ['The database refuses a dimension entry pointing at another company value', 'Security', 'P1', 'Two companies', 'Cross insert', 'Composite FK rejects', 'DB', 'tests/ledgerDimensions.test.ts'],
   ['Branch-restricted user only sees entries of their own branches in ledger reads', 'Security', 'P1', 'A user restricted to branch X', 'General ledger and journals are read', 'Only branch X entries (entries with no branch are hidden)', 'API', 'Candidate'],
+  ["A balancing type forces per-value balance with inter-unit clearing","Functional","P1","A balancing profit-centre type","An entry unbalanced per value is posted","Clearing lines are added; each value balances","API+DB","Candidate"],
+  ["A value outside its validity or in a closed status refuses posting","Negative","P1","A closed project value","A line is posted to it","Refused","API+DB","Candidate"],
+  ["An invalid combination of types is refused and a default is derived","Functional","P2","A rule project implies profit centre","A line names a project only","The profit centre is derived; a mismatch is refused","API+DB","Candidate"],
+  ["Allocation by a statistical driver over any type posts net zero","Functional","P1","A pool and a driver of hours","The run is previewed and posted","Cost moves by the driver; net zero","API+DB","Candidate"],
+  ["A break-down report gives a column per value with roll-up","Functional","P2","A hierarchical type","A profit and loss is broken down","One column per value; parents roll up","API+DB","Candidate"],
 ]);
 
 add('RPT', [
@@ -601,6 +613,26 @@ add("IMP", [
   ["A purchase of goods from a foreign vendor is determined as an import without operator input","Functional","P1","A foreign-profile vendor and a goods item","A purchase order is received","Import of goods is applied and the customs entry requested","API+DB","Candidate"],
   ["Several payees of one shipment each get their own payable","Functional","P1","Goods vendor, forwarder, customs and insurer","The shipment costs are posted","Four payables, each in aging","API+DB","Candidate"],
   ["The average cost used for cost of sales is the landed cost","Regression","P1","An item received with landed costs","It is sold","Cost of sales uses the landed average","API+DB","Candidate"],
+]);
+
+add("FND", [
+  ["Every existing document posts the same entries through the events layer as before","Regression","P1","The existing test book","All documents are posted before and after the move","Identical entries and totals","API+DB","Candidate"],
+  ["An event is previewed and re-derived without writing","Functional","P1","A document","Preview is requested","Lines shown; nothing written","API+DB","Candidate"],
+  ["A second ledger receives its own rendering of the same event with its own period status","Functional","P1","Two ledgers","A document is posted","Each ledger has its entry; one can be closed independently","API+DB","Candidate"],
+  ["A foreign-currency purchase stores rate and base amounts and posts the exchange difference on settlement","Functional","P1","A purchase at 3.75 paid at 3.76","Settled","Exchange difference posted","API+DB","Candidate"],
+  ["Revaluation of open items posts the unrealised difference and reverses next period","Functional","P2","Open foreign items","The run is posted","Difference posted and reversed","API+DB","Candidate"],
+  ["A typed reference to an object validates the object type and company","Security","P1","An object of another company","A line references it","Refused","API+DB","Candidate"],
+  ["Quantity and unit on lines give a per-unit rate in a report","Functional","P2","Lines with hours","A rate report is run","Amount per hour shown","API+DB","Candidate"],
+  ["A recognition schedule releases deferred income monthly through an approved run","Functional","P1","A twelve-month contract","Runs are posted monthly","Revenue released evenly; locked after posting","API+DB","Candidate"],
+  ["Determination returns accounts by item class and refuses a missing rule","Negative","P1","A class without a rule","A document is saved","Refused naming the rule","API+DB","Candidate"],
+  ["A conflicting-duty pair is refused for one user and a bank-detail change needs approval","Security","P1","A SoD rule and approval on vendor bank details","Both are attempted","Refused; held pending approval","API+DB","Candidate"],
+]);
+
+add("BUD", [
+  ["A budget line keyed on account and dimension combination for a period is stored per version","Functional","P1","Two versions","Lines are saved","Versions are independent","API+DB","Candidate"],
+  ["Warn and stop modes act at posting for the chosen types only","Boundary","P1","A control on department and account group","Postings exceed the budget","Warn or refuse as configured; other types unaffected","API+DB","Candidate"],
+  ["An open requisition counts as a commitment until invoiced","Functional","P2","A requisition","A bill is posted","Commitment released as actual is posted","API+DB","Candidate"],
+  ["Budget versus actual shows variance for any dimension","Functional","P2","A budget and postings","The report is run","Variance by dimension value","API+DB","Candidate"],
 ]);
 
 export const CASES = [];
