@@ -28,7 +28,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 .filters{display:flex;flex-wrap:wrap;gap:.6rem;margin:1rem 0}.filters input,.filters select{font:inherit;padding:.4rem .6rem;border:1px solid var(--line);border-radius:8px;background:var(--raised)}
 @media (max-width:900px){.layout{grid-template-columns:1fr}.rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:1.2rem 1rem 3rem}}
 @media print{.rail{display:none}.layout{grid-template-columns:1fr}.chapter{page-break-before:always}}
-</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Technical documentation</div><a class="home" href="../index.html">← All documentation</a><div class="grp">Orientation</div><a href="#overview">1. How this documentation fits together</a><a href="#environments">2. Environments: Live (1.0) and Demo / development (2.0)</a><div class="grp">The whole system</div><a href="#platform">3. Platform architecture: how the whole system works</a><a href="#module-catalogue">4. Annex H: Module catalogue (every module, older and new)</a><div class="grp">Requirements</div><a href="#brd">5. Business Requirements Document</a><a href="#srs">6. Software Requirements Specification</a><div class="grp">Design</div><a href="#solution-design">7. Solution Design Document</a><a href="#technical-design">8. Technical Design Document</a><a href="#accounting-rules">9. Accounting and reporting rules</a><a href="#period-rule">10. Period rule for cancel, reversal, return and credit</a><a href="#date-standard">11. Date fields on documents: the standard (Demo / 2.0)</a><a href="#posting-control">12. Posting control: the lock date and back-dating rules (Demo / 2.0)</a><a href="#ar-ap-bank">13. AR, AP and bank reconciliation: design against the Finance Core Blueprint (Demo / 2.0)</a><a href="#dimensions-decisions">14. GL Step 1.5: dimensions and configurable statements. CFO and architect decisions</a><a href="#approval-research">15. Sprint 11 — Approval rules: what tier-1 ERPs do, and what we should build</a><a href="#tax-analysis">16. Taxation and tax profiles: analysis and design options (for decision, nothing built)</a><div class="grp">Quality</div><a href="#test-strategy">17. Test Strategy</a><div class="grp">Delivery</div><a href="#sprint-log">18. Sprint log and plan — GL / AR / AP 2.0</a><div class="grp">Reference</div><a href="#api">19. Annex B — API reference (GL / AR / AP routes)</a><a href="#permissions">20. Annex C — Permission modules (GL / AR / AP)</a><a href="#posting-rules">21. Annex D — Posting rules catalogue</a><a href="#developer-guide">22. Annex E — Developer guide for future ledger work</a><a href="#runbook">23. Annex F — Operations runbook (ledger core)</a><a href="#glossary">24. Annex G — Glossary</a><div class="grp">Operations and proposals</div><a href="#deployment">25. Hostinger VPS Deployment Plan</a><a href="#ha-proposal">26. High Availability Plan (for review)</a><a href="#ai-proposal">27. AI Features — Implementation Plan (for review)</a><div class="grp">Linked documents</div><a href="#linked">28. Linked pages and other documents</a></aside><main><p class="eyebrow">Warraq ERP · Technical documentation</p><h1 style="font-size:2.3rem;margin:.2rem 0 1.5rem">Warraq ERP: platform, modules and finance core</h1>
+</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Technical documentation</div><a class="home" href="../index.html">← All documentation</a><div class="grp">Orientation</div><a href="#overview">1. How this documentation fits together</a><a href="#environments">2. Environments: Live (1.0) and Demo / development (2.0)</a><div class="grp">The whole system</div><a href="#platform">3. Platform architecture: how the whole system works</a><a href="#module-catalogue">4. Annex H: Module catalogue (every module, older and new)</a><div class="grp">Requirements</div><a href="#brd">5. Business Requirements Document</a><a href="#srs">6. Software Requirements Specification</a><div class="grp">Design</div><a href="#solution-design">7. Solution Design Document</a><a href="#technical-design">8. Technical Design Document</a><a href="#accounting-rules">9. Accounting and reporting rules</a><a href="#period-rule">10. Period rule for cancel, reversal, return and credit</a><a href="#date-standard">11. Date fields on documents: the standard (Demo / 2.0)</a><a href="#posting-control">12. Posting control: the lock date and back-dating rules (Demo / 2.0)</a><a href="#ar-ap-bank">13. AR, AP and bank reconciliation: design against the Finance Core Blueprint (Demo / 2.0)</a><a href="#dimensions-decisions">14. GL Step 1.5: dimensions and configurable statements. CFO and architect decisions</a><a href="#approval-research">15. Sprint 11 — Approval rules: what tier-1 ERPs do, and what we should build</a><a href="#coa-benchmark">16. Chart of accounts: benchmark against tier-1 ERPs and fit to retail, trading, manufacturing, profit-centre, budgeting and project costing</a><a href="#tax-analysis">17. Taxation and tax profiles: analysis and design options (for decision, nothing built)</a><div class="grp">Quality</div><a href="#test-strategy">18. Test Strategy</a><div class="grp">Delivery</div><a href="#sprint-log">19. Sprint log and plan — GL / AR / AP 2.0</a><div class="grp">Reference</div><a href="#api">20. Annex B — API reference (GL / AR / AP routes)</a><a href="#permissions">21. Annex C — Permission modules (GL / AR / AP)</a><a href="#posting-rules">22. Annex D — Posting rules catalogue</a><a href="#developer-guide">23. Annex E — Developer guide for future ledger work</a><a href="#runbook">24. Annex F — Operations runbook (ledger core)</a><a href="#glossary">25. Annex G — Glossary</a><div class="grp">Operations and proposals</div><a href="#deployment">26. Hostinger VPS Deployment Plan</a><a href="#ha-proposal">27. High Availability Plan (for review)</a><a href="#ai-proposal">28. AI Features — Implementation Plan (for review)</a><div class="grp">Linked documents</div><a href="#linked">29. Linked pages and other documents</a></aside><main><p class="eyebrow">Warraq ERP · Technical documentation</p><h1 style="font-size:2.3rem;margin:.2rem 0 1.5rem">Warraq ERP: platform, modules and finance core</h1>
 <section class="chapter" id="overview"><p class="eyebrow">Chapter 1</p><h2>How this documentation fits together</h2><p>This is the technical documentation of Warraq ERP as a whole: how the platform works (companies, permissions, ledger, e-invoicing), every module with its endpoints, tables, screens and tests, and the requirements, design, tests and delivery history. The requirements and tests of the older modules (sales, expenses, procurement, POS, ZATCA, VAT, master data, users) were written as built from the code and its automated tests; those of the finance core (General Ledger, Receivables, Payables, Bank) were written before it was built. It is one document, read top to bottom or by the menu on the left. Three long tables are on their own pages and linked: the <a href="data-dictionary.html">data dictionary</a>, the <a href="traceability.html">traceability matrix</a> and the <a href="test-catalogue.html">test-case catalogue</a>.</p>
 <div class="table-wrap"><table class="plan"><thead><tr><th>If you want to know…</th><th>Read</th></tr></thead><tbody>
 <tr><td>How the whole system works, and what modules exist</td><td><a href="#platform">Platform architecture</a>, then the <a href="#module-catalogue">Module catalogue</a> (one sheet per module)</td></tr>
@@ -46,7 +46,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 </tbody></table></div>
 <div class="callout"><div class="label">Which version is described</div><p>The finance core is <b>Warraq 2.0</b> (branch <code>v2</code>, the Demo). Live (1.0, branch <code>master</code>) does not have it yet. Chapters say so where it matters; the <a href="#environments">Environments</a> chapter explains the two tracks.</p></div>
 <div class="callout warn"><div class="label">Reading copy, not the source</div><p>This page is generated. The requirements, system requirements, sprint log, traceability and annexes A to C are generated from <code>docs/gl-ap-ar/source/*.mjs</code> and from the code; the other chapters are hand-written Markdown under <code>docs/gl-ap-ar</code>, <code>docs/design-notes</code>, <code>docs/operations</code> and <code>docs/proposals</code>. Edit those, then run <code>npx tsx scripts/build-gl-docs.mjs</code> and <code>node scripts/build-docs-html.mjs</code>; never edit this page. The skill <code>update-docs-after-development</code> walks through it.</p></div>
-<p class="src">Version: built 2026-10-19, branch v2, after commit 69905e0.</p></section>
+<p class="src">Version: built 2026-10-19, branch v2, after commit 98d9bcc.</p></section>
 <section class="chapter" id="environments"><p class="eyebrow">Chapter 2</p><h2>Environments: Live (1.0) and Demo / development (2.0)</h2><p class="src">Source: <code>docs/operations/environments.md</code></p><p>Two words are used everywhere from now on:</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th></th>
@@ -5430,7 +5430,618 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li><strong>Back-dating, lock-date override and reopening a reconciliation remain authority rights</strong>, not workflow.</li>
 </ol>
 </section>
-<section class="chapter" id="tax-analysis"><p class="eyebrow">Chapter 16</p><h2>Taxation and tax profiles: analysis and design options (for decision, nothing built)</h2><p class="src">Source: <code>docs/design-notes/taxation-analysis.md</code> · <span class="pill">Analysis and proposal for decision: nothing built (Sprints 14 to 14f)</span></p><p>Written 2026-10-19 after the owner asked for a holistic accountant&#39;s view of taxation: how tier-1 ERPs do it, how imports, manufacturing and retail behave, how our solution measures up, and a flexible design in which <strong>the system, not the data entry operator, decides what to post and where</strong>. This note analyses and proposes; it does not decide. Section 10 lists the decisions needed.</p>
+<section class="chapter" id="coa-benchmark"><p class="eyebrow">Chapter 16</p><h2>Chart of accounts: benchmark against tier-1 ERPs and fit to retail, trading, manufacturing, profit-centre, budgeting and project costing</h2><p class="src">Source: <code>docs/design-notes/coa-tier1-benchmark.md</code> · <span class="pill">Benchmark and proposal for decision: nothing built</span></p><p>Written 2026-10-19 at the owner&#39;s request, after the owner observed that the finance core looked like &quot;simple forms making entries&quot;. This is an analysis with a gap register and a target architecture for decision. Nothing is built or registered in the requirement set yet (section 9 proposes the entries).</p>
+<p><strong>Confidence.</strong> Our side (sections 2 and 5) was read from the code and the requirement register today. The tier-1 side is general product knowledge of SAP S/4HANA, Oracle Fusion General Ledger, Microsoft Dynamics 365 Finance and NetSuite, plus the documentation pages already checked for the tax analysis; account-attribute lists were <strong>not</strong> re-verified against current vendor documentation in this session and should be confirmed per vendor before a feature is copied from them.</p>
+<h3 id="coa-benchmark--section">1. What a chart of accounts is for, in a tier-1 system</h3>
+<p>A tier-1 chart is not a list of ledger accounts. It is the <strong>classification and control backbone</strong> of the whole finance system:</p>
+<ol>
+<li><strong>It classifies</strong> every amount for statutory statements, management reporting, cash flow and tax (account type and sub-type, statement line, cash-flow class, nature versus function of expense).</li>
+<li><strong>It controls posting</strong>: which documents may post to an account, whether it needs a currency, a tax category, a cost centre or a project, whether it is blocked, whether it is a reconciliation (control) account, whether line items are open items.</li>
+<li><strong>It is the natural-account segment of a larger structure</strong>: with cost centres, profit centres, projects and other dimensions it forms the accounting combination that the ledger stores, and the system validates which combinations are allowed.</li>
+<li><strong>It supports several views</strong>: operational chart, group (consolidation) chart, country or statutory chart, each mapped to the other.</li>
+<li><strong>It is governed</strong>: changes are controlled, effective-dated, audited and cannot break history.</li>
+<li><strong>It is the anchor of automation</strong>: account determination (documents find their own accounts) and templates per industry.</li>
+</ol>
+<h3 id="coa-benchmark---2">2. Our chart today (from the code)</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Aspect</th>
+<th>What exists</th>
+</tr>
+</thead><tbody><tr>
+<td>Account record</td>
+<td>Code, English and Arabic name, <strong>one of five types</strong> (asset, liability, equity, revenue, expense), parent, heading flag, active flag, system role key, control flag, subledger type (customer, vendor, inventory, bank, tax, clearing, other), linked bank</td>
+</tr>
+<tr>
+<td>Hierarchy</td>
+<td>Parent and child, headings that total, up to four levels, no loops, parent of the same type</td>
+</tr>
+<tr>
+<td>Numbering</td>
+<td>Free text code, unique per company</td>
+</tr>
+<tr>
+<td>Roles</td>
+<td>16 system roles (receivable, payable, inventory, goods-received-not-invoiced, VAT input and output, VAT payable, vendor credit, revenue, cost of sales, direct operating expense, fixed assets, paid-in capital, retained earnings, cash rounding, bank) each mapped once per company</td>
+</tr>
+<tr>
+<td>Control accounts</td>
+<td>Receivable, payable, inventory, banks, tax and clearing accounts are postable only by their own documents; a customer or vendor may name its own control account</td>
+</tr>
+<tr>
+<td>Expense categories</td>
+<td>Each expense category maps to an account</td>
+</tr>
+<tr>
+<td>Dimensions</td>
+<td>Configurable dimension types (branch and department seeded; any custom type), hierarchical values, <strong>rules per account</strong> (required, optional, not allowed, with default), default tags from document, party, bank and account, filters in all ledger reports</td>
+</tr>
+<tr>
+<td>Starter chart</td>
+<td>One generic chart of about 35 accounts for every company; it includes accumulated depreciation, depreciation expense and zakat payable although there is no fixed-asset or zakat module</td>
+</tr>
+<tr>
+<td>Governance</td>
+<td>Duplicate codes refused; type cannot change once postings exist; deactivation blocked with balance, role, control or children; Excel import with preview; no approval of chart changes; no effective dating</td>
+</tr>
+<tr>
+<td>Statements</td>
+<td>A report designer builds statements from account selectors; the five types are the only built-in classification</td>
+</tr>
+</tbody></table></div>
+<h3 id="coa-benchmark---3">3. How the tier-1 systems structure it</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Concept</th>
+<th>SAP S/4HANA</th>
+<th>Oracle Fusion GL</th>
+<th>Dynamics 365 Finance</th>
+<th>NetSuite</th>
+</tr>
+</thead><tbody><tr>
+<td>Structure of the account</td>
+<td>Chart of accounts (operational, group, country) + G/L account with account group and company-code data; profit centre, segment, functional area, cost centre and project are <strong>standard fields</strong> of the universal journal</td>
+<td><strong>Chart of accounts structure</strong> of segments (balancing, natural account, cost centre, intercompany, others), each with a value set and hierarchies</td>
+<td><strong>Main account</strong> + <strong>financial dimensions</strong>, joined by <strong>account structures</strong> with rules for valid combinations</td>
+<td>Account + <strong>segments</strong> (department, class, location, custom) per subsidiary</td>
+</tr>
+<tr>
+<td>Classification</td>
+<td>Account type (balance sheet, P&L; primary and secondary costs), <strong>financial statement version</strong> items, functional area, cash-flow relevance</td>
+<td>Account type per natural-account value (asset, liability, equity, revenue, expense); <strong>account hierarchies</strong> (trees) for reporting; cash-flow assignment</td>
+<td>Main account type and category (system categories drive reporting), posting type, <strong>financial reporting</strong> row definitions</td>
+<td>Account type list (bank, receivable, other current asset, fixed asset, payable, current liability, long-term liability, equity, income, cost of goods sold, expense, other) plus cash-flow rate type</td>
+</tr>
+<tr>
+<td>Posting control</td>
+<td><strong>Account group</strong> sets mandatory and hidden fields (<strong>field status</strong>); reconciliation account flag; open-item management; line-item display; tax category; <strong>blocked for posting</strong></td>
+<td>Allow posting, allow budgeting, reconciliation flag at value level; <strong>cross-validation rules</strong> for combinations</td>
+<td>Debit or credit required, open items, account currency, default dimensions, dimension rules, blocked</td>
+<td>Restrict by department, class, location; subsidiary restriction; revenue and inventory options</td>
+</tr>
+<tr>
+<td>Several views</td>
+<td>Operational, group and country charts with <strong>mapping</strong>; parallel ledgers (IFRS, local GAAP, tax)</td>
+<td>Several ledgers with <strong>ledger sets</strong>, secondary ledgers and reporting currencies</td>
+<td>Several ledgers and a <strong>consolidation account</strong> mapping</td>
+<td>Subsidiaries with elimination accounts</td>
+</tr>
+<tr>
+<td>Profit centre accounting</td>
+<td>Profit centre and segment on every line; <strong>profit centre balance sheet</strong>; inter-profit-centre clearing</td>
+<td><strong>Balancing segment</strong> gives balanced books per profit unit; intercompany balancing</td>
+<td>Financial dimension with <strong>balancing</strong> option and default dimensions</td>
+<td>Class or department as the profit unit</td>
+</tr>
+<tr>
+<td>Cost objects</td>
+<td>Cost centres, internal orders, <strong>WBS elements</strong>, production orders</td>
+<td>Cost centre segment, project accounting (PPM)</td>
+<td>Project management and accounting with cost and revenue recognition</td>
+<td>Projects and jobs</td>
+</tr>
+<tr>
+<td>Budget</td>
+<td>Budget and commitment (funds management, in public sector and enterprise), plan versions in controlling</td>
+<td><strong>Budgetary control</strong> with funds checks, budget by segment combination and period</td>
+<td><strong>Budget control</strong> (accounting-based), budget registers, cycles, plans</td>
+<td>Budgets by account, dimension and period</td>
+</tr>
+<tr>
+<td>Currency</td>
+<td>Account currency, only-balances-in-local flag, revaluation key</td>
+<td>Account type of currency, revaluation and translation</td>
+<td>Account currency, revaluation, exchange-rate type</td>
+<td>Rate types per account</td>
+</tr>
+<tr>
+<td>Templates</td>
+<td>Industry solutions and best-practice charts</td>
+<td>Seeded charts per localisation</td>
+<td>Localised charts</td>
+<td>SuiteSuccess industry charts</td>
+</tr>
+<tr>
+<td>Governance</td>
+<td>Change documents, restricted fields once used, mass maintenance</td>
+<td>Value set security, effectivity dates on values</td>
+<td>Account structures with effective dates, inquiry of changes</td>
+<td>Role permissions, no deletion once used</td>
+</tr>
+</tbody></table></div>
+<p>The patterns that matter for us: <strong>classification attributes on the account</strong>, <strong>posting controls on the account</strong>, <strong>a dimension model with validation of combinations</strong>, <strong>several views of the same ledger</strong>, <strong>first-class profit centre, cost object and budget</strong>, <strong>effective-dated governance</strong>.</p>
+<h3 id="coa-benchmark--p-p">4. Benchmark: capability by capability</h3>
+<p>Status key: <strong>Built</strong>, <strong>Partial</strong>, <strong>Absent</strong>. &quot;Retrofit cost&quot; estimates how hard it is to add later without rewriting history (L low, M medium, H high).</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>#</th>
+<th>Capability</th>
+<th>Tier-1 standard</th>
+<th>Ours</th>
+<th>Status</th>
+<th>Retrofit</th>
+</tr>
+</thead><tbody><tr>
+<td>1</td>
+<td>Type granularity</td>
+<td>Sub-types (current, non-current, cash, receivable ...), statement line, cash-flow class, nature versus function of expense</td>
+<td>Five types only; statements rely on selectors in the designer</td>
+<td><strong>Partial</strong></td>
+<td>L</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Hierarchy</td>
+<td>Several hierarchies (statutory, management) over the same accounts</td>
+<td>One parent-child tree, four levels</td>
+<td><strong>Partial</strong></td>
+<td>M</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Numbering and groups</td>
+<td>Account groups with number ranges and defaults</td>
+<td>Free code, no groups</td>
+<td><strong>Absent</strong></td>
+<td>L</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Posting controls on the account</td>
+<td>Required fields, blocked, auto-post only, tax category, currency, open items</td>
+<td>Control flag and dimension rules; no block-for-posting distinct from inactive; no tax category; no currency</td>
+<td><strong>Partial</strong></td>
+<td>M</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Reconciliation (control) accounts</td>
+<td>Per subledger, automatic</td>
+<td>Built, with per-party control accounts</td>
+<td><strong>Built</strong></td>
+<td></td>
+</tr>
+<tr>
+<td>6</td>
+<td>Account currency and revaluation</td>
+<td>Per account</td>
+<td>Absent (no multi-currency)</td>
+<td><strong>Absent</strong></td>
+<td>H</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Several charts or books</td>
+<td>Operational, group, statutory with mapping; parallel ledgers</td>
+<td>One chart per company, one ledger</td>
+<td><strong>Absent</strong></td>
+<td>H</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Dimension model</td>
+<td>Segments or dimensions with valid-combination rules</td>
+<td>Dimensions with rules <strong>per account</strong>; no cross-validation between dimensions; no balancing dimension</td>
+<td><strong>Partial</strong></td>
+<td>M</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Profit centre accounting</td>
+<td>Profit centre on every line, balanced books and balance sheet per profit centre, inter-unit clearing</td>
+<td>Branch or department tags; <strong>no profit centre object, no balance per profit centre, no inter-unit clearing</strong>; allocation planned only</td>
+<td><strong>Partial</strong></td>
+<td>M</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Cost objects</td>
+<td>Cost centres, internal orders, projects with WBS, production orders</td>
+<td>Department dimension (cost centre); custom dimension types can imitate a project but with no master data, status, dates, budget, customer or billing</td>
+<td><strong>Partial</strong></td>
+<td>M</td>
+</tr>
+<tr>
+<td>11</td>
+<td>Statistical accounts and units</td>
+<td>Quantity and statistical postings</td>
+<td>Absent</td>
+<td><strong>Absent</strong></td>
+<td>M</td>
+</tr>
+<tr>
+<td>12</td>
+<td>Budgeting</td>
+<td>Budget versions by account × dimensions × period; checks at posting or at commitment; variance reporting</td>
+<td>Absent; the Blueprint does not mention it</td>
+<td><strong>Absent</strong></td>
+<td>M</td>
+</tr>
+<tr>
+<td>13</td>
+<td>Project accounting</td>
+<td>Project master, tasks or WBS, cost collection, billing, WIP, revenue recognition, retention</td>
+<td>Absent</td>
+<td><strong>Absent</strong></td>
+<td>H</td>
+</tr>
+<tr>
+<td>14</td>
+<td>Industry templates</td>
+<td>Charts for retail, trading, manufacturing, services, construction</td>
+<td>One generic chart of about 35 accounts</td>
+<td><strong>Absent</strong></td>
+<td>L</td>
+</tr>
+<tr>
+<td>15</td>
+<td>Manufacturing accounts</td>
+<td>Raw material, WIP, finished goods, variances, absorbed overhead</td>
+<td>One inventory control account; work in progress specified in the Blueprint, not built</td>
+<td><strong>Absent</strong></td>
+<td>H</td>
+</tr>
+<tr>
+<td>16</td>
+<td>Retail accounts</td>
+<td>Sales by channel, discounts and returns as contra-revenue, cash over and short, shrinkage, payment-provider clearing, gift card and loyalty liabilities</td>
+<td>Single sales revenue role; returns post through credit notes; no clearing or liability accounts for cards, vouchers, loyalty</td>
+<td><strong>Partial</strong></td>
+<td>M</td>
+</tr>
+<tr>
+<td>17</td>
+<td>Prepaid, accrued and deferred</td>
+<td>Prepaid expense, deferred revenue, accrued income, contract assets and liabilities, with release schedules</td>
+<td>Accrued expenses account and recurring accruals only</td>
+<td><strong>Partial</strong></td>
+<td>M</td>
+</tr>
+<tr>
+<td>18</td>
+<td>Provisions and write-offs</td>
+<td>Bad-debt provision, inventory obsolescence, write-off reasons</td>
+<td>Absent</td>
+<td><strong>Absent</strong></td>
+<td>M</td>
+</tr>
+<tr>
+<td>19</td>
+<td>Intercompany and elimination</td>
+<td>Intercompany accounts and elimination</td>
+<td>Absent</td>
+<td><strong>Absent</strong></td>
+<td>H</td>
+</tr>
+<tr>
+<td>20</td>
+<td>Year-end accounts</td>
+<td>Closing and carry-forward through retained earnings, with controls</td>
+<td>Opening balances built; year-end close planned (Sprint 13)</td>
+<td><strong>Partial</strong></td>
+<td>L</td>
+</tr>
+<tr>
+<td>21</td>
+<td>Statements</td>
+<td>Statement versions with comparatives, drill-down</td>
+<td>Report designer built</td>
+<td><strong>Built</strong></td>
+<td></td>
+</tr>
+<tr>
+<td>22</td>
+<td>Localisation</td>
+<td>Standard Saudi chart aligned with the statutory format, bilingual</td>
+<td>Arabic names; chart is generic, not aligned with a standard format</td>
+<td><strong>Partial</strong></td>
+<td>L</td>
+</tr>
+<tr>
+<td>23</td>
+<td>Governance</td>
+<td>Effective dating, change approval, usage lock, change history</td>
+<td>Usage locks and audit; no effective dating or approval of chart changes</td>
+<td><strong>Partial</strong></td>
+<td>L</td>
+</tr>
+<tr>
+<td>24</td>
+<td>Import and mass maintenance</td>
+<td>Import with validation, mass change</td>
+<td>Excel import with preview</td>
+<td><strong>Built</strong></td>
+<td></td>
+</tr>
+</tbody></table></div>
+<p><strong>Reading the result.</strong> The mechanics (control accounts, tags, rules per account, designer) are sound. The gaps that are expensive later are <strong>currency (6), several books (7), profit centre as a real object (9), project accounting (13), manufacturing accounts (15), intercompany (19)</strong>. The cheap ones (classification, groups, templates, localisation, governance) should be done together as one enrichment of the account master.</p>
+<h3 id="coa-benchmark---4">5. Fit to business models</h3>
+<p>For each model: what the chart and dimensions must provide, what we provide, and the gap.</p>
+<h4 id="coa-benchmark---5">5.1 Retail</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Need</th>
+<th>What a tier-1 retail setup has</th>
+<th>Ours</th>
+</tr>
+</thead><tbody><tr>
+<td>Revenue by channel and category</td>
+<td>Revenue accounts or dimensions per channel (store, online), category and brand</td>
+<td>One sales role; branch dimension; category not a dimension</td>
+</tr>
+<tr>
+<td>Discounts, returns, allowances</td>
+<td><strong>Contra-revenue</strong> accounts, so gross sales, discounts and returns show separately</td>
+<td>Discounts reduce the invoice; returns by credit note; no contra accounts</td>
+</tr>
+<tr>
+<td>Payment tenders</td>
+<td>Cash, card, wallet and voucher <strong>clearing accounts</strong> reconciled to the provider settlement; provider fees</td>
+<td>Bank per tender through the bank account; no card-clearing and fee flow</td>
+</tr>
+<tr>
+<td>Cash handling</td>
+<td><strong>Cash over and short</strong> account, shift reconciliation, till float</td>
+<td>Shift close records variance; no posting account for it</td>
+</tr>
+<tr>
+<td>Stock</td>
+<td>Inventory per warehouse and store, <strong>shrinkage</strong>, stock-take variance, transfer-in-transit</td>
+<td>Inventory control account; stock moves between warehouses and stock-take variances are recorded, but none of the 16 posting roles is an in-transit or shrinkage account</td>
+</tr>
+<tr>
+<td>Liabilities</td>
+<td>Gift cards, vouchers, loyalty points, customer deposits</td>
+<td>None</td>
+</tr>
+<tr>
+<td>Store profit</td>
+<td>Profit and loss per store, store balance sheet where used</td>
+<td>Branch tag on lines; branch profit and loss report; no per-store balance sheet</td>
+</tr>
+</tbody></table></div>
+<h4 id="coa-benchmark--p">5.2 Trading (buy, import, sell)</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Need</th>
+<th>Tier-1 setup</th>
+<th>Ours</th>
+</tr>
+</thead><tbody><tr>
+<td>Purchasing</td>
+<td>Goods-received-not-invoiced, price and quantity variances, purchase discounts, advances to suppliers</td>
+<td>Goods-received-not-invoiced built; no variance, discount or advance accounts</td>
+</tr>
+<tr>
+<td>Imports</td>
+<td>Landed cost, customs, import VAT, foreign currency, exchange differences</td>
+<td>Absent (see the tax analysis)</td>
+</tr>
+<tr>
+<td>Receivables risk</td>
+<td>Bad-debt provision, write-off, credit limits</td>
+<td>Absent</td>
+</tr>
+<tr>
+<td>Margin</td>
+<td>Revenue and cost of sales by customer, product and branch</td>
+<td>Revenue and cost of sales by branch and department dimensions</td>
+</tr>
+</tbody></table></div>
+<h4 id="coa-benchmark---6">5.3 Manufacturing</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Need</th>
+<th>Tier-1 setup</th>
+<th>Ours</th>
+</tr>
+</thead><tbody><tr>
+<td>Inventory classes</td>
+<td>Raw material, work in progress, finished goods, each reconcilable</td>
+<td>One inventory account</td>
+</tr>
+<tr>
+<td>Production accounting</td>
+<td>Production orders collect material, labour and overhead; variances (price, usage, efficiency, overhead)</td>
+<td>Absent (no production module)</td>
+</tr>
+<tr>
+<td>Overhead</td>
+<td>Absorbed or applied overhead account, cost centre allocation</td>
+<td>Allocation planned (Sprint 15), absorption absent</td>
+</tr>
+<tr>
+<td>Standard versus actual costing</td>
+<td>Costing method per item class</td>
+<td>Average only</td>
+</tr>
+<tr>
+<td>Scrap, by-products, subcontracting</td>
+<td>Dedicated accounts and flows</td>
+<td>Absent</td>
+</tr>
+</tbody></table></div>
+<h4 id="coa-benchmark--p-2">5.4 Profit-centre accounting</h4>
+<p>Tier-1 pattern: every line carries a profit centre (and, in SAP, a segment); balance sheet and profit and loss can be produced per profit centre; transfers between profit centres clear through <strong>inter-profit-centre accounts</strong>; shared costs are allocated by rule. Ours: a branch or department tag and an allocation run in the plan. <strong>Missing:</strong> the profit centre as a master object with hierarchy and responsible person, the <strong>balancing</strong> rule that makes each profit centre&#39;s books balance, inter-unit clearing accounts, per-profit-centre balance sheet, transfer pricing.</p>
+<h4 id="coa-benchmark---7">5.5 Budgeting</h4>
+<p>Tier-1 pattern: budget versions (original, revised, forecast) by account (or account group) × dimensions × period; control at posting or at purchase commitment (warn or stop); commitments from requisitions and orders; variance reports (actual versus budget versus prior year). Ours: nothing. The dimension and period models are good enough to carry it, but account-group classification (item 1 and 3) and a commitment concept do not exist.</p>
+<h4 id="coa-benchmark--p-3">5.6 Project-level costing</h4>
+<p>Tier-1 pattern: a <strong>project master</strong> (customer, dates, manager, status, contract value, budget) with tasks or WBS; costs collected from purchases, expenses, timesheets, inventory issues; billing (fixed price, milestone, time and material); work in progress and revenue recognition (percentage of completion, completed contract); retention; project profitability. Ours: a custom dimension type can tag lines with a project name, nothing else. <strong>Missing:</strong> project master and lifecycle, cost collection rules, billing, WIP and recognition accounts, retention accounts, budget, profitability report.</p>
+<h3 id="coa-benchmark---8">6. Findings</h3>
+<p><strong>Structurally sound (keep):</strong> company-owned chart with hierarchy; control accounts and per-party control accounts; typed subledger tags; dimensions with rules per account and default tags; the report designer; usage locks.</p>
+<p><strong>Thin, in order of how much future development they block:</strong></p>
+<ol>
+<li><strong>Account master has too few attributes.</strong> With five types and a control flag only, nothing can be classified for cash flow, statutory lines, current versus non-current, nature versus function, tax category, currency or blocked status. Every later feature (tax, currency, cash-flow statement, budgeting by account group) will want these. <em>Low retrofit cost now, high if each feature adds its own.</em></li>
+<li><strong>No profit centre, project or budget object.</strong> Dimensions are tags without master data, balancing, status or budget; these three are the core of management accounting.</li>
+<li><strong>One chart, one ledger, one currency.</strong> Foreign currency and several books are structural and must be decided before more documents are built on single-currency assumptions.</li>
+<li><strong>No account groups and no industry templates.</strong> Every company starts from the same generic chart; a retailer, a trader and a manufacturer need different starting structures and different automatic accounts.</li>
+<li><strong>Role-based account lookup is flat.</strong> One account per role per company. Tier-1 systems determine accounts by role <strong>and</strong> by item or product class, party class, branch and transaction type (SAP account determination, Oracle subledger accounting rules). This is the same point as the tax analysis: the document should name what and who, and rules find the accounts.</li>
+<li><strong>Governance.</strong> No effective dating or approval of chart changes; acceptable for small companies, not for audited ones.</li>
+</ol>
+<h3 id="coa-benchmark---9">7. Target architecture (one design, for decision)</h3>
+<h4 id="coa-benchmark---10">7.1 Enrich the account master (one slice, low cost, unblocks everything)</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Attribute</th>
+<th>Purpose</th>
+</tr>
+</thead><tbody><tr>
+<td>Account class and sub-class</td>
+<td>Cash, bank, receivable, other current asset, non-current asset, current or non-current liability, equity, revenue (operating, other), cost of sales, operating expense, finance cost, tax, zakat; drives statutory and management statements</td>
+</tr>
+<tr>
+<td>Expense nature or function</td>
+<td>By-nature and by-function presentations of the same expense</td>
+</tr>
+<tr>
+<td>Cash-flow class</td>
+<td>Operating, investing, financing, or non-cash, for the cash flow statement</td>
+</tr>
+<tr>
+<td>Statement mapping key</td>
+<td>Link to statutory statement lines (per chart view)</td>
+</tr>
+<tr>
+<td>Posting control</td>
+<td>Blocked for posting (distinct from inactive), automatic posting only, manual journal allowed, requires dimension (already), requires currency, statistical</td>
+</tr>
+<tr>
+<td>Tax category</td>
+<td>The tax treatment of postings to the account (for example outside VAT scope), for the tax engine</td>
+</tr>
+<tr>
+<td>Account group</td>
+<td>Defaults and number ranges; chosen at creation</td>
+</tr>
+<tr>
+<td>Currency</td>
+<td>Functional only, or fixed foreign currency, or any (when currency exists)</td>
+</tr>
+<tr>
+<td>Effective from and to</td>
+<td>Lifecycle without deleting history</td>
+</tr>
+</tbody></table></div>
+<h4 id="coa-benchmark--p-4">7.2 Chart views and templates</h4>
+<ul>
+<li><strong>Chart templates</strong> per industry (retail, trading, manufacturing, services and projects) with their automatic accounts and dimension rules, reviewed by an accountant; a company picks one at creation and can adopt a template later by merge.</li>
+<li><strong>Chart views</strong>: statutory (local standard and IFRS), management, group. A view is a mapping from accounts to the view&#39;s lines, so one ledger serves several statements; true parallel ledgers are a later decision (7.5).</li>
+</ul>
+<h4 id="coa-benchmark---11">7.3 Management accounting objects</h4>
+<ul>
+<li><strong>Profit centre</strong> (hierarchical master with manager, status, dates), a first-class dimension type with a <strong>balancing option</strong>, inter-profit-centre clearing accounts, allocation rules (Sprint 15), and per-profit-centre statements.</li>
+<li><strong>Cost centre</strong> stays the department dimension, with owner and budget.</li>
+<li><strong>Project</strong> master (customer, dates, manager, status, contract value, budget, WBS tasks) as a dimension type with its own lifecycle; cost collection from purchases, expenses, stock issues; billing and revenue recognition accounts (WIP, contract assets and liabilities, retention).</li>
+<li><strong>Valid-combination rules</strong> between dimensions (for example a project belongs to one profit centre) on top of the existing rules per account.</li>
+</ul>
+<h4 id="coa-benchmark---12">7.4 Budgeting</h4>
+<p>Budget versions by account or account group × dimension combination × fiscal period; checks at posting, requisition and order (warn or stop, per company and per account group); commitments from open requisitions and orders; budget versus actual versus prior-year reports through the report designer.</p>
+<h4 id="coa-benchmark---13">7.5 Foundations to decide first</h4>
+<p>Foreign currency (account currency, rates, revaluation) and parallel ledgers are not features to add to the chart later; they change what an amount is. They must be decided (even if built later) before profit centre, project and budget design is frozen.</p>
+<h4 id="coa-benchmark---14">7.6 Account determination</h4>
+<p>Documents name party, item, branch and transaction type; <strong>determination rules</strong> (the same mechanism as the tax design) return the accounts, so revenue, discount, return, cost of sales, inventory, variance and clearing accounts follow the item class and the profile rather than one account per role.</p>
+<h3 id="coa-benchmark--p-5">8. How the pieces fit with the tax design</h3>
+<p>The tax design (Sprints 14 to 14f) needs exactly the account attributes in 7.1 (tax category, currency, posting control) and the determination mechanism in 7.6. They should be one engine, one sprint line, not two.</p>
+<h3 id="coa-benchmark--p-p-p">9. Proposed requirements, tests and sprints (not yet registered)</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Proposed requirement</th>
+<th>Content</th>
+<th>Proposed sprint</th>
+</tr>
+</thead><tbody><tr>
+<td>BR-COA-09</td>
+<td>Account classification attributes (class, sub-class, nature or function, cash-flow class, statement key)</td>
+<td>Account master enrichment</td>
+</tr>
+<tr>
+<td>BR-COA-10</td>
+<td>Posting controls on the account (blocked, auto-post only, currency, tax category) and account groups with defaults</td>
+<td>Account master enrichment</td>
+</tr>
+<tr>
+<td>BR-COA-11</td>
+<td>Industry chart templates (retail, trading, manufacturing, services) reviewed by an accountant</td>
+<td>Account master enrichment</td>
+</tr>
+<tr>
+<td>BR-COA-12</td>
+<td>Chart views and mapping to statutory statements (local standard, IFRS), cash-flow statement from classes</td>
+<td>After the above</td>
+</tr>
+<tr>
+<td>BR-COA-13</td>
+<td>Effective dating and approval of chart changes</td>
+<td>After the above</td>
+</tr>
+<tr>
+<td>BR-DIM-09</td>
+<td>Profit centre master with hierarchy, balancing, inter-unit clearing, statements per profit centre</td>
+<td>Management accounting</td>
+</tr>
+<tr>
+<td>BR-DIM-10</td>
+<td>Project master with lifecycle, WBS, cost collection, billing, WIP and recognition, retention, profitability</td>
+<td>Management accounting</td>
+</tr>
+<tr>
+<td>BR-DIM-11</td>
+<td>Valid-combination rules between dimensions</td>
+<td>Management accounting</td>
+</tr>
+<tr>
+<td>BR-BUD-01..04</td>
+<td>Budget versions, control at posting and commitment, commitments, budget versus actual</td>
+<td>Budgeting</td>
+</tr>
+<tr>
+<td>BR-ACC-01</td>
+<td>Account determination rules by item class, party class, branch and transaction type</td>
+<td>With the tax engine</td>
+</tr>
+<tr>
+<td>BR-COA-14</td>
+<td>Retail accounts (contra-revenue, tender clearing, cash over and short, gift card and loyalty liabilities, shrinkage)</td>
+<td>With the templates</td>
+</tr>
+<tr>
+<td>BR-COA-15</td>
+<td>Manufacturing accounts (raw material, WIP, finished goods, variances, absorbed overhead)</td>
+<td>With production, after costing</td>
+</tr>
+</tbody></table></div>
+<p>Each needs system requirements and test cases written before it is built; none is registered until the owner agrees the direction.</p>
+<h3 id="coa-benchmark---15">10. Decisions needed from the owner</h3>
+<ol>
+<li><strong>Order</strong>: account-master enrichment and templates first (cheap, unblocks tax, currency and budgeting), then profit centre, project and budget, or the other way round?</li>
+<li><strong>Multi-currency and parallel ledgers</strong>: in the programme, and before the management-accounting objects are frozen?</li>
+<li><strong>Which business models are real customers&#39; needs now</strong>: retail, trading, manufacturing, projects? The templates and the first accounts follow that.</li>
+<li><strong>Profit centre versus branch</strong>: is a branch a profit centre, or are profit centres a separate hierarchy across branches?</li>
+<li><strong>Project costing depth</strong>: cost collection and profitability only, or billing and revenue recognition (percentage of completion) as well?</li>
+<li><strong>Budget control</strong>: report only, warn, or stop at posting and at purchase commitment?</li>
+<li><strong>Statutory view</strong>: which standard (local, IFRS, both) must the chart map to, and who signs off the template charts?</li>
+</ol>
+<h3 id="coa-benchmark---16">11. Sources and confidence</h3>
+<ul>
+<li>Our code and requirement register as of 2026-10-19: <code>server/lib/chartOfAccounts.ts</code>, <code>src/db/schema.ts</code> (<code>company_accounts</code>, <code>account_dimension_rules</code>, <code>dimension_*</code>), <code>docs/gl-ap-ar/source/brd.mjs</code> (areas COA, DIM, PER, RPT, and the out-of-scope list).</li>
+<li>Finance Core Blueprint (<code>docs/reference</code>): FR-COA, FR-DIM, FR-LC, FR-WIP, FR-FA.</li>
+<li>Tier-1 behaviour: general product knowledge, partly corroborated by the Oracle and Dynamics pages cited in the taxation analysis (<a href="https://docs.oracle.com/en/cloud/saas/financials/26c/faitx/tax-determination.html" target="_blank" rel="noopener">Oracle tax determination</a>, <a href="https://learn.microsoft.com/en-au/dynamics365/finance/general-ledger/tasks/set-up-sales-tax-groups-item-sales-tax-groups" target="_blank" rel="noopener">Dynamics 365 sales tax groups</a>). <strong>The attribute lists in section 3 were not re-checked against vendor documentation today; confirm before copying any detail.</strong></li>
+<li>Saudi statutory chart format and zakat presentation: not researched here; needs a local accountant.</li>
+</ul>
+</section>
+<section class="chapter" id="tax-analysis"><p class="eyebrow">Chapter 17</p><h2>Taxation and tax profiles: analysis and design options (for decision, nothing built)</h2><p class="src">Source: <code>docs/design-notes/taxation-analysis.md</code> · <span class="pill">Analysis and proposal for decision: nothing built (Sprints 14 to 14f)</span></p><p>Written 2026-10-19 after the owner asked for a holistic accountant&#39;s view of taxation: how tier-1 ERPs do it, how imports, manufacturing and retail behave, how our solution measures up, and a flexible design in which <strong>the system, not the data entry operator, decides what to post and where</strong>. This note analyses and proposes; it does not decide. Section 10 lists the decisions needed.</p>
 <p>Method (architecture first): the Finance Core Blueprint (FR-TAX, FR-RND, FR-LC, ERD), the existing design notes, the code as it is today, public documentation of the tier-1 products, and the Saudi (ZATCA) rules as published. Where a statement could not be checked against a primary source it is marked <strong>[verify]</strong>: nothing marked so should be built on before a tax adviser confirms it.</p>
 <h3 id="tax-analysis--section">1. What a correct tax solution must do (the accountant&#39;s test)</h3>
 <ol>
@@ -6038,7 +6649,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li><strong>Not independently verified</strong>: SAP, NetSuite and Odoo behaviour (general knowledge); every Saudi legal point marked <strong>[verify]</strong>. A qualified tax adviser should confirm the treatment of import VAT (deferral), reverse-charge boxes, withholding rates and non-recoverable categories before any of it is implemented.</li>
 </ul>
 </section>
-<section class="chapter" id="test-strategy"><p class="eyebrow">Chapter 17</p><h2>Test Strategy</h2><p class="src">Source: <code>docs/gl-ap-ar/05-test-strategy.md</code></p><p>Version 1.0 / 2026-10-15. The complete case list is the catalogue in <code>docs/test-cases/</code> (CSV, JSON, Gherkin); each case is traced to a system requirement and a business requirement in the traceability matrix (08).</p>
+<section class="chapter" id="test-strategy"><p class="eyebrow">Chapter 18</p><h2>Test Strategy</h2><p class="src">Source: <code>docs/gl-ap-ar/05-test-strategy.md</code></p><p>Version 1.0 / 2026-10-15. The complete case list is the catalogue in <code>docs/test-cases/</code> (CSV, JSON, Gherkin); each case is traced to a system requirement and a business requirement in the traceability matrix (08).</p>
 <h3 id="test-strategy--section">1. Objectives</h3>
 <ol>
 <li>Prove every business requirement with at least one repeatable test; none is &quot;verified by looking&quot;.</li>
@@ -6164,7 +6775,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="sprint-log"><p class="eyebrow">Chapter 18</p><h2>Sprint log and plan — GL / AR / AP 2.0</h2><p class="src">Source: <code>docs/gl-ap-ar/07-sprint-log.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+<section class="chapter" id="sprint-log"><p class="eyebrow">Chapter 19</p><h2>Sprint log and plan — GL / AR / AP 2.0</h2><p class="src">Source: <code>docs/gl-ap-ar/07-sprint-log.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
 </div>
 <p>Sprints are numbered. Done sprints list the commits that delivered them (git, branch <code>v2</code>); planned sprints list the BRD items they will deliver. Forward mapping (BR → sprint) and back mapping (sprint item → BR) are both here and in the traceability matrix (08). The first ten sprints were delivered in one continuous build, 2026-10-14 → 2026-10-15.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -8121,7 +8732,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="api"><p class="eyebrow">Chapter 19</p><h2>Annex B — API reference (GL / AR / AP routes)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-b-api-reference.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+<section class="chapter" id="api"><p class="eyebrow">Chapter 20</p><h2>Annex B — API reference (GL / AR / AP routes)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-b-api-reference.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
 </div>
 <p>Parsed from <code>server/routes/*.ts</code>. &quot;Permission&quot; lists the <code>hasPermission</code> keys found in the handler. All routes run in the tenant transaction (<code>withTenantDb</code>) and are scoped to the session company.</p>
 <h3 id="api--section">ledgerAccounts.ts</h3>
@@ -8874,7 +9485,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="permissions"><p class="eyebrow">Chapter 20</p><h2>Annex C — Permission modules (GL / AR / AP)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-c-permissions-matrix.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+<section class="chapter" id="permissions"><p class="eyebrow">Chapter 21</p><h2>Annex C — Permission modules (GL / AR / AP)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-c-permissions-matrix.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
 </div>
 <p>Source of truth: <code>src/permissionSchema.ts</code>. A user&#39;s rights are the union of all assigned roles; administrators hold every right. Delete means cancel or deactivate, never erase.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -9371,7 +9982,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="posting-rules"><p class="eyebrow">Chapter 21</p><h2>Annex D — Posting rules catalogue</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-d-posting-rules.md</code></p><p>What every source document posts (Dr = debit, Cr = credit). Roles are resolved by the posting engine to the company&#39;s account (customer/vendor control account, bank&#39;s own account, expense-category account when mapped). Every entry also carries the dimension tags and the customer/vendor tag its accounts require. A reversal (cancel, credit note, return, receipt cancel) mirrors the original lines, tags and parties on the reversal date.</p>
+<section class="chapter" id="posting-rules"><p class="eyebrow">Chapter 22</p><h2>Annex D — Posting rules catalogue</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-d-posting-rules.md</code></p><p>What every source document posts (Dr = debit, Cr = credit). Roles are resolved by the posting engine to the company&#39;s account (customer/vendor control account, bank&#39;s own account, expense-category account when mapped). Every entry also carries the dimension tags and the customer/vendor tag its accounts require. A reversal (cancel, credit note, return, receipt cancel) mirrors the original lines, tags and parties on the reversal date.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Source</th>
 <th>Voucher</th>
@@ -9569,7 +10180,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="developer-guide"><p class="eyebrow">Chapter 22</p><h2>Annex E — Developer guide for future ledger work</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-e-developer-guide.md</code></p><p>Read the Solution Design (03) principles first. This page is the practical checklist.</p>
+<section class="chapter" id="developer-guide"><p class="eyebrow">Chapter 23</p><h2>Annex E — Developer guide for future ledger work</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-e-developer-guide.md</code></p><p>Read the Solution Design (03) principles first. This page is the practical checklist.</p>
 <h3 id="developer-guide--p">Add a new source document that posts</h3>
 <ol>
 <li>Do not pick accounts. Call <code>postJournalEntry</code> with <code>referenceType</code>, <code>referenceId</code>, role lines, and a <code>context</code> (or let <code>partyOfDocument</code> read the party). Add the document type to <code>partyOfDocument</code> (<code>postingContext.ts</code>) and to the party back-fill (<code>scripts/backfill-party-tags.ts</code>) if it touches a customer/vendor.</li>
@@ -9601,7 +10212,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li>Run a Live release script from the 2.0 checkout, or merge v2 into master.</li>
 </ul>
 </section>
-<section class="chapter" id="runbook"><p class="eyebrow">Chapter 23</p><h2>Annex F — Operations runbook (ledger core)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-f-operations-runbook.md</code></p><h3 id="runbook--section">Tracks</h3>
+<section class="chapter" id="runbook"><p class="eyebrow">Chapter 24</p><h2>Annex F — Operations runbook (ledger core)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-f-operations-runbook.md</code></p><h3 id="runbook--section">Tracks</h3>
 <p>Live: branch <code>master</code>, folder <code>E:\ERP</code>, production warraq.compbrain.io, fixes only. Demo / 2.0: branch <code>v2</code>, folder <code>E:\ERP-2.0</code>, local port 3001 / database <code>erp_v2</code>, VPS <code>~/apps/erp-demo</code> port 4000 (127.0.0.1 only; reach it through an SSH tunnel). See <code>docs/operations/environments.md</code>.</p>
 <h3 id="runbook--p">Demo release (VPS, as the demo OS user)</h3>
 <pre class="code"><code>cd ~/apps/erp-demo
@@ -9622,7 +10233,7 @@ bash deploy/release-demo.sh</code></pre>
 <li>&quot;Cannot post a date&quot;: posting guard message names the rule (month, VAT quarter, lock date, window, reason).</li>
 </ul>
 </section>
-<section class="chapter" id="glossary"><p class="eyebrow">Chapter 24</p><h2>Annex G — Glossary</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-g-glossary.md</code></p><div class="table-wrap"><table class="plan"><thead><tr>
+<section class="chapter" id="glossary"><p class="eyebrow">Chapter 25</p><h2>Annex G — Glossary</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-g-glossary.md</code></p><div class="table-wrap"><table class="plan"><thead><tr>
 <th>Term</th>
 <th>Meaning</th>
 </tr>
@@ -9764,7 +10375,7 @@ bash deploy/release-demo.sh</code></pre>
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="deployment"><p class="eyebrow">Chapter 25</p><h2>Hostinger VPS Deployment Plan</h2><p class="src">Source: <code>docs/operations/deployment-plan.md</code></p><p><strong>Status: LIVE.</strong> The app is running in production at <code>https://warraq.compbrain.io</code> (Nginx + Let&#39;s Encrypt SSL, PM2 2-instance cluster, Postgres on the same box). Load the <code>hostinger-deploy</code> skill before touching any of this — it has the full guardrails plus a real incident (PM2 startup registered under the wrong OS user) worth reading before touching PM2 lifecycle commands.</p>
+<section class="chapter" id="deployment"><p class="eyebrow">Chapter 26</p><h2>Hostinger VPS Deployment Plan</h2><p class="src">Source: <code>docs/operations/deployment-plan.md</code></p><p><strong>Status: LIVE.</strong> The app is running in production at <code>https://warraq.compbrain.io</code> (Nginx + Let&#39;s Encrypt SSL, PM2 2-instance cluster, Postgres on the same box). Load the <code>hostinger-deploy</code> skill before touching any of this — it has the full guardrails plus a real incident (PM2 startup registered under the wrong OS user) worth reading before touching PM2 lifecycle commands.</p>
 <h3 id="deployment--section">Decisions already locked in (confirmed with the user)</h3>
 <ul>
 <li><strong>Target</strong>: Hostinger VPS, 2 vCPU / 8GB RAM, Ubuntu LTS.</li>
@@ -9894,7 +10505,7 @@ bash deploy/maintenance-mode.sh off      # resume normal traffic
 bash deploy/maintenance-mode.sh status   # check which state it's in</code></pre>
 <p>It just creates/removes a sentinel file (<code>deploy/MAINTENANCE_ON</code>, gitignored) that the Nginx snippet checks, then runs <code>nginx -t</code> before reloading — never touches PM2 or Postgres. To keep your own access while maintenance is on, uncomment and edit the bypass-IP line in <code>erp-maintenance.conf</code> and reload.</p>
 </section>
-<section class="chapter" id="ha-proposal"><p class="eyebrow">Chapter 26</p><h2>High Availability Plan (for review)</h2><p class="src">Source: <code>docs/proposals/high-availability-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-22 in response to Hostinger&#39;s notice
+<section class="chapter" id="ha-proposal"><p class="eyebrow">Chapter 27</p><h2>High Availability Plan (for review)</h2><p class="src">Source: <code>docs/proposals/high-availability-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-22 in response to Hostinger&#39;s notice
 that VPS maintenance downtime is the customer&#39;s own responsibility — Hostinger is not
 obligated to provide HA for a single VPS, and won&#39;t.</p>
 <h3 id="ha-proposal--section">1. Where we actually stand today</h3>
@@ -10037,7 +10648,7 @@ to fund Tier 2 sooner.</li>
 <p>I haven&#39;t provisioned anything or touched the production server for this — tell me which
 tier to build and I&#39;ll start with the standby setup and the replication config.</p>
 </section>
-<section class="chapter" id="ai-proposal"><p class="eyebrow">Chapter 27</p><h2>AI Features — Implementation Plan (for review)</h2><p class="src">Source: <code>docs/proposals/ai-feature-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-20 against the current codebase.
+<section class="chapter" id="ai-proposal"><p class="eyebrow">Chapter 28</p><h2>AI Features — Implementation Plan (for review)</h2><p class="src">Source: <code>docs/proposals/ai-feature-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-20 against the current codebase.
 Focus, as requested: <strong>(1) reporting / data processing, (2) easier data entry and validation, (3) scenarios that can be configured, not hard-coded.</strong>
 Worked scenarios: ZATCA rejection analysis, sales trends, WhatsApp message → quotation.</p>
 <hr>
@@ -10372,7 +10983,7 @@ Output is a short list of &quot;fix these N things&quot; with a one-click jump t
 <li><strong>Data retention:</strong> how long to keep WhatsApp messages/bill images and AI audit logs.</li>
 </ol>
 </section>
-<section class="chapter" id="linked"><p class="eyebrow">Chapter 28</p><h2>Linked pages and other documents</h2><div class="cards">
+<section class="chapter" id="linked"><p class="eyebrow">Chapter 29</p><h2>Linked pages and other documents</h2><div class="cards">
 <a class="card" href="data-dictionary.html"><b>Data dictionary</b><span>Every table and column of the finance core, generated from the schema (annex A).</span></a>
 <a class="card" href="traceability.html"><b>Traceability matrix</b><span>Blueprint to business requirement to system requirement to test case to sprint.</span></a>
 <a class="card" href="test-catalogue.html"><b>Test-case catalogue</b><span>Every test case with its steps, filterable. Also as CSV, JSON and Gherkin in docs/test-cases.</span></a>

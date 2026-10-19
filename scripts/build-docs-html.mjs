@@ -125,6 +125,7 @@ const CH = [
   { id: 'ar-ap-bank', src: 'docs/design-notes/ar-ap-bank-design.md', tag: 'Decision record: written before building, with an as-built section' },
   { id: 'dimensions-decisions', src: 'docs/design-notes/gl-step1-5-decisions.md', tag: 'Decision record: written before building' },
   { id: 'approval-research', src: 'docs/design-notes/approval-rules-tier1-research.md', tag: 'Decision record: Sprint 11 research and owner decisions' },
+  { id: 'coa-benchmark', src: 'docs/design-notes/coa-tier1-benchmark.md', tag: 'Benchmark and proposal for decision: nothing built' },
   { id: 'tax-analysis', src: 'docs/design-notes/taxation-analysis.md', tag: 'Analysis and proposal for decision: nothing built (Sprints 14 to 14f)' },
   { part: 'Quality' },
   { id: 'test-strategy', src: GL + '05-test-strategy.md' },
