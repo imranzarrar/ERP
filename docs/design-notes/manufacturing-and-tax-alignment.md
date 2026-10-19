@@ -2,6 +2,8 @@
 
 Written 2026-10-19 at the owner's request: "align this with manufacturing domain cost accounting requirements, as well as multiple taxation requirements, to make sure the architecture serves the core."
 
+**Scope (owner, 2026-10-19):** this note is **not** a request to build work orders or any manufacturing module. It tests whether the core structure *could* carry manufacturing cost accounting (including order costing) and multiple taxation if and when they are asked for. The proposals in sections 5 and 7 are **illustrations of what the structure must permit**, not a build plan. The structural conclusions are in the companion note *A domain-neutral GL core*.
+
 **Agreed entries that apply** (register `agreed-decisions-register`): AG-01, AG-02, AG-04, AG-05 (follows); AG-10, AG-12, AG-13, AG-14, AG-15, AG-16 (follows); AG-11 (follows, **with a tension**, below); AG-17 (follows, widening needed); AG-30, AG-31, AG-32, AG-33 (follows); AG-71 and AG-77 (this note is the review they require). **No agreed entry is contradicted.**
 
 **The tension.** The Blueprint (FR-WIP-01 to 08 and its entity list) describes **work orders** and **projects** as "cost objects" with their own tables and their own `accumulated_*` cost columns. AG-11 says management accounting is carried by the dimension framework and never by separate modules or ledgers. They are reconciled by the wording already proposed in the register (section J): a work order is a **process document keyed by a dimension value**; the ledger stays the single source of cost; the Blueprint's accumulated columns, if kept at all, are derived caches checked by the consistency check, never a second truth. This note assumes that wording. The owner must confirm it (decision 1).
@@ -125,7 +127,7 @@ Result: finished goods left 5 units at 112.50; every cost reaches cost of sales 
 * **Review of agreed entries (register section J) updated by this test:** AG-04 extends to valuation class and movement type; AG-05 gains a typed reference for the work order and the asset; AG-11 wording (process documents keyed by dimension values) is **required** by manufacturing, not optional; AG-12 reword stands; AG-17 widens to cycles, quantities and statistical drivers; AG-33 year-end is unaffected.
 * **Sequencing consequence.** Manufacturing sits on three prerequisites that are also needed by tax: account master and valuation classes, the determination engine, and foreign currency with landed cost. Building those first serves both domains; building manufacturing first would force rework.
 
-## 7. Proposed requirements (not registered; for decision)
+## 7. What the structure must permit (illustrations, not a build plan, not registered)
 
 | Proposed id | Content |
 |---|---|
@@ -144,14 +146,7 @@ Result: finished goods left 5 units at 112.50; every cost reaches cost of sales 
 
 ## 8. Decisions needed from the owner
 
-1. **AG-11 wording:** confirm that process documents (work order, project billing, budget commitment) keyed by a dimension value are allowed, while a second ledger or a hard-coded cost object is not.
-2. **Costing method for the first manufacturing release:** actual cost by order with moving-average raw material, or standard costing with variances from the start?
-3. **Costing style:** order (job) costing only, or process (equivalent units) costing as well?
-4. **Capacity basis:** normal capacity per cost centre required from the start (IAS 2), or a simple rate first?
-5. **Which manufacturers are real:** discrete (wood, steel, assembly), process (food, chemicals) or both? Joint products and by-products matter for the second.
-6. **Subcontracting and several plants or tax registrations:** needed now or later?
-7. **Quantity on ledger lines versus a statistical ledger:** which storage do you prefer (the first is simpler to report; the second keeps the monetary ledger unchanged)?
-8. **Order of work:** account master, valuation classes and determination first (serving tax and manufacturing), then currency and landed cost, then work orders and absorption?
+Only the **structural** decisions are needed now, and they are listed in the note *A domain-neutral GL core* (section 9): typed references, quantities on lines, an accounting-event layer, recognition schedules, currency and ledgers, and the AG-11 wording. The manufacturing choices (costing method, order versus process costing, capacity basis, subcontracting, several registrations) are decided **when a manufacturing module is requested**, not before.
 
 ## 9. Sources and confidence
 

@@ -22,4 +22,5 @@ The owner has repeatedly had to restate agreed decisions (for example: dimension
 * Propose a separate module or ledger for something the agreed dimension framework is meant to carry (AG-10, AG-11).
 * Treat the Blueprint as the ceiling (AG-71) or as contradicting an owner statement (owner-stated entries win).
 * Present a proposal as agreed, or leave an agreed item out of the register after it was agreed.
+* Treat an analysis, benchmark or alignment note as a request to build. Domain modules (work orders, projects, leases and so on) are built only when the owner asks; the core must merely be able to carry them (AG-18).
 * Skip this skill because the task is "just a benchmark" or "just a note": that is exactly how the 2026-10-19 error happened.

@@ -37,6 +37,7 @@ Status: **Built** (in the code), **Planned** (agreed, in the sprint plan), **Sta
 | AG-15 | Default tags are filled in this priority: line, document, customer or vendor default, bank default, account default | BR-DIM-04 | Built |
 | AG-16 | One shared query layer (`resolvedLines`) applies the dimension filter to the ledger, journal listing and every report | Architect decision 5 | Built |
 | AG-17 | Cost allocation runs redistribute shared cost by fixed or revenue percentage, net zero, into an allocated-overhead account, with contribution margin and fully loaded subtotals | BR-DIM-07, BR-DIM-08 | Planned (Sprint 15); widening to any dimension type proposed, not yet agreed |
+| AG-18 | **The GL core is domain-neutral and flexible**: its structure must be able to carry the scenarios of any domain (retail, trading, manufacturing including order costing, real estate, contracting, services, fund accounting) **if and when asked**, without redesign. Domain modules are built only on request and use the core's general primitives; the core holds no domain-specific tables. Analysis is not a request to build. Owner-stated 2026-10-19 | Owner | Standing; structural readiness reviewed in `domain-neutral-core` |
 
 ## C. Reports
 
@@ -109,7 +110,8 @@ Status: **Built** (in the code), **Planned** (agreed, in the sprint plan), **Sta
 | Dimension framework capabilities (roles, attributes, lifecycle, valid combinations, balancing, break-down reports) and budgeting on dimension combinations | `coa-tier1-benchmark` sections 7.3, 7.4 | Whether to build, and the order |
 | Foreign currency and parallel ledgers | `coa-tier1-benchmark` section 7.5 | Whether they are in the programme, before the above are frozen |
 | Account determination rules (one mechanism for tax and accounts) | both notes | Agreement to treat as one engine |
-| Manufacturing cost accounting on the same architecture: valuation classes, work order keyed to a dimension value, quantities with postings, absorption with capacity and cycles, variances, runs | `manufacturing-and-tax-alignment` | The eight decisions in its section 8, first the AG-11 wording |
+| Structural readiness of the core for any domain: typed references, quantities on lines, accounting events, recognition schedules, currency and ledgers | `domain-neutral-core` | The seven decisions in its section 9 |
+| Manufacturing cost accounting as an **illustration** of what the structure must permit (not a build request) | `manufacturing-and-tax-alignment` | Nothing now; domain choices when a module is requested |
 
 ## J. Professional review of the agreed decisions (tier-1 practice and accounting guidelines)
 

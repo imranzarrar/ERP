@@ -126,6 +126,7 @@ const CH = [
   { id: 'dimensions-decisions', src: 'docs/design-notes/gl-step1-5-decisions.md', tag: 'Decision record: written before building' },
   { id: 'approval-research', src: 'docs/design-notes/approval-rules-tier1-research.md', tag: 'Decision record: Sprint 11 research and owner decisions' },
   { id: 'agreed-register', src: 'docs/design-notes/agreed-decisions-register.md', tag: 'Standing register: read before any finance design' },
+  { id: 'domain-core', src: 'docs/design-notes/domain-neutral-core.md', tag: 'Structural readiness review: proposal for decision, nothing built' },
   { id: 'mfg-tax-alignment', src: 'docs/design-notes/manufacturing-and-tax-alignment.md', tag: 'Stress test and proposal for decision: nothing built' },
   { id: 'coa-benchmark', src: 'docs/design-notes/coa-tier1-benchmark.md', tag: 'Benchmark and proposal for decision: nothing built' },
   { id: 'tax-analysis', src: 'docs/design-notes/taxation-analysis.md', tag: 'Analysis and proposal for decision: nothing built (Sprints 14 to 14f)' },
