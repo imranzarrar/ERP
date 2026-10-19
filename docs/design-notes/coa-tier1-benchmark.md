@@ -2,6 +2,8 @@
 
 Written 2026-10-19 at the owner's request, after the owner observed that the finance core looked like "simple forms making entries". This is an analysis with a gap register and a target architecture for decision. Nothing is built or registered in the requirement set yet (section 9 proposes the entries).
 
+**Agreed entries that apply** (register `agreed-decisions-register`): AG-02, AG-04, AG-05 and AG-06 (follows); AG-10 and AG-11 (follows after the correction below); AG-12 (follows, with a proposed wording change: it is marked Challenge in register section J); AG-14, AG-15, AG-17 (follows; widening proposed); AG-71 and AG-77 (this note is the review they require).
+
 **Correction on 2026-10-19 (owner):** an earlier version of this note proposed separate profit centre and project objects. That contradicted the agreed design, in which dimensions are unlimited and flexible and serve budgeting, costing, control and profit and loss. Sections 4, 6, 7.3, 7.4 and 9 were rewritten so that every management-accounting need is met by **capabilities of the dimension framework**, not by new hard-coded modules.
 
 **Confidence.** Our side (sections 2 and 5) was read from the code and the requirement register today. The tier-1 side is general product knowledge of SAP S/4HANA, Oracle Fusion General Ledger, Microsoft Dynamics 365 Finance and NetSuite, plus the documentation pages already checked for the tax analysis; account-attribute lists were **not** re-verified against current vendor documentation in this session and should be confirmed per vendor before a feature is copied from them.

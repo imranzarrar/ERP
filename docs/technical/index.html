@@ -28,7 +28,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 .filters{display:flex;flex-wrap:wrap;gap:.6rem;margin:1rem 0}.filters input,.filters select{font:inherit;padding:.4rem .6rem;border:1px solid var(--line);border-radius:8px;background:var(--raised)}
 @media (max-width:900px){.layout{grid-template-columns:1fr}.rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:1.2rem 1rem 3rem}}
 @media print{.rail{display:none}.layout{grid-template-columns:1fr}.chapter{page-break-before:always}}
-</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Technical documentation</div><a class="home" href="../index.html">← All documentation</a><div class="grp">Orientation</div><a href="#overview">1. How this documentation fits together</a><a href="#environments">2. Environments: Live (1.0) and Demo / development (2.0)</a><div class="grp">The whole system</div><a href="#platform">3. Platform architecture: how the whole system works</a><a href="#module-catalogue">4. Annex H: Module catalogue (every module, older and new)</a><div class="grp">Requirements</div><a href="#brd">5. Business Requirements Document</a><a href="#srs">6. Software Requirements Specification</a><div class="grp">Design</div><a href="#solution-design">7. Solution Design Document</a><a href="#technical-design">8. Technical Design Document</a><a href="#accounting-rules">9. Accounting and reporting rules</a><a href="#period-rule">10. Period rule for cancel, reversal, return and credit</a><a href="#date-standard">11. Date fields on documents: the standard (Demo / 2.0)</a><a href="#posting-control">12. Posting control: the lock date and back-dating rules (Demo / 2.0)</a><a href="#ar-ap-bank">13. AR, AP and bank reconciliation: design against the Finance Core Blueprint (Demo / 2.0)</a><a href="#dimensions-decisions">14. GL Step 1.5: dimensions and configurable statements. CFO and architect decisions</a><a href="#approval-research">15. Sprint 11 — Approval rules: what tier-1 ERPs do, and what we should build</a><a href="#coa-benchmark">16. Chart of accounts: benchmark against tier-1 ERPs and fit to retail, trading, manufacturing, profit-centre, budgeting and project costing</a><a href="#tax-analysis">17. Taxation and tax profiles: analysis and design options (for decision, nothing built)</a><div class="grp">Quality</div><a href="#test-strategy">18. Test Strategy</a><div class="grp">Delivery</div><a href="#sprint-log">19. Sprint log and plan — GL / AR / AP 2.0</a><div class="grp">Reference</div><a href="#api">20. Annex B — API reference (GL / AR / AP routes)</a><a href="#permissions">21. Annex C — Permission modules (GL / AR / AP)</a><a href="#posting-rules">22. Annex D — Posting rules catalogue</a><a href="#developer-guide">23. Annex E — Developer guide for future ledger work</a><a href="#runbook">24. Annex F — Operations runbook (ledger core)</a><a href="#glossary">25. Annex G — Glossary</a><div class="grp">Operations and proposals</div><a href="#deployment">26. Hostinger VPS Deployment Plan</a><a href="#ha-proposal">27. High Availability Plan (for review)</a><a href="#ai-proposal">28. AI Features — Implementation Plan (for review)</a><div class="grp">Linked documents</div><a href="#linked">29. Linked pages and other documents</a></aside><main><p class="eyebrow">Warraq ERP · Technical documentation</p><h1 style="font-size:2.3rem;margin:.2rem 0 1.5rem">Warraq ERP: platform, modules and finance core</h1>
+</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Technical documentation</div><a class="home" href="../index.html">← All documentation</a><div class="grp">Orientation</div><a href="#overview">1. How this documentation fits together</a><a href="#environments">2. Environments: Live (1.0) and Demo / development (2.0)</a><div class="grp">The whole system</div><a href="#platform">3. Platform architecture: how the whole system works</a><a href="#module-catalogue">4. Annex H: Module catalogue (every module, older and new)</a><div class="grp">Requirements</div><a href="#brd">5. Business Requirements Document</a><a href="#srs">6. Software Requirements Specification</a><div class="grp">Design</div><a href="#solution-design">7. Solution Design Document</a><a href="#technical-design">8. Technical Design Document</a><a href="#accounting-rules">9. Accounting and reporting rules</a><a href="#period-rule">10. Period rule for cancel, reversal, return and credit</a><a href="#date-standard">11. Date fields on documents: the standard (Demo / 2.0)</a><a href="#posting-control">12. Posting control: the lock date and back-dating rules (Demo / 2.0)</a><a href="#ar-ap-bank">13. AR, AP and bank reconciliation: design against the Finance Core Blueprint (Demo / 2.0)</a><a href="#dimensions-decisions">14. GL Step 1.5: dimensions and configurable statements. CFO and architect decisions</a><a href="#approval-research">15. Sprint 11 — Approval rules: what tier-1 ERPs do, and what we should build</a><a href="#agreed-register">16. Agreed decisions register (finance core and the way we work)</a><a href="#coa-benchmark">17. Chart of accounts: benchmark against tier-1 ERPs and fit to retail, trading, manufacturing, profit-centre, budgeting and project costing</a><a href="#tax-analysis">18. Taxation and tax profiles: analysis and design options (for decision, nothing built)</a><div class="grp">Quality</div><a href="#test-strategy">19. Test Strategy</a><div class="grp">Delivery</div><a href="#sprint-log">20. Sprint log and plan — GL / AR / AP 2.0</a><div class="grp">Reference</div><a href="#api">21. Annex B — API reference (GL / AR / AP routes)</a><a href="#permissions">22. Annex C — Permission modules (GL / AR / AP)</a><a href="#posting-rules">23. Annex D — Posting rules catalogue</a><a href="#developer-guide">24. Annex E — Developer guide for future ledger work</a><a href="#runbook">25. Annex F — Operations runbook (ledger core)</a><a href="#glossary">26. Annex G — Glossary</a><div class="grp">Operations and proposals</div><a href="#deployment">27. Hostinger VPS Deployment Plan</a><a href="#ha-proposal">28. High Availability Plan (for review)</a><a href="#ai-proposal">29. AI Features — Implementation Plan (for review)</a><div class="grp">Linked documents</div><a href="#linked">30. Linked pages and other documents</a></aside><main><p class="eyebrow">Warraq ERP · Technical documentation</p><h1 style="font-size:2.3rem;margin:.2rem 0 1.5rem">Warraq ERP: platform, modules and finance core</h1>
 <section class="chapter" id="overview"><p class="eyebrow">Chapter 1</p><h2>How this documentation fits together</h2><p>This is the technical documentation of Warraq ERP as a whole: how the platform works (companies, permissions, ledger, e-invoicing), every module with its endpoints, tables, screens and tests, and the requirements, design, tests and delivery history. The requirements and tests of the older modules (sales, expenses, procurement, POS, ZATCA, VAT, master data, users) were written as built from the code and its automated tests; those of the finance core (General Ledger, Receivables, Payables, Bank) were written before it was built. It is one document, read top to bottom or by the menu on the left. Three long tables are on their own pages and linked: the <a href="data-dictionary.html">data dictionary</a>, the <a href="traceability.html">traceability matrix</a> and the <a href="test-catalogue.html">test-case catalogue</a>.</p>
 <div class="table-wrap"><table class="plan"><thead><tr><th>If you want to know…</th><th>Read</th></tr></thead><tbody>
 <tr><td>How the whole system works, and what modules exist</td><td><a href="#platform">Platform architecture</a>, then the <a href="#module-catalogue">Module catalogue</a> (one sheet per module)</td></tr>
@@ -46,7 +46,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 </tbody></table></div>
 <div class="callout"><div class="label">Which version is described</div><p>The finance core is <b>Warraq 2.0</b> (branch <code>v2</code>, the Demo). Live (1.0, branch <code>master</code>) does not have it yet. Chapters say so where it matters; the <a href="#environments">Environments</a> chapter explains the two tracks.</p></div>
 <div class="callout warn"><div class="label">Reading copy, not the source</div><p>This page is generated. The requirements, system requirements, sprint log, traceability and annexes A to C are generated from <code>docs/gl-ap-ar/source/*.mjs</code> and from the code; the other chapters are hand-written Markdown under <code>docs/gl-ap-ar</code>, <code>docs/design-notes</code>, <code>docs/operations</code> and <code>docs/proposals</code>. Edit those, then run <code>npx tsx scripts/build-gl-docs.mjs</code> and <code>node scripts/build-docs-html.mjs</code>; never edit this page. The skill <code>update-docs-after-development</code> walks through it.</p></div>
-<p class="src">Version: built 2026-10-19, branch v2, after commit 12385bd.</p></section>
+<p class="src">Version: built 2026-10-19, branch v2, after commit 2d2da18.</p></section>
 <section class="chapter" id="environments"><p class="eyebrow">Chapter 2</p><h2>Environments: Live (1.0) and Demo / development (2.0)</h2><p class="src">Source: <code>docs/operations/environments.md</code></p><p>Two words are used everywhere from now on:</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th></th>
@@ -5430,7 +5430,665 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li><strong>Back-dating, lock-date override and reopening a reconciliation remain authority rights</strong>, not workflow.</li>
 </ol>
 </section>
-<section class="chapter" id="coa-benchmark"><p class="eyebrow">Chapter 16</p><h2>Chart of accounts: benchmark against tier-1 ERPs and fit to retail, trading, manufacturing, profit-centre, budgeting and project costing</h2><p class="src">Source: <code>docs/design-notes/coa-tier1-benchmark.md</code> · <span class="pill">Benchmark and proposal for decision: nothing built</span></p><p>Written 2026-10-19 at the owner&#39;s request, after the owner observed that the finance core looked like &quot;simple forms making entries&quot;. This is an analysis with a gap register and a target architecture for decision. Nothing is built or registered in the requirement set yet (section 9 proposes the entries).</p>
+<section class="chapter" id="agreed-register"><p class="eyebrow">Chapter 16</p><h2>Agreed decisions register (finance core and the way we work)</h2><p class="src">Source: <code>docs/design-notes/agreed-decisions-register.md</code> · <span class="pill">Standing register: read before any finance design</span></p><p><strong>Purpose.</strong> One list of what the owner and the team have <em>agreed</em>, so that no new analysis, design or build contradicts it, and so that nothing agreed is forgotten when the work moves to another area. It exists because a benchmark written on 2026-10-19 proposed separate profit-centre and project modules, which contradicted the agreed design that dimensions are unlimited and flexible. The correction is recorded here as AG-11.</p>
+<p><strong>Rules for using it.</strong></p>
+<ol>
+<li><strong>Read it all before working on the chart of accounts, dimensions, posting, account determination, tax, budgeting, costing, periods, reports or any finance design.</strong> Start the work by listing the entries that apply (AG numbers) and say whether the new work follows each one.</li>
+<li><strong>A new proposal that conflicts with an entry must say so in its first paragraph</strong> and ask the owner; it may not quietly replace it.</li>
+<li><strong>Entries marked &quot;owner-stated&quot; are the owner&#39;s words or explicit instructions and outrank any document.</strong></li>
+<li><strong>After any decision, add or change the entry in the same session</strong> (with date and source). Proposals that are not yet agreed go in the last section, not above.</li>
+<li>The skill <code>.claude/skills/agreed-decisions/SKILL.md</code> and <code>CLAUDE.md</code> make this binding for every session.</li>
+<li><strong>Agreed does not mean frozen:</strong> compare the applicable entries with tier-1 practice and the professional checklist (sections J and K) and propose changes (AG-77).</li>
+</ol>
+<p>Status: <strong>Built</strong> (in the code), <strong>Planned</strong> (agreed, in the sprint plan), <strong>Standing</strong> (a way of working).</p>
+<h3 id="agreed-register--p">A. Ledger, chart of accounts and posting</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>ID</th>
+<th>Agreed</th>
+<th>Source</th>
+<th>Status</th>
+</tr>
+</thead><tbody><tr>
+<td>AG-01</td>
+<td><strong>One ledger, one engine.</strong> Every statement is a query over posted journal lines; no second calculation</td>
+<td>CFO decision 1 (<code>gl-step1-5-decisions</code>)</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-02</td>
+<td><strong>Company-owned chart</strong> with 16 posting roles that documents use; re-pointing a role is not retroactive</td>
+<td>Solution design D1</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-03</td>
+<td><strong>Control accounts</strong> by subledger type; only their own documents post to them; several per type are allowed; customers and vendors may name their own control account</td>
+<td>D2; posting profiles decision</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-04</td>
+<td><strong>Documents name who and what, never accounts.</strong> One resolution step inside the posting engine, driven by a posting context (party, item, branch, bank, category), finds accounts and dimension tags. Owner-stated: &quot;select a party or item in any transaction and the rules apply automatically&quot;</td>
+<td>Posting profiles decision; owner 2026-10-14</td>
+<td>Built for parties, banks, categories; extended in planned tax and account-determination work</td>
+</tr>
+<tr>
+<td>AG-05</td>
+<td><strong>Typed party tags</strong> (customer, vendor) on ledger lines, set by the engine; the control account equals the sum of its parties, proved by a consistency rule</td>
+<td>D3</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-06</td>
+<td>Bilingual (English and Arabic) account names; Excel import and export of the chart with a preview; an account&#39;s type cannot change once it has postings, and an account in use cannot be deactivated</td>
+<td>BR-COA</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-07</td>
+<td>A posting is balanced (debits equal credits) enforced on the server for every entry</td>
+<td>Blueprint integrity rule</td>
+<td>Built</td>
+</tr>
+</tbody></table></div>
+<h3 id="agreed-register--section">B. Dimensions (flexible by design)</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>ID</th>
+<th>Agreed</th>
+<th>Source</th>
+<th>Status</th>
+</tr>
+</thead><tbody><tr>
+<td>AG-10</td>
+<td><strong>Dimensions are unlimited and configurable.</strong> A company defines any number of dimension types (Branch and Department are seeded); each is combinable on any ledger line; values form hierarchies. They are the single mechanism for <strong>budgeting, costing, control and profit and loss</strong> by any analytical view. Owner-stated, reaffirmed 2026-10-19</td>
+<td>Blueprint FR-DIM-01; owner</td>
+<td>Built (types, values, combinations, rules, filters)</td>
+</tr>
+<tr>
+<td>AG-11</td>
+<td><strong>Management accounting is delivered as capabilities of the dimension framework, never as separate hard-coded modules or ledgers.</strong> Profit centre, cost centre, project, product line, region and channel are dimension types. Budget, balancing, attributes, lifecycle, allocation and break-down reports are added to the framework so any type can use them. (Correction recorded 2026-10-19 after the chart-of-accounts benchmark proposed separate objects.)</td>
+<td>Owner 2026-10-19</td>
+<td>Standing; capabilities Planned</td>
+</tr>
+<tr>
+<td>AG-12</td>
+<td>Dimensions are <strong>analytical, not a second ledger</strong>: they never change an account balance; a balance sheet filtered by a dimension is shown as partial</td>
+<td>CFO decision 5</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-13</td>
+<td>Storage: a deduplicated <strong>dimension combination id</strong> per line; typed entries with real foreign keys and composite company keys; branch has one meaning (the entry&#39;s branch unless the combination names one)</td>
+<td>Architect decisions 2 to 4</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-14</td>
+<td><strong>Rules per account</strong>: a dimension is required, optional or not allowed for an account, with an optional default. Manual journals enforce Required; documents apply defaults and enforce Required only once their forms collect dimensions</td>
+<td>CFO decision 8</td>
+<td>Built for journals; documents Planned (Sprint 16)</td>
+</tr>
+<tr>
+<td>AG-15</td>
+<td>Default tags are filled in this priority: line, document, customer or vendor default, bank default, account default</td>
+<td>BR-DIM-04</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-16</td>
+<td>One shared query layer (<code>resolvedLines</code>) applies the dimension filter to the ledger, journal listing and every report</td>
+<td>Architect decision 5</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-17</td>
+<td>Cost allocation runs redistribute shared cost by fixed or revenue percentage, net zero, into an allocated-overhead account, with contribution margin and fully loaded subtotals</td>
+<td>BR-DIM-07, BR-DIM-08</td>
+<td>Planned (Sprint 15); widening to any dimension type proposed, not yet agreed</td>
+</tr>
+</tbody></table></div>
+<h3 id="agreed-register--p-2">C. Reports</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>ID</th>
+<th>Agreed</th>
+<th>Source</th>
+<th>Status</th>
+</tr>
+</thead><tbody><tr>
+<td>AG-20</td>
+<td><strong>One report-definition engine</strong>; the standard statements are editable, cloneable definitions; no second calculation</td>
+<td>D5; architect decision 6</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-21</td>
+<td><strong>Integrity is shown on the page</strong>: the balance sheet says whether assets equal liabilities plus equity; the trial balance says whether debits equal credits; an account that no row covers is listed as &quot;Not in this definition&quot;</td>
+<td>CFO decision 3</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-22</td>
+<td>No account can be selected by two rows of one definition (no double counting)</td>
+<td>CFO decision 4</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-23</td>
+<td>Every figure drills to the ledger with the same account set, period, dimension filter and basis</td>
+<td>Architect decision 9</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-24</td>
+<td><strong>Ledger reports and document-based reports run side by side</strong> until a gated cut-over; <em>Ledger vs Documents</em> proves they agree</td>
+<td>D13; CFO decision 2</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-25</td>
+<td><strong>Every report, KPI and total is computed on the server</strong>, scoped by the request&#39;s company, with no row cap; never summed from the capped state endpoint</td>
+<td>Standing rule</td>
+<td>Standing</td>
+</tr>
+<tr>
+<td>AG-26</td>
+<td>Layout design, dimension setup and viewing are separate permissions; every change to a definition, dimension or rule is audited; posted figures never change because a definition changed</td>
+<td>CFO decision 7</td>
+<td>Built</td>
+</tr>
+</tbody></table></div>
+<h3 id="agreed-register--p-p">D. Dates, periods and control of posting</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>ID</th>
+<th>Agreed</th>
+<th>Source</th>
+<th>Status</th>
+</tr>
+</thead><tbody><tr>
+<td>AG-30</td>
+<td>Every document has a <strong>document date</strong> and a <strong>posting date</strong>; business dates are named <code>&lt;meaning&gt;_date</code> and are real dates; system moments are <code>&lt;meaning&gt;_at</code>; one concept has one name everywhere</td>
+<td>Date-fields standard; owner</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-31</td>
+<td><strong>The posting guard is one function</strong> (lock date, back-date window, reason, permission overrides, audit); every dated posting goes through it</td>
+<td>D7</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-32</td>
+<td>Cancel, reverse and return only while the document&#39;s fiscal month is open and its VAT quarter is not filed</td>
+<td>Period rule note</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-33</td>
+<td>Year-end close: one closing entry into retained earnings; a closed year is never reopened; later corrections are disclosed prior-period adjustments</td>
+<td>Blueprint FR-CLOSE</td>
+<td>Planned (Sprint 13)</td>
+</tr>
+</tbody></table></div>
+<h3 id="agreed-register---2">E. Documents, settlements and bank</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>ID</th>
+<th>Agreed</th>
+<th>Source</th>
+<th>Status</th>
+</tr>
+</thead><tbody><tr>
+<td>AG-40</td>
+<td>A settlement is <strong>one voucher, one entry and N allocation rows</strong>; the remainder stays on account</td>
+<td>D8</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-41</td>
+<td><code>settlementFacts</code> is the only translator between allocations and per-document payments for the older reports</td>
+<td>D9</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-42</td>
+<td>Bank fees and interest are a voucher <strong>and</strong> an entry, limited to expense and income accounts; the reconciliation lock is enforced in the reversal function</td>
+<td>D10, D11</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-43</td>
+<td>Documents print from one server-resolved posting payload</td>
+<td>D12</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-44</td>
+<td>Credit and debit notes are rows of the invoices table sharing one hash chain; a cleared invoice can only be reversed by a credit note</td>
+<td>ZATCA decisions</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-45</td>
+<td>No hard delete of a financial record: documents are cancelled or reversed, master data is made inactive</td>
+<td>Permission model</td>
+<td>Standing</td>
+</tr>
+<tr>
+<td>AG-46</td>
+<td>No bulk &quot;save everything&quot; endpoint; every document is written through its own route with period rules</td>
+<td><code>noBulkSave</code> decision</td>
+<td>Standing</td>
+</tr>
+</tbody></table></div>
+<h3 id="agreed-register--pp">F. Approvals</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>ID</th>
+<th>Agreed</th>
+<th>Source</th>
+<th>Status</th>
+</tr>
+</thead><tbody><tr>
+<td>AG-50</td>
+<td>Maker-checker for manual journals first; amount-threshold rules layered on top (a matching rule replaces the single step)</td>
+<td>D14</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-51</td>
+<td>An approval request holds the <strong>intent</strong> of a document, never a half-posted document; the document is created by its own executor at the last approval; a shortcut cannot bypass a rule</td>
+<td>D15, D16</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>AG-52</td>
+<td>Approvers by role, named user, permission or manager of the submitter; delegation with dates in version 1 (all level types); escalation later; notifications in the system only; one company setting decides self-approval</td>
+<td>Sprint 11 owner decisions</td>
+<td>Built (escalation Planned)</td>
+</tr>
+</tbody></table></div>
+<h3 id="agreed-register---3">G. Tenancy, security and environments</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>ID</th>
+<th>Agreed</th>
+<th>Source</th>
+<th>Status</th>
+</tr>
+</thead><tbody><tr>
+<td>AG-60</td>
+<td>Every business table carries a company; the company of a request comes only from the authenticated request; every table has a row-level-security policy; company-scoped links use composite keys</td>
+<td>Platform architecture</td>
+<td>Standing</td>
+</tr>
+<tr>
+<td>AG-61</td>
+<td>Permissions are the union of the user&#39;s roles, with create / read / update / delete and a few action leaves; record state is checked separately</td>
+<td>Permission model</td>
+<td>Standing</td>
+</tr>
+<tr>
+<td>AG-62</td>
+<td><strong>Live (1.0) takes fixes only; all new development is on the 2.0 branch and Demo</strong>; nothing from 2.0 reaches Live until the owner decides</td>
+<td>Environments</td>
+<td>Standing</td>
+</tr>
+</tbody></table></div>
+<h3 id="agreed-register---4">H. The way we work</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>ID</th>
+<th>Agreed</th>
+<th>Source</th>
+<th>Status</th>
+</tr>
+</thead><tbody><tr>
+<td>AG-70</td>
+<td><strong>Architecture first, no patches</strong>: stop, recall memory and the analysis documents, map the code, design one integrated solution, build complete slices (schema, row-level security, engine, routes, permissions, screens, translations, tests, docs)</td>
+<td>Owner; skill <code>architecture-first</code></td>
+<td>Standing</td>
+</tr>
+<tr>
+<td>AG-71</td>
+<td><strong>Tier-1 depth is the standard</strong>: before designing or building in any finance area, benchmark it against SAP, Oracle, Dynamics and NetSuite (built, partial, absent; structural consequence) and check the foundation list (currency, ledgers, accounting rules, periods, lifecycle, determination from profiles, audit, localisation). The Blueprint is not the ceiling. Owner 2026-10-19</td>
+<td>Owner</td>
+<td>Standing</td>
+</tr>
+<tr>
+<td>AG-72</td>
+<td>Tests are mandatory: real HTTP requests and real database checks, no mocks, scenarios driven through the real screens</td>
+<td>Owner</td>
+<td>Standing</td>
+</tr>
+<tr>
+<td>AG-73</td>
+<td>Every new user-visible text is translated into Arabic and Urdu</td>
+<td>Owner</td>
+<td>Standing</td>
+</tr>
+<tr>
+<td>AG-74</td>
+<td>After any development, update every document of the set (skill <code>update-docs-after-development</code>); &quot;all means all&quot;</td>
+<td>Owner</td>
+<td>Standing</td>
+</tr>
+<tr>
+<td>AG-75</td>
+<td>Do not repeat passwords or secrets; test documents on production only in the designated company; no destructive action without the owner&#39;s decision</td>
+<td>Owner</td>
+<td>Standing</td>
+</tr>
+<tr>
+<td>AG-76</td>
+<td>The Demo schema or release step that needs an owner&#39;s confirmation is confirmed by the owner, not automated</td>
+<td>2026-10-18</td>
+<td>Standing</td>
+</tr>
+<tr>
+<td>AG-77</td>
+<td><strong>Agreed decisions are reviewed, not frozen.</strong> Each applicable entry is compared with tier-1 practice and professional accounting guidelines (IFRS, internal control, local law) whenever the area is worked on; the review proposes changes (section J) and the owner decides. A review never silently changes an entry. Owner 2026-10-19</td>
+<td>Owner</td>
+<td>Standing</td>
+</tr>
+</tbody></table></div>
+<h3 id="agreed-register--p-p-2">I. Proposals awaiting a decision (not agreed; do not build)</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Proposal</th>
+<th>Where</th>
+<th>Needs from the owner</th>
+</tr>
+</thead><tbody><tr>
+<td>Tax engine: tax codes, profiles, determination, recovery, reverse charge, withholding, imports, Sprints 14 to 14f</td>
+<td><code>taxation-analysis</code> and the sprint plan</td>
+<td>The nine decisions in its section 10</td>
+</tr>
+<tr>
+<td>Account master enrichment, chart templates, chart views, effective dating</td>
+<td><code>coa-tier1-benchmark</code> sections 7.1, 7.2</td>
+<td>Order, business models, statutory standard</td>
+</tr>
+<tr>
+<td>Dimension framework capabilities (roles, attributes, lifecycle, valid combinations, balancing, break-down reports) and budgeting on dimension combinations</td>
+<td><code>coa-tier1-benchmark</code> sections 7.3, 7.4</td>
+<td>Whether to build, and the order</td>
+</tr>
+<tr>
+<td>Foreign currency and parallel ledgers</td>
+<td><code>coa-tier1-benchmark</code> section 7.5</td>
+<td>Whether they are in the programme, before the above are frozen</td>
+</tr>
+<tr>
+<td>Account determination rules (one mechanism for tax and accounts)</td>
+<td>both notes</td>
+<td>Agreement to treat as one engine</td>
+</tr>
+</tbody></table></div>
+<h3 id="agreed-register--p-p-3">J. Professional review of the agreed decisions (tier-1 practice and accounting guidelines)</h3>
+<p>Agreed does not mean frozen (AG-77). Each agreed entry is compared with how tier-1 systems work and with professional accounting practice, and the result is one of: <strong>Confirmed</strong> (consistent), <strong>Refine</strong> (keep, with an addition), <strong>Challenge</strong> (the wording or the substance may be wrong and needs a decision). Nothing below changes an entry until the owner agrees; the suggestions are the proposals. This review is professional judgement from general knowledge of SAP, Oracle, Dynamics 365, NetSuite and the IFRS framework; the standards were not re-read in this session, so specific clauses should be confirmed by the company&#39;s accountant.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>AG</th>
+<th>Verdict</th>
+<th>Comparison and suggested change</th>
+</tr>
+</thead><tbody><tr>
+<td>01 One ledger, one engine</td>
+<td>Confirmed</td>
+<td>SAP&#39;s universal journal and Dynamics 365&#39;s general ledger work this way. <strong>Refine:</strong> add the capability for parallel ledgers (local standard, IFRS, tax or zakat books) and a subledger accounting layer (Oracle) so the same document can produce more than one accounting view; keep one engine.</td>
+</tr>
+<tr>
+<td>02 Posting roles</td>
+<td>Refine</td>
+<td>Tier-1 systems find accounts by role <strong>and</strong> by item or product class, party class, branch and transaction type (SAP account determination, Oracle subledger accounting rules). Suggest: roles remain the default, with determination rules on top (the same mechanism as tax determination). Non-retroactive mapping is correct practice.</td>
+</tr>
+<tr>
+<td>03 Control accounts</td>
+<td>Confirmed</td>
+<td>Matches reconciliation accounts in SAP and control accounts in Oracle and D365. <strong>Refine:</strong> allow a controlled, audited manual adjustment to a control account that still carries the party tag (provisions, write-offs), instead of refusing every manual posting.</td>
+</tr>
+<tr>
+<td>04 Documents name who and what</td>
+<td>Confirmed</td>
+<td>This is exactly tier-1 account determination. Extend it to item class and transaction type (see AG-02).</td>
+</tr>
+<tr>
+<td>05 Typed party tags</td>
+<td>Refine</td>
+<td>Add the other subledger references tier-1 systems carry: item (inventory), employee, fixed asset, project, tax code. One typed-reference mechanism, not one column per subledger.</td>
+</tr>
+<tr>
+<td>06 Chart handling</td>
+<td>Refine</td>
+<td>Add &quot;blocked for posting&quot; separate from inactive, effective dating, approval of chart changes, and the account attributes in the chart benchmark (class, cash-flow class, tax category, currency).</td>
+</tr>
+<tr>
+<td>07 Balanced entries</td>
+<td>Refine</td>
+<td>Keep. Add: for a balancing dimension type, the entry must balance per value (inter-unit clearing), as Oracle&#39;s balancing segment and SAP&#39;s profit-centre accounting do.</td>
+</tr>
+<tr>
+<td>10 Dimensions unlimited</td>
+<td>Confirmed</td>
+<td>D365 financial dimensions are the closest model; Oracle and SAP have fixed segment sets, so ours is more flexible. <strong>Refine:</strong> &quot;unlimited&quot; needs a stated performance envelope (combinations, report scans) measured with a large data set.</td>
+</tr>
+<tr>
+<td>11 Management accounting as dimension capabilities</td>
+<td>Confirmed, with a wording refinement</td>
+<td>D365 runs projects and cost centres on dimensions too; SAP and Oracle use dedicated structures. The agreed principle (no separate ledger) is sound. <strong>Refine the wording:</strong> processes that need documents (project billing, work in progress, revenue recognition, budget commitments) are process modules <strong>keyed by a dimension value</strong>, and are allowed; what is forbidden is a second ledger or a hard-coded object that bypasses the framework.</td>
+</tr>
+<tr>
+<td>12 Dimensions are analytical</td>
+<td><strong>Challenge</strong></td>
+<td>True for the account total, but profit-centre accounting in SAP and balancing segments in Oracle produce a <strong>balance sheet and profit and loss per unit</strong>. Suggest rewording: &quot;A dimension never changes an account&#39;s total. A type flagged balancing must also balance per value.&quot;</td>
+</tr>
+<tr>
+<td>13 Combination storage</td>
+<td>Confirmed</td>
+<td>Deduplicated combinations are what D365 does. Test filtering at scale.</td>
+</tr>
+<tr>
+<td>14 Rules per account</td>
+<td>Refine</td>
+<td>Tier-1 also has conditional rules (required for certain document types, origins or amounts; D365 advanced rule structures). Suggest as a later extension.</td>
+</tr>
+<tr>
+<td>15 Default priority</td>
+<td>Confirmed</td>
+<td></td>
+</tr>
+<tr>
+<td>16 Shared query layer</td>
+<td>Confirmed</td>
+<td></td>
+</tr>
+<tr>
+<td>17 Allocations</td>
+<td>Refine</td>
+<td>SAP assessments and distributions, Oracle allocations and D365 allocation rules support several bases including statistical drivers and any dimension. Widen as proposed (BR-DIM-07).</td>
+</tr>
+<tr>
+<td>20 One report engine</td>
+<td>Refine</td>
+<td>Add report versions and comparatives under governance, consolidation, statutory formats and a machine-readable export (XBRL-ready) where required.</td>
+</tr>
+<tr>
+<td>21 Integrity on the page</td>
+<td>Confirmed</td>
+<td>A strong internal-control feature; keep.</td>
+</tr>
+<tr>
+<td>22 No double counting</td>
+<td>Refine</td>
+<td>Presentation standards (IAS 1) forbid offsetting and require splitting an account by balance side in some statements (an overdrawn bank is a liability). Add a &quot;split by balance sign&quot; row type so a rule against double counting does not prevent correct presentation.</td>
+</tr>
+<tr>
+<td>23 Drill-down</td>
+<td>Confirmed</td>
+<td></td>
+</tr>
+<tr>
+<td>24 Side-by-side reports</td>
+<td>Confirmed, needs an end date</td>
+<td>Tier-1 practice is one source. Keep the gate, but set a decision date and criteria for the cut-over so two sets of figures do not live indefinitely.</td>
+</tr>
+<tr>
+<td>25 Server-side figures</td>
+<td>Confirmed</td>
+<td></td>
+</tr>
+<tr>
+<td>26 Permissions and audit</td>
+<td>Refine</td>
+<td>Add segregation-of-duties conflict rules (for example create and approve a vendor payment, create vendor and change its bank account), field-level and period-based rights, and change history on master data (internal-control frameworks such as COSO, SOX-style controls).</td>
+</tr>
+<tr>
+<td>30 Dates</td>
+<td>Refine</td>
+<td>Add the dates the tax and currency work needs: tax point (time of supply), value date, exchange-rate date. The standard already allows them.</td>
+</tr>
+<tr>
+<td>31 Posting guard</td>
+<td>Confirmed</td>
+<td>Tier-1 has period status per module (general ledger, receivables, payables, inventory) and adjustment periods; planned in Sprint 12.</td>
+</tr>
+<tr>
+<td>32 Cancel only in open periods</td>
+<td>Confirmed</td>
+<td>Consistent with IAS 8: no retrospective rewriting of closed periods; correction by a later reversing entry.</td>
+</tr>
+<tr>
+<td>33 Year-end close</td>
+<td>Refine</td>
+<td>Tier-1 systems differ: SAP carries balances forward without posting closing entries to profit and loss accounts; Dynamics posts closing transactions. Either is acceptable. Decide which one, and make sure year-to-date reports and carried-forward balances are consistent with the choice. Keep the rule that a closed year is not reopened.</td>
+</tr>
+<tr>
+<td>40 Settlement model</td>
+<td>Confirmed</td>
+<td>Same as SAP clearing and Dynamics settlement. <strong>Refine:</strong> add payment terms, early-payment discounts, write-off and tolerance handling, payment runs.</td>
+</tr>
+<tr>
+<td>41 to 43</td>
+<td>Confirmed</td>
+<td>Internal consistency rules; nothing to change.</td>
+</tr>
+<tr>
+<td>44 Credit and debit notes</td>
+<td>Confirmed</td>
+<td>Required by the e-invoicing regulation.</td>
+</tr>
+<tr>
+<td>45 No hard delete</td>
+<td>Confirmed</td>
+<td>Audit-trail requirement. <strong>Refine:</strong> add a retention and anonymisation policy for personal data in master records (data-protection law), without breaking financial history.</td>
+</tr>
+<tr>
+<td>46 No bulk save</td>
+<td>Confirmed</td>
+<td></td>
+</tr>
+<tr>
+<td>50 to 52 Approvals</td>
+<td>Refine</td>
+<td>Add approval of master-data changes (vendor bank account, credit limit, tax profile), parallel and conditional approval, and approval by account or cost object. Escalation is already planned.</td>
+</tr>
+<tr>
+<td>60 Tenancy</td>
+<td>Confirmed</td>
+<td></td>
+</tr>
+<tr>
+<td>61 Permissions</td>
+<td>Refine</td>
+<td>See AG-26.</td>
+</tr>
+<tr>
+<td>70 to 76 Ways of working</td>
+<td>Confirmed</td>
+<td>AG-71 is extended by AG-77.</td>
+</tr>
+</tbody></table></div>
+<p><strong>Net result of the review.</strong> One entry should change in wording (AG-12) and one in scope (AG-11); the rest stand with additions. The additions cluster on the same foundations as before: an accounting-rules layer, parallel ledgers, currency, per-module periods, segregation of duties and master-data governance.</p>
+<h3 id="agreed-register--p-pp">K. Professional accounting checklist (applied to new designs and to this register)</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Principle or standard</th>
+<th>The test for our design</th>
+<th>Where we stand</th>
+</tr>
+</thead><tbody><tr>
+<td>Double entry and completeness</td>
+<td>Every transaction has a balanced entry; nothing posts outside the engine</td>
+<td>Met (AG-07, AG-31)</td>
+</tr>
+<tr>
+<td>Accrual and cut-off</td>
+<td>Revenue and cost in the right period; accruals and deferrals supported</td>
+<td>Partial: recurring accruals only; prepaid and deferred items absent</td>
+</tr>
+<tr>
+<td>Immutability and audit trail</td>
+<td>A posted entry is never edited; correction by reversal; who, what and when kept</td>
+<td>Met for entries; master-data change history is partial</td>
+</tr>
+<tr>
+<td>Authorisation and segregation of duties</td>
+<td>Approval rules; conflicting duties separated</td>
+<td>Approvals met; conflict rules absent</td>
+</tr>
+<tr>
+<td>Sequential numbering</td>
+<td>Statutory documents numbered without duplicates, gaps explained</td>
+<td>Met for numbering; gap reporting absent</td>
+</tr>
+<tr>
+<td>Reconciliation</td>
+<td>Subledger equals control account; bank reconciled</td>
+<td>Met</td>
+</tr>
+<tr>
+<td>Period control</td>
+<td>Open, closed, locked periods; adjustments disclosed</td>
+<td>Met for months; year-end planned</td>
+</tr>
+<tr>
+<td>Presentation (IAS 1, IAS 7)</td>
+<td>Current versus non-current, no inappropriate offsetting, cash flow statement</td>
+<td>Partial: no sub-classes; fixed-format cash flow</td>
+</tr>
+<tr>
+<td>Inventory (IAS 2)</td>
+<td>Cost formulas, lower of cost and net realisable value, landed cost</td>
+<td>Partial: average cost only; no write-down; landed cost planned</td>
+</tr>
+<tr>
+<td>Foreign currency (IAS 21)</td>
+<td>Functional currency, rates, revaluation, exchange differences</td>
+<td>Absent</td>
+</tr>
+<tr>
+<td>Revenue (IFRS 15)</td>
+<td>Performance obligations, deferral, contract assets and liabilities</td>
+<td>Absent</td>
+</tr>
+<tr>
+<td>Property, plant and equipment (IAS 16), leases (IFRS 16)</td>
+<td>Asset register, depreciation, disposal</td>
+<td>Absent (out of scope)</td>
+</tr>
+<tr>
+<td>Provisions and credit losses (IAS 37, IFRS 9)</td>
+<td>Bad-debt provision, other provisions</td>
+<td>Absent</td>
+</tr>
+<tr>
+<td>Taxes</td>
+<td>Indirect tax accounting, withholding, zakat and income tax feed</td>
+<td>Partial; design proposed</td>
+</tr>
+<tr>
+<td>Local law (e-invoicing, VAT, records retention)</td>
+<td>Statutory formats and retention</td>
+<td>Met for e-invoicing and VAT filing locks; retention policy to define</td>
+</tr>
+</tbody></table></div>
+<p>Use this table as a checklist for every new finance design: for each row say whether the design meets it and, if not, which later sprint will.</p>
+</section>
+<section class="chapter" id="coa-benchmark"><p class="eyebrow">Chapter 17</p><h2>Chart of accounts: benchmark against tier-1 ERPs and fit to retail, trading, manufacturing, profit-centre, budgeting and project costing</h2><p class="src">Source: <code>docs/design-notes/coa-tier1-benchmark.md</code> · <span class="pill">Benchmark and proposal for decision: nothing built</span></p><p>Written 2026-10-19 at the owner&#39;s request, after the owner observed that the finance core looked like &quot;simple forms making entries&quot;. This is an analysis with a gap register and a target architecture for decision. Nothing is built or registered in the requirement set yet (section 9 proposes the entries).</p>
+<p><strong>Agreed entries that apply</strong> (register <code>agreed-decisions-register</code>): AG-02, AG-04, AG-05 and AG-06 (follows); AG-10 and AG-11 (follows after the correction below); AG-12 (follows, with a proposed wording change: it is marked Challenge in register section J); AG-14, AG-15, AG-17 (follows; widening proposed); AG-71 and AG-77 (this note is the review they require).</p>
 <p><strong>Correction on 2026-10-19 (owner):</strong> an earlier version of this note proposed separate profit centre and project objects. That contradicted the agreed design, in which dimensions are unlimited and flexible and serve budgeting, costing, control and profit and loss. Sections 4, 6, 7.3, 7.4 and 9 were rewritten so that every management-accounting need is met by <strong>capabilities of the dimension framework</strong>, not by new hard-coded modules.</p>
 <p><strong>Confidence.</strong> Our side (sections 2 and 5) was read from the code and the requirement register today. The tier-1 side is general product knowledge of SAP S/4HANA, Oracle Fusion General Ledger, Microsoft Dynamics 365 Finance and NetSuite, plus the documentation pages already checked for the tax analysis; account-attribute lists were <strong>not</strong> re-verified against current vendor documentation in this session and should be confirmed per vendor before a feature is copied from them.</p>
 <h3 id="coa-benchmark--section">1. What a chart of accounts is for, in a tier-1 system</h3>
@@ -6126,8 +6784,9 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li>Saudi statutory chart format and zakat presentation: not researched here; needs a local accountant.</li>
 </ul>
 </section>
-<section class="chapter" id="tax-analysis"><p class="eyebrow">Chapter 17</p><h2>Taxation and tax profiles: analysis and design options (for decision, nothing built)</h2><p class="src">Source: <code>docs/design-notes/taxation-analysis.md</code> · <span class="pill">Analysis and proposal for decision: nothing built (Sprints 14 to 14f)</span></p><p>Written 2026-10-19 after the owner asked for a holistic accountant&#39;s view of taxation: how tier-1 ERPs do it, how imports, manufacturing and retail behave, how our solution measures up, and a flexible design in which <strong>the system, not the data entry operator, decides what to post and where</strong>. This note analyses and proposes; it does not decide. Section 10 lists the decisions needed.</p>
+<section class="chapter" id="tax-analysis"><p class="eyebrow">Chapter 18</p><h2>Taxation and tax profiles: analysis and design options (for decision, nothing built)</h2><p class="src">Source: <code>docs/design-notes/taxation-analysis.md</code> · <span class="pill">Analysis and proposal for decision: nothing built (Sprints 14 to 14f)</span></p><p>Written 2026-10-19 after the owner asked for a holistic accountant&#39;s view of taxation: how tier-1 ERPs do it, how imports, manufacturing and retail behave, how our solution measures up, and a flexible design in which <strong>the system, not the data entry operator, decides what to post and where</strong>. This note analyses and proposes; it does not decide. Section 10 lists the decisions needed.</p>
 <p>Method (architecture first): the Finance Core Blueprint (FR-TAX, FR-RND, FR-LC, ERD), the existing design notes, the code as it is today, public documentation of the tier-1 products, and the Saudi (ZATCA) rules as published. Where a statement could not be checked against a primary source it is marked <strong>[verify]</strong>: nothing marked so should be built on before a tax adviser confirms it.</p>
+<p><strong>Agreed entries that apply</strong> (register <code>agreed-decisions-register</code>): AG-02 and AG-04 (follows: the document names party and item, the engine finds accounts; the design extends this to tax), AG-05 (follows: tax code becomes a typed reference), AG-30 and AG-31 (follows: tax uses document date, posting date and the posting guard), AG-32 (follows), AG-24 (follows: the return is reconciled to documents), AG-71 and AG-77 (this note is the review they require). No agreed entry is contradicted.</p>
 <h3 id="tax-analysis--section">1. What a correct tax solution must do (the accountant&#39;s test)</h3>
 <ol>
 <li><strong>Determine, then compute, then post, then report, then settle.</strong> These are five separate responsibilities. Tier-1 systems keep them separate; mixing them (a rate on the document that also decides the account) is what makes a tax design rigid.</li>
@@ -6734,7 +7393,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li><strong>Not independently verified</strong>: SAP, NetSuite and Odoo behaviour (general knowledge); every Saudi legal point marked <strong>[verify]</strong>. A qualified tax adviser should confirm the treatment of import VAT (deferral), reverse-charge boxes, withholding rates and non-recoverable categories before any of it is implemented.</li>
 </ul>
 </section>
-<section class="chapter" id="test-strategy"><p class="eyebrow">Chapter 18</p><h2>Test Strategy</h2><p class="src">Source: <code>docs/gl-ap-ar/05-test-strategy.md</code></p><p>Version 1.0 / 2026-10-15. The complete case list is the catalogue in <code>docs/test-cases/</code> (CSV, JSON, Gherkin); each case is traced to a system requirement and a business requirement in the traceability matrix (08).</p>
+<section class="chapter" id="test-strategy"><p class="eyebrow">Chapter 19</p><h2>Test Strategy</h2><p class="src">Source: <code>docs/gl-ap-ar/05-test-strategy.md</code></p><p>Version 1.0 / 2026-10-15. The complete case list is the catalogue in <code>docs/test-cases/</code> (CSV, JSON, Gherkin); each case is traced to a system requirement and a business requirement in the traceability matrix (08).</p>
 <h3 id="test-strategy--section">1. Objectives</h3>
 <ol>
 <li>Prove every business requirement with at least one repeatable test; none is &quot;verified by looking&quot;.</li>
@@ -6860,7 +7519,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="sprint-log"><p class="eyebrow">Chapter 19</p><h2>Sprint log and plan — GL / AR / AP 2.0</h2><p class="src">Source: <code>docs/gl-ap-ar/07-sprint-log.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+<section class="chapter" id="sprint-log"><p class="eyebrow">Chapter 20</p><h2>Sprint log and plan — GL / AR / AP 2.0</h2><p class="src">Source: <code>docs/gl-ap-ar/07-sprint-log.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
 </div>
 <p>Sprints are numbered. Done sprints list the commits that delivered them (git, branch <code>v2</code>); planned sprints list the BRD items they will deliver. Forward mapping (BR → sprint) and back mapping (sprint item → BR) are both here and in the traceability matrix (08). The first ten sprints were delivered in one continuous build, 2026-10-14 → 2026-10-15.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -8817,7 +9476,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="api"><p class="eyebrow">Chapter 20</p><h2>Annex B — API reference (GL / AR / AP routes)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-b-api-reference.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+<section class="chapter" id="api"><p class="eyebrow">Chapter 21</p><h2>Annex B — API reference (GL / AR / AP routes)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-b-api-reference.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
 </div>
 <p>Parsed from <code>server/routes/*.ts</code>. &quot;Permission&quot; lists the <code>hasPermission</code> keys found in the handler. All routes run in the tenant transaction (<code>withTenantDb</code>) and are scoped to the session company.</p>
 <h3 id="api--section">ledgerAccounts.ts</h3>
@@ -9570,7 +10229,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="permissions"><p class="eyebrow">Chapter 21</p><h2>Annex C — Permission modules (GL / AR / AP)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-c-permissions-matrix.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+<section class="chapter" id="permissions"><p class="eyebrow">Chapter 22</p><h2>Annex C — Permission modules (GL / AR / AP)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-c-permissions-matrix.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
 </div>
 <p>Source of truth: <code>src/permissionSchema.ts</code>. A user&#39;s rights are the union of all assigned roles; administrators hold every right. Delete means cancel or deactivate, never erase.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -10067,7 +10726,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="posting-rules"><p class="eyebrow">Chapter 22</p><h2>Annex D — Posting rules catalogue</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-d-posting-rules.md</code></p><p>What every source document posts (Dr = debit, Cr = credit). Roles are resolved by the posting engine to the company&#39;s account (customer/vendor control account, bank&#39;s own account, expense-category account when mapped). Every entry also carries the dimension tags and the customer/vendor tag its accounts require. A reversal (cancel, credit note, return, receipt cancel) mirrors the original lines, tags and parties on the reversal date.</p>
+<section class="chapter" id="posting-rules"><p class="eyebrow">Chapter 23</p><h2>Annex D — Posting rules catalogue</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-d-posting-rules.md</code></p><p>What every source document posts (Dr = debit, Cr = credit). Roles are resolved by the posting engine to the company&#39;s account (customer/vendor control account, bank&#39;s own account, expense-category account when mapped). Every entry also carries the dimension tags and the customer/vendor tag its accounts require. A reversal (cancel, credit note, return, receipt cancel) mirrors the original lines, tags and parties on the reversal date.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Source</th>
 <th>Voucher</th>
@@ -10265,7 +10924,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="developer-guide"><p class="eyebrow">Chapter 23</p><h2>Annex E — Developer guide for future ledger work</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-e-developer-guide.md</code></p><p>Read the Solution Design (03) principles first. This page is the practical checklist.</p>
+<section class="chapter" id="developer-guide"><p class="eyebrow">Chapter 24</p><h2>Annex E — Developer guide for future ledger work</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-e-developer-guide.md</code></p><p>Read the Solution Design (03) principles first. This page is the practical checklist.</p>
 <h3 id="developer-guide--p">Add a new source document that posts</h3>
 <ol>
 <li>Do not pick accounts. Call <code>postJournalEntry</code> with <code>referenceType</code>, <code>referenceId</code>, role lines, and a <code>context</code> (or let <code>partyOfDocument</code> read the party). Add the document type to <code>partyOfDocument</code> (<code>postingContext.ts</code>) and to the party back-fill (<code>scripts/backfill-party-tags.ts</code>) if it touches a customer/vendor.</li>
@@ -10297,7 +10956,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li>Run a Live release script from the 2.0 checkout, or merge v2 into master.</li>
 </ul>
 </section>
-<section class="chapter" id="runbook"><p class="eyebrow">Chapter 24</p><h2>Annex F — Operations runbook (ledger core)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-f-operations-runbook.md</code></p><h3 id="runbook--section">Tracks</h3>
+<section class="chapter" id="runbook"><p class="eyebrow">Chapter 25</p><h2>Annex F — Operations runbook (ledger core)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-f-operations-runbook.md</code></p><h3 id="runbook--section">Tracks</h3>
 <p>Live: branch <code>master</code>, folder <code>E:\ERP</code>, production warraq.compbrain.io, fixes only. Demo / 2.0: branch <code>v2</code>, folder <code>E:\ERP-2.0</code>, local port 3001 / database <code>erp_v2</code>, VPS <code>~/apps/erp-demo</code> port 4000 (127.0.0.1 only; reach it through an SSH tunnel). See <code>docs/operations/environments.md</code>.</p>
 <h3 id="runbook--p">Demo release (VPS, as the demo OS user)</h3>
 <pre class="code"><code>cd ~/apps/erp-demo
@@ -10318,7 +10977,7 @@ bash deploy/release-demo.sh</code></pre>
 <li>&quot;Cannot post a date&quot;: posting guard message names the rule (month, VAT quarter, lock date, window, reason).</li>
 </ul>
 </section>
-<section class="chapter" id="glossary"><p class="eyebrow">Chapter 25</p><h2>Annex G — Glossary</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-g-glossary.md</code></p><div class="table-wrap"><table class="plan"><thead><tr>
+<section class="chapter" id="glossary"><p class="eyebrow">Chapter 26</p><h2>Annex G — Glossary</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-g-glossary.md</code></p><div class="table-wrap"><table class="plan"><thead><tr>
 <th>Term</th>
 <th>Meaning</th>
 </tr>
@@ -10460,7 +11119,7 @@ bash deploy/release-demo.sh</code></pre>
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="deployment"><p class="eyebrow">Chapter 26</p><h2>Hostinger VPS Deployment Plan</h2><p class="src">Source: <code>docs/operations/deployment-plan.md</code></p><p><strong>Status: LIVE.</strong> The app is running in production at <code>https://warraq.compbrain.io</code> (Nginx + Let&#39;s Encrypt SSL, PM2 2-instance cluster, Postgres on the same box). Load the <code>hostinger-deploy</code> skill before touching any of this — it has the full guardrails plus a real incident (PM2 startup registered under the wrong OS user) worth reading before touching PM2 lifecycle commands.</p>
+<section class="chapter" id="deployment"><p class="eyebrow">Chapter 27</p><h2>Hostinger VPS Deployment Plan</h2><p class="src">Source: <code>docs/operations/deployment-plan.md</code></p><p><strong>Status: LIVE.</strong> The app is running in production at <code>https://warraq.compbrain.io</code> (Nginx + Let&#39;s Encrypt SSL, PM2 2-instance cluster, Postgres on the same box). Load the <code>hostinger-deploy</code> skill before touching any of this — it has the full guardrails plus a real incident (PM2 startup registered under the wrong OS user) worth reading before touching PM2 lifecycle commands.</p>
 <h3 id="deployment--section">Decisions already locked in (confirmed with the user)</h3>
 <ul>
 <li><strong>Target</strong>: Hostinger VPS, 2 vCPU / 8GB RAM, Ubuntu LTS.</li>
@@ -10590,7 +11249,7 @@ bash deploy/maintenance-mode.sh off      # resume normal traffic
 bash deploy/maintenance-mode.sh status   # check which state it's in</code></pre>
 <p>It just creates/removes a sentinel file (<code>deploy/MAINTENANCE_ON</code>, gitignored) that the Nginx snippet checks, then runs <code>nginx -t</code> before reloading — never touches PM2 or Postgres. To keep your own access while maintenance is on, uncomment and edit the bypass-IP line in <code>erp-maintenance.conf</code> and reload.</p>
 </section>
-<section class="chapter" id="ha-proposal"><p class="eyebrow">Chapter 27</p><h2>High Availability Plan (for review)</h2><p class="src">Source: <code>docs/proposals/high-availability-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-22 in response to Hostinger&#39;s notice
+<section class="chapter" id="ha-proposal"><p class="eyebrow">Chapter 28</p><h2>High Availability Plan (for review)</h2><p class="src">Source: <code>docs/proposals/high-availability-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-22 in response to Hostinger&#39;s notice
 that VPS maintenance downtime is the customer&#39;s own responsibility — Hostinger is not
 obligated to provide HA for a single VPS, and won&#39;t.</p>
 <h3 id="ha-proposal--section">1. Where we actually stand today</h3>
@@ -10733,7 +11392,7 @@ to fund Tier 2 sooner.</li>
 <p>I haven&#39;t provisioned anything or touched the production server for this — tell me which
 tier to build and I&#39;ll start with the standby setup and the replication config.</p>
 </section>
-<section class="chapter" id="ai-proposal"><p class="eyebrow">Chapter 28</p><h2>AI Features — Implementation Plan (for review)</h2><p class="src">Source: <code>docs/proposals/ai-feature-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-20 against the current codebase.
+<section class="chapter" id="ai-proposal"><p class="eyebrow">Chapter 29</p><h2>AI Features — Implementation Plan (for review)</h2><p class="src">Source: <code>docs/proposals/ai-feature-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-20 against the current codebase.
 Focus, as requested: <strong>(1) reporting / data processing, (2) easier data entry and validation, (3) scenarios that can be configured, not hard-coded.</strong>
 Worked scenarios: ZATCA rejection analysis, sales trends, WhatsApp message → quotation.</p>
 <hr>
@@ -11068,7 +11727,7 @@ Output is a short list of &quot;fix these N things&quot; with a one-click jump t
 <li><strong>Data retention:</strong> how long to keep WhatsApp messages/bill images and AI audit logs.</li>
 </ol>
 </section>
-<section class="chapter" id="linked"><p class="eyebrow">Chapter 29</p><h2>Linked pages and other documents</h2><div class="cards">
+<section class="chapter" id="linked"><p class="eyebrow">Chapter 30</p><h2>Linked pages and other documents</h2><div class="cards">
 <a class="card" href="data-dictionary.html"><b>Data dictionary</b><span>Every table and column of the finance core, generated from the schema (annex A).</span></a>
 <a class="card" href="traceability.html"><b>Traceability matrix</b><span>Blueprint to business requirement to system requirement to test case to sprint.</span></a>
 <a class="card" href="test-catalogue.html"><b>Test-case catalogue</b><span>Every test case with its steps, filterable. Also as CSV, JSON and Gherkin in docs/test-cases.</span></a>

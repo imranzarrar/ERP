@@ -4,6 +4,8 @@ Written 2026-10-19 after the owner asked for a holistic accountant's view of tax
 
 Method (architecture first): the Finance Core Blueprint (FR-TAX, FR-RND, FR-LC, ERD), the existing design notes, the code as it is today, public documentation of the tier-1 products, and the Saudi (ZATCA) rules as published. Where a statement could not be checked against a primary source it is marked **[verify]**: nothing marked so should be built on before a tax adviser confirms it.
 
+**Agreed entries that apply** (register `agreed-decisions-register`): AG-02 and AG-04 (follows: the document names party and item, the engine finds accounts; the design extends this to tax), AG-05 (follows: tax code becomes a typed reference), AG-30 and AG-31 (follows: tax uses document date, posting date and the posting guard), AG-32 (follows), AG-24 (follows: the return is reconciled to documents), AG-71 and AG-77 (this note is the review they require). No agreed entry is contradicted.
+
 ## 1. What a correct tax solution must do (the accountant's test)
 
 1. **Determine, then compute, then post, then report, then settle.** These are five separate responsibilities. Tier-1 systems keep them separate; mixing them (a rate on the document that also decides the account) is what makes a tax design rigid.
