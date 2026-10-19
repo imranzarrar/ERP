@@ -109,6 +109,7 @@ Status: **Built** (in the code), **Planned** (agreed, in the sprint plan), **Sta
 | Dimension framework capabilities (roles, attributes, lifecycle, valid combinations, balancing, break-down reports) and budgeting on dimension combinations | `coa-tier1-benchmark` sections 7.3, 7.4 | Whether to build, and the order |
 | Foreign currency and parallel ledgers | `coa-tier1-benchmark` section 7.5 | Whether they are in the programme, before the above are frozen |
 | Account determination rules (one mechanism for tax and accounts) | both notes | Agreement to treat as one engine |
+| Manufacturing cost accounting on the same architecture: valuation classes, work order keyed to a dimension value, quantities with postings, absorption with capacity and cycles, variances, runs | `manufacturing-and-tax-alignment` | The eight decisions in its section 8, first the AG-11 wording |
 
 ## J. Professional review of the agreed decisions (tier-1 practice and accounting guidelines)
 
@@ -153,6 +154,21 @@ Agreed does not mean frozen (AG-77). Each agreed entry is compared with how tier
 | 70 to 76 Ways of working | Confirmed | AG-71 is extended by AG-77. |
 
 **Net result of the review.** One entry should change in wording (AG-12) and one in scope (AG-11); the rest stand with additions. The additions cluster on the same foundations as before: an accounting-rules layer, parallel ledgers, currency, per-module periods, segregation of duties and master-data governance.
+
+
+### J2. Stress test against manufacturing cost accounting and multiple taxation (2026-10-19)
+
+The design note *Does the architecture serve the core?* walked a manufacturer through the architecture. Result for the agreed entries: **none is contradicted; four need extension and one needs the owner's confirmation.**
+
+| AG | Effect of the stress test |
+|---|---|
+| 04 | Extend determination to item valuation class and movement type (raw material, work in progress, finished goods, scrap, variance accounts) |
+| 05 | Add typed references for the work order and the asset |
+| 11 | **Confirmation needed.** Manufacturing requires a work order document keyed to a dimension value; the refined wording (process documents keyed by dimension values are allowed; a second ledger or a hard-coded cost object is not) is required, not optional |
+| 17 | Widen allocation to cycles between cost centres, quantity drivers, normal-capacity rules and net-realisable-value bases |
+| 12 | The proposed rewording (a balancing type must also balance per value) stands |
+
+Prerequisites shared by manufacturing and tax, in the order that serves both: account master and valuation classes, then the determination engine, then foreign currency and landed cost, then work orders and absorption.
 
 ## K. Professional accounting checklist (applied to new designs and to this register)
 

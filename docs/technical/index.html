@@ -28,7 +28,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 .filters{display:flex;flex-wrap:wrap;gap:.6rem;margin:1rem 0}.filters input,.filters select{font:inherit;padding:.4rem .6rem;border:1px solid var(--line);border-radius:8px;background:var(--raised)}
 @media (max-width:900px){.layout{grid-template-columns:1fr}.rail{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:1.2rem 1rem 3rem}}
 @media print{.rail{display:none}.layout{grid-template-columns:1fr}.chapter{page-break-before:always}}
-</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Technical documentation</div><a class="home" href="../index.html">← All documentation</a><div class="grp">Orientation</div><a href="#overview">1. How this documentation fits together</a><a href="#environments">2. Environments: Live (1.0) and Demo / development (2.0)</a><div class="grp">The whole system</div><a href="#platform">3. Platform architecture: how the whole system works</a><a href="#module-catalogue">4. Annex H: Module catalogue (every module, older and new)</a><div class="grp">Requirements</div><a href="#brd">5. Business Requirements Document</a><a href="#srs">6. Software Requirements Specification</a><div class="grp">Design</div><a href="#solution-design">7. Solution Design Document</a><a href="#technical-design">8. Technical Design Document</a><a href="#accounting-rules">9. Accounting and reporting rules</a><a href="#period-rule">10. Period rule for cancel, reversal, return and credit</a><a href="#date-standard">11. Date fields on documents: the standard (Demo / 2.0)</a><a href="#posting-control">12. Posting control: the lock date and back-dating rules (Demo / 2.0)</a><a href="#ar-ap-bank">13. AR, AP and bank reconciliation: design against the Finance Core Blueprint (Demo / 2.0)</a><a href="#dimensions-decisions">14. GL Step 1.5: dimensions and configurable statements. CFO and architect decisions</a><a href="#approval-research">15. Sprint 11 — Approval rules: what tier-1 ERPs do, and what we should build</a><a href="#agreed-register">16. Agreed decisions register (finance core and the way we work)</a><a href="#coa-benchmark">17. Chart of accounts: benchmark against tier-1 ERPs and fit to retail, trading, manufacturing, profit-centre, budgeting and project costing</a><a href="#tax-analysis">18. Taxation and tax profiles: analysis and design options (for decision, nothing built)</a><div class="grp">Quality</div><a href="#test-strategy">19. Test Strategy</a><div class="grp">Delivery</div><a href="#sprint-log">20. Sprint log and plan — GL / AR / AP 2.0</a><div class="grp">Reference</div><a href="#api">21. Annex B — API reference (GL / AR / AP routes)</a><a href="#permissions">22. Annex C — Permission modules (GL / AR / AP)</a><a href="#posting-rules">23. Annex D — Posting rules catalogue</a><a href="#developer-guide">24. Annex E — Developer guide for future ledger work</a><a href="#runbook">25. Annex F — Operations runbook (ledger core)</a><a href="#glossary">26. Annex G — Glossary</a><div class="grp">Operations and proposals</div><a href="#deployment">27. Hostinger VPS Deployment Plan</a><a href="#ha-proposal">28. High Availability Plan (for review)</a><a href="#ai-proposal">29. AI Features — Implementation Plan (for review)</a><div class="grp">Linked documents</div><a href="#linked">30. Linked pages and other documents</a></aside><main><p class="eyebrow">Warraq ERP · Technical documentation</p><h1 style="font-size:2.3rem;margin:.2rem 0 1.5rem">Warraq ERP: platform, modules and finance core</h1>
+</style></head><body><div class="layout"><aside class="rail"><div class="mark">Warraq ERP</div><div class="sub">Technical documentation</div><a class="home" href="../index.html">← All documentation</a><div class="grp">Orientation</div><a href="#overview">1. How this documentation fits together</a><a href="#environments">2. Environments: Live (1.0) and Demo / development (2.0)</a><div class="grp">The whole system</div><a href="#platform">3. Platform architecture: how the whole system works</a><a href="#module-catalogue">4. Annex H: Module catalogue (every module, older and new)</a><div class="grp">Requirements</div><a href="#brd">5. Business Requirements Document</a><a href="#srs">6. Software Requirements Specification</a><div class="grp">Design</div><a href="#solution-design">7. Solution Design Document</a><a href="#technical-design">8. Technical Design Document</a><a href="#accounting-rules">9. Accounting and reporting rules</a><a href="#period-rule">10. Period rule for cancel, reversal, return and credit</a><a href="#date-standard">11. Date fields on documents: the standard (Demo / 2.0)</a><a href="#posting-control">12. Posting control: the lock date and back-dating rules (Demo / 2.0)</a><a href="#ar-ap-bank">13. AR, AP and bank reconciliation: design against the Finance Core Blueprint (Demo / 2.0)</a><a href="#dimensions-decisions">14. GL Step 1.5: dimensions and configurable statements. CFO and architect decisions</a><a href="#approval-research">15. Sprint 11 — Approval rules: what tier-1 ERPs do, and what we should build</a><a href="#agreed-register">16. Agreed decisions register (finance core and the way we work)</a><a href="#mfg-tax-alignment">17. Does the architecture serve the core? Stress test against manufacturing cost accounting and multiple taxation</a><a href="#coa-benchmark">18. Chart of accounts: benchmark against tier-1 ERPs and fit to retail, trading, manufacturing, profit-centre, budgeting and project costing</a><a href="#tax-analysis">19. Taxation and tax profiles: analysis and design options (for decision, nothing built)</a><div class="grp">Quality</div><a href="#test-strategy">20. Test Strategy</a><div class="grp">Delivery</div><a href="#sprint-log">21. Sprint log and plan — GL / AR / AP 2.0</a><div class="grp">Reference</div><a href="#api">22. Annex B — API reference (GL / AR / AP routes)</a><a href="#permissions">23. Annex C — Permission modules (GL / AR / AP)</a><a href="#posting-rules">24. Annex D — Posting rules catalogue</a><a href="#developer-guide">25. Annex E — Developer guide for future ledger work</a><a href="#runbook">26. Annex F — Operations runbook (ledger core)</a><a href="#glossary">27. Annex G — Glossary</a><div class="grp">Operations and proposals</div><a href="#deployment">28. Hostinger VPS Deployment Plan</a><a href="#ha-proposal">29. High Availability Plan (for review)</a><a href="#ai-proposal">30. AI Features — Implementation Plan (for review)</a><div class="grp">Linked documents</div><a href="#linked">31. Linked pages and other documents</a></aside><main><p class="eyebrow">Warraq ERP · Technical documentation</p><h1 style="font-size:2.3rem;margin:.2rem 0 1.5rem">Warraq ERP: platform, modules and finance core</h1>
 <section class="chapter" id="overview"><p class="eyebrow">Chapter 1</p><h2>How this documentation fits together</h2><p>This is the technical documentation of Warraq ERP as a whole: how the platform works (companies, permissions, ledger, e-invoicing), every module with its endpoints, tables, screens and tests, and the requirements, design, tests and delivery history. The requirements and tests of the older modules (sales, expenses, procurement, POS, ZATCA, VAT, master data, users) were written as built from the code and its automated tests; those of the finance core (General Ledger, Receivables, Payables, Bank) were written before it was built. It is one document, read top to bottom or by the menu on the left. Three long tables are on their own pages and linked: the <a href="data-dictionary.html">data dictionary</a>, the <a href="traceability.html">traceability matrix</a> and the <a href="test-catalogue.html">test-case catalogue</a>.</p>
 <div class="table-wrap"><table class="plan"><thead><tr><th>If you want to know…</th><th>Read</th></tr></thead><tbody>
 <tr><td>How the whole system works, and what modules exist</td><td><a href="#platform">Platform architecture</a>, then the <a href="#module-catalogue">Module catalogue</a> (one sheet per module)</td></tr>
@@ -46,7 +46,7 @@ figure.shot{margin:1.2rem 0 1.6rem}figure.shot img{max-width:100%;border:1px sol
 </tbody></table></div>
 <div class="callout"><div class="label">Which version is described</div><p>The finance core is <b>Warraq 2.0</b> (branch <code>v2</code>, the Demo). Live (1.0, branch <code>master</code>) does not have it yet. Chapters say so where it matters; the <a href="#environments">Environments</a> chapter explains the two tracks.</p></div>
 <div class="callout warn"><div class="label">Reading copy, not the source</div><p>This page is generated. The requirements, system requirements, sprint log, traceability and annexes A to C are generated from <code>docs/gl-ap-ar/source/*.mjs</code> and from the code; the other chapters are hand-written Markdown under <code>docs/gl-ap-ar</code>, <code>docs/design-notes</code>, <code>docs/operations</code> and <code>docs/proposals</code>. Edit those, then run <code>npx tsx scripts/build-gl-docs.mjs</code> and <code>node scripts/build-docs-html.mjs</code>; never edit this page. The skill <code>update-docs-after-development</code> walks through it.</p></div>
-<p class="src">Version: built 2026-10-19, branch v2, after commit 2d2da18.</p></section>
+<p class="src">Version: built 2026-10-19, branch v2, after commit 82ff3f1.</p></section>
 <section class="chapter" id="environments"><p class="eyebrow">Chapter 2</p><h2>Environments: Live (1.0) and Demo / development (2.0)</h2><p class="src">Source: <code>docs/operations/environments.md</code></p><p>Two words are used everywhere from now on:</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th></th>
@@ -5818,6 +5818,11 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <td>both notes</td>
 <td>Agreement to treat as one engine</td>
 </tr>
+<tr>
+<td>Manufacturing cost accounting on the same architecture: valuation classes, work order keyed to a dimension value, quantities with postings, absorption with capacity and cycles, variances, runs</td>
+<td><code>manufacturing-and-tax-alignment</code></td>
+<td>The eight decisions in its section 8, first the AG-11 wording</td>
+</tr>
 </tbody></table></div>
 <h3 id="agreed-register--p-p-3">J. Professional review of the agreed decisions (tier-1 practice and accounting guidelines)</h3>
 <p>Agreed does not mean frozen (AG-77). Each agreed entry is compared with how tier-1 systems work and with professional accounting practice, and the result is one of: <strong>Confirmed</strong> (consistent), <strong>Refine</strong> (keep, with an addition), <strong>Challenge</strong> (the wording or the substance may be wrong and needs a decision). Nothing below changes an entry until the owner agrees; the suggestions are the proposals. This review is professional judgement from general knowledge of SAP, Oracle, Dynamics 365, NetSuite and the IFRS framework; the standards were not re-read in this session, so specific clauses should be confirmed by the company&#39;s accountant.</p>
@@ -6003,6 +6008,34 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 <p><strong>Net result of the review.</strong> One entry should change in wording (AG-12) and one in scope (AG-11); the rest stand with additions. The additions cluster on the same foundations as before: an accounting-rules layer, parallel ledgers, currency, per-module periods, segregation of duties and master-data governance.</p>
+<h4 id="agreed-register--p-3">J2. Stress test against manufacturing cost accounting and multiple taxation (2026-10-19)</h4>
+<p>The design note <em>Does the architecture serve the core?</em> walked a manufacturer through the architecture. Result for the agreed entries: <strong>none is contradicted; four need extension and one needs the owner&#39;s confirmation.</strong></p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>AG</th>
+<th>Effect of the stress test</th>
+</tr>
+</thead><tbody><tr>
+<td>04</td>
+<td>Extend determination to item valuation class and movement type (raw material, work in progress, finished goods, scrap, variance accounts)</td>
+</tr>
+<tr>
+<td>05</td>
+<td>Add typed references for the work order and the asset</td>
+</tr>
+<tr>
+<td>11</td>
+<td><strong>Confirmation needed.</strong> Manufacturing requires a work order document keyed to a dimension value; the refined wording (process documents keyed by dimension values are allowed; a second ledger or a hard-coded cost object is not) is required, not optional</td>
+</tr>
+<tr>
+<td>17</td>
+<td>Widen allocation to cycles between cost centres, quantity drivers, normal-capacity rules and net-realisable-value bases</td>
+</tr>
+<tr>
+<td>12</td>
+<td>The proposed rewording (a balancing type must also balance per value) stands</td>
+</tr>
+</tbody></table></div>
+<p>Prerequisites shared by manufacturing and tax, in the order that serves both: account master and valuation classes, then the determination engine, then foreign currency and landed cost, then work orders and absorption.</p>
 <h3 id="agreed-register--p-pp">K. Professional accounting checklist (applied to new designs and to this register)</h3>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Principle or standard</th>
@@ -6087,7 +6120,465 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tbody></table></div>
 <p>Use this table as a checklist for every new finance design: for each row say whether the design meets it and, if not, which later sprint will.</p>
 </section>
-<section class="chapter" id="coa-benchmark"><p class="eyebrow">Chapter 17</p><h2>Chart of accounts: benchmark against tier-1 ERPs and fit to retail, trading, manufacturing, profit-centre, budgeting and project costing</h2><p class="src">Source: <code>docs/design-notes/coa-tier1-benchmark.md</code> · <span class="pill">Benchmark and proposal for decision: nothing built</span></p><p>Written 2026-10-19 at the owner&#39;s request, after the owner observed that the finance core looked like &quot;simple forms making entries&quot;. This is an analysis with a gap register and a target architecture for decision. Nothing is built or registered in the requirement set yet (section 9 proposes the entries).</p>
+<section class="chapter" id="mfg-tax-alignment"><p class="eyebrow">Chapter 17</p><h2>Does the architecture serve the core? Stress test against manufacturing cost accounting and multiple taxation</h2><p class="src">Source: <code>docs/design-notes/manufacturing-and-tax-alignment.md</code> · <span class="pill">Stress test and proposal for decision: nothing built</span></p><p>Written 2026-10-19 at the owner&#39;s request: &quot;align this with manufacturing domain cost accounting requirements, as well as multiple taxation requirements, to make sure the architecture serves the core.&quot;</p>
+<p><strong>Agreed entries that apply</strong> (register <code>agreed-decisions-register</code>): AG-01, AG-02, AG-04, AG-05 (follows); AG-10, AG-12, AG-13, AG-14, AG-15, AG-16 (follows); AG-11 (follows, <strong>with a tension</strong>, below); AG-17 (follows, widening needed); AG-30, AG-31, AG-32, AG-33 (follows); AG-71 and AG-77 (this note is the review they require). <strong>No agreed entry is contradicted.</strong></p>
+<p><strong>The tension.</strong> The Blueprint (FR-WIP-01 to 08 and its entity list) describes <strong>work orders</strong> and <strong>projects</strong> as &quot;cost objects&quot; with their own tables and their own <code>accumulated_*</code> cost columns. AG-11 says management accounting is carried by the dimension framework and never by separate modules or ledgers. They are reconciled by the wording already proposed in the register (section J): a work order is a <strong>process document keyed by a dimension value</strong>; the ledger stays the single source of cost; the Blueprint&#39;s accumulated columns, if kept at all, are derived caches checked by the consistency check, never a second truth. This note assumes that wording. The owner must confirm it (decision 1).</p>
+<p><strong>Method.</strong> (1) State the architecture under test. (2) List what manufacturing cost accounting needs (tier-1 practice and IAS 2). (3) List what multiple taxation needs. (4) Walk one complete manufacturer through the architecture with numbers. (5) Record what holds, what is missing and the design adjustment. Tier-1 content is from general knowledge of SAP (product costing and controlling), Oracle (cost management), Dynamics 365 (production control and cost accounting) and IAS 2; clause-level details should be confirmed with the company&#39;s accountant.</p>
+<h3 id="mfg-tax-alignment--section">1. The architecture under test</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Layer</th>
+<th>Content</th>
+<th>Status</th>
+</tr>
+</thead><tbody><tr>
+<td>L0 Ledger</td>
+<td>One ledger, one posting engine, balanced entries, typed party tags, period guard</td>
+<td>Built</td>
+</tr>
+<tr>
+<td>L1 Account master</td>
+<td>Classes, sub-classes, posting controls, tax category, currency, groups, templates, effective dating</td>
+<td>Proposed (chart benchmark 7.1)</td>
+</tr>
+<tr>
+<td>L2 Dimension framework</td>
+<td>Unlimited types; roles (balancing, cost object, statistical driver); attributes; lifecycle; valid combinations; allocation over any type; break-down reports; budgets</td>
+<td>Types, values, combinations, rules, filters built; the rest proposed (7.3, 7.4)</td>
+</tr>
+<tr>
+<td>L3 Determination</td>
+<td>One rule engine that returns tax codes and accounts from transaction type, party profile, item class, branch and date</td>
+<td>Proposed (tax design, chart benchmark 7.6)</td>
+</tr>
+<tr>
+<td>L4 Process modules keyed by dimension</td>
+<td>Procurement and landed cost, production (work orders), projects, billing, budgets</td>
+<td>Procurement built (no landed cost); the rest planned or absent</td>
+</tr>
+<tr>
+<td>L5 Reports</td>
+<td>One report engine with break-down, budget and quantity bases</td>
+<td>Engine built; bases proposed</td>
+</tr>
+<tr>
+<td>L6 Periods</td>
+<td>Per-module status, runs with locks, year-end</td>
+<td>Month lock built; the rest planned (Sprints 12, 13)</td>
+</tr>
+</tbody></table></div>
+<h3 id="mfg-tax-alignment---2">2. What manufacturing cost accounting requires</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>#</th>
+<th>Requirement</th>
+<th>Tier-1 and standard practice</th>
+</tr>
+</thead><tbody><tr>
+<td>M1</td>
+<td><strong>Item classes and inventory accounts by class</strong></td>
+<td>Item type (raw material, semi-finished, finished, trading goods, consumables, service) with a valuation class that decides the inventory, variance, price-difference and scrap accounts</td>
+</tr>
+<tr>
+<td>M2</td>
+<td><strong>Costing method per item class</strong></td>
+<td>Moving average, FIFO or standard cost; standard cost with variances; actual cost by order</td>
+</tr>
+<tr>
+<td>M3</td>
+<td><strong>Bill of material, routing, work centres, activity types</strong></td>
+<td>Materials, operations, labour and machine hours, with a rate per hour per cost centre and activity type</td>
+</tr>
+<tr>
+<td>M4</td>
+<td><strong>Work order lifecycle</strong></td>
+<td>Planned, released, issued, completed, closed; cost collected from material issues, traced labour, machine time, overhead application, subcontract charges</td>
+</tr>
+<tr>
+<td>M5</td>
+<td><strong>Cost centre accounting and overhead absorption</strong></td>
+<td>Pools of indirect cost, absorption by rate (labour hours, machine hours, units), allocation cycles between service and production cost centres, under- and over-absorption true-up</td>
+</tr>
+<tr>
+<td>M6</td>
+<td><strong>Normal capacity and abnormal waste (IAS 2)</strong></td>
+<td>Fixed overhead absorbed on normal capacity; abnormal waste and idle capacity expensed, not capitalised</td>
+</tr>
+<tr>
+<td>M7</td>
+<td><strong>Work in progress</strong></td>
+<td>Per-order cost to date; period-end WIP valuation (order costing) or equivalent units (process costing)</td>
+</tr>
+<tr>
+<td>M8</td>
+<td><strong>Completion</strong></td>
+<td>Transfer from WIP to finished goods at actual or standard cost per unit; goods receipt from production</td>
+</tr>
+<tr>
+<td>M9</td>
+<td><strong>Variances</strong></td>
+<td>Material price and usage, labour rate and efficiency, overhead spending, volume and capacity; posted and settled to cost of sales or inventory</td>
+</tr>
+<tr>
+<td>M10</td>
+<td><strong>Scrap, rework, co-products and by-products</strong></td>
+<td>Scrap to a loss account, by-product credit, joint-cost allocation by net realisable value or physical units</td>
+</tr>
+<tr>
+<td>M11</td>
+<td><strong>Subcontracting (job work)</strong></td>
+<td>Material sent to a vendor, stock held at the vendor, processing charge added to cost</td>
+</tr>
+<tr>
+<td>M12</td>
+<td><strong>Valuation and write-down</strong></td>
+<td>Lower of cost and net realisable value; revaluation; landed cost into raw material cost</td>
+</tr>
+<tr>
+<td>M13</td>
+<td><strong>Statistical quantities</strong></td>
+<td>Hours, units, floor area as drivers, stored with the posting</td>
+</tr>
+<tr>
+<td>M14</td>
+<td><strong>Period runs and controls</strong></td>
+<td>Overhead run, WIP run, variance settlement, cost roll-up; previewed, approved, period-locked, audited</td>
+</tr>
+<tr>
+<td>M15</td>
+<td><strong>Reports</strong></td>
+<td>Cost of goods manufactured, product cost per unit, order cost versus standard, variance analysis, WIP, inventory valuation by class, margin by product</td>
+</tr>
+</tbody></table></div>
+<h3 id="mfg-tax-alignment--p">3. What multiple taxation requires of a manufacturer</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>#</th>
+<th>Requirement</th>
+</tr>
+</thead><tbody><tr>
+<td>X1</td>
+<td>Several rates and supply natures in one company (standard, zero-rated, exempt, out of scope) chosen from profiles, never by hand</td>
+</tr>
+<tr>
+<td>X2</td>
+<td>Recoverable and non-recoverable input tax; non-recoverable tax enters the cost of the item bought</td>
+</tr>
+<tr>
+<td>X3</td>
+<td>Import of raw material: customs value, duty (with exemptions for manufacturing inputs), import VAT, several payees, foreign currency</td>
+</tr>
+<tr>
+<td>X4</td>
+<td>Reverse charge and withholding on services bought from non-residents (engineering, licences, management fees)</td>
+</tr>
+<tr>
+<td>X5</td>
+<td>Exports and zero-rated sales with proof; exempt sales with recovery apportionment</td>
+</tr>
+<tr>
+<td>X6</td>
+<td>Excise on excisable goods, on release for consumption, included in the price and returned separately</td>
+</tr>
+<tr>
+<td>X7</td>
+<td>Deemed supplies (internal consumption, free samples, gifts of finished goods) with tax and no revenue</td>
+</tr>
+<tr>
+<td>X8</td>
+<td>Capital goods (machinery): input tax recovery and any adjustment rules</td>
+</tr>
+<tr>
+<td>X9</td>
+<td>Several tax registrations or jurisdictions in one company (a branch in another state), with tax on transfers between registrations</td>
+</tr>
+<tr>
+<td>X10</td>
+<td>Time of supply, advances from customers, credit and debit notes at the original rate</td>
+</tr>
+<tr>
+<td>X11</td>
+<td>Tax-exclusive standard cost; tax lines tagged with code, direction and return box; VAT return and registers from the ledger; settlement entry</td>
+</tr>
+<tr>
+<td>X12</td>
+<td>Effective-dated rates and rules; e-invoice category and exemption code from the same tax code</td>
+</tr>
+</tbody></table></div>
+<h3 id="mfg-tax-alignment--p-2">4. Worked example: one manufacturer through the architecture</h3>
+<p>A manufacturer buys local and imported raw material, runs one work order, scraps some units, sells domestically and exports. Amounts in riyals. Overhead and labour are assumed to carry no VAT, to keep the example short. Every line below is posted by the engine; <strong>the operator names only the party, the items and the work order</strong>. The bracket shows what the engine finds on its own.</p>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Step</th>
+<th>Entry</th>
+<th>Found by the engine</th>
+</tr>
+</thead><tbody><tr>
+<td>1 Local raw material A: 1,000 + VAT 15%</td>
+<td>Dr Raw material 1,000; Dr VAT input 150; Cr AP (vendor) 1,150</td>
+<td>Domestic purchase, recoverable (tax profile and item class); inventory account by valuation class</td>
+</tr>
+<tr>
+<td>2 Import raw material B: goods 2,000, freight 50; customs value 2,050; duty 5% = 102.50; import VAT 15% on 2,152.50 = 322.88</td>
+<td>Dr Raw material 2,152.50 (2,000 + 50 + 102.50 landed); Dr VAT input (import) 322.88; Cr AP supplier 2,000; Cr AP forwarder 50; Cr customs authority 425.38 (102.50 + 322.88)</td>
+<td>Foreign vendor and goods: import of goods; duty from the item&#39;s tariff rate; landed cost allocation; one payable per payee. Debits 2,475.38 = credits 2,475.38</td>
+</tr>
+<tr>
+<td>3 Issue to work order WO-001: A 600, B 1,000</td>
+<td>Dr WIP 1,600; Cr Raw material 1,600</td>
+<td>Valuation class (raw material to WIP); tags: work order WO-001, cost centre Production</td>
+</tr>
+<tr>
+<td>4 Traced direct labour 400</td>
+<td>Dr WIP 400; Cr Direct labour absorbed 400 (the payroll expense is posted by payroll as an actual)</td>
+<td>Work order tag; labour is traced, not allocated</td>
+</tr>
+<tr>
+<td>5 Overhead applied: 20 machine hours at 12.50</td>
+<td>Dr WIP 250; Cr Overhead applied (clearing) 250</td>
+<td>Absorption rule of the cost centre and activity type; statistical driver: 20 hours</td>
+</tr>
+<tr>
+<td>6 Actual factory overhead of the month 500</td>
+<td>Dr Factory overhead expense 500 (cost centre Production); Cr AP 500</td>
+<td>An ordinary bill, tagged to the cost centre</td>
+</tr>
+<tr>
+<td>7 Completion: 100 units made, 5 scrapped (abnormal)</td>
+<td>WIP total 2,250. Dr Inventory write-off 112.50; Cr WIP 112.50. Dr Finished goods 2,137.50; Cr WIP 2,137.50 (95 units at 22.50)</td>
+<td>Scrap rule; completion transfers actual cost to finished goods at the batch&#39;s unit cost</td>
+</tr>
+<tr>
+<td>8 Period-end overhead true-up: actual 500, applied 250</td>
+<td>Dr Overhead applied 250; Dr Cost of sales 250 (under-absorbed); Cr Factory overhead expense 500</td>
+<td>Overhead run with preview and approval; nothing is lost or double-counted</td>
+</tr>
+<tr>
+<td>9 Domestic sale 50 units at 40 + VAT 15%</td>
+<td>Dr AR 2,300; Cr Revenue 2,000; Cr VAT output 300. Dr Cost of sales 1,125; Cr Finished goods 1,125</td>
+<td>Domestic standard-rated; tags: profit centre, product line, customer</td>
+</tr>
+<tr>
+<td>10 Export 40 units at 38</td>
+<td>Dr AR 1,520; Cr Revenue (export) 1,520; tax line of zero with zero-rated nature and reason code. Dr Cost of sales 900; Cr Finished goods 900</td>
+<td>Foreign customer, export item: zero-rated; e-invoice category from the tax code</td>
+</tr>
+<tr>
+<td>11 Filing the quarter</td>
+<td>Output 300; input 150 + 322.88 = 472.88; net refund 172.88. Dr VAT output 300; Dr VAT receivable from authority 172.88; Cr VAT input 472.88</td>
+<td>Return from ledger tax tags; settlement entry</td>
+</tr>
+</tbody></table></div>
+<p>Result: finished goods left 5 units at 112.50; every cost reaches cost of sales or a visible loss; the ledger tags answer &quot;cost of work order WO-001&quot;, &quot;margin by product line&quot;, &quot;overhead by cost centre&quot; and &quot;VAT by return box&quot; from the same lines.</p>
+<h3 id="mfg-tax-alignment---3">5. Findings: what holds, what is missing</h3>
+<h4 id="mfg-tax-alignment--pp">5.1 What the architecture already supports</h4>
+<ul>
+<li>Cost collection by work order, cost centre and profit centre <strong>is the dimension framework</strong>: one combination per line, unlimited types, hierarchies, rules per account (a WIP account can require the work order type). No second ledger is needed (AG-10, AG-11, AG-12).</li>
+<li>Tracing and absorption fit the <strong>allocation engine over any type</strong> (AG-17 widened): traced cost is posted straight to the work order; pooled cost is allocated by a rate or driver. This is the Blueprint&#39;s single &quot;cost distribution&quot; primitive.</li>
+<li>Tax follows the <strong>same determination engine</strong> as accounts, so imported material, exports and non-recoverable tax cost resolve without operator input.</li>
+<li>Reports: break-down by dimension and the variance columns already in the report engine cover work order, cost centre and product-line statements.</li>
+</ul>
+<h4 id="mfg-tax-alignment--p-3">5.2 Gaps, in order of how much they block manufacturing</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>#</th>
+<th>Gap</th>
+<th>Design adjustment (proposal)</th>
+</tr>
+</thead><tbody><tr>
+<td>G1</td>
+<td><strong>One inventory account and one item class.</strong> Manufacturing needs raw material, WIP, finished goods and trading goods as separate reconcilable accounts, and price-difference, variance, scrap and overhead-applied accounts</td>
+<td>Item <strong>valuation class</strong> on the item master; roles per class (raw material, WIP, finished goods, variance, scrap, applied overhead, labour absorbed); the determination engine picks accounts by valuation class and movement type. Extends AG-02 and AG-04; no new module</td>
+</tr>
+<tr>
+<td>G2</td>
+<td><strong>No work order, and no rule on how it relates to dimensions</strong></td>
+<td>A work order is a document with a lifecycle whose creation also creates a <strong>dimension value of a system &quot;work order&quot; type</strong> (role: cost object). Every cost line carries it. Cost per work order is a ledger query. Any denormalised totals are caches under the consistency check</td>
+</tr>
+<tr>
+<td>G3</td>
+<td><strong>Statistical quantities</strong> (hours, units) are not stored with postings</td>
+<td><strong>Quantity and unit of measure on ledger lines</strong> (statistical key figures), or a statistical ledger of quantities keyed by the same dimension combination; required for rates, per-unit cost and capacity</td>
+</tr>
+<tr>
+<td>G4</td>
+<td><strong>Costing method: average only</strong></td>
+<td>Decide per item class: moving average for raw material; <strong>actual cost by order</strong> for work in progress and finished goods; <strong>standard cost with variances</strong> as an optional method. The variance accounts and the settlement run are part of the design from the start so that adding standard cost later is not a rewrite</td>
+</tr>
+<tr>
+<td>G5</td>
+<td><strong>Overhead absorption rules</strong></td>
+<td>Rate per cost centre and activity type and period, normal capacity per cost centre (IAS 2: fixed overhead on normal capacity, idle capacity and abnormal waste to expense), <strong>allocation cycles</strong> (service cost centres to production), preview, approval, true-up to cost of sales or variance</td>
+</tr>
+<tr>
+<td>G6</td>
+<td><strong>Scrap, rework, co-products, by-products</strong></td>
+<td>Basis types for the allocation engine: net realisable value and physical units; by-product credit account; scrap recovery sale as an ordinary sale with its tax class</td>
+</tr>
+<tr>
+<td>G7</td>
+<td><strong>Subcontracting</strong></td>
+<td>A document type and a <strong>stock at vendor</strong> location; the processing charge is a bill tagged to the work order; tax determination gets a transaction type for job work</td>
+</tr>
+<tr>
+<td>G8</td>
+<td><strong>Period runs</strong></td>
+<td>Overhead run, WIP valuation, variance settlement, cost roll-up as <strong>runs</strong> with preview, approval, period lock and audit, using the per-module period status of Sprint 12</td>
+</tr>
+<tr>
+<td>G9</td>
+<td><strong>Imports and landed cost</strong></td>
+<td>Foreign currency, landed cost sheets, customs entry (the tax programme, Sprint 14e) are prerequisites for imported raw material cost</td>
+</tr>
+<tr>
+<td>G10</td>
+<td><strong>IAS 2 controls</strong></td>
+<td>Net realisable value write-down run; rule that abnormal waste and unallocated fixed overhead are expensed; consistent cost formula per item class</td>
+</tr>
+<tr>
+<td>G11</td>
+<td><strong>Reports</strong></td>
+<td>Cost of goods manufactured, work order cost, variance analysis, WIP and inventory valuation by class need <strong>quantity and rate as value bases</strong> in the report engine beside amount and budget</td>
+</tr>
+<tr>
+<td>G12</td>
+<td><strong>Standards and budgets</strong></td>
+<td>Standard cost per product and period and budgets by cost centre and work order use the same dimension-combination structure as other budgets</td>
+</tr>
+</tbody></table></div>
+<h4 id="mfg-tax-alignment--p-p">5.3 Tax gaps specific to manufacturing</h4>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>#</th>
+<th>Gap</th>
+<th>Design adjustment (proposal)</th>
+</tr>
+</thead><tbody><tr>
+<td>T1</td>
+<td>Customs duty exemption for manufacturing inputs, drawback, bonded and free-zone inventory</td>
+<td>Item tax profile carries tariff code and duty rate; vendor and company profile carry exemption certificates with validity; determination returns duty zero when a valid certificate applies</td>
+</tr>
+<tr>
+<td>T2</td>
+<td>Non-recoverable tax must reach the cost of raw material and then the work order</td>
+<td>The tax engine posts the non-recoverable part to the <strong>inventory line</strong> (already designed); the cost then flows to work in progress through the issue, as in step 3</td>
+</tr>
+<tr>
+<td>T3</td>
+<td>Excise on excisable goods</td>
+<td>Excise component (Sprint 14f) with its own accounts, base rules and return; included in the selling price, not in manufacturing cost</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Deemed supplies (internal consumption, samples, gifts of finished goods)</td>
+<td>A <strong>transaction type</strong> &quot;deemed supply&quot; in the determination engine: tax output, no revenue, stock out at cost</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>Capital goods (machinery)</td>
+<td>Tax category on the fixed-asset account (account master 7.1) plus recovery rules; adjustment rules to be confirmed with a tax adviser</td>
+</tr>
+<tr>
+<td>T6</td>
+<td>Several registrations or jurisdictions</td>
+<td><strong>Tax registration on the branch</strong> (and company); determination takes the registration of the issuing branch; transfers between registrations get a transaction type; tax jurisdiction is an object in the tax design</td>
+</tr>
+<tr>
+<td>T7</td>
+<td>Time of supply and advances</td>
+<td>Tax point date on the document (date standard already allows it); advance receipts carry tax and are set off on the final invoice</td>
+</tr>
+<tr>
+<td>T8</td>
+<td>Scrap and by-product sales</td>
+<td>Their own item tax class through the same determination</td>
+</tr>
+<tr>
+<td>T9</td>
+<td>Withholding on services from non-residents (licences, engineering)</td>
+<td>Sprint 14d; vendor profile and service class decide the rate and treaty relief</td>
+</tr>
+<tr>
+<td>T10</td>
+<td>Standard cost must exclude recoverable tax</td>
+<td>Rule of the cost engine: costs are net of recoverable tax by construction, because only the non-recoverable part is posted to inventory</td>
+</tr>
+</tbody></table></div>
+<h3 id="mfg-tax-alignment---4">6. Verdict on the architecture, and effect on the agreed entries</h3>
+<ul>
+<li><strong>It serves the core, with additions.</strong> The ledger, the dimension framework, the allocation primitive and the tax and account determination engine are the right foundation for manufacturing and multi-tax: the worked example resolved every step through them without a separate costing ledger.</li>
+<li><strong>What must be added to serve it:</strong> valuation classes and class roles (G1), the work order as a document keyed to a dimension value (G2), quantities with postings (G3), a costing-method decision and variance design (G4), absorption with capacity and cycles (G5), and the runs (G8). None changes an agreed entry; G1 and G2 depend on the AG-11 wording.</li>
+<li><strong>Review of agreed entries (register section J) updated by this test:</strong> AG-04 extends to valuation class and movement type; AG-05 gains a typed reference for the work order and the asset; AG-11 wording (process documents keyed by dimension values) is <strong>required</strong> by manufacturing, not optional; AG-12 reword stands; AG-17 widens to cycles, quantities and statistical drivers; AG-33 year-end is unaffected.</li>
+<li><strong>Sequencing consequence.</strong> Manufacturing sits on three prerequisites that are also needed by tax: account master and valuation classes, the determination engine, and foreign currency with landed cost. Building those first serves both domains; building manufacturing first would force rework.</li>
+</ul>
+<h3 id="mfg-tax-alignment--p-p-2">7. Proposed requirements (not registered; for decision)</h3>
+<div class="table-wrap"><table class="plan"><thead><tr>
+<th>Proposed id</th>
+<th>Content</th>
+</tr>
+</thead><tbody><tr>
+<td>BR-MFG-01</td>
+<td>Item types and valuation classes; inventory, WIP, finished goods, variance, scrap and applied-overhead accounts by class through determination</td>
+</tr>
+<tr>
+<td>BR-MFG-02</td>
+<td>Work order document (planned, released, issued, completed, closed) creating a work-order dimension value; cost collection from issues, traced labour, subcontract charges</td>
+</tr>
+<tr>
+<td>BR-MFG-03</td>
+<td>Statistical quantities with postings (hours, units) and activity types per cost centre</td>
+</tr>
+<tr>
+<td>BR-MFG-04</td>
+<td>Overhead absorption: rates, normal capacity, allocation cycles, run with preview and approval, true-up</td>
+</tr>
+<tr>
+<td>BR-MFG-05</td>
+<td>Completion to finished goods at batch unit cost; scrap and rework; co-products and by-products</td>
+</tr>
+<tr>
+<td>BR-MFG-06</td>
+<td>Costing method per item class (average, actual by order, optional standard with variances); variance posting and settlement</td>
+</tr>
+<tr>
+<td>BR-MFG-07</td>
+<td>Subcontracting with stock at vendor and processing charge</td>
+</tr>
+<tr>
+<td>BR-MFG-08</td>
+<td>Period runs (overhead, WIP, variances, cost roll-up) with per-module period locks</td>
+</tr>
+<tr>
+<td>BR-MFG-09</td>
+<td>Net realisable value write-down and IAS 2 expense rules</td>
+</tr>
+<tr>
+<td>BR-MFG-10</td>
+<td>Manufacturing reports (cost of goods manufactured, work order cost, variance, WIP, valuation by class) with quantity and rate bases</td>
+</tr>
+<tr>
+<td>BR-TAX-18</td>
+<td>Transaction types for deemed supply, job work and transfers between registrations; tax registration per branch</td>
+</tr>
+<tr>
+<td>BR-TAX-19</td>
+<td>Duty exemption and drawback certificates on profiles with validity</td>
+</tr>
+</tbody></table></div>
+<h3 id="mfg-tax-alignment---5">8. Decisions needed from the owner</h3>
+<ol>
+<li><strong>AG-11 wording:</strong> confirm that process documents (work order, project billing, budget commitment) keyed by a dimension value are allowed, while a second ledger or a hard-coded cost object is not.</li>
+<li><strong>Costing method for the first manufacturing release:</strong> actual cost by order with moving-average raw material, or standard costing with variances from the start?</li>
+<li><strong>Costing style:</strong> order (job) costing only, or process (equivalent units) costing as well?</li>
+<li><strong>Capacity basis:</strong> normal capacity per cost centre required from the start (IAS 2), or a simple rate first?</li>
+<li><strong>Which manufacturers are real:</strong> discrete (wood, steel, assembly), process (food, chemicals) or both? Joint products and by-products matter for the second.</li>
+<li><strong>Subcontracting and several plants or tax registrations:</strong> needed now or later?</li>
+<li><strong>Quantity on ledger lines versus a statistical ledger:</strong> which storage do you prefer (the first is simpler to report; the second keeps the monetary ledger unchanged)?</li>
+<li><strong>Order of work:</strong> account master, valuation classes and determination first (serving tax and manufacturing), then currency and landed cost, then work orders and absorption?</li>
+</ol>
+<h3 id="mfg-tax-alignment---6">9. Sources and confidence</h3>
+<ul>
+<li>Finance Core Blueprint (<code>docs/reference</code>): FR-WIP-01 to 08, FR-LC, FR-DIM, cost distribution rules, work orders and projects entities.</li>
+<li>Our design notes: agreed-decisions register, chart of accounts benchmark, taxation analysis.</li>
+<li>IAS 2 (inventories: cost of conversion, normal capacity, abnormal waste, net realisable value) and general tier-1 practice (SAP product costing and controlling, Oracle cost management, Dynamics 365 production and cost accounting), <strong>from general knowledge, not re-read in this session; confirm with the company&#39;s accountant before relying on specific clauses</strong>.</li>
+<li>Saudi tax points in section 3 are marked in the taxation analysis as needing a tax adviser&#39;s confirmation.</li>
+</ul>
+</section>
+<section class="chapter" id="coa-benchmark"><p class="eyebrow">Chapter 18</p><h2>Chart of accounts: benchmark against tier-1 ERPs and fit to retail, trading, manufacturing, profit-centre, budgeting and project costing</h2><p class="src">Source: <code>docs/design-notes/coa-tier1-benchmark.md</code> · <span class="pill">Benchmark and proposal for decision: nothing built</span></p><p>Written 2026-10-19 at the owner&#39;s request, after the owner observed that the finance core looked like &quot;simple forms making entries&quot;. This is an analysis with a gap register and a target architecture for decision. Nothing is built or registered in the requirement set yet (section 9 proposes the entries).</p>
 <p><strong>Agreed entries that apply</strong> (register <code>agreed-decisions-register</code>): AG-02, AG-04, AG-05 and AG-06 (follows); AG-10 and AG-11 (follows after the correction below); AG-12 (follows, with a proposed wording change: it is marked Challenge in register section J); AG-14, AG-15, AG-17 (follows; widening proposed); AG-71 and AG-77 (this note is the review they require).</p>
 <p><strong>Correction on 2026-10-19 (owner):</strong> an earlier version of this note proposed separate profit centre and project objects. That contradicted the agreed design, in which dimensions are unlimited and flexible and serve budgeting, costing, control and profit and loss. Sections 4, 6, 7.3, 7.4 and 9 were rewritten so that every management-accounting need is met by <strong>capabilities of the dimension framework</strong>, not by new hard-coded modules.</p>
 <p><strong>Confidence.</strong> Our side (sections 2 and 5) was read from the code and the requirement register today. The tier-1 side is general product knowledge of SAP S/4HANA, Oracle Fusion General Ledger, Microsoft Dynamics 365 Finance and NetSuite, plus the documentation pages already checked for the tax analysis; account-attribute lists were <strong>not</strong> re-verified against current vendor documentation in this session and should be confirmed per vendor before a feature is copied from them.</p>
@@ -6784,7 +7275,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li>Saudi statutory chart format and zakat presentation: not researched here; needs a local accountant.</li>
 </ul>
 </section>
-<section class="chapter" id="tax-analysis"><p class="eyebrow">Chapter 18</p><h2>Taxation and tax profiles: analysis and design options (for decision, nothing built)</h2><p class="src">Source: <code>docs/design-notes/taxation-analysis.md</code> · <span class="pill">Analysis and proposal for decision: nothing built (Sprints 14 to 14f)</span></p><p>Written 2026-10-19 after the owner asked for a holistic accountant&#39;s view of taxation: how tier-1 ERPs do it, how imports, manufacturing and retail behave, how our solution measures up, and a flexible design in which <strong>the system, not the data entry operator, decides what to post and where</strong>. This note analyses and proposes; it does not decide. Section 10 lists the decisions needed.</p>
+<section class="chapter" id="tax-analysis"><p class="eyebrow">Chapter 19</p><h2>Taxation and tax profiles: analysis and design options (for decision, nothing built)</h2><p class="src">Source: <code>docs/design-notes/taxation-analysis.md</code> · <span class="pill">Analysis and proposal for decision: nothing built (Sprints 14 to 14f)</span></p><p>Written 2026-10-19 after the owner asked for a holistic accountant&#39;s view of taxation: how tier-1 ERPs do it, how imports, manufacturing and retail behave, how our solution measures up, and a flexible design in which <strong>the system, not the data entry operator, decides what to post and where</strong>. This note analyses and proposes; it does not decide. Section 10 lists the decisions needed.</p>
 <p>Method (architecture first): the Finance Core Blueprint (FR-TAX, FR-RND, FR-LC, ERD), the existing design notes, the code as it is today, public documentation of the tier-1 products, and the Saudi (ZATCA) rules as published. Where a statement could not be checked against a primary source it is marked <strong>[verify]</strong>: nothing marked so should be built on before a tax adviser confirms it.</p>
 <p><strong>Agreed entries that apply</strong> (register <code>agreed-decisions-register</code>): AG-02 and AG-04 (follows: the document names party and item, the engine finds accounts; the design extends this to tax), AG-05 (follows: tax code becomes a typed reference), AG-30 and AG-31 (follows: tax uses document date, posting date and the posting guard), AG-32 (follows), AG-24 (follows: the return is reconciled to documents), AG-71 and AG-77 (this note is the review they require). No agreed entry is contradicted.</p>
 <h3 id="tax-analysis--section">1. What a correct tax solution must do (the accountant&#39;s test)</h3>
@@ -7393,7 +7884,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li><strong>Not independently verified</strong>: SAP, NetSuite and Odoo behaviour (general knowledge); every Saudi legal point marked <strong>[verify]</strong>. A qualified tax adviser should confirm the treatment of import VAT (deferral), reverse-charge boxes, withholding rates and non-recoverable categories before any of it is implemented.</li>
 </ul>
 </section>
-<section class="chapter" id="test-strategy"><p class="eyebrow">Chapter 19</p><h2>Test Strategy</h2><p class="src">Source: <code>docs/gl-ap-ar/05-test-strategy.md</code></p><p>Version 1.0 / 2026-10-15. The complete case list is the catalogue in <code>docs/test-cases/</code> (CSV, JSON, Gherkin); each case is traced to a system requirement and a business requirement in the traceability matrix (08).</p>
+<section class="chapter" id="test-strategy"><p class="eyebrow">Chapter 20</p><h2>Test Strategy</h2><p class="src">Source: <code>docs/gl-ap-ar/05-test-strategy.md</code></p><p>Version 1.0 / 2026-10-15. The complete case list is the catalogue in <code>docs/test-cases/</code> (CSV, JSON, Gherkin); each case is traced to a system requirement and a business requirement in the traceability matrix (08).</p>
 <h3 id="test-strategy--section">1. Objectives</h3>
 <ol>
 <li>Prove every business requirement with at least one repeatable test; none is &quot;verified by looking&quot;.</li>
@@ -7519,7 +8010,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="sprint-log"><p class="eyebrow">Chapter 20</p><h2>Sprint log and plan — GL / AR / AP 2.0</h2><p class="src">Source: <code>docs/gl-ap-ar/07-sprint-log.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+<section class="chapter" id="sprint-log"><p class="eyebrow">Chapter 21</p><h2>Sprint log and plan — GL / AR / AP 2.0</h2><p class="src">Source: <code>docs/gl-ap-ar/07-sprint-log.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
 </div>
 <p>Sprints are numbered. Done sprints list the commits that delivered them (git, branch <code>v2</code>); planned sprints list the BRD items they will deliver. Forward mapping (BR → sprint) and back mapping (sprint item → BR) are both here and in the traceability matrix (08). The first ten sprints were delivered in one continuous build, 2026-10-14 → 2026-10-15.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -9476,7 +9967,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="api"><p class="eyebrow">Chapter 21</p><h2>Annex B — API reference (GL / AR / AP routes)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-b-api-reference.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+<section class="chapter" id="api"><p class="eyebrow">Chapter 22</p><h2>Annex B — API reference (GL / AR / AP routes)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-b-api-reference.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
 </div>
 <p>Parsed from <code>server/routes/*.ts</code>. &quot;Permission&quot; lists the <code>hasPermission</code> keys found in the handler. All routes run in the tenant transaction (<code>withTenantDb</code>) and are scoped to the session company.</p>
 <h3 id="api--section">ledgerAccounts.ts</h3>
@@ -10229,7 +10720,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="permissions"><p class="eyebrow">Chapter 22</p><h2>Annex C — Permission modules (GL / AR / AP)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-c-permissions-matrix.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
+<section class="chapter" id="permissions"><p class="eyebrow">Chapter 23</p><h2>Annex C — Permission modules (GL / AR / AP)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-c-permissions-matrix.md</code></p><div class="callout"><div class="label">Note</div><p>Generated by <code>scripts/build-gl-docs.mjs</code> from <code>docs/gl-ap-ar/source</code>. Do not edit; change the source and rebuild.</p>
 </div>
 <p>Source of truth: <code>src/permissionSchema.ts</code>. A user&#39;s rights are the union of all assigned roles; administrators hold every right. Delete means cancel or deactivate, never erase.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
@@ -10726,7 +11217,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="posting-rules"><p class="eyebrow">Chapter 23</p><h2>Annex D — Posting rules catalogue</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-d-posting-rules.md</code></p><p>What every source document posts (Dr = debit, Cr = credit). Roles are resolved by the posting engine to the company&#39;s account (customer/vendor control account, bank&#39;s own account, expense-category account when mapped). Every entry also carries the dimension tags and the customer/vendor tag its accounts require. A reversal (cancel, credit note, return, receipt cancel) mirrors the original lines, tags and parties on the reversal date.</p>
+<section class="chapter" id="posting-rules"><p class="eyebrow">Chapter 24</p><h2>Annex D — Posting rules catalogue</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-d-posting-rules.md</code></p><p>What every source document posts (Dr = debit, Cr = credit). Roles are resolved by the posting engine to the company&#39;s account (customer/vendor control account, bank&#39;s own account, expense-category account when mapped). Every entry also carries the dimension tags and the customer/vendor tag its accounts require. A reversal (cancel, credit note, return, receipt cancel) mirrors the original lines, tags and parties on the reversal date.</p>
 <div class="table-wrap"><table class="plan"><thead><tr>
 <th>Source</th>
 <th>Voucher</th>
@@ -10924,7 +11415,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="developer-guide"><p class="eyebrow">Chapter 24</p><h2>Annex E — Developer guide for future ledger work</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-e-developer-guide.md</code></p><p>Read the Solution Design (03) principles first. This page is the practical checklist.</p>
+<section class="chapter" id="developer-guide"><p class="eyebrow">Chapter 25</p><h2>Annex E — Developer guide for future ledger work</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-e-developer-guide.md</code></p><p>Read the Solution Design (03) principles first. This page is the practical checklist.</p>
 <h3 id="developer-guide--p">Add a new source document that posts</h3>
 <ol>
 <li>Do not pick accounts. Call <code>postJournalEntry</code> with <code>referenceType</code>, <code>referenceId</code>, role lines, and a <code>context</code> (or let <code>partyOfDocument</code> read the party). Add the document type to <code>partyOfDocument</code> (<code>postingContext.ts</code>) and to the party back-fill (<code>scripts/backfill-party-tags.ts</code>) if it touches a customer/vendor.</li>
@@ -10956,7 +11447,7 @@ What the code does: a document names a posting ROLE (AR, AP, INVENTORY, SALES_RE
 <li>Run a Live release script from the 2.0 checkout, or merge v2 into master.</li>
 </ul>
 </section>
-<section class="chapter" id="runbook"><p class="eyebrow">Chapter 25</p><h2>Annex F — Operations runbook (ledger core)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-f-operations-runbook.md</code></p><h3 id="runbook--section">Tracks</h3>
+<section class="chapter" id="runbook"><p class="eyebrow">Chapter 26</p><h2>Annex F — Operations runbook (ledger core)</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-f-operations-runbook.md</code></p><h3 id="runbook--section">Tracks</h3>
 <p>Live: branch <code>master</code>, folder <code>E:\ERP</code>, production warraq.compbrain.io, fixes only. Demo / 2.0: branch <code>v2</code>, folder <code>E:\ERP-2.0</code>, local port 3001 / database <code>erp_v2</code>, VPS <code>~/apps/erp-demo</code> port 4000 (127.0.0.1 only; reach it through an SSH tunnel). See <code>docs/operations/environments.md</code>.</p>
 <h3 id="runbook--p">Demo release (VPS, as the demo OS user)</h3>
 <pre class="code"><code>cd ~/apps/erp-demo
@@ -10977,7 +11468,7 @@ bash deploy/release-demo.sh</code></pre>
 <li>&quot;Cannot post a date&quot;: posting guard message names the rule (month, VAT quarter, lock date, window, reason).</li>
 </ul>
 </section>
-<section class="chapter" id="glossary"><p class="eyebrow">Chapter 26</p><h2>Annex G — Glossary</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-g-glossary.md</code></p><div class="table-wrap"><table class="plan"><thead><tr>
+<section class="chapter" id="glossary"><p class="eyebrow">Chapter 27</p><h2>Annex G — Glossary</h2><p class="src">Source: <code>docs/gl-ap-ar/annex-g-glossary.md</code></p><div class="table-wrap"><table class="plan"><thead><tr>
 <th>Term</th>
 <th>Meaning</th>
 </tr>
@@ -11119,7 +11610,7 @@ bash deploy/release-demo.sh</code></pre>
 </tr>
 </tbody></table></div>
 </section>
-<section class="chapter" id="deployment"><p class="eyebrow">Chapter 27</p><h2>Hostinger VPS Deployment Plan</h2><p class="src">Source: <code>docs/operations/deployment-plan.md</code></p><p><strong>Status: LIVE.</strong> The app is running in production at <code>https://warraq.compbrain.io</code> (Nginx + Let&#39;s Encrypt SSL, PM2 2-instance cluster, Postgres on the same box). Load the <code>hostinger-deploy</code> skill before touching any of this — it has the full guardrails plus a real incident (PM2 startup registered under the wrong OS user) worth reading before touching PM2 lifecycle commands.</p>
+<section class="chapter" id="deployment"><p class="eyebrow">Chapter 28</p><h2>Hostinger VPS Deployment Plan</h2><p class="src">Source: <code>docs/operations/deployment-plan.md</code></p><p><strong>Status: LIVE.</strong> The app is running in production at <code>https://warraq.compbrain.io</code> (Nginx + Let&#39;s Encrypt SSL, PM2 2-instance cluster, Postgres on the same box). Load the <code>hostinger-deploy</code> skill before touching any of this — it has the full guardrails plus a real incident (PM2 startup registered under the wrong OS user) worth reading before touching PM2 lifecycle commands.</p>
 <h3 id="deployment--section">Decisions already locked in (confirmed with the user)</h3>
 <ul>
 <li><strong>Target</strong>: Hostinger VPS, 2 vCPU / 8GB RAM, Ubuntu LTS.</li>
@@ -11249,7 +11740,7 @@ bash deploy/maintenance-mode.sh off      # resume normal traffic
 bash deploy/maintenance-mode.sh status   # check which state it's in</code></pre>
 <p>It just creates/removes a sentinel file (<code>deploy/MAINTENANCE_ON</code>, gitignored) that the Nginx snippet checks, then runs <code>nginx -t</code> before reloading — never touches PM2 or Postgres. To keep your own access while maintenance is on, uncomment and edit the bypass-IP line in <code>erp-maintenance.conf</code> and reload.</p>
 </section>
-<section class="chapter" id="ha-proposal"><p class="eyebrow">Chapter 28</p><h2>High Availability Plan (for review)</h2><p class="src">Source: <code>docs/proposals/high-availability-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-22 in response to Hostinger&#39;s notice
+<section class="chapter" id="ha-proposal"><p class="eyebrow">Chapter 29</p><h2>High Availability Plan (for review)</h2><p class="src">Source: <code>docs/proposals/high-availability-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-22 in response to Hostinger&#39;s notice
 that VPS maintenance downtime is the customer&#39;s own responsibility — Hostinger is not
 obligated to provide HA for a single VPS, and won&#39;t.</p>
 <h3 id="ha-proposal--section">1. Where we actually stand today</h3>
@@ -11392,7 +11883,7 @@ to fund Tier 2 sooner.</li>
 <p>I haven&#39;t provisioned anything or touched the production server for this — tell me which
 tier to build and I&#39;ll start with the standby setup and the replication config.</p>
 </section>
-<section class="chapter" id="ai-proposal"><p class="eyebrow">Chapter 29</p><h2>AI Features — Implementation Plan (for review)</h2><p class="src">Source: <code>docs/proposals/ai-feature-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-20 against the current codebase.
+<section class="chapter" id="ai-proposal"><p class="eyebrow">Chapter 30</p><h2>AI Features — Implementation Plan (for review)</h2><p class="src">Source: <code>docs/proposals/ai-feature-plan.md</code> · <span class="pill">Proposal: nothing built yet</span></p><p>Status: <strong>proposal, nothing built yet.</strong> Written 2026-09-20 against the current codebase.
 Focus, as requested: <strong>(1) reporting / data processing, (2) easier data entry and validation, (3) scenarios that can be configured, not hard-coded.</strong>
 Worked scenarios: ZATCA rejection analysis, sales trends, WhatsApp message → quotation.</p>
 <hr>
@@ -11727,7 +12218,7 @@ Output is a short list of &quot;fix these N things&quot; with a one-click jump t
 <li><strong>Data retention:</strong> how long to keep WhatsApp messages/bill images and AI audit logs.</li>
 </ol>
 </section>
-<section class="chapter" id="linked"><p class="eyebrow">Chapter 30</p><h2>Linked pages and other documents</h2><div class="cards">
+<section class="chapter" id="linked"><p class="eyebrow">Chapter 31</p><h2>Linked pages and other documents</h2><div class="cards">
 <a class="card" href="data-dictionary.html"><b>Data dictionary</b><span>Every table and column of the finance core, generated from the schema (annex A).</span></a>
 <a class="card" href="traceability.html"><b>Traceability matrix</b><span>Blueprint to business requirement to system requirement to test case to sprint.</span></a>
 <a class="card" href="test-catalogue.html"><b>Test-case catalogue</b><span>Every test case with its steps, filterable. Also as CSV, JSON and Gherkin in docs/test-cases.</span></a>
